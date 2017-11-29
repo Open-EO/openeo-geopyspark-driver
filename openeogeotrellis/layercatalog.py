@@ -1,5 +1,8 @@
 from typing import List
+
 import geopyspark as gps
+
+
 class LayerCatalog():
     """Catalog providing access to GeoPySpark layers"""
     def __init__(self):
