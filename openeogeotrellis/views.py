@@ -1,5 +1,8 @@
+from flask import request, url_for, jsonify
+
 from openeogeotrellis import app
-from flask import Flask, request, url_for, redirect
+from .ProcessGraphDeserializer import graphToRdd
+
 
 @app.route('/v0.1')
 def index():
@@ -13,12 +16,16 @@ def timeseries():
 @app.route('/v0.1/timeseries/point', methods=['GET', 'POST'])
 def point():
     if request.method == 'POST':
-        x = request.args.get('x', '')
-        y = request.args.get('y', '')
+        print("Handling request: "+str(request))
+        print("Post data: "+str(request.data))
+        x = float(request.args.get('x', ''))
+        y = float(request.args.get('y', ''))
         srs = request.args.get('srs', '')
         startdate = request.args.get('startdate', '')
         enddate = request.args.get('enddate', '')
-        process_graph = request.json
-        return process_graph
+
+        process_graph = request.get_json()
+        image_collection = graphToRdd(process_graph, None)
+        return jsonify(image_collection.meanseries(x,y,srs))
     else:
-        return 'Usage: Query point timeseries.'
+        return 'Usage: Query point timeseries using POST.'

@@ -1,23 +1,14 @@
-from typing import List
-from unittest import TestCase
-import unittest
-import openeo
-from mock import MagicMock, Mock, patch
-from openeo.sessions import Session
-
-import geopyspark as gps
-from geopyspark.geotrellis import (SpatialKey, SpaceTimeKey, Extent,
-                                   Tile, _convert_to_unix_time)
-from geopyspark.geotrellis.layer import TiledRasterLayer
-from geopyspark.tests.base_test_class import BaseTestClass
-from geopyspark.geotrellis.constants import LayerType, Operation, ResampleMethod
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from pyspark import SparkContext
-from shapely.geometry import box
-from shapely.geometry import Point
+import datetime
 
 import numpy as np
-import datetime
+from shapely.geometry import Point
+
+from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+from geopyspark.geotrellis.constants import LayerType
+from geopyspark.geotrellis.layer import TiledRasterLayer
+from geopyspark.tests.base_test_class import BaseTestClass
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+
 
 class TestCustomFunctions(BaseTestClass):
 
@@ -113,9 +104,9 @@ class TestCustomFunctions(BaseTestClass):
         transformed_collection = imagecollection.combinebands([0,1],custom_function)
 
         for p in self.points[0:3]:
-            result:List = transformed_collection.meanseries(p.x, p.y)
+            result:dict = transformed_collection.meanseries(p.x, p.y)
             print(result)
-            value = result[0][2]
-            self.assertEqual(3.0,value[0])
+            value = result.popitem()
+            self.assertEqual(3.0,value[1][0])
 
 

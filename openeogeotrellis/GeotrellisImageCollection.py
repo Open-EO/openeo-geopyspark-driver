@@ -1,8 +1,11 @@
+from typing import Dict, List
+
 from shapely.geometry import Point
 
-from openeo.imagecollection import ImageCollection
-from typing import Dict, List
 from geopyspark import TiledRasterLayer
+from openeo.imagecollection import ImageCollection
+
+
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     rdd: TiledRasterLayer
@@ -26,5 +29,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             Point(x, y),
         ]
         values = self.rdd.get_point_values(points)
-        return values
+        result = {}
+        for v in values:
+            result[v[1].isoformat()]=v[2]
+        return result
 
