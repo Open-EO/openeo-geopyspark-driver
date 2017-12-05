@@ -26,6 +26,6 @@ def point():
 
         process_graph = request.get_json()
         image_collection = graphToRdd(process_graph, None)
-        return jsonify(image_collection.meanseries(x,y,srs))
+        return jsonify(image_collection.timeseries(x, y, srs))
     else:
         return 'Usage: Query point timeseries using POST.'

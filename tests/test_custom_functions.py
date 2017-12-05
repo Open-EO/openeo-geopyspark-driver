@@ -1,12 +1,12 @@
 import datetime
 
 import numpy as np
-from shapely.geometry import Point
-
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from geopyspark.tests.base_test_class import BaseTestClass
+from shapely.geometry import Point
+
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 
 
@@ -104,7 +104,7 @@ class TestCustomFunctions(BaseTestClass):
         transformed_collection = imagecollection.combinebands([0,1],custom_function)
 
         for p in self.points[0:3]:
-            result:dict = transformed_collection.meanseries(p.x, p.y)
+            result:dict = transformed_collection.timeseries(p.x, p.y)
             print(result)
             value = result.popitem()
             self.assertEqual(3.0,value[1][0])

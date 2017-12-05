@@ -1,8 +1,9 @@
 from typing import Dict, List
 
+from geopyspark import TiledRasterLayer
+from pandas import Series
 from shapely.geometry import Point
 
-from geopyspark import TiledRasterLayer
 from openeo.imagecollection import ImageCollection
 
 
@@ -24,7 +25,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return GeotrellisTimeSeriesImageCollection(mapped_rdd)
 
-    def meanseries(self, x,y, srs="EPSG:4326") -> Dict:
+    def reduceByTime(self,temporal_window, aggregationfunction) -> Series :
+        #group keys
+        #reduce
+        pass
+
+    def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         points = [
             Point(x, y),
         ]

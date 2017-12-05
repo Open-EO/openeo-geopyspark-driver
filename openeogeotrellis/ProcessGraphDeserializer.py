@@ -38,6 +38,12 @@ def band_arithmetic(input_collection:ImageCollection, args:Dict, viewingParamete
     return input_collection.combinebands(bands,decoded_function)
 
 
+def reduce_by_time(input_collection:ImageCollection, args:Dict, viewingParameters)->ImageCollection:
+    function = extract_arg(args,'function')
+    temporal_window = extract_arg(args,'temporal_window')
+    decoded_function = pickle.loads(base64.standard_b64decode(function))
+    return input_collection.reduceByTime(temporal_window,decoded_function)
+
 
 def getProcessImageCollection( process_id:str, args:Dict, viewingParameters)->ImageCollection:
 
