@@ -1,10 +1,10 @@
 import datetime
 
 import numpy as np
+from base_test_class import BaseTestClass
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from geopyspark.tests.base_test_class import BaseTestClass
 from shapely.geometry import Point
 
 
