@@ -1,2 +1,3 @@
+pyspark==2.2.0
 geopyspark
 setuptools
