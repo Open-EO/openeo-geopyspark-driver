@@ -19,7 +19,7 @@ class BaseTestClass(unittest.TestCase):
         conf.set(key='spark.driver.memory', value='2G')
         conf.set(key='spark.executor.memory', value='2G')
 
-    pysc = SparkContext(conf=conf)
+    pysc = SparkContext.getOrCreate(conf)
 
     #dir_path = geotiff_test_path("all-ones.tif")
 
