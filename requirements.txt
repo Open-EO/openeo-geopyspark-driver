@@ -1,3 +1,4 @@
 pyspark==2.2.1
+pandas==0.22.0
 geopyspark
 setuptools
