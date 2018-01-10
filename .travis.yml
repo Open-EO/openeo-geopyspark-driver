@@ -8,4 +8,6 @@ install:
   - pip install -r requirements.txt
 # command to run tests
 script:
+  - which find-spark-home
+  - source find-spark-home && echo $SPARK_HOME
   - source find-spark-home && pytest
