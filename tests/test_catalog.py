@@ -1,5 +1,6 @@
-from openeogeotrellis.geopyspark.layercatalog import  LayerCatalog
-from base_test_class import BaseTestClass
+from openeogeotrellis.geopyspark.layercatalog import LayerCatalog
+
+from .base_test_class import BaseTestClass
 
 
 class TestLayerCatalog(BaseTestClass):
