@@ -9,7 +9,6 @@ from openeo.imagecollection import ImageCollection
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
-    rdd: TiledRasterLayer
 
     def __init__(self, image_collection_id):
         self.image_collection_id = image_collection_id
