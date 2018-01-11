@@ -1,9 +1,9 @@
-from openeogeotrellis.geopyspark.layercatalog import LayerCatalog
+from unittest import TestCase
 
-from .base_test_class import BaseTestClass
+from openeogeotrellis.layercatalog import LayerCatalog
 
 
-class TestLayerCatalog(BaseTestClass):
+class TestLayerCatalog(TestCase):
 
     def testRetrieveAllLayers(self):
         catalog = LayerCatalog()
