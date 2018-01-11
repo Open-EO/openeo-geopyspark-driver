@@ -1,13 +1,16 @@
+import unittest
 from typing import List
+from unittest import TestCase
 
 import geopyspark as gps
 
 
-class LayerCatalog():
+class LayerCatalog(TestCase):
     """Catalog providing access to GeoPySpark layers"""
     def __init__(self):
         pass
 
+    @unittest.skip("Test depends on internal VITO infrastructure")
     def layers(self) -> List:
         """Returns all available layers."""
         #TODO make this work with Kerberos authentication
