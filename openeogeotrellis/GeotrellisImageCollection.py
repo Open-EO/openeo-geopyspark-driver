@@ -1,6 +1,7 @@
 from typing import Dict, List
 
-from geopyspark import TiledRasterLayer
+import geopyspark as gps
+from geopyspark import TiledRasterLayer, TMS
 from pandas import Series
 from shapely.geometry import Point
 
@@ -12,10 +13,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def __init__(self, image_collection_id):
         self.image_collection_id = image_collection_id
+        self.tms = None
         #TODO load real layer rdd
 
     def __init__(self, parent_layer: TiledRasterLayer):
         self.rdd = parent_layer
+        self.tms = None
 
     def combinebands(self, bands:List, bandfunction) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
@@ -39,3 +42,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result[v[1].isoformat()]=v[2]
         return result
 
+
+    def tiled_viewing_service(self) -> Dict:
+        pyramid = self.rdd.pyramid()
+        if(self.tms is None):
+            self.tms = TMS.build(source=pyramid,display = gps.ColorMap.nlcd_colormap())
+            self.tms.bind(requested_port=0)
+
+        #TODO handle cleanup of tms'es
+        return {
+            "type":"TMS",
+            "url":self.tms.url_pattern
+        }
