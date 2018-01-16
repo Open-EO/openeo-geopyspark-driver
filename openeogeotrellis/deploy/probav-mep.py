@@ -1,6 +1,9 @@
 import gunicorn.app.base
 from gunicorn.six import iteritems
-
+from kazoo.client import KazooClient
+import json
+import uuid
+import datetime
 from openeo_driver import app
 
 """
@@ -33,33 +36,42 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 
 
 
+def service_started(host:str, port):
+    print("Registering with zookeeper.")
+    zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
+    zk.start()
+    zk.ensure_path("discovery/services/openeo-test")
+    #id = uuid.uuid4()
+    #print(id)
+    id = 0
+    zk.ensure_path("discovery/services/openeo-test/"+str(id))
+    zk.set("discovery/services/openeo-test/"+str(id),str.encode(json.dumps({"name":"openeo-test","id":str(id),"address":host,"port":port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
+    zk.stop()
+    zk.close()
+    print("Zookeeper node created: discovery/services/openeo-test/"+str(id))
+
+
+
 if __name__ == '__main__':
-    options = {
-        'bind': '%s:%s' % ('127.0.0.1', '0'),
-        'workers': number_of_workers(),
-    }
+
 
     from pyspark import SparkContext
     print("starting spark context")
     pysc = SparkContext.getOrCreate()
-    print("context created: " + pysc)
     # Modification 3: pass Flask app instead of handler_app
-    application = StandaloneApplication(app, options)
+    import socket
+    local_ip = socket.gethostbyname(socket.gethostname())
+    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp.bind(('', 0))
+    host, port = tcp.getsockname()
 
+    options = {
+        'bind': '%s:%s' % (local_ip, port),
+        'workers': number_of_workers(),
+    }
+    tcp.close()
+    application = StandaloneApplication(app, options)
+    service_started(local_ip,port)
     application.run()
     print(application)
-
-
-
-def service_started(url:str):
-    from kazoo.client import KazooClient
-    import json
-    import uuid
-    import datetime
-    zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
-    zk.ensure_path("discovery/services/openeo-test")
-    id = uuid.uuid4()
-    print(id)
-    zk.ensure_path("discovery/services/openeo-test/"+str(id))
-    zk.set("discovery/services/openeo-test/"+str(id),json.dumps({"name":"openeo-test","id":str(id),"address":"epodX.vgt.vito.be","port":123,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"}))
 
