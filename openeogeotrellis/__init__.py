@@ -1,5 +1,4 @@
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from .testlayers import TestLayers
 
 def health_check():
     from pyspark import SparkContext
@@ -8,8 +7,7 @@ def health_check():
     return 'Health check: ' + str(count)
 
 def getImageCollection(product_id:str, viewingParameters):
-    #TODO create real rdd from accumulo
     print("Creating layer for: "+product_id)
-
-    return GeotrellisTimeSeriesImageCollection(TestLayers().create_spacetime_layer())
+    import geopyspark as gps
+    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id))
 
