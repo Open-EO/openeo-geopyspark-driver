@@ -23,13 +23,16 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
         mapped_rdd = self.rdd.map_cells(bandfunction)
-
         return GeotrellisTimeSeriesImageCollection(mapped_rdd)
 
-    def reduceByTime(self,temporal_window, aggregationfunction) -> Series :
+    def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
         #reduce
         pass
+
+    def min_time(self) -> 'ImageCollection':
+        min_rdd = self.rdd.aggregate_by_cell("MIN")
+        return GeotrellisTimeSeriesImageCollection(min_rdd)
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         points = [
