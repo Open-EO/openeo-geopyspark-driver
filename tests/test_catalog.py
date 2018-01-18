@@ -1,7 +1,8 @@
 from unittest import skip
 
-from base_test_class import BaseTestClass
 from openeogeotrellis.layercatalog import LayerCatalog
+
+from .base_test_class import BaseTestClass
 
 
 class TestLayerCatalog(BaseTestClass):
