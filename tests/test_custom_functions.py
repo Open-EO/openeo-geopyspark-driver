@@ -4,9 +4,9 @@ import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .base_test_class import BaseTestClass
 
 
@@ -101,7 +101,7 @@ class TestCustomFunctions(BaseTestClass):
         input = self.create_spacetime_layer()
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input)
-        transformed_collection = imagecollection.combinebands([0,1],custom_function)
+        transformed_collection = imagecollection.apply_pixel([0, 1], custom_function)
 
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)

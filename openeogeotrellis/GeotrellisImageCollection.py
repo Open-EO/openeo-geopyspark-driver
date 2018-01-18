@@ -2,10 +2,9 @@ from typing import Dict, List
 
 import geopyspark as gps
 from geopyspark import TiledRasterLayer, TMS
+from openeo.imagecollection import ImageCollection
 from pandas import Series
 from shapely.geometry import Point
-
-from openeo.imagecollection import ImageCollection
 
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
@@ -20,7 +19,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.rdd = parent_layer
         self.tms = None
 
-    def combinebands(self, bands:List, bandfunction) -> 'ImageCollection':
+    def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
         mapped_rdd = self.rdd.map_cells(bandfunction)
