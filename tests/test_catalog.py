@@ -1,10 +1,12 @@
-from unittest import TestCase
+from unittest import skip
 
+from base_test_class import BaseTestClass
 from openeogeotrellis.layercatalog import LayerCatalog
 
 
-class TestLayerCatalog(TestCase):
+class TestLayerCatalog(BaseTestClass):
 
+    @skip("Depends on VITO infrastructure")
     def testRetrieveAllLayers(self):
         catalog = LayerCatalog()
         layers = catalog.layers()
