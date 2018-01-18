@@ -31,7 +31,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pass
 
     def min_time(self) -> 'ImageCollection':
-        min_rdd = self.rdd.aggregate_by_cell("MIN")
+        min_rdd = self.rdd.aggregate_by_cell("Min")
         return GeotrellisTimeSeriesImageCollection(min_rdd)
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
@@ -41,7 +41,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         values = self.rdd.get_point_values(points)
         result = {}
         for v in values:
-            result[v[1].isoformat()]=v[2]
+            if "isoformat" in dir(v):
+                result[v[1].isoformat()]=v[2]
+            else:
+                result[v[1]]=v[2]
         return result
 
 
