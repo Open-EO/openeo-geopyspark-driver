@@ -1,13 +1,14 @@
 import datetime
 
 import numpy as np
-from base_test_class import BaseTestClass
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from shapely.geometry import Point
+
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from .base_test_class import BaseTestClass
 
 
 class TestMultipleDates(BaseTestClass):
@@ -93,8 +94,9 @@ class TestMultipleDates(BaseTestClass):
         min_time = imagecollection.min_time()
 
         for p in self.points[1:3]:
-            result = min_time.timeseries(p.x, p.y)
+            result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
+            print(imagecollection.timeseries(p.x,p.y,srs="EPSG:3857"))
             self.assertEqual(1.0,len(result))
             value = result.popitem()
             #self.assertEqual(3.0,value[0][0])
