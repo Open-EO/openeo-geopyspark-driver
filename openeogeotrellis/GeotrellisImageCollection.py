@@ -2,9 +2,10 @@ from typing import Dict, List
 
 import geopyspark as gps
 from geopyspark import TiledRasterLayer, TMS
-from openeo.imagecollection import ImageCollection
 from pandas import Series
 from shapely.geometry import Point
+
+from openeo.imagecollection import ImageCollection
 
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
@@ -16,7 +17,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #TODO load real layer rdd
 
     def __init__(self, parent_layer: TiledRasterLayer):
-        self.rdd = parent_layer
+        self.rdd:TiledRasterLayer = parent_layer
         self.tms = None
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
@@ -46,6 +47,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             else:
                 result[v[1]]=v[2]
         return result
+
+    def download(self, bbox="", time="",outputformat="geotiff") -> str:
+        """Extraxts a geotiff from this image collection."""
+        #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
+        import tempfile
+        (file,filename) = tempfile.mkstemp()
+        self.rdd.to_spatial_layer().save_stitched(filename)
+
+        return filename
 
 
     def tiled_viewing_service(self) -> Dict:
