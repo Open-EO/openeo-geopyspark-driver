@@ -1,4 +1,12 @@
+import os
+
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+
+if os.getenv("FLASK_DEBUG") == '1':
+    import geopyspark as gps
+    from pyspark import SparkContext
+    conf = gps.geopyspark_conf("local[2]","OpenEO-Test")
+    SparkContext.getOrCreate(conf)
 
 def health_check():
     from pyspark import SparkContext

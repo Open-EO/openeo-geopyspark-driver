@@ -17,7 +17,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #TODO load real layer rdd
 
     def __init__(self, parent_layer: TiledRasterLayer):
-        self.rdd:TiledRasterLayer = parent_layer
+        self.rdd = parent_layer
         self.tms = None
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
@@ -48,11 +48,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 result[v[1]]=v[2]
         return result
 
-    def download(self, bbox="", time="",outputformat="geotiff") -> str:
+    def download(self,outputfile:str, bbox="", time="",outputformat="geotiff") -> str:
         """Extraxts a geotiff from this image collection."""
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
-        import tempfile
-        (file,filename) = tempfile.mkstemp()
+        filename = outputfile
+        if outputfile is None:
+            import tempfile
+            (file,filename) = tempfile.mkstemp()
+        else:
+            filename = outputfile
         self.rdd.to_spatial_layer().save_stitched(filename)
 
         return filename
