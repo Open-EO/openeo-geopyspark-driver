@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 
@@ -17,5 +18,10 @@ def health_check():
 def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for: "+product_id)
     import geopyspark as gps
-    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id))
+    from_date = viewingParameters.get("from",None)
+    to_date = viewingParameters.get("to",None)
+    time_intervals = None
+    if from_date is not None and to_date is not None:
+        time_intervals = [pd.to_datetime(from_date),pd.to_datetime(to_date)]
+    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id,time_intervals=time_intervals))
 

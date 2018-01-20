@@ -1,8 +1,10 @@
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import geopyspark as gps
+from datetime import datetime, date
 from geopyspark import TiledRasterLayer, TMS
 from pandas import Series
+import pandas as pd
 from shapely.geometry import Point
 
 from openeo.imagecollection import ImageCollection
@@ -19,6 +21,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def __init__(self, parent_layer: TiledRasterLayer):
         self.rdd = parent_layer
         self.tms = None
+
+    def date_range_filter(self, start_date: Union[str, datetime, date],
+                          end_date: Union[str, datetime, date]) -> 'ImageCollection':
+        return GeotrellisTimeSeriesImageCollection(self.rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
