@@ -41,6 +41,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         min_rdd = self.rdd.aggregate_by_cell("Min")
         return GeotrellisTimeSeriesImageCollection(min_rdd)
 
+    def max_time(self) -> 'ImageCollection':
+        max_rdd = self.rdd.aggregate_by_cell("Max")
+        return GeotrellisTimeSeriesImageCollection(max_rdd)
+
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         points = [
             Point(x, y),

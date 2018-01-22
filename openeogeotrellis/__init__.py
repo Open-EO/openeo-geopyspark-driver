@@ -23,5 +23,16 @@ def getImageCollection(product_id:str, viewingParameters):
     time_intervals = None
     if from_date is not None and to_date is not None:
         time_intervals = [pd.to_datetime(from_date),pd.to_datetime(to_date)]
-    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id,time_intervals=time_intervals))
+
+    left = viewingParameters.get("left",None)
+    right = viewingParameters.get("right",None)
+    top = viewingParameters.get("top",None)
+    bottom = viewingParameters.get("bottom",None)
+    srs = viewingParameters.get("srs",None)
+    bbox = None
+    if(left is not None and right is not None and top is not None and bottom is not None):
+        bbox = gps.Extent(left,bottom,right,top)
+
+    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id,query_geom=bbox,query_proj=srs,time_intervals=time_intervals))
+
 
