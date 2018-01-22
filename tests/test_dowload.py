@@ -88,7 +88,7 @@ class TestDownload(BaseTestClass):
         input = self.create_spacetime_layer()
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input)
-        geotiffs = imagecollection.download()
+        geotiffs = imagecollection.download("test_download_result.geotiff")
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
