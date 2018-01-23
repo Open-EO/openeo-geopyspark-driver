@@ -3,12 +3,6 @@ import pandas as pd
 
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 
-if os.getenv("FLASK_DEBUG") == '1':
-    import geopyspark as gps
-    from pyspark import SparkContext
-    conf = gps.geopyspark_conf("local[2]","OpenEO-Test")
-    SparkContext.getOrCreate(conf)
-
 def health_check():
     from pyspark import SparkContext
     sc = SparkContext.getOrCreate()
@@ -18,6 +12,29 @@ def health_check():
 def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for: "+product_id)
     import geopyspark as gps
+
+    sc = gps.get_spark_context()
+    jvm = sc._gateway.jvm
+    hadoopconf = jvm.org.apache.hadoop.conf.Configuration()
+    hadoopconf.set("hadoop.security.authentication", "kerberos")
+    #jvm.org.apache.hadoop.security.UserGroupInformation.setConfiguration(hadoopconf);
+    #jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromSubject(None)
+    currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
+    print(currentUser.toString())
+    print(jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled())
+    #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().getAuthenticationMethod().toString())
+
+    principal = sc.getConf().get("spark.yarn.principal")
+    sparkKeytab = sc.getConf().get("spark.yarn.keytab")
+    jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal,sparkKeytab)
+    jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().setAuthenticationMethod(jvm.org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS);
+    print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().toString())
+    loginUser = jvm.org.apache.hadoop.security.UserGroupInformation.getLoginUser()
+    print(loginUser.toString())
+    print(loginUser.hasKerberosCredentials())
+    currentUser.addCredentials(loginUser.getCredentials())
+    print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
+
     from_date = viewingParameters.get("from",None)
     to_date = viewingParameters.get("to",None)
     time_intervals = None

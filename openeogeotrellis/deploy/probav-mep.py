@@ -68,6 +68,8 @@ if __name__ == '__main__':
     options = {
         'bind': '%s:%s' % (local_ip, port),
         'workers': number_of_workers(),
+        'worker_class':'gaiohttp',
+        'timeout':1000
     }
     tcp.close()
     application = StandaloneApplication(app, options)
