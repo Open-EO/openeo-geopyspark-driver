@@ -38,11 +38,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pass
 
     def min_time(self) -> 'ImageCollection':
-        min_rdd = self.rdd.aggregate_by_cell("Min")
+        min_rdd = self.rdd.to_spatial_layer().aggregate_by_cell("Min")
         return GeotrellisTimeSeriesImageCollection(min_rdd)
 
     def max_time(self) -> 'ImageCollection':
-        max_rdd = self.rdd.aggregate_by_cell("Max")
+        max_rdd = self.rdd.to_spatial_layer().aggregate_by_cell("Max")
         return GeotrellisTimeSeriesImageCollection(max_rdd)
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
@@ -61,13 +61,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def download(self,outputfile:str, bbox="", time="",outputformat="geotiff") -> str:
         """Extraxts a geotiff from this image collection."""
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
+        #TODO better timeseries support, bbox and time is currently ignored
         filename = outputfile
         if outputfile is None:
             import tempfile
             (file,filename) = tempfile.mkstemp()
         else:
             filename = outputfile
-        self.rdd.to_spatial_layer().save_stitched(filename)
+        spatial_rdd = self.rdd
+        if self.rdd.layer_type != gps.LayerType.SPATIAL:
+            spatial_rdd = self.rdd.to_spatial_layer()
+        spatial_rdd.save_stitched(filename)
 
         return filename
 
