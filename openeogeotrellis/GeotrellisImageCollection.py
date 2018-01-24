@@ -51,11 +51,16 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         ]
         values = self.rdd.get_point_values(points)
         result = {}
+        if isinstance(values[0][1],List):
+            values = values[0][1]
         for v in values:
-            if "isoformat" in dir(v):
-                result[v[1].isoformat()]=v[2]
+            if isinstance(v,float):
+                result["NoDate"]=v
+            elif "isoformat" in dir(v[0]):
+                result[v[0].isoformat()]=v[1]
             else:
-                result[v[1]]=v[2]
+                print("unexpected value: "+v)
+
         return result
 
     def download(self,outputfile:str, bbox="", time="",outputformat="geotiff") -> str:

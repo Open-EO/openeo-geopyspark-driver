@@ -92,11 +92,12 @@ class TestMultipleDates(BaseTestClass):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input)
         min_time = imagecollection.min_time()
+        max_time = imagecollection.max_time()
 
         for p in self.points[1:3]:
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
             print(imagecollection.timeseries(p.x,p.y,srs="EPSG:3857"))
-            self.assertEqual(1.0,len(result))
-            value = result.popitem()
-            #self.assertEqual(3.0,value[0][0])
+            max_result = max_time.timeseries(p.x, p.y,srs="EPSG:3857")
+            self.assertEqual(1.0,result['NoDate'])
+            self.assertEqual(2.0,max_result['NoDate'])
