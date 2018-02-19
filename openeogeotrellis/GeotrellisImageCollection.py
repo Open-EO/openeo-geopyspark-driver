@@ -82,7 +82,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
 
     def tiled_viewing_service(self) -> Dict:
-        pyramid = self.rdd.pyramid()
+        spatial_rdd = self.rdd
+        if self.rdd.layer_type != gps.LayerType.SPATIAL:
+            spatial_rdd = self.rdd.to_spatial_layer()
+        pyramid = spatial_rdd.pyramid()
         if(self.tms is None):
             self.tms = TMS.build(source=pyramid,display = gps.ColorMap.nlcd_colormap())
             self.tms.bind(requested_port=0)
