@@ -64,7 +64,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return result
 
     def download(self,outputfile:str, bbox="", time="",outputformat="geotiff") -> str:
-        """Extraxts a geotiff from this image collection."""
+        """Extracts a geotiff from this image collection."""
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
         #TODO better timeseries support, bbox and time is currently ignored
         filename = outputfile
@@ -88,7 +88,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pyramid = spatial_rdd.pyramid()
         if(self.tms is None):
             self.tms = TMS.build(source=pyramid,display = gps.ColorMap.nlcd_colormap())
-            self.tms.bind(requested_port=0)
+            self.tms.bind(host="0.0.0.0",requested_port=0)
 
 
         level_bounds = {level: tiled_raster_layer.layer_metadata.bounds for level, tiled_raster_layer in pyramid.levels.items()}
