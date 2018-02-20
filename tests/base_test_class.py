@@ -1,5 +1,14 @@
-import os
 import unittest
+
+from pyspark import find_spark_home
+import os,sys
+from glob import glob
+
+spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
+py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
+sys.path[:0] = [spark_python, py4j]
+
+
 
 from geopyspark import geopyspark_conf
 from pyspark import SparkContext

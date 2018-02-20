@@ -1,22 +1,15 @@
 import datetime
 
 import numpy as np
-from pyspark import find_spark_home
-import os,sys
-from glob import glob
 
-spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
-py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
-sys.path[:0] = [spark_python, py4j]
-
-
+from .base_test_class import BaseTestClass
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from shapely.geometry import Point
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
-from base_test_class import BaseTestClass
+
 
 
 class TestViewing(BaseTestClass):

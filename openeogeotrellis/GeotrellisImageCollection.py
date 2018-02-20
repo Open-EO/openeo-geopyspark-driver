@@ -63,7 +63,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def download(self,outputfile:str, bbox="", time="",outputformat="geotiff") -> str:
+    def download(self,outputfile:str, bbox="", time="",**format_options) -> str:
         """Extracts a geotiff from this image collection."""
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
         #TODO better timeseries support, bbox and time is currently ignored
