@@ -90,8 +90,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             self.tms = TMS.build(source=pyramid,display = gps.ColorMap.nlcd_colormap())
             self.tms.bind(requested_port=0)
 
+
+        level_bounds = {level: tiled_raster_layer.layer_metadata.bounds for level, tiled_raster_layer in pyramid.levels.items()}
         #TODO handle cleanup of tms'es
         return {
             "type":"TMS",
-            "url":self.tms.url_pattern
+            "url":self.tms.url_pattern,
+            "bounds":level_bounds
         }

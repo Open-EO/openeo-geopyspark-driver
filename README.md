@@ -15,7 +15,8 @@ A REST service based on Flask translates incoming calls to this local API.
 For development, you can run the service using Flask:
 export FLASK_APP=openeogeotrellis/__init__.py
 export SPARK_HOME=/usr/lib64/python3.6/site-packages/pyspark
-flask run
+FLASK_DEBUG=1 flask run
+
 
 For production, a gunicorn server script is available:
 PYTHONPATH=. python openeogeotrellis/server.py 
