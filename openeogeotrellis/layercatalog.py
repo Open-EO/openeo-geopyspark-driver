@@ -15,5 +15,6 @@ class LayerCatalog():
         #TODO make this work with Kerberos authentication
         store = gps.AttributeStore("accumulo://driesj@epod6.vgt.vito.be:2181/hdp-accumulo-instance")
         layers = store.layers()
-        print(layers)
+        return [{"product_id":layer.layer_name ,"zoom":layer.layer_zoom} for layer in layers]
+
 

@@ -1,13 +1,19 @@
 import os
 import pandas as pd
 
+from typing import Dict
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from .layercatalog import LayerCatalog
+
 
 def health_check():
     from pyspark import SparkContext
     sc = SparkContext.getOrCreate()
     count = sc.parallelize([1,2,3]).count()
     return 'Health check: ' + str(count)
+
+def get_layers()->Dict:
+    return LayerCatalog().layers()
 
 def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for: "+product_id)
