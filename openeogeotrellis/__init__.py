@@ -12,11 +12,9 @@ def health_check():
     count = sc.parallelize([1,2,3]).count()
     return 'Health check: ' + str(count)
 
-def get_layers()->Dict:
-    return LayerCatalog().layers()
 
-def getImageCollection(product_id:str, viewingParameters):
-    print("Creating layer for: "+product_id)
+
+def kerberos():
     import geopyspark as gps
 
     sc = gps.get_spark_context()
@@ -41,6 +39,14 @@ def getImageCollection(product_id:str, viewingParameters):
     currentUser.addCredentials(loginUser.getCredentials())
     print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
 
+def get_layers()->Dict:
+    kerberos()
+    return LayerCatalog().layers()
+
+def getImageCollection(product_id:str, viewingParameters):
+    print("Creating layer for: "+product_id)
+    kerberos()
+    import geopyspark as gps
     from_date = viewingParameters.get("from",None)
     to_date = viewingParameters.get("to",None)
     time_intervals = None
@@ -56,6 +62,9 @@ def getImageCollection(product_id:str, viewingParameters):
     if(left is not None and right is not None and top is not None and bottom is not None):
         bbox = gps.Extent(left,bottom,right,top)
 
-    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id,query_geom=bbox,query_proj=srs,time_intervals=time_intervals))
+    store = gps.AttributeStore("accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance")
+    zoomlevels = [layer.layer_zoom for layer in store.layers() if layer.layer_name == product_id]
+
+    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id,layer_zoom=max(zoomlevels),query_geom=bbox,query_proj=srs,time_intervals=time_intervals))
 
 
