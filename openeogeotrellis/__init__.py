@@ -50,8 +50,7 @@ def getImageCollection(product_id:str, viewingParameters):
     from_date = viewingParameters.get("from",None)
     to_date = viewingParameters.get("to",None)
     time_intervals = None
-    if from_date is not None and to_date is not None:
-        time_intervals = [pd.to_datetime(from_date),pd.to_datetime(to_date)]
+
 
     left = viewingParameters.get("left",None)
     right = viewingParameters.get("right",None)
@@ -64,7 +63,14 @@ def getImageCollection(product_id:str, viewingParameters):
 
     store = gps.AttributeStore("accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance")
     zoomlevels = [layer.layer_zoom for layer in store.layers() if layer.layer_name == product_id]
-
-    return GeotrellisTimeSeriesImageCollection(gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance",layer_name=product_id,layer_zoom=max(zoomlevels),query_geom=bbox,query_proj=srs,time_intervals=time_intervals))
+    pyramid = {}
+    for level in zoomlevels:
+        if from_date is not None and to_date is not None:
+            #time_intervals is changed in-place to a str by geopyspark
+            time_intervals = [pd.to_datetime(from_date),pd.to_datetime(to_date)]
+        tiledrasterlayer = gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance", layer_name=product_id,
+                      layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals)
+        pyramid[level] = tiledrasterlayer
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid))
 
 

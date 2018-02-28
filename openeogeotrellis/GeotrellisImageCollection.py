@@ -2,7 +2,7 @@ from typing import Dict, List, Union
 
 import geopyspark as gps
 from datetime import datetime, date
-from geopyspark import TiledRasterLayer, TMS
+from geopyspark import TiledRasterLayer, TMS, Pyramid
 from pandas import Series
 import pandas as pd
 from shapely.geometry import Point
@@ -19,18 +19,21 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #TODO load real layer rdd
 
     def __init__(self, parent_layer: TiledRasterLayer):
-        self.rdd = parent_layer
+        self.pyramid = parent_layer
         self.tms = None
 
-    def date_range_filter(self, start_date: Union[str, datetime, date],
-                          end_date: Union[str, datetime, date]) -> 'ImageCollection':
-        return GeotrellisTimeSeriesImageCollection(self.rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
+    def apply_to_levels(self, func):
+        pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
+        return GeotrellisTimeSeriesImageCollection(pyramid)
+
+    def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
+        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
+
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
-        mapped_rdd = self.rdd.map_cells(bandfunction)
-        return GeotrellisTimeSeriesImageCollection(mapped_rdd)
+        return self.apply_to_levels(lambda rdd: rdd.map_cells(bandfunction))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
@@ -38,12 +41,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pass
 
     def min_time(self) -> 'ImageCollection':
-        min_rdd = self.rdd.to_spatial_layer().aggregate_by_cell("Min")
-        return GeotrellisTimeSeriesImageCollection(min_rdd)
+        return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell("Min"))
 
     def max_time(self) -> 'ImageCollection':
-        max_rdd = self.rdd.to_spatial_layer().aggregate_by_cell("Max")
-        return GeotrellisTimeSeriesImageCollection(max_rdd)
+        return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell('Max'))
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         points = [
@@ -85,7 +86,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         spatial_rdd = self.rdd
         if self.rdd.layer_type != gps.LayerType.SPATIAL:
             spatial_rdd = self.rdd.to_spatial_layer()
-        pyramid = spatial_rdd.pyramid()
+        pyramid = spatial_rdd
         if(self.tms is None):
             self.tms = TMS.build(source=pyramid,display = gps.ColorMap.nlcd_colormap())
             self.tms.bind(host="0.0.0.0",requested_port=0)
