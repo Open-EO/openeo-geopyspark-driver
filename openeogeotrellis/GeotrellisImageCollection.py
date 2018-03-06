@@ -3,6 +3,8 @@ from typing import Dict, List, Union
 import geopyspark as gps
 from datetime import datetime, date
 from geopyspark import TiledRasterLayer, TMS, Pyramid
+from geopyspark.geotrellis.constants import CellType
+
 from pandas import Series
 import pandas as pd
 from shapely.geometry import Point
@@ -33,7 +35,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
-        return self.apply_to_levels(lambda rdd: rdd.map_cells(bandfunction))
+        return self.apply_to_levels(lambda rdd: rdd.convert_data_type(CellType.FLOAT64).map_cells(bandfunction))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
