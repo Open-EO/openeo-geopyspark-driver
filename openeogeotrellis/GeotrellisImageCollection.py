@@ -76,19 +76,28 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             filename = outputfile
         spatial_rdd = self.rdd
         if self.rdd.layer_type != gps.LayerType.SPATIAL:
-            spatial_rdd = self.rdd.to_spatial_layer()
+            spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer()).rdd
         spatial_rdd.save_stitched(filename)
 
         return filename
 
 
     def tiled_viewing_service(self) -> Dict:
-        spatial_rdd = self.rdd
-        if self.rdd.layer_type != gps.LayerType.SPATIAL:
-            spatial_rdd = self.rdd.to_spatial_layer()
-        pyramid = spatial_rdd
+        spatial_rdd = self
+        if self.pyramid.layer_type != gps.LayerType.SPATIAL:
+            spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer())
+        spatial_rdd = spatial_rdd.apply_to_levels(lambda rdd: rdd.partitionBy(gps.SpatialPartitionStrategy(num_partitions=40,bits=2)).persist())
+
+        def render_rgb(tile):
+            import numpy as np
+            from PIL import Image
+            rgba = np.dstack([tile.cells[0]*(255.0/2000.0), tile.cells[1]*(255.0/2000.0), tile.cells[2]*(255.0/2000.0)]).astype('uint8')
+            img = Image.fromarray(rgba, mode='RGB')
+            return img
+
+        pyramid = spatial_rdd.pyramid
         if(self.tms is None):
-            self.tms = TMS.build(source=pyramid,display = gps.ColorMap.nlcd_colormap())
+            self.tms = TMS.build(source=pyramid,display = render_rgb)
             self.tms.bind(host="0.0.0.0",requested_port=0)
 
 

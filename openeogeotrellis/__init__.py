@@ -69,7 +69,7 @@ def getImageCollection(product_id:str, viewingParameters):
             #time_intervals is changed in-place to a str by geopyspark
             time_intervals = [pd.to_datetime(from_date),pd.to_datetime(to_date)]
         tiledrasterlayer = gps.query(uri="accumulo://epod6.vgt.vito.be:2181/hdp-accumulo-instance", layer_name=product_id,
-                      layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals)
+                      layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals,num_partitions=20)
         pyramid[level] = tiledrasterlayer
     return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid))
 
