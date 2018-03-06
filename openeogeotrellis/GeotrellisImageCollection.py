@@ -50,7 +50,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         points = [
             Point(x, y),
         ]
-        values = self.rdd.get_point_values(points)
+        values = self.pyramid.levels[self.pyramid.max_zoom].get_point_values(points)
         result = {}
         if isinstance(values[0][1],List):
             values = values[0][1]
@@ -74,9 +74,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             (file,filename) = tempfile.mkstemp()
         else:
             filename = outputfile
-        spatial_rdd = self.rdd
-        if self.rdd.layer_type != gps.LayerType.SPATIAL:
-            spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer()).rdd
+        spatial_rdd = self.pyramid
+        if self.pyramid.layer_type != gps.LayerType.SPATIAL:
+            spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom].to_spatial_layer()
         spatial_rdd.save_stitched(filename)
 
         return filename
