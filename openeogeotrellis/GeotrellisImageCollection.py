@@ -74,9 +74,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             (file,filename) = tempfile.mkstemp()
         else:
             filename = outputfile
-        spatial_rdd = self.pyramid
-        if self.pyramid.layer_type != gps.LayerType.SPATIAL:
-            spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom].to_spatial_layer()
+        spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
+        if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
+            spatial_rdd = spatial_rdd.to_spatial_layer()
         spatial_rdd.save_stitched(filename)
 
         return filename
