@@ -49,10 +49,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell('Max'))
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        import pyproj
+        (x_layer,y_layer) = pyproj.transform(pyproj.Proj(init=srs),pyproj.Proj(max_level.layer_metadata.crs),x,y)
         points = [
-            Point(x, y),
+            Point(x_layer, y_layer),
         ]
-        values = self.pyramid.levels[self.pyramid.max_zoom].get_point_values(points)
+        values = max_level.get_point_values(points)
         result = {}
         if isinstance(values[0][1],List):
             values = values[0][1]
@@ -61,8 +64,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 result["NoDate"]=v
             elif "isoformat" in dir(v[0]):
                 result[v[0].isoformat()]=v[1]
+            elif v[0] is None:
+                #empty timeseries
+                pass
             else:
-                print("unexpected value: "+v)
+                print("unexpected value: "+str(v))
 
         return result
 
