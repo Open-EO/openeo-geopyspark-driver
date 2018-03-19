@@ -4,10 +4,13 @@ import geopyspark as gps
 from datetime import datetime, date
 from geopyspark import TiledRasterLayer, TMS, Pyramid
 from geopyspark.geotrellis.constants import CellType
+from geopyspark.geotrellis import color
 
 from pandas import Series
 import pandas as pd
 from shapely.geometry import Point
+import json
+import os
 
 from openeo.imagecollection import ImageCollection
 
@@ -89,13 +92,31 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return filename
 
+    def _proxy_tms(self,tms):
+        if 'TRAVIS' in os.environ:
+            return tms.url_pattern
+        else:
+            from kazoo.client import KazooClient
+            zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
+            zk.start()
+            zk.ensure_path("discovery/services/openeo-viewer-test")
+            #id = uuid.uuid4()
+            #print(id)
+            id = 0
+            zk.ensure_path("discovery/services/openeo-viewer-test/"+str(id))
+            zk.set("discovery/services/openeo-viewer-test/"+str(id),str.encode(json.dumps({"name":"openeo-viewer-test","id":str(id),"address":tms.host,"port":tms.port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
+            zk.stop()
+            zk.close()
+            url = "http://openeo.vgt.vito.be/tile/{z}/{x}/{y}.png"
+            return url
 
     def tiled_viewing_service(self) -> Dict:
         spatial_rdd = self
         if self.pyramid.layer_type != gps.LayerType.SPATIAL:
             spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer())
+        print("Creating persisted pyramid.")
         spatial_rdd = spatial_rdd.apply_to_levels(lambda rdd: rdd.partitionBy(gps.SpatialPartitionStrategy(num_partitions=40,bits=2)).persist())
-
+        print("Pyramid ready.")
         def render_rgb(tile):
             import numpy as np
             from PIL import Image
@@ -103,16 +124,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             img = Image.fromarray(rgba, mode='RGB')
             return img
 
+        #greens = color.get_colors_from_matplotlib(ramp_name="YlGn")
+        greens = gps.ColorMap.build(breaks=[x/100.0 for x in range(0,100)], colors="YlGn")
+
         pyramid = spatial_rdd.pyramid
         if(self.tms is None):
-            self.tms = TMS.build(source=pyramid,display = render_rgb)
+            self.tms = TMS.build(source=pyramid,display = greens)
             self.tms.bind(host="0.0.0.0",requested_port=0)
 
+        url = self._proxy_tms(self.tms)
 
         level_bounds = {level: tiled_raster_layer.layer_metadata.bounds for level, tiled_raster_layer in pyramid.levels.items()}
         #TODO handle cleanup of tms'es
         return {
             "type":"TMS",
-            "url":self.tms.url_pattern,
+            "url":url,
             "bounds":level_bounds
         }
