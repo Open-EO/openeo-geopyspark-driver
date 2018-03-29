@@ -10,7 +10,7 @@ sys.path[:0] = [spark_python, py4j]
 
 
 
-from geopyspark import geopyspark_conf
+from geopyspark import geopyspark_conf, Pyramid, TiledRasterLayer
 from pyspark import SparkContext
 
 
@@ -42,3 +42,7 @@ class BaseTestClass(unittest.TestCase):
     # (_, rows, cols) = expected_tile.shape
     #
     # layout = TileLayout(1, 1, cols, rows)
+
+    @classmethod
+    def to_pyramid(cls,tiled_rdd:TiledRasterLayer):
+        return Pyramid( {0:tiled_rdd})

@@ -1,14 +1,15 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Iterable
 
 import geopyspark as gps
 from datetime import datetime, date
 from geopyspark import TiledRasterLayer, TMS, Pyramid
 from geopyspark.geotrellis.constants import CellType
 from geopyspark.geotrellis import color
+import numpy as np
 
 from pandas import Series
 import pandas as pd
-from shapely.geometry import Point
+from shapely.geometry import Point,Polygon,MultiPolygon
 import json
 import os
 
@@ -49,7 +50,22 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell("Min"))
 
     def max_time(self) -> 'ImageCollection':
-        return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell('Max'))
+        from .numpy_aggregators import max_composite
+        return self._aggregate_over_time_numpy(max_composite)
+
+    def _aggregate_over_time_numpy(self,numpy_function) -> 'ImageCollection':
+        """
+        Aggregate over time.
+        :param numpy_function:
+        :return:
+        """
+        def aggregate_spatial_rdd(rdd):
+            grouped_numpy_rdd = rdd.to_spatial_layer().convert_data_type(CellType.FLOAT32).to_numpy_rdd().groupByKey()
+
+            composite = grouped_numpy_rdd.mapValues(numpy_function)
+            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, rdd.layer_metadata)
+            return aggregated_layer
+        return self.apply_to_levels(aggregate_spatial_rdd)
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
@@ -59,6 +75,28 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             Point(x_layer, y_layer),
         ]
         values = max_level.get_point_values(points)
+        result = {}
+        if isinstance(values[0][1],List):
+            values = values[0][1]
+        for v in values:
+            if isinstance(v,float):
+                result["NoDate"]=v
+            elif "isoformat" in dir(v[0]):
+                result[v[0].isoformat()]=v[1]
+            elif v[0] is None:
+                #empty timeseries
+                pass
+            else:
+                print("unexpected value: "+str(v))
+
+        return result
+
+    def polygonal_mean(self, polygon:Union[Polygon,MultiPolygon], srs="EPSG:4326") -> Dict:
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        import pyproj
+        #(x_layer,y_layer) = pyproj.transform(pyproj.Proj(init=srs),pyproj.Proj(max_level.layer_metadata.crs),x,y)
+
+        values = max_level.polygonal_mean(polygon)
         result = {}
         if isinstance(values[0][1],List):
             values = values[0][1]

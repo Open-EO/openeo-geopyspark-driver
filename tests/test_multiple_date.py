@@ -1,15 +1,15 @@
 import datetime
 
+from .base_test_class import BaseTestClass
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
-from geopyspark.geotrellis.constants import LayerType
-from geopyspark.geotrellis.layer import TiledRasterLayer
+from geopyspark.geotrellis.constants import LayerType, CellType
+from geopyspark.geotrellis.layer import TiledRasterLayer,Pyramid
 from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from .base_test_class import BaseTestClass
-
+from openeogeotrellis.numpy_aggregators import *
 
 class TestMultipleDates(BaseTestClass):
     band1 = np.array([
@@ -26,8 +26,8 @@ class TestMultipleDates(BaseTestClass):
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0]])
 
-    tile = Tile.from_numpy_array(band1)
-    tile2 = Tile.from_numpy_array(band2)
+    tile = Tile.from_numpy_array(band1,no_data_value=-1.0)
+    tile2 = Tile.from_numpy_array(band2,no_data_value=-1.0)
     time_1 = datetime.datetime.strptime("2016-08-24T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
     time_2 = datetime.datetime.strptime("2017-08-24T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
     time_3 = datetime.datetime.strptime("2017-10-17T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
@@ -87,8 +87,23 @@ class TestMultipleDates(BaseTestClass):
         Point(-10.0, 15.0)
     ]
 
+    def test_max_aggregator(self):
+        tiles = [self.tile,self.tile2]
+        composite = max_composite(tiles)
+        self.assertEqual(2.0, composite.cells[0][0])
+
+    def test_aggregate_max_time(self):
+
+        input = Pyramid( {0:self.tiled_raster_rdd })
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+
+        stitched = imagecollection.max_time().pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+
     def test_min_time(self):
-        input = self.tiled_raster_rdd
+        input = Pyramid( {0:self.tiled_raster_rdd })
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input)
         min_time = imagecollection.min_time()
