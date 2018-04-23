@@ -2,7 +2,7 @@ import gunicorn.app.base
 from gunicorn.six import iteritems
 from kazoo.client import KazooClient
 import json
-import uuid
+import sys
 import datetime
 from openeo_driver import app
 
@@ -34,9 +34,7 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
         return self.application
 
 
-
-
-def service_started(host:str, port):
+def update_zookeeper(host: str, port):
     print("Registering with zookeeper.")
     zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
     zk.start()
@@ -73,7 +71,12 @@ if __name__ == '__main__':
     }
     tcp.close()
     application = StandaloneApplication(app, options)
-    service_started(local_ip,port)
+
+    zookeeper = len(sys.argv) <= 1 or sys.argv[1] != "no-zookeeper"
+
+    if zookeeper:
+        update_zookeeper(local_ip, port)
+
     application.run()
     print(application)
 
