@@ -3,6 +3,7 @@ import datetime
 import numpy as np
 
 from .base_test_class import BaseTestClass
+import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
@@ -87,7 +88,7 @@ class TestViewing(BaseTestClass):
 
     def test_viewing(self):
         geotrellis_layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(geotrellis_layer)
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geotrellis_layer}))
         metadata = imagecollection.tiled_viewing_service()
         print(metadata)
         self.assertEqual('TMS',metadata['type'])

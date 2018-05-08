@@ -18,14 +18,14 @@ from openeo.imagecollection import ImageCollection
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
-
     def __init__(self, image_collection_id):
+        super().__init__()
         self.image_collection_id = image_collection_id
         self.tms = None
         #TODO load real layer rdd
 
-    def __init__(self, parent_layer: TiledRasterLayer):
-        self.pyramid = parent_layer
+    def __init__(self, pyramid: Pyramid):
+        self.pyramid = pyramid
         self.tms = None
 
     def apply_to_levels(self, func):
@@ -91,27 +91,24 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def polygonal_mean(self, polygon:Union[Polygon,MultiPolygon], srs="EPSG:4326") -> Dict:
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+    def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         import pyproj
-        #(x_layer,y_layer) = pyproj.transform(pyproj.Proj(init=srs),pyproj.Proj(max_level.layer_metadata.crs),x,y)
+        from shapely.ops import transform
 
-        values = max_level.polygonal_mean(polygon)
-        result = {}
-        if isinstance(values[0][1],List):
-            values = values[0][1]
-        for v in values:
-            if isinstance(v,float):
-                result["NoDate"]=v
-            elif "isoformat" in dir(v[0]):
-                result[v[0].isoformat()]=v[1]
-            elif v[0] is None:
-                #empty timeseries
-                pass
-            else:
-                print("unexpected value: "+str(v))
+        max_level = self.pyramid.levels[self.pyramid.max_zoom].persist()
 
-        return result
+        source_crs = pyproj.Proj(init='EPSG:4326')
+        target_crs = pyproj.Proj(max_level.layer_metadata.crs)
+
+        reprojected_polygon = transform(lambda x, y, z=None: pyproj.transform(source_crs, target_crs, x, y, z), polygon)
+
+        def mean(timestamp):
+            spatial_layer = max_level.to_spatial_layer(timestamp)
+            return spatial_layer.polygonal_mean(reprojected_polygon)
+
+        timestamps = map(lambda key: key.instant, set(max_level.collect_keys()))
+
+        return {timestamp.isoformat(): mean(timestamp) for timestamp in timestamps}
 
     def download(self,outputfile:str, bbox="", time="",**format_options) -> str:
         """Extracts a geotiff from this image collection."""

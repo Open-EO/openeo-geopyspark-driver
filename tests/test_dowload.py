@@ -2,6 +2,7 @@ import datetime
 
 import numpy as np
 from .base_test_class import BaseTestClass
+import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
@@ -86,7 +87,7 @@ class TestDownload(BaseTestClass):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
         geotiffs = imagecollection.download("test_download_result.geotiff")
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.

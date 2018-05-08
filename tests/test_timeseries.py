@@ -1,4 +1,5 @@
 import datetime
+import pytz
 
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
@@ -20,8 +21,7 @@ class TestTimeSeries(BaseTestClass):
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
     layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
 
-    now = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ')
-
+    now = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
     points = [
         Point(1.0, -3.0),
         Point(2.0, 4.0),
@@ -47,11 +47,11 @@ class TestTimeSeries(BaseTestClass):
     ]
 
     expected_spacetime_points_list = [
-        (Point(1.0, -3.0), now, [1, 2]),
-        (Point(2.0, 4.0), now, [1, 2]),
-        (Point(3.0, 3.0), now, [1, 2]),
-        (Point(1.0, -2.0), now, [1, 2]),
-        (Point(-10.0, 15.0), None, None)
+        (Point(1.0, -3.0), [(now, [1, 2])]),
+        (Point(2.0, 4.0), [(now, [1, 2])]),
+        (Point(3.0, 3.0), [(now, [1, 2])]),
+        (Point(1.0, -2.0), [(now, [1, 2])]),
+        (Point(-10.0, 15.0), [(None, None)])
     ]
 
 
@@ -81,7 +81,6 @@ class TestTimeSeries(BaseTestClass):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-
     def test_point_series(self):
         result = self.create_spacetime_layer().get_point_values(self.points)
 
@@ -89,4 +88,3 @@ class TestTimeSeries(BaseTestClass):
 
         for r in result:
             self.assertTrue(r in self.expected_spacetime_points_list)
-

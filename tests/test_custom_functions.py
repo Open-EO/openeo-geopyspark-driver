@@ -1,11 +1,13 @@
 import datetime
 
 import numpy as np
+import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
+import pytz
 
 from .base_test_class import BaseTestClass
 
@@ -21,7 +23,7 @@ class TestCustomFunctions(BaseTestClass):
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
     layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
 
-    now = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ')
+    now = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
 
     points = [
         Point(1.0, -3.0),
@@ -100,7 +102,7 @@ class TestCustomFunctions(BaseTestClass):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
         transformed_collection = imagecollection.apply_pixel([0, 1], custom_function)
 
         for p in self.points[0:3]:
@@ -109,4 +111,13 @@ class TestCustomFunctions(BaseTestClass):
             value = result.popitem()
             self.assertEqual(3.0,value[1][0])
 
+    def test_polygon_series(self):
+        input = self.create_spacetime_layer()
 
+        polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+
+        means = imagecollection.polygonal_mean_timeseries(polygon)
+        assert len(means) == 1
+        assert [item[1] for item in means.items()][0] == [1.0, 2.0]
