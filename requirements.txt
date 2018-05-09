@@ -10,3 +10,4 @@ openeo-api
 cloudpickle
 matplotlib>=2.0.0
 colortools>=0.1.2
+pyproj
