@@ -1,4 +1,4 @@
-from typing import Dict, List, Union, Iterable
+from typing import Dict, List, Union, Iterable, Tuple
 
 import geopyspark as gps
 from datetime import datetime, date
@@ -92,23 +92,41 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return result
 
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
-        import pyproj
-        from shapely.ops import transform
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
 
-        max_level = self.pyramid.levels[self.pyramid.max_zoom].persist()
+        masked_layer = max_level.mask(polygon)
 
-        source_crs = pyproj.Proj(init='EPSG:4326')
-        target_crs = pyproj.Proj(max_level.layer_metadata.crs)
+        def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
+            n_bands = len(tile.cells)
 
-        reprojected_polygon = transform(lambda x, y, z=None: pyproj.transform(source_crs, target_crs, x, y, z), polygon)
+            if not acc:
+                acc = [(0, 0)] * n_bands
 
-        def mean(timestamp):
-            spatial_layer = max_level.to_spatial_layer(timestamp)
-            return spatial_layer.polygonal_mean(reprojected_polygon)
+            for i in range(n_bands):
+                grid = tile.cells[i]
 
-        timestamps = map(lambda key: key.instant, set(max_level.collect_keys()))
+                sum = grid[grid != tile.no_data_value].sum()
+                count = (grid != tile.no_data_value).sum()
 
-        return {timestamp.isoformat(): mean(timestamp) for timestamp in timestamps}
+                acc[i] = acc[i][0] + sum, acc[i][1] + count
+
+            return acc
+
+        def combine_values(l1: List[Tuple[int, int]], l2: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+            for i in range(len(l2)):
+                l1[i] = l1[i][0] + l2[i][0], l1[i][1] + l2[i][1]
+
+            return l1
+
+        polygon_mean_by_timestamp = masked_layer.to_numpy_rdd() \
+            .map(lambda pair: (pair[0].instant, pair[1])) \
+            .aggregateByKey([], combine_cells, combine_values)
+
+        def to_mean(values: Tuple[int, int]) -> float:
+            sum, count = values
+            return sum / count
+
+        return {timestamp.isoformat(): list(map(to_mean, values)) for timestamp, values in polygon_mean_by_timestamp.collect()}
 
     def download(self,outputfile:str, bbox="", time="",**format_options) -> str:
         """Extracts a geotiff from this image collection."""

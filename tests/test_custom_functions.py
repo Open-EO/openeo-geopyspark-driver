@@ -121,3 +121,49 @@ class TestCustomFunctions(BaseTestClass):
         means = imagecollection.polygonal_mean_timeseries(polygon)
         assert len(means) == 1
         assert [item[1] for item in means.items()][0] == [1.0, 2.0]
+
+    def _create_spacetime_layer(self, no_data):
+        def tile(value):
+            cells = np.zeros((4, 4), dtype=float)
+            cells.fill(value)
+            return Tile.from_numpy_array(cells, no_data)
+
+        tiles = [(SpaceTimeKey(0, 0, self.now), tile(0)),
+                 (SpaceTimeKey(1, 0, self.now), tile(1)),
+                 (SpaceTimeKey(0, 1, self.now), tile(2)),
+                 (SpaceTimeKey(1, 1, self.now), tile(no_data))]
+
+        for tile in tiles:
+            print(tile)
+
+        layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 4, 'tileRows': 4}
+        extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 8.0, 'ymax': 8.0}
+
+        rdd = BaseTestClass.pysc.parallelize(tiles)
+        print(rdd.count())
+
+        metadata = {'cellType': 'float64ud-1',
+                    'extent': extent,
+                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+                    'bounds': {
+                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
+                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
+                    },
+                    'layoutDefinition': {
+                        'extent': extent,
+                        'tileLayout': layout
+                    }
+                    }
+
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+
+    def test_another_polygon_series(self):
+        input = self._create_spacetime_layer(no_data=-1.0)
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+
+        polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
+
+        means = imagecollection.polygonal_mean_timeseries(polygon)
+        assert len(means) == 1
+        assert [item[1] for item in means.items()][0] == [(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]
