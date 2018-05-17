@@ -44,7 +44,7 @@ def get_layers()->Dict:
     return LayerCatalog().layers()
 
 def getImageCollection(product_id:str, viewingParameters):
-    print("Creating layer for: "+product_id)
+    print("Creating layer for %s with viewingParameters %s" % (product_id, viewingParameters))
     kerberos()
     import geopyspark as gps
     from_date = viewingParameters.get("from",None)
