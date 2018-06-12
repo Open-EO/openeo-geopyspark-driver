@@ -2,10 +2,11 @@ from typing import Dict, List, Union, Iterable, Tuple
 
 import geopyspark as gps
 from datetime import datetime, date
-from geopyspark import TiledRasterLayer, TMS, Pyramid
+from geopyspark import TiledRasterLayer, TMS, Pyramid,Tile,SpaceTimeKey,Metadata
 from geopyspark.geotrellis.constants import CellType
 from geopyspark.geotrellis import color
 import numpy as np
+from openeo_udf.api.base import UdfData,RasterCollectionTile,SpatialExtent
 
 from pandas import Series
 import pandas as pd
@@ -40,6 +41,33 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
         return self.apply_to_levels(lambda rdd: rdd.convert_data_type(CellType.FLOAT64).map_cells(bandfunction))
+
+    @classmethod
+    def _mapTransform(cls,layoutDefinition, spatialKey):
+        ex = layoutDefinition.extent
+        x_range = ex.xmax - ex.xmin
+        xinc = x_range / layoutDefinition.tileLayout.layoutCols
+        yrange = ex.ymax - ex.ymin
+        yinc = yrange / layoutDefinition.tileLayout.layoutRows
+        return SpatialExtent(ex.ymax - yinc * spatialKey.row,ex.ymax - yinc * (spatialKey.row + 1),ex.xmin + xinc * (spatialKey.col + 1),ex.xmin + xinc * spatialKey.col,layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
+
+
+    def apply_tiles(self, function) -> 'ImageCollection':
+        """Apply a function to the given set of bands in this image collection."""
+        #TODO apply .bands(bands)
+
+        def tilefunction(metadata:Metadata,geotrellis_tile:Tuple[SpaceTimeKey,Tile]):
+
+            key = geotrellis_tile[0]
+            extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
+
+            data = UdfData({"EPSG":900913},[RasterCollectionTile("red",extent,geotrellis_tile[1].cells),RasterCollectionTile("nir",extent,geotrellis_tile[1].cells)])
+            exec(function)
+            result = data.raster_collection_tiles
+            return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
+
+        from functools import partial
+        return self.apply_to_levels(lambda rdd: gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd().map(partial(tilefunction,rdd.layer_metadata)),rdd.layer_metadata))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys

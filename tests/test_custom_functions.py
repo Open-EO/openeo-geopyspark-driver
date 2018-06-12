@@ -1,5 +1,6 @@
 import datetime
 
+from .base_test_class import BaseTestClass
 import numpy as np
 import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
@@ -9,7 +10,7 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from shapely.geometry import Point, Polygon
 import pytz
 
-from .base_test_class import BaseTestClass
+import openeo_udf.functions
 
 
 class TestCustomFunctions(BaseTestClass):
@@ -95,6 +96,18 @@ class TestCustomFunctions(BaseTestClass):
         custom_function(tile.cells,0)
 
 
+    def test_apply_openeo_udf_to_tile(self):
+        import os, openeo_udf
+        dir = os.path.dirname(openeo_udf.functions.__file__)
+        file_name = os.path.join(dir, "raster_collections_ndvi.py")
+        with open(file_name, "r")  as f:
+            udf_code = f.read()
+
+        cells = np.array([self.first, self.second], dtype='int')
+        tile = Tile.from_numpy_array(cells, -1)
+
+
+
     def test_point_series(self):
 
         def custom_function(cells:np.ndarray,nd):
@@ -110,6 +123,25 @@ class TestCustomFunctions(BaseTestClass):
             print(result)
             value = result.popitem()
             self.assertEqual(3.0,value[1][0])
+
+    def test_point_series_apply_tile(self):
+        import os,openeo_udf
+        dir = os.path.dirname(openeo_udf.functions.__file__)
+        file_name = os.path.join(dir, "raster_collections_ndvi.py")
+        with open(file_name, "r")  as f:
+            udf_code = f.read()
+
+        input = self.create_spacetime_layer()
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        transformed_collection = imagecollection.apply_tiles( udf_code)
+
+        for p in self.points[0:3]:
+            result = transformed_collection.timeseries(p.x, p.y)
+            print(result)
+            value = result.popitem()
+            print(value)
+            #self.assertEqual(3.0,value[1][0])
 
     def test_polygon_series(self):
         input = self.create_spacetime_layer()
