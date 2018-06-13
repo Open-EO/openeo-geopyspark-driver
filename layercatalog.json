@@ -1,0 +1,72 @@
+[
+  {
+    "data_id":"BIOPAR_FAPAR_V1_GLOBAL"
+  },
+  {
+    "data_id":"CGS_SENTINEL2_RADIOMETRY_V101_0"
+  },
+  {
+    "data_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+    "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
+    "source": "Terrascope - VITO",
+    "extent": {
+      "crs": "EPSG:4326",
+      "left": -34,
+      "right": 35,
+      "bottom": 39,
+      "top": 71
+    },
+    "time": {
+      "from": "2016-01-01",
+      "to": "2019-10-01"
+    },
+    "bands": [
+      {
+        "band_id": "2",
+        "name": "blue",
+        "wavelength_nm": 496.6,
+        "res_m": 10,
+        "scale": 0.0001,
+        "offset": 0,
+        "type": "int16",
+        "unit": "1"
+      },
+      {
+        "band_id": "3",
+        "name": "green",
+        "wavelength_nm": 560,
+        "res_m": 10,
+        "scale": 0.0001,
+        "offset": 0,
+        "type": "int16",
+        "unit": "1"
+      },
+      {
+        "band_id": "4",
+        "name": "red",
+        "wavelength_nm": 664.5,
+        "res_m": 10,
+        "scale": 0.0001,
+        "offset": 0,
+        "type": "int16",
+        "unit": "1"
+      },
+      {
+        "band_id": "8",
+        "name": "nir",
+        "wavelength_nm": 835.1,
+        "res_m": 10,
+        "scale": 0.0001,
+        "offset": 0,
+        "type": "int16",
+        "unit": "1"
+      }
+    ]
+  },
+  {
+    "data_id":"S2_FAPAR"
+  },
+  {
+    "data_id":"PROBAV_L3_S10_TOC_NDVI_333M"
+  }
+]
