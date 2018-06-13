@@ -25,9 +25,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.tms = None
         #TODO load real layer rdd
 
-    def __init__(self, pyramid: Pyramid):
+    def __init__(self, pyramid: Pyramid, metadata:Dict=None):
         self.pyramid = pyramid
         self.tms = None
+        self.metadata = metadata
 
     def apply_to_levels(self, func):
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
@@ -51,6 +52,25 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         yinc = yrange / layoutDefinition.tileLayout.layoutRows
         return SpatialExtent(ex.ymax - yinc * spatialKey.row,ex.ymax - yinc * (spatialKey.row + 1),ex.xmin + xinc * (spatialKey.col + 1),ex.xmin + xinc * spatialKey.col,layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
 
+    def _tile_to_rastercollectiontile(self,tile:Tile,extent:SpatialExtent):
+
+        bands_metadata = self.metadata.get('bands',None)
+        if len(tile.cells.shape) == 3:
+            result = []
+            i = 1
+            for band in tile.cells:
+                name = "B" + str(i)
+                wavelength = None
+                if bands_metadata is not None and len(bands_metadata) == tile.cells.shape[0]:
+                    name = bands_metadata[i-1]['name']
+                    wavelength = bands_metadata[i-1]['wavelength_nm']
+                rc_tile = RasterCollectionTile(name, extent, np.array([band]),wavelength=wavelength)
+                result.append(rc_tile)
+                i = i+1
+            return result
+        else:
+            raise ValueError("Expected tile to have 3 dimensions (bands, x, y)")
+
 
     def apply_tiles(self, function) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
@@ -61,7 +81,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             key = geotrellis_tile[0]
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
 
-            data = UdfData({"EPSG":900913},[RasterCollectionTile("red",extent,geotrellis_tile[1].cells),RasterCollectionTile("nir",extent,geotrellis_tile[1].cells)])
+            data = UdfData({"EPSG":900913},self._tile_to_rastercollectiontile(geotrellis_tile[1],extent))
             exec(function)
             result = data.raster_collection_tiles
             return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
