@@ -32,6 +32,12 @@ This backend has been tested with:
 Not available yet
 
 ### Running locally
+Preparation:
+A few custom Scala classes are needed to run this project, these can be found in this jar:
+https://artifactory.vgt.vito.be/libs-snapshot-local/be/vito/eodata/GeoPySparkExtensions/2.7.0-SNAPSHOT/GeoPySparkExtensions-2.7.0-20180612.110004-15.jar
+Geopyspark will search for any jar in the 'jars' directory and add it to the classpath. So make
+sure that this jar can be found in the correct location.
+ 
 For development, you can run the service using Flask:
 export FLASK_APP=openeogeotrellis/__init__.py
 export SPARK_HOME=/usr/lib64/python3.6/site-packages/pyspark

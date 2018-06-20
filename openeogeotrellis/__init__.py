@@ -30,16 +30,20 @@ def kerberos():
 
     principal = sc.getConf().get("spark.yarn.principal")
     sparkKeytab = sc.getConf().get("spark.yarn.keytab")
-    jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal,sparkKeytab)
-    jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().setAuthenticationMethod(jvm.org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS);
-    print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().toString())
-    loginUser = jvm.org.apache.hadoop.security.UserGroupInformation.getLoginUser()
-    print(loginUser.toString())
-    print(loginUser.hasKerberosCredentials())
-    currentUser.addCredentials(loginUser.getCredentials())
-    print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
+    if principal is not None and sparkKeytab is not None:
+        jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal,sparkKeytab)
+        jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().setAuthenticationMethod(jvm.org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS);
+    #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().toString())
+    #loginUser = jvm.org.apache.hadoop.security.UserGroupInformation.getLoginUser()
+    #print(loginUser.toString())
+    #print(loginUser.hasKerberosCredentials())
+    #currentUser.addCredentials(loginUser.getCredentials())
+    #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
 
 def get_layers()->Dict:
+    from pyspark import SparkContext
+    print("starting spark context")
+    pysc = SparkContext.getOrCreate()
     kerberos()
     return LayerCatalog().layers()
 

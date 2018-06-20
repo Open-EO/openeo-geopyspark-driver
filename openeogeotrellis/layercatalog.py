@@ -10,7 +10,7 @@ class LayerCatalog():
     """Catalog providing access to GeoPySpark layers"""
     def __init__(self):
         if os.path.isfile("layercatalog.json"):
-            with open("layercatalog.json","r+") as f:
+            with open("layercatalog.json","r") as f:
                 self.catalog = {layer["data_id"]:layer for layer in json.load(f)}
         else:
             raise RuntimeError("layercatalog.json not found, please make sure that it is available in the working directory.")

@@ -1,12 +1,15 @@
 [
   {
-    "data_id":"BIOPAR_FAPAR_V1_GLOBAL"
+    "data_id":"BIOPAR_FAPAR_V1_GLOBAL",
+    "product_id":"BIOPAR_FAPAR_V1_GLOBAL"
   },
   {
-    "data_id":"CGS_SENTINEL2_RADIOMETRY_V101_0"
+    "data_id":"CGS_SENTINEL2_RADIOMETRY_V101_0",
+    "product_id":"CGS_SENTINEL2_RADIOMETRY_V101_0"
   },
   {
     "data_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+    "product_id": "CGS_SENTINEL2_RADIOMETRY_V101",
     "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
     "source": "Terrascope - VITO",
     "extent": {
@@ -64,9 +67,11 @@
     ]
   },
   {
-    "data_id":"S2_FAPAR"
+    "data_id":"S2_FAPAR",
+    "product_id":"S2_FAPAR"
   },
   {
-    "data_id":"PROBAV_L3_S10_TOC_NDVI_333M"
+    "data_id":"PROBAV_L3_S10_TOC_NDVI_333M",
+    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M"
   }
 ]
