@@ -1,12 +1,12 @@
 
-import .base_test_class
+from .base_test_class import BaseTestClass
 from unittest import TestCase
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 import numpy as np
 from geopyspark import Tile
 
 
-class TestDownload(TestCase):
+class TestMultiBandUDF(BaseTestClass):
 
 
     band_1 = np.array([
