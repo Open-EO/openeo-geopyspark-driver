@@ -3,7 +3,6 @@ import pandas as pd
 
 from typing import Dict
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 
 
@@ -82,6 +81,6 @@ def getImageCollection(product_id:str, viewingParameters):
         tiledrasterlayer = gps.query(uri="accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance", layer_name=product_id,
                       layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals,num_partitions=20)
         pyramid[level] = tiledrasterlayer
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog["product_id"])
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog[product_id])
 
 
