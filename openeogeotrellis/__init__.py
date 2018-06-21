@@ -3,6 +3,7 @@ import pandas as pd
 
 from typing import Dict
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 
 
@@ -50,11 +51,17 @@ def get_layers()->Dict:
 def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for %s with viewingParameters %s" % (product_id, viewingParameters))
     kerberos()
+
+    catalog = LayerCatalog()
+    if product_id not in catalog.catalog:
+        raise ValueError("Product id not available, list of available data can be retrieved at /data.")
+
+
+
     import geopyspark as gps
     from_date = viewingParameters.get("from",None)
     to_date = viewingParameters.get("to",None)
     time_intervals = None
-
 
     left = viewingParameters.get("left",None)
     right = viewingParameters.get("right",None)
@@ -75,6 +82,6 @@ def getImageCollection(product_id:str, viewingParameters):
         tiledrasterlayer = gps.query(uri="accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance", layer_name=product_id,
                       layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals,num_partitions=20)
         pyramid[level] = tiledrasterlayer
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid))
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog["product_id"])
 
 

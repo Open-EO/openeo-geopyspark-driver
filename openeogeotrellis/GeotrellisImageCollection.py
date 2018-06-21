@@ -52,9 +52,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         yinc = yrange / layoutDefinition.tileLayout.layoutRows
         return SpatialExtent(ex.ymax - yinc * spatialKey.row,ex.ymax - yinc * (spatialKey.row + 1),ex.xmin + xinc * (spatialKey.col + 1),ex.xmin + xinc * spatialKey.col,layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
 
-    def _tile_to_rastercollectiontile(self,tile:Tile,extent:SpatialExtent):
-
-        bands_metadata = self.metadata.get('bands',None)
+    @classmethod
+    def _tile_to_rastercollectiontile(cls, tile: Tile, extent: SpatialExtent, bands_metadata):
         if len(tile.cells.shape) == 3:
             result = []
             i = 1
@@ -76,18 +75,25 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
 
-        def tilefunction(metadata:Metadata,geotrellis_tile:Tuple[SpaceTimeKey,Tile]):
+        def tilefunction(metadata:Metadata,openeo_metadata,geotrellis_tile:Tuple[SpaceTimeKey,Tile]):
 
             key = geotrellis_tile[0]
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
 
-            data = UdfData({"EPSG":900913},self._tile_to_rastercollectiontile(geotrellis_tile[1],extent))
-            exec(function)
+            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(geotrellis_tile[1], extent,bands_metadata = openeo_metadata.get('bands',None) ))
+
+            from openeo_udf.api.base import RasterCollectionTile
+            exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
             result = data.raster_collection_tiles
             return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
+        def rdd_function(openeo_metadata,rdd):
+            return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
+                                                rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd().map(
+                                                    partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
+                                                rdd.layer_metadata)
         from functools import partial
-        return self.apply_to_levels(lambda rdd: gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd().map(partial(tilefunction,rdd.layer_metadata)),rdd.layer_metadata))
+        return self.apply_to_levels(partial(rdd_function,self.metadata))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys

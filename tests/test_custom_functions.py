@@ -58,6 +58,47 @@ class TestCustomFunctions(BaseTestClass):
         (Point(-10.0, 15.0), None, None)
     ]
 
+    openeo_metadata = {
+        "bands": [
+
+            {
+                "band_id": "red",
+                "name": "red",
+                "offset": 0,
+                "res_m": 10,
+                "scale": 0.0001,
+                "type": "int16",
+                "unit": "1",
+                "wavelength_nm": 664.5
+            },
+            {
+                "band_id": "nir",
+                "name": "nir",
+                "offset": 0,
+                "res_m": 10,
+                "scale": 0.0001,
+                "type": "int16",
+                "unit": "1",
+                "wavelength_nm": 835.1
+            }
+        ],
+        "data_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+        "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
+        "extent": {
+            "bottom": 39,
+            "crs": "EPSG:4326",
+            "left": -34,
+            "right": 35,
+            "top": 71
+        },
+        "product_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+        "source": "Terrascope - VITO",
+        "time": {
+            "from": "2016-01-01",
+            "to": "2019-10-01"
+        }
+    }
+
 
     def create_spacetime_layer(self):
         cells = np.array([self.first, self.second], dtype='int')
@@ -133,7 +174,7 @@ class TestCustomFunctions(BaseTestClass):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}),self.openeo_metadata)
         transformed_collection = imagecollection.apply_tiles( udf_code)
 
         for p in self.points[0:3]:
@@ -148,7 +189,7 @@ class TestCustomFunctions(BaseTestClass):
 
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}),self.openeo_metadata)
 
         means = imagecollection.polygonal_mean_timeseries(polygon)
         assert len(means) == 1
