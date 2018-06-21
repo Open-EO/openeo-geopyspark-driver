@@ -55,7 +55,7 @@ class TestMultiBandUDF(BaseTestClass):
 
         }
 
-        rastercollectiontiles = imagecollection._tile_to_rastercollectiontile(TestDownload.tile, None)
+        rastercollectiontiles = imagecollection._tile_to_rastercollectiontile(TestMultiBandUDF.tile, None)
         self.assertEqual(3,len(rastercollectiontiles))
         self.assertEqual('blue',rastercollectiontiles[0].id)
         self.assertEqual(496.6, rastercollectiontiles[0].wavelength)
