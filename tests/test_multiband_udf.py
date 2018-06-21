@@ -1,5 +1,5 @@
 
-import base_test_class
+import .base_test_class
 from unittest import TestCase
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 import numpy as np
