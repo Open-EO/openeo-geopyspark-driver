@@ -22,4 +22,12 @@ class LayerCatalog():
         layers = store.layers()
         return [self.catalog[layer.layer_name] for layer in layers if layer.layer_name in self.catalog and layer.layer_zoom ==0]
 
+    def layer(self,product_id) -> List:
+        """Returns all available layers."""
+        if product_id in self.catalog:
+            self.catalog[product_id]
+        else:
+            raise ValueError("Unknown collection id: " + product_id)
+
+
 

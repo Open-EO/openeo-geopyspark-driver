@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-from typing import Dict
+from typing import Dict,List
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .layercatalog import LayerCatalog
 
@@ -40,12 +40,19 @@ def kerberos():
     #currentUser.addCredentials(loginUser.getCredentials())
     #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
 
-def get_layers()->Dict:
+def get_layers()->List:
     from pyspark import SparkContext
     print("starting spark context")
     pysc = SparkContext.getOrCreate()
     kerberos()
     return LayerCatalog().layers()
+
+def get_layer(product_id)->Dict:
+    from pyspark import SparkContext
+    print("starting spark context")
+    pysc = SparkContext.getOrCreate()
+    kerberos()
+    return LayerCatalog().layer(product_id)
 
 def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for %s with viewingParameters %s" % (product_id, viewingParameters))
