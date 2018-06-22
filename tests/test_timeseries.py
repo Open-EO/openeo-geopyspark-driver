@@ -1,13 +1,17 @@
 import datetime
 import pytz
 
+from  unittest import skip
 import numpy as np
+from .base_test_class import BaseTestClass
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+import geopyspark as gps
 from shapely.geometry import Point
 
-from .base_test_class import BaseTestClass
+from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from shapely.geometry import Polygon
 
 
 class TestTimeSeries(BaseTestClass):
@@ -88,3 +92,19 @@ class TestTimeSeries(BaseTestClass):
 
         for r in result:
             self.assertTrue(r in self.expected_spacetime_points_list)
+
+    def test_zonal_statistics(self):
+        layer = self.create_spacetime_layer()
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}))
+
+        polygon = Polygon(shell=[
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (0.0, 0.0)
+        ])
+
+        result = imagecollection.zonal_statistics(polygon)
+
+        print(result)

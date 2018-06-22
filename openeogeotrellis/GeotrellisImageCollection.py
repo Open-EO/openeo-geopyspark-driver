@@ -145,6 +145,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
+    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> 'Dict':
+        return self.polygonal_mean_timeseries(regions)
+
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
 
