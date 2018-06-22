@@ -105,6 +105,6 @@ class TestTimeSeries(BaseTestClass):
             (0.0, 0.0)
         ])
 
-        result = imagecollection.zonal_statistics(polygon)
+        result = imagecollection.zonal_statistics(polygon,"mean")
 
         print(result)
