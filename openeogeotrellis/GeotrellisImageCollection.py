@@ -53,22 +53,71 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return SpatialExtent(ex.ymax - yinc * spatialKey.row,ex.ymax - yinc * (spatialKey.row + 1),ex.xmin + xinc * (spatialKey.col + 1),ex.xmin + xinc * spatialKey.col,layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
 
     @classmethod
-    def _tile_to_rastercollectiontile(cls, tile: Tile, extent: SpatialExtent, bands_metadata):
-        if len(tile.cells.shape) == 3:
+    def _tile_to_rastercollectiontile(cls, bands_numpy: np.ndarray, extent: SpatialExtent, bands_metadata, start_times=None):
+        """
+        Convert from geopyspark tile format into rastercollection tile format
+        Geopyspark: A tile is a 3D array, associated with a time instant: (time_instant,(bands,x,y))
+        RasterCollectionTile: one tile per band: (band,(time_instant,x,y))
+
+        :param bands_numpy:
+        :param extent:
+        :param bands_metadata:
+        :return:
+        """
+        if len(bands_numpy.shape) == 3 or len(bands_numpy.shape) == 4:
+            if len(bands_numpy.shape) == 4:
+                #swap from time,bands,y,x to bands,time,y,x
+                bands_numpy = np.swapaxes(bands_numpy,0,1)
             result = []
             i = 1
-            for band in tile.cells:
+            for band in bands_numpy:
                 name = "B" + str(i)
                 wavelength = None
-                if bands_metadata is not None and len(bands_metadata) == tile.cells.shape[0]:
+                if bands_metadata is not None and len(bands_metadata) == bands_numpy.shape[0]:
                     name = bands_metadata[i-1]['name']
                     wavelength = bands_metadata[i-1]['wavelength_nm']
-                rc_tile = RasterCollectionTile(name, extent, np.array([band]),wavelength=wavelength)
+                if len(bands_numpy.shape) == 3:
+                    print(band.shape)
+                    rc_tile = RasterCollectionTile(name, extent, np.array([band]),wavelength=wavelength,start_times=start_times)
+                elif len(bands_numpy.shape) == 4:
+                    print("4D data: " + str(band.shape))
+                    print(start_times)
+                    rc_tile = RasterCollectionTile(name, extent, np.array(band), wavelength=wavelength,start_times=start_times)
                 result.append(rc_tile)
                 i = i+1
             return result
+
         else:
-            raise ValueError("Expected tile to have 3 dimensions (bands, x, y)")
+            raise ValueError("Expected tile to have 3 or 4 dimensions (bands, x, y) or (time, bands, x, y)")
+
+    def apply_tiles_spatiotemporal(self,function) -> ImageCollection:
+        """
+        Apply a function to a group of tiles with the same spatial key.
+        :param function:
+        :return:
+        """
+
+        def tilefunction(metadata:Metadata,openeo_metadata,geotrellis_tile:Tuple[SpaceTimeKey,Tile]):
+
+            key = geotrellis_tile[0]
+            extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
+
+            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(geotrellis_tile[1].cells, extent,bands_metadata = openeo_metadata.get('bands',None) ))
+
+            from openeo_udf.api.base import RasterCollectionTile
+            exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
+            result = data.raster_collection_tiles
+            return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
+
+        def rdd_function(openeo_metadata,rdd):
+            floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
+            floatrdd.srdd.map().groupByKey()
+            return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
+                                                       floatrdd.map(
+                                                    partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
+                                                       rdd.layer_metadata)
+        from functools import partial
+        return self.apply_to_levels(partial(rdd_function,self.metadata))
 
 
     def apply_tiles(self, function) -> 'ImageCollection':
