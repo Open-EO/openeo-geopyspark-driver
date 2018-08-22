@@ -55,7 +55,7 @@ class TestMultiBandUDF(BaseTestClass):
 
         }
 
-        rastercollectiontiles = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(TestMultiBandUDF.tile, None,imagecollection.metadata['bands'])
+        rastercollectiontiles = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(TestMultiBandUDF.tile.cells, None,imagecollection.metadata['bands'])
         self.assertEqual(3,len(rastercollectiontiles))
         self.assertEqual('blue',rastercollectiontiles[0].id)
         self.assertEqual(496.6, rastercollectiontiles[0].wavelength)
