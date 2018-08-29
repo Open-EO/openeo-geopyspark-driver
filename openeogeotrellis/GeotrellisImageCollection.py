@@ -129,7 +129,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             key = geotrellis_tile[0]
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
 
-            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(geotrellis_tile[1], extent,bands_metadata = openeo_metadata.get('bands',None) ))
+            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(geotrellis_tile[1].cells, extent,bands_metadata = openeo_metadata.get('bands',None) ))
 
             from openeo_udf.api.base import RasterCollectionTile
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
