@@ -1,5 +1,9 @@
 import os
 import pandas as pd
+import subprocess
+from subprocess import CalledProcessError
+import uuid
+import json
 
 from typing import Dict,List
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
@@ -91,3 +95,29 @@ def getImageCollection(product_id:str, viewingParameters):
     return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog[product_id])
 
 
+def run_batch_job(process_graph: Dict, *_):
+    from pyspark import SparkContext
+
+    kerberos()
+
+    job_id = str(uuid.uuid4())
+
+    input_file = "/tmp/%s.in" % job_id
+    output_file = "/tmp/%s.out" % job_id
+
+    with open(input_file, 'w') as f:
+        f.write(json.dumps(process_graph))
+
+    conf = SparkContext.getOrCreate().getConf()
+    principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
+
+    args = ["./submit_batch_job.sh", "OpenEO batch job %s" % job_id, input_file, output_file, principal, key_tab]
+
+    # FIXME: run it async
+    batch_job = subprocess.Popen(args)
+    batch_job.communicate()
+
+    if batch_job.returncode:
+        raise CalledProcessError(batch_job.returncode, batch_job.args)
+
+    return job_id
