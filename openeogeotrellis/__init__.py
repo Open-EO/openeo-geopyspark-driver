@@ -106,8 +106,11 @@ def run_batch_job(process_graph: Dict, *_):
 
     job_id = str(uuid.uuid4())
 
-    input_file = "/tmp/%s.in" % job_id
-    output_file = "/tmp/%s.out" % job_id
+    output_dir = "/mnt/ceph/Projects/OpenEO/%s" % job_id
+    os.mkdir(output_dir)
+
+    input_file = "%s/in" % output_dir
+    output_file = "%s/out" % output_dir
 
     with open(input_file, 'w') as f:
         f.write(json.dumps(process_graph))
