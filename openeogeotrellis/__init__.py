@@ -4,10 +4,14 @@ import subprocess
 from subprocess import CalledProcessError
 import uuid
 import json
+import re
 
 from typing import Dict,List
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .layercatalog import LayerCatalog
+from .job_registry import JobRegistry
+
+job_registry = JobRegistry()
 
 
 def health_check():
@@ -108,16 +112,36 @@ def run_batch_job(process_graph: Dict, *_):
     with open(input_file, 'w') as f:
         f.write(json.dumps(process_graph))
 
+    job_registry.add_job(job_id)
+    job_registry.set_status(job_id, 'submitted')
+    job_registry.set_status(job_id, 'queued')
+
     conf = SparkContext.getOrCreate().getConf()
     principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
     args = ["./submit_batch_job.sh", "OpenEO batch job %s" % job_id, input_file, output_file, principal, key_tab]
 
-    # FIXME: run it async
-    batch_job = subprocess.Popen(args)
-    batch_job.communicate()
+    batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
 
-    if batch_job.returncode:
-        raise CalledProcessError(batch_job.returncode, batch_job.args)
+    # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
+    application_id = _extract_application_id(batch_job.stderr)
 
+    if not application_id:
+        raise CalledProcessError(batch_job.wait(), batch_job.args)
+
+    job_registry.set_application_id(job_id, application_id)
     return job_id
+
+
+def _extract_application_id(stream) -> str:
+    while True:
+        line = stream.readline()
+
+        if line:
+            text = line.decode('utf8').strip()
+
+            match = re.match(".*Application report for (application_\\d{13}_\\d{5}).*", text)
+            if match:
+                return match.group(1)
+        else:
+            return None
