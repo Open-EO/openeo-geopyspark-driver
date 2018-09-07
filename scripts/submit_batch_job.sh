@@ -17,6 +17,7 @@ export HDP_VERSION=2.5.3.0-37
 export SPARK_MAJOR_VERSION=2
 export SPARK_HOME=/usr/hdp/current/spark2-client
 export PYSPARK_PYTHON="/usr/bin/python3.5"
+export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:log4j.properties"
 
 extensions=$(ls GeoPySparkExtensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar)

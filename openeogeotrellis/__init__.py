@@ -129,7 +129,9 @@ def run_batch_job(process_graph: Dict, *_):
     # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
     application_id = _extract_application_id(batch_job.stderr)
 
-    if not application_id:
+    if application_id:
+        print("mapped job_id %s to application ID %s" % (job_id, application_id))
+    else:
         raise CalledProcessError(batch_job.wait(), batch_job.args)
 
     job_registry.set_application_id(job_id, application_id)
