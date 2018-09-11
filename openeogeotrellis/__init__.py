@@ -8,6 +8,7 @@ import re
 
 from typing import Dict,List
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 from .job_registry import JobRegistry
 
@@ -70,7 +71,9 @@ def getImageCollection(product_id:str, viewingParameters):
     if product_id not in catalog.catalog:
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
 
-
+    service_type = None
+    if('service_type' in viewingParameters):
+        service_type = viewingParameters['service_type']
 
     import geopyspark as gps
     from_date = viewingParameters.get("from",None)
@@ -96,7 +99,10 @@ def getImageCollection(product_id:str, viewingParameters):
         tiledrasterlayer = gps.query(uri="accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance", layer_name=product_id,
                       layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals,num_partitions=20)
         pyramid[level] = tiledrasterlayer
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog[product_id])
+    if 'wmts' == service_type.lower():
+        return GeotrellisCatalogImageCollection(product_id)
+    else:
+        return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog[product_id])
 
 
 def run_batch_job(process_graph: Dict, *_):
