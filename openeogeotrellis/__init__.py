@@ -7,6 +7,9 @@ import json
 import re
 
 from typing import Dict,List
+
+from kazoo.exceptions import NoNodeError
+
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
@@ -104,13 +107,16 @@ def getImageCollection(product_id:str, viewingParameters):
 
 
 def get_batch_job_info(job_id: str) -> Dict:
-    with JobRegistry() as registry:
-        status = registry.get_job(job_id)['status']
+    try:
+        with JobRegistry() as registry:
+            status = registry.get_job(job_id)['status']
 
-    return {
-        'job_id': job_id,
-        'status': status
-    }
+        return {
+            'job_id': job_id,
+            'status': status
+        }
+    except NoNodeError:
+        return None
 
 
 def run_batch_job(process_graph: Dict, *_):
