@@ -1,7 +1,14 @@
 #!/bin/sh -e
 
 if [ "$#" -ne 5 ]; then
-    echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file>"
+    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file>"
+    exit 1
+fi
+
+export LOG4J_CONFIGURATION_FILE="./log4j.properties"
+
+if [ ! -f ${LOG4J_CONFIGURATION_FILE} ]; then
+    >&2 echo "${LOG4J_CONFIGURATION_FILE} is missing"
     exit 1
 fi
 
@@ -17,7 +24,7 @@ export HDP_VERSION=2.5.3.0-37
 export SPARK_MAJOR_VERSION=2
 export SPARK_HOME=/usr/hdp/current/spark2-client
 export PYSPARK_PYTHON="/usr/bin/python3.5"
-export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:log4j.properties"
+export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
 
 extensions=$(ls GeoPySparkExtensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar)
