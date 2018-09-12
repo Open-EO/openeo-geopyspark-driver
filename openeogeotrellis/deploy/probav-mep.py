@@ -5,6 +5,9 @@ import json
 import sys
 import datetime
 from openeo_driver import app
+import threading
+from openeogeotrellis.job_tracker import JobTracker
+from openeogeotrellis.job_registry import JobRegistry
 
 """
 Script to start a production server. This script can serve as the entry-point for doing spark-submit.
@@ -15,6 +18,10 @@ def number_of_workers():
 
 def when_ready(server):
     print(server)
+
+    job_tracker = JobTracker(JobRegistry)
+    threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+
 
 class StandaloneApplication(gunicorn.app.base.BaseApplication):
 

@@ -12,8 +12,6 @@ from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 from .job_registry import JobRegistry
 
-job_registry = JobRegistry()
-
 
 def health_check():
     from pyspark import SparkContext
@@ -105,6 +103,16 @@ def getImageCollection(product_id:str, viewingParameters):
         return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog[product_id])
 
 
+def get_batch_job_info(job_id: str) -> Dict:
+    with JobRegistry() as registry:
+        status = registry.get_job(job_id)['status']
+
+    return {
+        'job_id': job_id,
+        'status': status
+    }
+
+
 def run_batch_job(process_graph: Dict, *_):
     from pyspark import SparkContext
 
@@ -118,30 +126,29 @@ def run_batch_job(process_graph: Dict, *_):
     input_file = "%s/in" % output_dir
     output_file = "%s/out" % output_dir
 
-    with open(input_file, 'w') as f:
-        f.write(json.dumps(process_graph))
+    with JobRegistry() as registry:
+        with open(input_file, 'w') as f:
+            f.write(json.dumps(process_graph))
 
-    job_registry.add_job(job_id)
-    job_registry.set_status(job_id, 'submitted')
-    job_registry.set_status(job_id, 'queued')
+        conf = SparkContext.getOrCreate().getConf()
+        principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
-    conf = SparkContext.getOrCreate().getConf()
-    principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
+        args = ["./submit_batch_job.sh", "OpenEO batch job %s" % job_id, input_file, output_file, principal, key_tab]
 
-    args = ["./submit_batch_job.sh", "OpenEO batch job %s" % job_id, input_file, output_file, principal, key_tab]
+        batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
 
-    batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
+        # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
+        application_id = _extract_application_id(batch_job.stderr)
 
-    # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-    application_id = _extract_application_id(batch_job.stderr)
+        if application_id:
+            print("mapped job_id %s to application ID %s" % (job_id, application_id))
+        else:
+            raise CalledProcessError(batch_job.wait(), batch_job.args)
 
-    if application_id:
-        print("mapped job_id %s to application ID %s" % (job_id, application_id))
-    else:
-        raise CalledProcessError(batch_job.wait(), batch_job.args)
+        registry.register(job_id)
+        registry.update(job_id, application_id=application_id, status='submitted')
 
-    job_registry.set_application_id(job_id, application_id)
-    return job_id
+        return job_id
 
 
 def _extract_application_id(stream) -> str:
@@ -151,7 +158,7 @@ def _extract_application_id(stream) -> str:
         if line:
             text = line.decode('utf8').strip()
 
-            match = re.match(".*Application report for (application_\\d{13}_\\d{5}).*", text)
+            match = re.match(r".*Application report for (application_\d{13}_\d+)\s\(state:.*", text)
             if match:
                 return match.group(1)
         else:
