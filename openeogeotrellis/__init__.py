@@ -72,9 +72,7 @@ def getImageCollection(product_id:str, viewingParameters):
     if product_id not in catalog.catalog:
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
 
-    service_type = None
-    if('service_type' in viewingParameters):
-        service_type = viewingParameters['service_type']
+    service_type = viewingParameters.get('service_type', '')
 
     import geopyspark as gps
     from_date = viewingParameters.get("from",None)
