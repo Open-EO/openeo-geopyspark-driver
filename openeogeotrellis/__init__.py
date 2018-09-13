@@ -105,6 +105,9 @@ def getImageCollection(product_id:str, viewingParameters):
 
 
 def get_batch_job_info(job_id: str) -> Dict:
+    """Returns detailed information about a submitted batch job,
+    or None if the batch job with this job_id is unknown."""
+
     try:
         with JobRegistry() as registry:
             status = registry.get_job(job_id)['status']
@@ -117,22 +120,37 @@ def get_batch_job_info(job_id: str) -> Dict:
         return None
 
 
-def run_batch_job(process_graph: Dict, *_):
-    from pyspark import SparkContext
-
-    kerberos()
-
+def create_batch_job(process_graph: Dict, *_) -> str:
     job_id = str(uuid.uuid4())
 
-    output_dir = "/mnt/ceph/Projects/OpenEO/%s" % job_id
-    os.mkdir(output_dir)
+    with JobRegistry() as registry:
+        registry.register(job_id, process_graph)
 
-    input_file = "%s/in" % output_dir
-    output_file = "%s/out" % output_dir
+    return job_id
+
+
+def run_batch_job(job_id: str) -> None:
+    from pyspark import SparkContext
 
     with JobRegistry() as registry:
+        job_info = registry.get_job(job_id)
+
+        # FIXME: mark_undone in case of re-queue
+
+        kerberos()
+
+        output_dir = "/mnt/ceph/Projects/OpenEO/%s" % job_id
+
+        try:
+            os.mkdir(output_dir)
+        except FileExistsError:
+            pass  # when i.e. this job's process graph was updated
+
+        input_file = "%s/in" % output_dir
+        output_file = "%s/out" % output_dir
+
         with open(input_file, 'w') as f:
-            f.write(json.dumps(process_graph))
+            f.write(job_info['process_graph'])
 
         conf = SparkContext.getOrCreate().getConf()
         principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
@@ -149,10 +167,7 @@ def run_batch_job(process_graph: Dict, *_):
         else:
             raise CalledProcessError(batch_job.wait(), batch_job.args)
 
-        registry.register(job_id)
-        registry.update(job_id, application_id=application_id, status='submitted')
-
-        return job_id
+        registry.update(job_id, application_id=application_id)
 
 
 def _extract_application_id(stream) -> str:

@@ -9,13 +9,14 @@ class JobRegistry:
         self._root = '/openeo/jobs'
         self._zk = KazooClient(hosts=zookeeper_hosts)
 
-    def register(self, job_id: str) -> None:
+    def register(self, job_id: str, process_graph: Dict) -> None:
         """Registers a to-be-run batch job."""
 
         job_info = {
             'job_id': job_id,
+            'status': 'submitted',
+            'process_graph': json.dumps(process_graph),
             'application_id': None,
-            'status': None
         }
 
         self._create(job_info)
@@ -60,7 +61,7 @@ class JobRegistry:
 
         return [self.get_job(job_id) for job_id in ongoing_job_ids]
 
-    def get_job(self, job_id: str) -> str:
+    def get_job(self, job_id: str) -> Dict:
         """Returns details of a job."""
 
         job_info, _ = self._read(job_id, include_done=True)
