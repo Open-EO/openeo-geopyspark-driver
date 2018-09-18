@@ -6,43 +6,56 @@ from typing import Callable
 import traceback
 import sys
 
-from . import JobRegistry
+from openeogeotrellis.job_registry import JobRegistry
 
 
 class JobTracker:
     class _UnknownApplicationIdException(ValueError):
         pass
 
-    def __init__(self, job_registry: Callable[[], JobRegistry]):
+    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
         self._job_registry = job_registry
+        self._principal = principal
+        self._keytab = keytab
+        self._track_interval = 60  # seconds
 
     def update_statuses(self) -> None:
         print("tracking statuses...")
 
         try:
+            i = 0
+
             while True:
-                with self._job_registry() as registry:
-                    for job in registry.get_running_jobs():
-                        job_id, application_id, current_status = job['job_id'], job['application_id'], job['status']
+                try:
+                    if i % 60 == 0:
+                        self._refresh_kerberos_tgt()
 
-                        if application_id:
-                            try:
-                                state, final_state = JobTracker._yarn_status(application_id)
-                                new_status = JobTracker._to_openeo_status(state, final_state)
+                    with self._job_registry() as registry:
+                        jobs_to_track = registry.get_running_jobs()
 
-                                if current_status != new_status:
-                                    registry.update(job_id, status=new_status)
-                                    print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+                        for job in jobs_to_track:
+                            job_id, application_id, current_status = job['job_id'], job['application_id'], job['status']
 
-                                if final_state != "UNDEFINED":
+                            if application_id:
+                                try:
+                                    state, final_state = JobTracker._yarn_status(application_id)
+                                    new_status = JobTracker._to_openeo_status(state, final_state)
+
+                                    if current_status != new_status:
+                                        registry.update(job_id, status=new_status)
+                                        print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+
+                                    if final_state != "UNDEFINED":
+                                        registry.mark_done(job_id)
+                                        print("marked %s as done" % job_id)
+                                except JobTracker._UnknownApplicationIdException:
                                     registry.mark_done(job_id)
-                                    print("marked %s as done" % job_id)
-                            except JobTracker._UnknownApplicationIdException:
-                                registry.mark_done(job_id)
-                            except Exception:
-                                traceback.print_exc(file=sys.stderr)
+                except Exception:
+                    traceback.print_exc(file=sys.stderr)
 
-                time.sleep(30)
+                time.sleep(self._track_interval)
+
+                i += 1
         except KeyboardInterrupt:
             pass
 
@@ -61,8 +74,9 @@ class JobTracker:
 
             return state, final_state
         except CalledProcessError as e:
-            if "doesn't exist in RM or Timeline Server" in e.stdout:
-                raise JobTracker._UnknownApplicationIdException(e.stdout)
+            stdout = e.stdout.decode()
+            if "doesn't exist in RM or Timeline Server" in stdout:
+                raise JobTracker._UnknownApplicationIdException(stdout)
             else:
                 raise
 
@@ -84,6 +98,9 @@ class JobTracker:
 
         return new_status
 
+    def _refresh_kerberos_tgt(self):
+        subprocess.check_call(["kinit", "-kt", self._keytab, self._principal])
+
 
 if __name__ == '__main__':
-    JobTracker(JobRegistry).update_statuses()
+    JobTracker(JobRegistry, 'vdboschj', "/home/bossie/Documents/VITO/vdboschj.keytab").update_statuses()

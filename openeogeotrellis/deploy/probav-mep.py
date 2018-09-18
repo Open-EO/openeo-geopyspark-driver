@@ -19,7 +19,12 @@ def number_of_workers():
 def when_ready(server):
     print(server)
 
-    job_tracker = JobTracker(JobRegistry)
+    sc = SparkContext.getOrCreate()
+
+    principal = sc.getConf().get("spark.yarn.principal")
+    keytab = sc.getConf().get("spark.yarn.keytab")
+
+    job_tracker = JobTracker(JobRegistry, principal, keytab)
     threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
 
 
