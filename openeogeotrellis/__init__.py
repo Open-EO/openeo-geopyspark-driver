@@ -120,6 +120,17 @@ def get_batch_job_info(job_id: str) -> Dict:
         return None
 
 
+def get_batch_job_result_filenames(job_id: str) -> List[str]:
+    job_info = get_batch_job_info(job_id)
+    results_available = job_info and job_info.get('status') == 'finished'
+
+    return ["out"] if results_available else None
+
+
+def get_batch_job_result_output_dir(job_id: str) -> str:
+    return "/mnt/ceph/Projects/OpenEO/%s" % job_id
+
+
 def create_batch_job(process_graph: Dict, *_) -> str:
     job_id = str(uuid.uuid4())
 
@@ -139,7 +150,7 @@ def run_batch_job(job_id: str) -> None:
 
         kerberos()
 
-        output_dir = "/mnt/ceph/Projects/OpenEO/%s" % job_id
+        output_dir = get_batch_job_result_output_dir(job_id)
 
         try:
             os.mkdir(output_dir)
