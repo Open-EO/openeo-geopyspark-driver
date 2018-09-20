@@ -13,3 +13,5 @@ colortools>=0.1.2
 pyproj
 geopandas==0.3.0
 openeo_udf
+rasterio
+affine
