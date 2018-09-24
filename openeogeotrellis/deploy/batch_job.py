@@ -7,16 +7,16 @@ from openeo_driver import ProcessGraphDeserializer
 from typing import Dict, Any, List
 
 
-def parse(process_graph_file: str) -> Dict:
-    with open(process_graph_file, 'r') as f:
-        process_graph = json.load(f)
+def parse(job_specification_file: str) -> Dict:
+    with open(job_specification_file, 'r') as f:
+        job_specification = json.load(f)
 
-    return process_graph
+    return job_specification
 
 
-def save(result: Any, output_file) -> None:
+def save(result: Any, output_file, format_options) -> None:
     if isinstance(result, ImageCollection):
-        result.download(output_file, bbox="", time="")
+        result.download(output_file, bbox="", time="", **format_options)
         print("wrote image collection to %s" % output_file)
     else:
         with open(output_file, 'w') as f:
@@ -27,19 +27,19 @@ def save(result: Any, output_file) -> None:
 
 def main(argv: List[str]) -> None:
     if len(argv) < 3:
-        print("usage: %s <process graph input file> <results output file>" % argv[0])
+        print("usage: %s <job specification input file> <results output file>" % argv[0])
         exit(1)
 
-    process_graph_file, output_file = argv[1], argv[2]
+    job_specification_file, output_file = argv[1], argv[2]
 
-    process_graph = parse(process_graph_file)
+    job_specification = parse(job_specification_file)
 
     sc = SparkContext.getOrCreate()
 
     try:
         kerberos()
-        result = ProcessGraphDeserializer.evaluate(process_graph)
-        save(result, output_file)
+        result = ProcessGraphDeserializer.evaluate(processGraph=job_specification['process_graph'])
+        save(result, output_file, job_specification['output'])
     finally:
         sc.stop()
 

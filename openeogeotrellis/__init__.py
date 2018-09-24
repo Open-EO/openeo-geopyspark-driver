@@ -131,11 +131,11 @@ def get_batch_job_result_output_dir(job_id: str) -> str:
     return "/mnt/ceph/Projects/OpenEO/%s" % job_id
 
 
-def create_batch_job(process_graph: Dict, *_) -> str:
+def create_batch_job(specification: Dict) -> str:
     job_id = str(uuid.uuid4())
 
     with JobRegistry() as registry:
-        registry.register(job_id, process_graph)
+        registry.register(job_id, specification)
 
     return job_id
 
@@ -161,7 +161,7 @@ def run_batch_job(job_id: str) -> None:
         output_file = "%s/out" % output_dir
 
         with open(input_file, 'w') as f:
-            f.write(job_info['process_graph'])
+            f.write(job_info['specification'])
 
         conf = SparkContext.getOrCreate().getConf()
         principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
