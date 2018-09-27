@@ -20,10 +20,9 @@ keyTab=$5
 
 kinit -kt ${keyTab} ${principal}
 
-export HDP_VERSION=2.5.3.0-37
-export SPARK_MAJOR_VERSION=2
 export SPARK_HOME=/usr/hdp/current/spark2-client
-export PYSPARK_PYTHON="/usr/bin/python3.5"
+export PYSPARK_PYTHON="./python"
+export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
 
 extensions=$(ls GeoPySparkExtensions-*.jar)
@@ -36,12 +35,11 @@ spark-submit \
  --conf spark.speculation=true \
  --conf spark.speculation.quantile=0.4 --conf spark.speculation.multiplier=1.1 \
  --conf spark.dynamicAllocation.minExecutors=20 \
- --conf spark.yarn.appMasterEnv.SPARK_HOME=/usr/hdp/current/spark2-client --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
- --conf spark.yarn.appMasterEnv.PYSPARK_DRIVER_PYTHON=/usr/bin/python3.5 --conf spark.executorEnv.PYSPARK_PYTHON=/usr/bin/python3.5 \
- --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true --conf spark.executor.extraClassPath="$(basename "${backend_assembly}")" \
- --driver-class-path "$(basename "${backend_assembly}")" \
- --files "${backend_assembly}",layercatalog.json,"${processGraphFile}" \
+ --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
+ --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$PYSPARK_PYTHON" \
+ --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
+ --files python,$(ls typing-*-none-any.whl),layercatalog.json,"${processGraphFile}" \
+ --archives "venv.zip#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
- --jars "${extensions}" \
- --py-files $(ls openeo_api-*.egg),$(ls openeo_driver*.egg),$(ls openeo_geopyspark*.egg),libs.zip \
+ --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" batch_job.py "$(basename "${processGraphFile}")" "${outputFile}"
