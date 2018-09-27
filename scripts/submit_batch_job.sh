@@ -1,5 +1,10 @@
 #!/bin/sh -e
 
+if [ -z "${OPENEO_VENV_ZIP}" ]; then
+    >&2 echo "Environment variable OPENEO_VENV_ZIP is not set"
+    exit 1
+fi
+
 if [ "$#" -ne 5 ]; then
     >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file>"
     exit 1
@@ -39,7 +44,7 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$PYSPARK_PYTHON" \
  --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --files python,$(ls typing-*-none-any.whl),layercatalog.json,"${processGraphFile}" \
- --archives "venv.zip#venv" \
+ --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" batch_job.py "$(basename "${processGraphFile}")" "${outputFile}"
