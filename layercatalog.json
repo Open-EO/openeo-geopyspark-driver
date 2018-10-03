@@ -67,15 +67,15 @@
     ]
   },
   {
-    "data_id":"S2_FAPAR",
-    "product_id":"S2_FAPAR"
+    "data_id":"S2_FAPAR_V102_PYRAMID",
+    "product_id":"S2_FAPAR_V102_PYRAMID"
   },
   {
     "data_id":"PROBAV_L3_S10_TOC_NDVI_333M",
     "product_id":"PROBAV_L3_S10_TOC_NDVI_333M"
   },
   {
-    "data_id":"S2_SCENECLASSIFICATION",
+    "data_id":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID"
   }
 ]
