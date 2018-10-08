@@ -1,6 +1,7 @@
 import datetime
 
 from .base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
@@ -10,8 +11,11 @@ from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.numpy_aggregators import *
+from unittest import skip, TestCase
+from pyspark import SparkContext
 
-class TestMultipleDates(BaseTestClass):
+
+class TestMultipleDates(TestCase):
     band1 = np.array([
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
@@ -46,7 +50,7 @@ class TestMultipleDates(BaseTestClass):
              (SpaceTimeKey(1, 1, time_3), tile)
              ]
 
-    rdd = BaseTestClass.pysc.parallelize(layer)
+    rdd = SparkContext.getOrCreate().parallelize(layer)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
     layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 5, 'tileRows': 5}
