@@ -106,3 +106,26 @@ class TestDownload(TestCase):
         geotiffs = imagecollection.download("test_download_masked_result.geotiff")
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
+
+    def test_download_masked_geotiff_reproject(self):
+
+        input = self.create_spacetime_layer()
+        from shapely import geometry
+        polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
+
+        import pyproj
+        from shapely.ops import transform
+        from functools import partial
+
+        project = partial(
+            pyproj.transform,
+            pyproj.Proj(init="EPSG:4326"),  # source coordinate system
+            pyproj.Proj(init="EPSG:3857"))  # destination coordinate system
+
+        reprojected = transform(project, polygon)
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = imagecollection.mask(reprojected,"EPSG:3857")
+        geotiffs = imagecollection.download("test_download_masked_result.3857")
+        print(geotiffs)
+        #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.

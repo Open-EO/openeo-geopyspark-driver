@@ -172,9 +172,28 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             return aggregated_layer
         return self.apply_to_levels(aggregate_spatial_rdd)
 
+
+    @classmethod
+    def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
+        import pyproj
+        from shapely.ops import transform
+        from functools import partial
+
+        project = partial(
+            pyproj.transform,
+            pyproj.Proj(srs),  # source coordinate system
+            pyproj.Proj(dest_srs))  # destination coordinate system
+
+        return transform(project, polygon)  # apply projection
+
+
+
     def mask(self, polygon: Union[Polygon, MultiPolygon], srs="EPSG:4326") -> 'ImageCollection':
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        layer_crs = max_level.layer_metadata.crs
+        reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon,"+init="+srs,layer_crs)
         return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().mask(
-             polygon,
+            reprojected_polygon,
              partition_strategy=None,
              options=gps.RasterizerOptions()))
 
