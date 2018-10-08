@@ -79,7 +79,7 @@ class TestMultipleDates(TestCase):
               (TemporalProjectedExtent(Extent(0, 1, 1, 2), epsg=3857, instant=time_3), tile),
               (TemporalProjectedExtent(Extent(1, 1, 2, 2), epsg=3857, instant=time_3), tile)]
 
-    rdd2 = BaseTestClass.pysc.parallelize(layer2)
+    rdd2 = SparkContext.getOrCreate().parallelize(layer2)
     raster_rdd = RasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd2)
 
 

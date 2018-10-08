@@ -11,6 +11,7 @@ from shapely.geometry import Point, Polygon
 import pytz
 
 import openeo_udf.functions
+from pyspark import SparkContext
 
 
 class TestCustomFunctions(BaseTestClass):
@@ -109,7 +110,7 @@ class TestCustomFunctions(BaseTestClass):
                  (SpaceTimeKey(0, 1, self.now), tile),
                  (SpaceTimeKey(1, 1, self.now), tile)]
 
-        rdd = BaseTestClass.pysc.parallelize(layer)
+        rdd = SparkContext.getOrCreate().parallelize(layer)
 
         metadata = {'cellType': 'int32ud-1',
                     'extent': self.extent,
@@ -212,7 +213,7 @@ class TestCustomFunctions(BaseTestClass):
         layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 4, 'tileRows': 4}
         extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 8.0, 'ymax': 8.0}
 
-        rdd = BaseTestClass.pysc.parallelize(tiles)
+        rdd = SparkContext.getOrCreate().parallelize(tiles)
         print(rdd.count())
 
         metadata = {'cellType': 'float64ud-1',

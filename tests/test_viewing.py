@@ -10,7 +10,7 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from shapely.geometry import Point
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
-
+from pyspark import SparkContext
 
 
 class TestViewing(BaseTestClass):
@@ -68,7 +68,7 @@ class TestViewing(BaseTestClass):
                  (SpaceTimeKey(0, 1, self.now), tile),
                  (SpaceTimeKey(1, 1, self.now), tile)]
 
-        rdd = BaseTestClass.pysc.parallelize(layer)
+        rdd = SparkContext.getOrCreate().parallelize(layer)
 
         metadata = {'cellType': 'int32ud-1',
                     'extent': self.extent,
