@@ -37,6 +37,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
+    def bbox_filter(self, left: float, right: float, top: float, bottom: float, srs: str) -> 'ImageCollection':
+        return self
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
@@ -169,6 +171,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, rdd.layer_metadata)
             return aggregated_layer
         return self.apply_to_levels(aggregate_spatial_rdd)
+
+    def mask(self, polygon: Union[Polygon, MultiPolygon], srs="EPSG:4326") -> 'ImageCollection':
+        return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().mask(
+             polygon,
+             partition_strategy=None,
+             options=gps.RasterizerOptions()))
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
