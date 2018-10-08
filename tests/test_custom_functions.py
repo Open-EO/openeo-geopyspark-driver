@@ -1,6 +1,8 @@
 import datetime
+from unittest import TestCase
 
 from .base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
 import numpy as np
 import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
@@ -14,7 +16,7 @@ import openeo_udf.functions
 from pyspark import SparkContext
 
 
-class TestCustomFunctions(BaseTestClass):
+class TestCustomFunctions(TestCase):
 
     first = np.zeros((1, 4, 4))
     first.fill(1)
