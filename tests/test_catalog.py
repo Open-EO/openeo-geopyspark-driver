@@ -1,11 +1,12 @@
-from unittest import skip
+from unittest import skip, TestCase
+
+from .base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
 
 from openeogeotrellis.layercatalog import LayerCatalog
 
-from .base_test_class import BaseTestClass
 
-
-class TestLayerCatalog(BaseTestClass):
+class TestLayerCatalog(TestCase):
 
     @skip("Depends on VITO infrastructure")
     def testRetrieveAllLayers(self):
