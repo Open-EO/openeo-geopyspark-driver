@@ -1,16 +1,19 @@
 import datetime
+from unittest import TestCase
 
 import numpy as np
 from .base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
 import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from shapely.geometry import Point
+from pyspark import SparkContext
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 
-class TestDownload(BaseTestClass):
+class TestDownload(TestCase):
 
     first = np.zeros((1, 4, 4))
     first.fill(1)
@@ -65,7 +68,7 @@ class TestDownload(BaseTestClass):
                  (SpaceTimeKey(0, 1, self.now), tile),
                  (SpaceTimeKey(1, 1, self.now), tile)]
 
-        rdd = BaseTestClass.pysc.parallelize(layer)
+        rdd = SparkContext.getOrCreate().parallelize(layer)
 
         metadata = {'cellType': 'int32ud-1',
                     'extent': self.extent,
@@ -92,3 +95,14 @@ class TestDownload(BaseTestClass):
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
+    def test_download_masked_geotiff(self):
+
+        input = self.create_spacetime_layer()
+        from shapely import geometry
+        polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = imagecollection.mask(polygon)
+        geotiffs = imagecollection.download("test_download_masked_result.geotiff")
+        print(geotiffs)
+        #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
