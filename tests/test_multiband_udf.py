@@ -1,12 +1,13 @@
 
 from .base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
 from unittest import TestCase
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 import numpy as np
 from geopyspark import Tile
 
 
-class TestMultiBandUDF(BaseTestClass):
+class TestMultiBandUDF(TestCase):
 
 
     band_1 = np.array([

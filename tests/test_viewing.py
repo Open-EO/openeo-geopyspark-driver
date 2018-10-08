@@ -1,8 +1,10 @@
 import datetime
+from unittest import TestCase
 
 import numpy as np
 
 from .base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
 import geopyspark as gps
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
@@ -13,7 +15,7 @@ from openeogeotrellis import GeotrellisTimeSeriesImageCollection
 from pyspark import SparkContext
 
 
-class TestViewing(BaseTestClass):
+class TestViewing(TestCase):
 
     first = np.zeros((1, 4, 4))
     first.fill(1)
