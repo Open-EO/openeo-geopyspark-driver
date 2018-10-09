@@ -13,7 +13,8 @@ export HDP_VERSION=2.5.3.0-37
 export SPARK_MAJOR_VERSION=2
 export SPARK_HOME=/usr/hdp/current/spark2-client
 export PYSPARK_PYTHON="/usr/bin/python3.5"
-spark-submit --principal mep_tsviewer@VGT.VITO.BE --keytab mep_tsviewer.keytab --driver-memory 8G --executor-memory 5G --queue lowlatency \
+spark-submit --principal mep_tsviewer@VGT.VITO.BE --keytab mep_tsviewer.keytab --driver-memory 8G --executor-memory 5G --queue mep_tsviewer \
+ --conf spark.driver.maxResultSize=2g \
  --conf spark.speculation=true \
  --conf spark.speculation.quantile=0.4 --conf spark.speculation.multiplier=1.1 \
  --conf spark.dynamicAllocation.minExecutors=5 \

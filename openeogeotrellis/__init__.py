@@ -8,12 +8,9 @@ import re
 
 from typing import Dict,List
 
-from kazoo.exceptions import NoNodeError
-
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
-from .job_registry import JobRegistry
 
 
 def health_check():
@@ -107,7 +104,8 @@ def getImageCollection(product_id:str, viewingParameters):
 def get_batch_job_info(job_id: str) -> Dict:
     """Returns detailed information about a submitted batch job,
     or None if the batch job with this job_id is unknown."""
-
+    from kazoo.exceptions import NoNodeError
+    from .job_registry import JobRegistry
     try:
         with JobRegistry() as registry:
             status = registry.get_job(job_id)['status']
@@ -134,6 +132,7 @@ def get_batch_job_result_output_dir(job_id: str) -> str:
 def create_batch_job(specification: Dict) -> str:
     job_id = str(uuid.uuid4())
 
+    from .job_registry import JobRegistry
     with JobRegistry() as registry:
         registry.register(job_id, specification)
 
@@ -143,6 +142,7 @@ def create_batch_job(specification: Dict) -> str:
 def run_batch_job(job_id: str) -> None:
     from pyspark import SparkContext
 
+    from .job_registry import JobRegistry
     with JobRegistry() as registry:
         job_info = registry.get_job(job_id)
 
