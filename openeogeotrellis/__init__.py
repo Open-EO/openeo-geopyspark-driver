@@ -8,6 +8,8 @@ import re
 
 from typing import Dict,List
 
+from geopyspark import TiledRasterLayer, LayerType
+
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
@@ -81,24 +83,20 @@ def getImageCollection(product_id:str, viewingParameters):
     top = viewingParameters.get("top",None)
     bottom = viewingParameters.get("bottom",None)
     srs = viewingParameters.get("srs",None)
-    bbox = None
-    if(left is not None and right is not None and top is not None and bottom is not None):
-        bbox = gps.Extent(left,bottom,right,top)
+    pysc = gps.get_spark_context()
+    extent = None
 
-    store = gps.AttributeStore("accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance")
-    zoomlevels = [layer.layer_zoom for layer in store.layers() if layer.layer_name == product_id]
-    pyramid = {}
-    for level in zoomlevels:
-        if from_date is not None and to_date is not None:
-            #time_intervals is changed in-place to a str by geopyspark
-            time_intervals = [pd.to_datetime(from_date),pd.to_datetime(to_date)]
-        tiledrasterlayer = gps.query(uri="accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance", layer_name=product_id,
-                      layer_zoom=level, query_geom=bbox, query_proj=srs, time_intervals=time_intervals,num_partitions=20)
-        pyramid[level] = tiledrasterlayer
-    if 'wmts' == service_type.lower():
-        return GeotrellisCatalogImageCollection(product_id)
-    else:
-        return GeotrellisTimeSeriesImageCollection(gps.Pyramid(pyramid),catalog.catalog[product_id])
+    if(left is not None and right is not None and top is not None and bottom is not None):
+        extent = pysc._jvm.geotrellis.vector.Extent(left, bottom, right, top)
+
+    pyramidFactory = pysc._jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
+                                                                            "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+
+    pyramid = pyramidFactory.pyramid_seq(product_id, extent,srs, from_date, to_date)
+    temporal_tiled_raster_layer = pysc._gateway.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+    option = pysc._gateway.jvm.scala.Option
+    levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), catalog.catalog[product_id])
 
 
 def get_batch_job_info(job_id: str) -> Dict:

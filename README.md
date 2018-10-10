@@ -34,7 +34,7 @@ Not available yet
 ### Running locally
 Preparation:
 A few custom Scala classes are needed to run this project, these can be found in this jar:
-https://artifactory.vgt.vito.be/libs-snapshot-local/be/vito/eodata/GeoPySparkExtensions/2.7.0-SNAPSHOT/GeoPySparkExtensions-2.7.0-20180612.110004-15.jar
+https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.0.0-SNAPSHOT/geotrellis-extensions-1.0.0-20181009.084710-1.jar
 Geopyspark will search for any jar in the 'jars' directory and add it to the classpath. So make
 sure that this jar can be found in the correct location.
  
