@@ -192,6 +192,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon,"+init="+srs,layer_crs)
+
+        #TODO should we warn when masking generates an empty collection?
         return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().mask(
             reprojected_polygon,
              partition_strategy=None,
@@ -343,48 +345,78 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if 'TRAVIS' in os.environ:
             return tms.url_pattern
         else:
-            from kazoo.client import KazooClient
-            zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
-            zk.start()
-            zk.ensure_path("discovery/services/openeo-viewer-test")
-            #id = uuid.uuid4()
-            #print(id)
-            id = 0
-            zk.ensure_path("discovery/services/openeo-viewer-test/"+str(id))
-            zk.set("discovery/services/openeo-viewer-test/"+str(id),str.encode(json.dumps({"name":"openeo-viewer-test","id":str(id),"address":tms.host,"port":tms.port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
-            zk.stop()
-            zk.close()
+            host = tms.host
+            port = tms.port
+            self._proxy(host, port)
             url = "http://openeo.vgt.vito.be/tile/{z}/{x}/{y}.png"
             return url
 
-    def tiled_viewing_service(self) -> Dict:
-        spatial_rdd = self
-        if self.pyramid.layer_type != gps.LayerType.SPATIAL:
-            spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer())
-        print("Creating persisted pyramid.")
-        spatial_rdd = spatial_rdd.apply_to_levels(lambda rdd: rdd.partitionBy(gps.SpatialPartitionStrategy(num_partitions=40,bits=2)).persist())
-        print("Pyramid ready.")
-        def render_rgb(tile):
-            import numpy as np
-            from PIL import Image
-            rgba = np.dstack([tile.cells[0]*(255.0/2000.0), tile.cells[1]*(255.0/2000.0), tile.cells[2]*(255.0/2000.0)]).astype('uint8')
-            img = Image.fromarray(rgba, mode='RGB')
-            return img
+    def _proxy(self, host, port):
+        from kazoo.client import KazooClient
+        zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
+        zk.start()
+        zk.ensure_path("discovery/services/openeo-viewer-test")
+        # id = uuid.uuid4()
+        # print(id)
+        id = 0
+        zk.ensure_path("discovery/services/openeo-viewer-test/" + str(id))
+        zk.set("discovery/services/openeo-viewer-test/" + str(id), str.encode(json.dumps(
+            {"name": "openeo-viewer-test", "id": str(id), "address": host, "port": port, "sslPort": None,
+             "payload": None, "registrationTimeUTC": datetime.utcnow().strftime('%s'), "serviceType": "DYNAMIC"})))
+        zk.stop()
+        zk.close()
 
-        #greens = color.get_colors_from_matplotlib(ramp_name="YlGn")
-        greens = gps.ColorMap.build(breaks=[x/100.0 for x in range(0,100)], colors="YlGn")
+    def tiled_viewing_service(self,type = "") -> Dict:
 
-        pyramid = spatial_rdd.pyramid
-        if(self.tms is None):
-            self.tms = TMS.build(source=pyramid,display = greens)
-            self.tms.bind(host="0.0.0.0",requested_port=0)
 
-        url = self._proxy_tms(self.tms)
+        if type.lower() == "tms":
+            if self.pyramid.layer_type != gps.LayerType.SPATIAL:
+                spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer())
+            print("Creating persisted pyramid.")
+            spatial_rdd = spatial_rdd.apply_to_levels(lambda rdd: rdd.partitionBy(gps.SpatialPartitionStrategy(num_partitions=40,bits=2)).persist())
+            print("Pyramid ready.")
 
-        level_bounds = {level: tiled_raster_layer.layer_metadata.bounds for level, tiled_raster_layer in pyramid.levels.items()}
-        #TODO handle cleanup of tms'es
-        return {
-            "type":"TMS",
-            "url":url,
-            "bounds":level_bounds
-        }
+            pyramid = spatial_rdd.pyramid
+            def render_rgb(tile):
+                import numpy as np
+                from PIL import Image
+                rgba = np.dstack([tile.cells[0] * (255.0 / 2000.0), tile.cells[1] * (255.0 / 2000.0),
+                                  tile.cells[2] * (255.0 / 2000.0)]).astype('uint8')
+                img = Image.fromarray(rgba, mode='RGB')
+                return img
+
+            # greens = color.get_colors_from_matplotlib(ramp_name="YlGn")
+            greens = gps.ColorMap.build(breaks=[x / 100.0 for x in range(0, 100)], colors="YlGn")
+
+            if(self.tms is None):
+                self.tms = TMS.build(source=pyramid,display = greens)
+                self.tms.bind(host="0.0.0.0",requested_port=0)
+
+            url = self._proxy_tms(self.tms)
+            level_bounds = {level: tiled_raster_layer.layer_metadata.bounds for level, tiled_raster_layer in
+                            pyramid.levels.items()}
+            # TODO handle cleanup of tms'es
+            return {
+                "type": "TMS",
+                "url": url,
+                "bounds": level_bounds
+            }
+        else:
+            if ('wmts' in self.__dir__()):
+                self.wmts.stop()
+            pysc = gps.get_spark_context()
+
+            self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer()
+
+            srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
+            self.wmts.addPyramidLayer("RDD", srdd_dict)
+
+            self._proxy("127.0.0.1", self.wmts.getPort())
+            print(self.wmts.getURI())
+            url ="http://openeo.vgt.vito.be/service/wmts"
+
+            return {
+                "type": "WMTS",
+                "url": url
+                #    "bounds":level_bounds
+            }
