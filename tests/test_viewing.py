@@ -91,7 +91,7 @@ class TestViewing(TestCase):
     def test_viewing(self):
         geotrellis_layer = self.create_spacetime_layer()
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geotrellis_layer}))
-        metadata = imagecollection.tiled_viewing_service()
+        metadata = imagecollection.tiled_viewing_service(type="TMS")
         print(metadata)
         self.assertEqual('TMS',metadata['type'])
         self.assertIsNotNone(metadata['bounds'])
