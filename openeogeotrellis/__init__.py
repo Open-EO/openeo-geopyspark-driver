@@ -8,11 +8,13 @@ import re
 
 from typing import Dict,List
 
+import pytz
 from geopyspark import TiledRasterLayer, LayerType
 
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
+from dateutil.parser import parse
 
 
 def health_check():
@@ -63,6 +65,15 @@ def get_layer(product_id)->Dict:
     kerberos()
     return LayerCatalog().layer(product_id)
 
+def normalize_date(date_string):
+    if (date_string is not None):
+        date = parse(date_string)
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=pytz.UTC)
+        return date.isoformat()
+    return None
+
+
 def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for %s with viewingParameters %s" % (product_id, viewingParameters))
     kerberos()
@@ -74,9 +85,8 @@ def getImageCollection(product_id:str, viewingParameters):
     service_type = viewingParameters.get('service_type', '')
 
     import geopyspark as gps
-    from_date = viewingParameters.get("from",None)
-    to_date = viewingParameters.get("to",None)
-    time_intervals = None
+    from_date = normalize_date(viewingParameters.get("from",None))
+    to_date = normalize_date(viewingParameters.get("to",None))
 
     left = viewingParameters.get("left",None)
     right = viewingParameters.get("right",None)
