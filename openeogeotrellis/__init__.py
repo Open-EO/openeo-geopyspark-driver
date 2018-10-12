@@ -97,7 +97,7 @@ def getImageCollection(product_id:str, viewingParameters):
     extent = None
 
     if(left is not None and right is not None and top is not None and bottom is not None):
-        extent = pysc._jvm.geotrellis.vector.Extent(left, bottom, right, top)
+        extent = pysc._jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
 
     pyramidFactory = pysc._jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                             "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
