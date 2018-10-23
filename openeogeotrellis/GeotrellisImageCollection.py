@@ -411,9 +411,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
             self.wmts.addPyramidLayer("RDD", srdd_dict)
 
-            self._proxy("127.0.0.1", self.wmts.getPort())
+            import socket
+            host = [l for l in
+                              ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1],
+                               [[(s.connect(('8.8.8.8', 53)), s.getsockname()[0], s.close()) for s in
+                                 [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]])
+                              if l][0][0]
+
+
+            self._proxy(host, self.wmts.getPort())
             print(self.wmts.getURI())
-            url ="http://openeo.vgt.vito.be/service/wmts"
+            url ="http://openeo.vgt.vito.be/tile/service/wmts"
 
             return {
                 "type": "WMTS",
