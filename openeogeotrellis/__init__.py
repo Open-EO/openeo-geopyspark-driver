@@ -16,6 +16,17 @@ from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 from dateutil.parser import parse
 
+from py4j.java_gateway import *
+
+import logging
+logger = logging.getLogger("openeo")
+logger.setLevel(logging.INFO)
+log_formatter = logging.Formatter("%(asctime)s [%(levelname)s - THREAD: %(threadName)s - %(name)s] : %(message)s")
+
+log_stream_handler = logging.StreamHandler()
+log_stream_handler.setFormatter(log_formatter)
+logger.addHandler( log_stream_handler )
+
 
 def health_check():
     from pyspark import SparkContext
@@ -29,14 +40,13 @@ def kerberos():
     import geopyspark as gps
 
     sc = gps.get_spark_context()
-    jvm = sc._gateway.jvm
-    hadoopconf = jvm.org.apache.hadoop.conf.Configuration()
-    hadoopconf.set("hadoop.security.authentication", "kerberos")
-    #jvm.org.apache.hadoop.security.UserGroupInformation.setConfiguration(hadoopconf);
-    #jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromSubject(None)
+    gateway = JavaGateway(gateway_parameters=sc._gateway.gateway_parameters)
+    jvm = gateway.jvm
     currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
-    print(currentUser.toString())
-    print(jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled())
+    if currentUser.hasKerberosCredentials():
+        return
+    logger.info(currentUser.toString())
+    logger.info(jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled())
     #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().getAuthenticationMethod().toString())
 
     principal = sc.getConf().get("spark.yarn.principal")
@@ -53,15 +63,11 @@ def kerberos():
 
 def get_layers()->List:
     from pyspark import SparkContext
-    print("starting spark context")
-    pysc = SparkContext.getOrCreate()
     kerberos()
     return LayerCatalog().layers()
 
 def get_layer(product_id)->Dict:
     from pyspark import SparkContext
-    print("starting spark context")
-    pysc = SparkContext.getOrCreate()
     kerberos()
     return LayerCatalog().layer(product_id)
 
@@ -96,15 +102,17 @@ def getImageCollection(product_id:str, viewingParameters):
     pysc = gps.get_spark_context()
     extent = None
 
+    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
+    jvm = gateway.jvm
     if(left is not None and right is not None and top is not None and bottom is not None):
-        extent = pysc._jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
+        extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
 
-    pyramidFactory = pysc._jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
+    pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                             "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
 
     pyramid = pyramidFactory.pyramid_seq(product_id, extent,srs, from_date, to_date)
-    temporal_tiled_raster_layer = pysc._gateway.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-    option = pysc._gateway.jvm.scala.Option
+    temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+    option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
     return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), catalog.catalog[product_id])
 

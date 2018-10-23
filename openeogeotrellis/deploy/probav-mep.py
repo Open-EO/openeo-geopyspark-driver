@@ -1,10 +1,11 @@
 import gunicorn.app.base
 from gunicorn.six import iteritems
-
+import sys
+sys.path.insert(0,'py4j-0.10.7-src.zip')
+sys.path.insert(0,'pyspark.zip')
 import json
 import sys
 import datetime
-from openeo_driver import app
 import threading
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
@@ -83,6 +84,7 @@ if __name__ == '__main__':
         'timeout':1000
     }
     tcp.close()
+    from openeo_driver import app
     application = StandaloneApplication(app, options)
 
     zookeeper = len(sys.argv) <= 1 or sys.argv[1] != "no-zookeeper"
