@@ -76,8 +76,8 @@ class GeotrellisCatalogImageCollection(ImageCollection):
             url = "http://openeo.vgt.vito.be/tile/{z}/{x}/{y}.png"
             return url
 
-    def tiled_viewing_service(self,type = "") -> Dict:
-
+    def tiled_viewing_service(self,**kwargs) -> Dict:
+        type = kwargs['type']
         def render_rgb(tile):
             transformed_cells = tile.cells
             for function in self.transform_tile:

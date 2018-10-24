@@ -31,6 +31,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.metadata = metadata
 
     def apply_to_levels(self, func):
+        """
+        Applies a function to each level of the pyramid. The argument provided to the function is of type TiledRasterLayer
+        :param func:
+        :return:
+        """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
         return GeotrellisTimeSeriesImageCollection(pyramid)
 
@@ -366,8 +371,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         zk.stop()
         zk.close()
 
-    def tiled_viewing_service(self,type = "") -> Dict:
-
+    def tiled_viewing_service(self,**kwargs) -> Dict:
+        type = kwargs['type']
 
         if type.lower() == "tms":
             if self.pyramid.layer_type != gps.LayerType.SPATIAL:
@@ -408,8 +413,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer()
 
-            srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
-            self.wmts.addPyramidLayer("RDD", srdd_dict)
+            if(kwargs.get("style") is not None):
+                color_map = gps.ColorMap.nlcd_colormap()
+                srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
+                self.wmts.addPyramidLayer("RDD", srdd_dict,color_map.cmap)
+            else:
+                srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
+                self.wmts.addPyramidLayer("RDD", srdd_dict)
 
             import socket
             host = [l for l in
