@@ -414,7 +414,16 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer()
 
             if(kwargs.get("style") is not None):
-                color_map = gps.ColorMap.nlcd_colormap()
+                max_zoom = self.pyramid.max_zoom
+                min_zoom = min(self.pyramid.levels.keys())
+                reduced_resolution = max(min_zoom,max_zoom-4)
+                if reduced_resolution not in self.pyramid.levels:
+                    reduced_resolution = min_zoom
+                histogram = self.pyramid.levels[reduced_resolution].get_histogram()
+                matplotlib_name = kwargs.get("style").get("colormap","YlGn")
+
+                #color_map = gps.ColorMap.from_colors(breaks=[x for x in range(0,250)], color_list=gps.get_colors_from_matplotlib("YlGn"))
+                color_map = gps.ColorMap.build(histogram, matplotlib_name)
                 srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
                 self.wmts.addPyramidLayer("RDD", srdd_dict,color_map.cmap)
             else:
