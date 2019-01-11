@@ -1,29 +1,51 @@
 [
   {
     "name":"BIOPAR_FAPAR_V1_GLOBAL",
+    "title": "Copernicus Global Land FAPAR product V1",
+    "description": "The FAPAR quantifies the fraction of the solar radiation absorbed by live leaves for the photosynthesis activity. Then, it refers only to the green and alive elements of the canopy. The FAPAR depends on the canopy structure, vegetation element optical properties, atmospheric conditions, and angular configuration. To overcome this latter dependency, a daily integrated FAPAR value is assessed.\n\nFAPAR is recognized as an Essential Climate Variable (ECV) by the Global Climate Observing System (GCOS).",
     "data_id":"BIOPAR_FAPAR_V1_GLOBAL",
-    "product_id":"BIOPAR_FAPAR_V1_GLOBAL"
+    "product_id":"BIOPAR_FAPAR_V1_GLOBAL",
+    "license": "free",
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2014-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/fapar",
+        "title": "Product web page."
+      }
+    ]
+
   },
   {
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_001",
+    "title": "Sentinel 2 Bottom-of-atmosphere reflectances.",
     "data_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "product_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
-    "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
+    "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry, provided by Terrascope.",
     "source": "Terrascope - VITO",
+    "license": "free",
     "extent": {
       "crs": "EPSG:3857",
-      "spatial":{
-
-      },
-      "temporal": {
-        "from": "2016-01-01",
-        "to": "2019-10-01"
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://terrascope.be/en/products",
+        "title": "Product web page."
       }
-    },
-    "time": {
-      "from": "2016-01-01",
-      "to": "2019-10-01"
-    },
+    ],
     "bands": [
       {
         "band_id": "2",
@@ -69,36 +91,95 @@
   },
   {
     "name":"S2_FAPAR_V102_WEBMERCATOR2",
+    "title": "10m fAPAR product based on Sentinel-2",
     "data_id":"S2_FAPAR_V102_WEBMERCATOR2",
     "product_id":"S2_FAPAR_V102_WEBMERCATOR2",
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
     "source": "Terrascope - VITO",
+    "license": "free",
     "extent": {
-      "crs": "EPSG:3857"
-    }
+      "crs": "EPSG:3857",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
+    },
+     "links": [
+      {
+        "rel": "alternate",
+        "href": "https://terrascope.be/en/products",
+        "title": "Product web page."
+      }
+    ]
   },
   {
     "name":"S2_FAPAR_V102",
+    "title": "Sentinel 2 based fAPAR, use S2_FAPAR_V102_WEBMERCATOR2 instead.",
     "data_id":"S2_FAPAR_V102",
     "product_id":"S2_FAPAR_V102",
-    "description": "Sentinel 2 Level-3: fAPAR in WGS84 projection.",
+    "description": "Sentinel 2 Level-3: fAPAR in WGS84 projection, deprecated.",
     "source": "Terrascope - VITO",
+    "license": "free",
     "extent": {
-      "crs": "EPSG:4326"
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
     }
   },
   {
     "name":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
+    "title": "300m NDVI, 10-daily cloud-free composite",
+    "description": "300m NDVI, 10-daily cloud-free composite derived from PROBA-V data.",
     "data_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
-    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2"
+    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
+    "license": "free",
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2014-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "http://proba-v.vgt.vito.be/en/product-types",
+        "title": "Product web page."
+      },
+      {
+        "rel": "alternate",
+        "href": "http://proba-v.vgt.vito.be/en/data-policy",
+        "title": "Data policy"
+      }
+    ],
   },
   {
     "name":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
+    "title": "Sen2Cor Scene Classification layer",
+    "description": "Sen2Cor Scene Classification layer, from Sentinel 2 data.",
     "data_id":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "source": "Terrascope - VITO",
+    "license": "free",
     "extent": {
-      "crs": "EPSG:3857"
-    }
+      "crs": "EPSG:3857",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://terrascope.be/en/products",
+        "title": "Product web page."
+      }
+    ]
   }
 ]
