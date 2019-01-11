@@ -104,23 +104,30 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
 
-        def tilefunction(metadata:Metadata,openeo_metadata,geotrellis_tile:Tuple[SpaceTimeKey,Tile]):
+        def tilefunction(metadata:Metadata,openeo_metadata,tiles:List[Tuple[SpaceTimeKey,Tile]]):
+            tile_list = list(tiles)
+            #sort by instant
+            tile_list.sort(key=lambda tup: tup[0].instant)
+            dates = map(lambda t: t[0].instant, tile_list)
+            arrays = map(lambda t: t[1].cells, tile_list)
+            multidim_array = np.array(list(arrays))
 
-            key = geotrellis_tile[0]
-            extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
+            extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
-            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(geotrellis_tile[1].cells, extent,bands_metadata = openeo_metadata.get('bands',None) ))
+            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(multidim_array, extent,bands_metadata = openeo_metadata.get('bands',None) ,start_times=pd.DatetimeIndex(dates)))
 
             from openeo_udf.api.base import RasterCollectionTile
+
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
             result = data.raster_collection_tiles
-            return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
+            return Tile(result[0].get_data(),CellType.FLOAT64,tile_list[0][1].no_data_value)
 
         def rdd_function(openeo_metadata,rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
-            floatrdd.srdd.map().groupByKey()
-            return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
-                                                       floatrdd.map(
+            grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
+
+            return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL,
+                                                       grouped_by_spatial_key.mapValues(
                                                     partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
                                                        rdd.layer_metadata)
         from functools import partial
