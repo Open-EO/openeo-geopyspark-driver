@@ -39,6 +39,28 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
         return GeotrellisTimeSeriesImageCollection(pyramid)
 
+    def _apply_to_levels_geotrellis_rdd(self, func):
+        """
+        Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD
+        :param func:
+        :return:
+        """
+
+        def create_tilelayer(contextrdd, layer_type, zoom_level):
+            jvm = gps.get_spark_context()._gateway.jvm
+            spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
+            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+
+            if layer_type == gps.LayerType.SPATIAL:
+                srdd = spatial_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
+            else:
+                srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
+
+            return gps.TiledRasterLayer(layer_type, srdd)
+
+        pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd() ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
+        return GeotrellisTimeSeriesImageCollection(pyramid)
+
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
@@ -49,6 +71,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
         return self.apply_to_levels(lambda rdd: rdd.convert_data_type(CellType.FLOAT64).map_cells(bandfunction))
+
+    def apply(self, process:str, arguments = {}) -> 'ImageCollection':
+        pysc = gps.get_spark_context()
+        return self._apply_to_levels_geotrellis_rdd(lambda rdd: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
+
 
     @classmethod
     def _mapTransform(cls,layoutDefinition, spatialKey):
