@@ -91,6 +91,23 @@ class TestMultipleDates(TestCase):
         Point(-10.0, 15.0)
     ]
 
+    def test_reduce(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+
+        stitched = imagecollection.reduce("max","temporal").pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+
+    def test_reduce_nontemporal(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        with self.assertRaises(AttributeError) as context:
+            imagecollection.reduce("max","spectral").pyramid.levels[0].stitch()
+        print(context.exception)
+
     def test_max_aggregator(self):
         tiles = [self.tile,self.tile2]
         composite = max_composite(tiles)
