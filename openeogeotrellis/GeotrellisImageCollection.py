@@ -77,17 +77,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self._apply_to_levels_geotrellis_rdd(lambda rdd: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
 
     def reduce(self, reducer:str, dimension:str) -> 'ImageCollection':
+        reducer = self._normalize_reducer(dimension, reducer)
+        return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
+
+    def _normalize_reducer(self, dimension, reducer):
         if dimension != 'temporal':
             raise AttributeError('Reduce process only works on temporal dimension. Requested dimension: ' + dimension)
-        if(reducer.upper() in ["MIN","MAX","SUM","MEAN","VARIANCE"] or reducer.upper() == "SD"):
+        if (reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE"] or reducer.upper() == "SD"):
             if reducer.upper() == "SD":
                 reducer = "StandardDeviation"
             else:
                 reducer = reducer.lower().capitalize()
-            return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
         else:
             raise NotImplemented("The reducer is not supported by the backend: " + reducer)
-
+        return reducer
 
     @classmethod
     def _mapTransform(cls,layoutDefinition, spatialKey):
@@ -216,8 +219,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             :return: An ImageCollection containing  a result for each time window
         """
-
-        pass
+        intervals_iso = list(map(lambda d:pd.to_datetime(d).isoformat(),intervals))
+        labels_iso = list(map(lambda l:pd.to_datetime(l).isoformat(), labels))
+        pysc = gps.get_spark_context()
+        mapped_keys = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
+        reducer = self._normalize_reducer(dimension, reducer)
+        return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
     def min_time(self) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell("Min"))
