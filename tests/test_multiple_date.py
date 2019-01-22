@@ -112,7 +112,7 @@ class TestMultipleDates(TestCase):
         input = Pyramid({0: self.tiled_raster_rdd})
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input)
-        stitched = imagecollection.aggregate_temporal(["2017-01-01","2018-01-01"],["2017-01-03"],"max").pyramid.levels[0].stitch()
+        stitched = imagecollection.aggregate_temporal(["2017-01-01","2018-01-01"],["2017-01-03"],"max").pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
 
     def test_max_aggregator(self):

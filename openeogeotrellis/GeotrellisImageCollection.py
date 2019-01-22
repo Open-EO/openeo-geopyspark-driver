@@ -82,7 +82,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _normalize_reducer(self, dimension, reducer):
         if dimension != 'temporal':
-            raise AttributeError('Reduce process only works on temporal dimension. Requested dimension: ' + dimension)
+            raise AttributeError('Reduce process only works on temporal dimension. Requested dimension: ' + str(dimension))
         if (reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE"] or reducer.upper() == "SD"):
             if reducer.upper() == "SD":
                 reducer = "StandardDeviation"
@@ -205,7 +205,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #reduce
         pass
 
-    def aggregate_temporal(self, intervals:List,labels:List, reducer, dimension:str = None) -> 'ImageCollection' :
+    def aggregate_temporal(self, intervals:List,labels:List, reducer, dimension:str = 'temporal') -> 'ImageCollection' :
         """ Computes a temporal aggregation based on an array of date and/or time intervals.
 
             Calendar hierarchies such as year, month, week etc. must be transformed into specific intervals by the clients. For each interval, all data along the dimension will be passed through the reducer. The computed values will be projected to the labels, so the number of labels and the number of intervals need to be equal.
@@ -219,8 +219,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             :return: An ImageCollection containing  a result for each time window
         """
-        intervals_iso = list(map(lambda d:pd.to_datetime(d).isoformat(),intervals))
-        labels_iso = list(map(lambda l:pd.to_datetime(l).isoformat(), labels))
+        intervals_iso = list(map(lambda d:pd.to_datetime(d).strftime('%Y-%m-%dT%H:%M:%SZ'),intervals))
+        labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
         pysc = gps.get_spark_context()
         mapped_keys = self._apply_to_levels_geotrellis_rdd(
             lambda rdd: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
