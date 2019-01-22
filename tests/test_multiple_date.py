@@ -1,6 +1,6 @@
 import datetime
 
-from .base_test_class import BaseTestClass
+from base_test_class import BaseTestClass
 BaseTestClass.setup_local_spark()
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
@@ -176,3 +176,17 @@ class TestMultipleDates(TestCase):
         self.assertEqual(6, stitched.cells[0][0][5])
         self.assertEqual(4, stitched.cells[0][5][5])
 
+    def test_mask_raster(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+        def createMask(tile):
+            tile.cells[0][0][0] = 0.0
+            return tile
+        mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
+        mask = Pyramid({0: mask_layer})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        stitched = \
+        imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask),replacement=10.0).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEquals(2.0,stitched.cells[0][0][0])
+        self.assertEquals(10.0, stitched.cells[0][0][1])

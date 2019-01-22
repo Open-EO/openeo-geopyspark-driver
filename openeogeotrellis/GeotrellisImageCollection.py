@@ -58,7 +58,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             return gps.TiledRasterLayer(layer_type, srdd)
 
-        pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd() ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
+        pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
         return GeotrellisTimeSeriesImageCollection(pyramid)
 
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
@@ -74,7 +74,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def apply(self, process:str, arguments = {}) -> 'ImageCollection':
         pysc = gps.get_spark_context()
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
+        return self._apply_to_levels_geotrellis_rdd(lambda rdd,k: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
 
     def reduce(self, reducer:str, dimension:str) -> 'ImageCollection':
         reducer = self._normalize_reducer(dimension, reducer)
@@ -223,7 +223,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
         pysc = gps.get_spark_context()
         mapped_keys = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
+            lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
         reducer = self._normalize_reducer(dimension, reducer)
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
@@ -264,16 +264,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
 
 
-    def mask(self, polygon: Union[Polygon, MultiPolygon], srs="EPSG:4326") -> 'ImageCollection':
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
-        layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon,"+init="+srs,layer_crs)
+    def mask(self, polygon: Union[Polygon, MultiPolygon]= None, srs="EPSG:4326",rastermask:'ImageCollection'=None,replacement=None) -> 'ImageCollection':
+        if polygon is not None:
+            max_level = self.pyramid.levels[self.pyramid.max_zoom]
+            layer_crs = max_level.layer_metadata.crs
+            reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon,"+init="+srs,layer_crs)
+            #TODO should we warn when masking generates an empty collection?
+            return self.apply_to_levels(lambda rdd: rdd.mask(
+                reprojected_polygon,
+                 partition_strategy=None,
+                 options=gps.RasterizerOptions()))
+        elif rastermask is not None:
+            pysc = gps.get_spark_context()
+            return self._apply_to_levels_geotrellis_rdd(
+                lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask(rdd, rastermask.pyramid.levels[level].srdd.rdd(),replacement))
+        else:
+            raise AttributeError("mask process: either a polygon or a rastermask should be provided.")
 
-        #TODO should we warn when masking generates an empty collection?
-        return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().mask(
-            reprojected_polygon,
-             partition_strategy=None,
-             options=gps.RasterizerOptions()))
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
