@@ -61,6 +61,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
         return GeotrellisTimeSeriesImageCollection(pyramid)
 
+    def band_filter(self, bands) -> 'ImageCollection':
+        return self.apply_to_levels(lambda rdd: rdd.bands(bands))
+
+
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
@@ -79,6 +83,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def reduce(self, reducer:str, dimension:str) -> 'ImageCollection':
         reducer = self._normalize_reducer(dimension, reducer)
         return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
+
+    def reduce_bands(self,pgVisitor) -> 'ImageCollection':
+        """
+        TODO Define in super class? API is not yet ready for client side...
+        :param pgVisitor:
+        :return:
+        """
+        pysc = gps.get_spark_context()
+        return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd,pgVisitor.builder))
 
     def _normalize_reducer(self, dimension, reducer):
         if dimension != 'temporal':
