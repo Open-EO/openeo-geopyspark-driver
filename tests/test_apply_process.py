@@ -19,10 +19,10 @@ from pyspark import SparkContext
 class TestCustomFunctions(TestCase):
 
     first = np.zeros((1, 4, 4))
-    first.fill(1)
+    first.fill(10)
 
     second = np.zeros((1, 4, 4))
-    second.fill(2)
+    second.fill(5)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
     layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
@@ -143,5 +143,49 @@ class TestCustomFunctions(TestCase):
             print(result)
             value = result.popitem()
 
-            self.assertEqual(math.cos(1),value[1][0])
-            self.assertEqual(math.cos(2), value[1][1])
+            self.assertEqual(math.cos(10),value[1][0])
+            self.assertEqual(math.cos(5), value[1][1])
+
+
+    def test_reduce_bands(self):
+        input = self.create_spacetime_layer()
+        input = gps.Pyramid({0: input})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+
+        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+        visitor = GeotrellisTileProcessGraphVisitor()
+        graph = {
+            "sum": {
+                "arguments": {
+                    "data": {
+                        "from_argument": "dimension_data"
+                    }
+                },
+                "process_id": "sum"
+            },
+            "subtract": {
+                "arguments": {
+                    "data": {
+                        "from_argument": "dimension_data"
+                    }
+                },
+                "process_id": "subtract"
+            },
+            "divide": {
+                "arguments": {
+                    "y": {
+                        "from_node": "subtract"
+                    },
+                    "x": {
+                        "from_node": "sum"
+                    }
+                },
+                "process_id": "divide",
+                "result": True
+            }
+        }
+        visitor.accept_process_graph(graph)
+        stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEqual(3.0, stitched.cells[0][0][0])

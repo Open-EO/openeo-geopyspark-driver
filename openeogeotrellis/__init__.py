@@ -116,6 +116,10 @@ def getImageCollection(product_id:str, viewingParameters):
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
     return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), catalog.catalog[product_id])
 
+def create_process_visitor():
+    from .geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+    return GeotrellisTileProcessGraphVisitor()
+
 
 def get_batch_job_info(job_id: str) -> Dict:
     """Returns detailed information about a submitted batch job,
