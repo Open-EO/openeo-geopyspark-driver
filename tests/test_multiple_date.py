@@ -1,6 +1,6 @@
 import datetime
 
-from base_test_class import BaseTestClass
+from .base_test_class import BaseTestClass
 BaseTestClass.setup_local_spark()
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
@@ -99,6 +99,7 @@ class TestMultipleDates(TestCase):
         stitched = imagecollection.reduce("max","temporal").pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
+
 
     def test_reduce_nontemporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
