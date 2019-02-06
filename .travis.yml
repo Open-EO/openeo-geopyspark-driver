@@ -6,6 +6,7 @@ python:
 install:
   - pip install -r requirements.txt --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
   - SPARK_HOME=$(find_spark_home.py) geopyspark install-jar
+  - mvn dependency:copy -Dmaven.repo.remote=https://artifactory.vgt.vito.be/libs-snapshot-public -Dartifact=org.openeo:geotrellis-extensions:1.0.0-SNAPSHOT -DoutputDirectory=jars
 # command to run tests
 script:
   - SPARK_HOME=$(find_spark_home.py) pytest
