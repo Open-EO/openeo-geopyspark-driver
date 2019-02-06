@@ -173,7 +173,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             from openeo_udf.api.base import RasterCollectionTile
 
-            exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
+            exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
             result = data.raster_collection_tiles
             return Tile(result[0].get_data(),CellType.FLOAT64,tile_list[0][1].no_data_value)
 
