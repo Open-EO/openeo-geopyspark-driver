@@ -11,7 +11,7 @@ class LayerCatalog():
     def __init__(self):
         if os.path.isfile("layercatalog.json"):
             with open("layercatalog.json","r") as f:
-                self.catalog = {layer["data_id"]:layer for layer in json.load(f)}
+                self.catalog = {layer["name"]:layer for layer in json.load(f)}
         else:
             raise RuntimeError("layercatalog.json not found, please make sure that it is available in the working directory.")
 
@@ -20,10 +20,16 @@ class LayerCatalog():
         #TODO make this work with Kerberos authentication
         store = gps.AttributeStore("accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance")
         layers = store.layers()
-        return list(self.catalog.items())
+        return [LayerCatalog._clean_config(config)  for config in self.catalog.items()]
+
+    @classmethod
+    def _clean_config(cls, layer_config):
+        desired_keys = set(layer_config.keys) - set( "data_id")
+        return {k:v for k,v in layer_config.items() if k in desired_keys}
+
 
     def layer(self,product_id) -> List:
-        """Returns all available layers."""
+        """Returns the layer config for a given id."""
         if product_id in self.catalog:
             self.catalog[product_id]
         else:

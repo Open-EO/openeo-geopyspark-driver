@@ -87,6 +87,8 @@ def getImageCollection(product_id:str, viewingParameters):
     catalog = LayerCatalog()
     if product_id not in catalog.catalog:
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
+    layer_config = catalog.layer(product_id)
+    internal_layer_name = layer_config.data_id
 
     service_type = viewingParameters.get('service_type', '')
 
@@ -110,7 +112,7 @@ def getImageCollection(product_id:str, viewingParameters):
     pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                             "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
 
-    pyramid = pyramidFactory.pyramid_seq(product_id, extent,srs, from_date, to_date)
+    pyramid = pyramidFactory.pyramid_seq(internal_layer_name, extent,srs, from_date, to_date)
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
