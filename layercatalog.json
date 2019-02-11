@@ -24,6 +24,95 @@
 
   },
   {
+    "name": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
+    "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
+    "data_id": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
+    "product_id": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
+    "description": "Sentinel 1 GRD Sigma0, mosaic of all ascending relative orbits. Provided by Terrascope.",
+    "source": "Terrascope - VITO",
+    "license": "free",
+    "extent": {
+      "crs": "EPSG:3857",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://terrascope.be/en/products",
+        "title": "Product web page."
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "VV",
+        "name": "VV",
+        "type": "float",
+        "unit": "1"
+      },
+      {
+        "band_id": "VH",
+        "name": "VH",
+        "type": "float",
+        "unit": "1"
+      },
+      {
+        "band_id": "angle",
+        "name": "angle",
+        "type": "int16",
+        "unit": "1"
+      }
+    ]
+  },
+  {
+    "name": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
+    "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
+    "data_id": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
+    "product_id": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
+    "description": "Sentinel 1 GRD Sigma0, mosaic of all descending relative orbits. Provided by Terrascope.",
+    "source": "Terrascope - VITO",
+    "license": "free",
+    "extent": {
+      "crs": "EPSG:3857",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://terrascope.be/en/products",
+        "title": "Product web page."
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "VV",
+        "name": "VV",
+        "type": "float",
+        "unit": "1"
+      },
+      {
+        "band_id": "VH",
+        "name": "VH",
+        "type": "float",
+        "unit": "1"
+      },
+      {
+        "band_id": "angle",
+        "name": "angle",
+        "type": "int16",
+        "unit": "1"
+      }
+    ]
+  },
+
+  {
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "title": "Sentinel 2 Bottom-of-atmosphere reflectances.",
     "data_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
@@ -128,8 +217,28 @@
         "2015-07-06",
         null
       ]
-    }
+    },
+    "links":[]
   },
+  {
+    "name":"S2_FCOVER_PYRAMID",
+    "title": "Sentinel 2 based fCover",
+    "data_id":"S2_FCOVER_PYRAMID",
+    "product_id":"S2_FCOVER_PYRAMID",
+    "description": "Sentinel 2 Level-3: fCOVER, web mercator projection, with overviews.",
+    "source": "Terrascope - VITO",
+    "license": "free",
+    "extent": {
+      "crs": "EPSG:3857",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2015-07-06",
+        null
+      ]
+    },
+    "links":[]
+  },
+
   {
     "name":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
     "title": "300m NDVI, 10-daily cloud-free composite",
