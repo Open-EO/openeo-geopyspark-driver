@@ -4,10 +4,9 @@ from gunicorn.six import iteritems
 import json
 import sys
 import datetime
-from openeo_driver import app
+
 import threading
-from openeogeotrellis.job_tracker import JobTracker
-from openeogeotrellis.job_registry import JobRegistry
+
 
 """
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
@@ -49,6 +48,8 @@ def when_ready(server):
 
     principal = sc.getConf().get("spark.yarn.principal")
     keytab = sc.getConf().get("spark.yarn.keytab")
+    from openeogeotrellis.job_tracker import JobTracker
+    from openeogeotrellis.job_registry import JobRegistry
 
     job_tracker = JobTracker(JobRegistry, principal, keytab)
     threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
@@ -87,6 +88,7 @@ if __name__ == '__main__':
         'worker_class':'sync',
         'timeout':1000
     }
+    from openeo_driver import app
     application = StandaloneApplication(app, options)
 
 
