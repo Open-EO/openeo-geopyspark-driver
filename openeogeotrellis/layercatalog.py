@@ -20,11 +20,11 @@ class LayerCatalog():
         #TODO make this work with Kerberos authentication
         store = gps.AttributeStore("accumulo+kerberos://epod6.vgt.vito.be:2181/hdp-accumulo-instance")
         layers = store.layers()
-        return [LayerCatalog._clean_config(config)  for config in self.catalog.items()]
+        return [LayerCatalog._clean_config(config)  for config in self.catalog.values()]
 
     @classmethod
     def _clean_config(cls, layer_config):
-        desired_keys = set(layer_config.keys) - set( "data_id")
+        desired_keys = set(layer_config.keys()) - {"data_id"}
         return {k:v for k,v in layer_config.items() if k in desired_keys}
 
 
