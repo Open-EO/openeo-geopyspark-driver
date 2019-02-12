@@ -24,10 +24,10 @@
 
   },
   {
-    "name": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
+    "name": "S1_GRD_SIGMA0_ASCENDING",
     "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
     "data_id": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
-    "product_id": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
+    "product_id": "S1_GRD_SIGMA0_ASCENDING",
     "description": "Sentinel 1 GRD Sigma0, mosaic of all ascending relative orbits. Provided by Terrascope.",
     "source": "Terrascope - VITO",
     "license": "free",
@@ -68,10 +68,10 @@
     ]
   },
   {
-    "name": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
+    "name": "S1_GRD_SIGMA0_DESCENDING",
     "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
     "data_id": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
-    "product_id": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
+    "product_id": "S1_GRD_SIGMA0_DESCENDING",
     "description": "Sentinel 1 GRD Sigma0, mosaic of all descending relative orbits. Provided by Terrascope.",
     "source": "Terrascope - VITO",
     "license": "free",
