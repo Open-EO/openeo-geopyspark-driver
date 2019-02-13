@@ -88,7 +88,7 @@ def getImageCollection(product_id:str, viewingParameters):
     if product_id not in catalog.catalog:
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
     layer_config = catalog.layer(product_id)
-    internal_layer_name = layer_config.data_id
+    internal_layer_name = layer_config['data_id']
 
     service_type = viewingParameters.get('service_type', '')
 
