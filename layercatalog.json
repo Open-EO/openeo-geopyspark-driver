@@ -6,6 +6,7 @@
     "data_id":"BIOPAR_FAPAR_V1_GLOBAL",
     "product_id":"BIOPAR_FAPAR_V1_GLOBAL",
     "license": "free",
+    "bands":[],
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -194,6 +195,7 @@
         null
       ]
     },
+    "bands":[],
      "links": [
       {
         "rel": "alternate",
@@ -218,6 +220,7 @@
         null
       ]
     },
+    "bands":[],
     "links":[]
   },
   {
@@ -236,6 +239,7 @@
         null
       ]
     },
+    "bands":[],
     "links":[]
   },
 
@@ -254,6 +258,7 @@
         null
       ]
     },
+    "bands":[],
     "links": [
       {
         "rel": "alternate",
@@ -283,6 +288,7 @@
         null
       ]
     },
+    "bands":[],
     "links": [
       {
         "rel": "alternate",
