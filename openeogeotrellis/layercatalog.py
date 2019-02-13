@@ -1,5 +1,5 @@
 import unittest
-from typing import List
+from typing import List,Dict
 
 import geopyspark as gps
 import json
@@ -28,10 +28,10 @@ class LayerCatalog():
         return {k:v for k,v in layer_config.items() if k in desired_keys}
 
 
-    def layer(self,product_id) -> List:
+    def layer(self,product_id) -> Dict:
         """Returns the layer config for a given id."""
         if product_id in self.catalog:
-            self.catalog[product_id]
+            return self.catalog[product_id]
         else:
             raise ValueError("Unknown collection id: " + product_id)
 
