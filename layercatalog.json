@@ -182,7 +182,7 @@
   {
     "name":"S2_FAPAR_V102_WEBMERCATOR2",
     "title": "10m fAPAR product based on Sentinel-2",
-    "data_id":"S2_FAPAR_V102_WEBMERCATOR2",
+    "data_id":"S2_FAPAR_PYRAMID",
     "product_id":"S2_FAPAR_V102_WEBMERCATOR2",
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
     "source": "Terrascope - VITO",
@@ -203,25 +203,6 @@
         "title": "Product web page."
       }
     ]
-  },
-  {
-    "name":"S2_FAPAR_V102",
-    "title": "Sentinel 2 based fAPAR, use S2_FAPAR_V102_WEBMERCATOR2 instead.",
-    "data_id":"S2_FAPAR_V102",
-    "product_id":"S2_FAPAR_V102",
-    "description": "Sentinel 2 Level-3: fAPAR in WGS84 projection, deprecated.",
-    "source": "Terrascope - VITO",
-    "license": "free",
-    "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
-    },
-    "bands":[],
-    "links":[]
   },
   {
     "name":"S2_FCOVER_PYRAMID",
@@ -276,7 +257,7 @@
     "name":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "title": "Sen2Cor Scene Classification layer",
     "description": "Sen2Cor Scene Classification layer, from Sentinel 2 data.",
-    "data_id":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
+    "data_id":"S2_SCENECLASSIFICATION_PYRAMID",
     "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "source": "Terrascope - VITO",
     "license": "free",
