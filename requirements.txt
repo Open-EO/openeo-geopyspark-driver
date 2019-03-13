@@ -1,4 +1,4 @@
-pyspark==2.2.1
+pyspark==2.2.2
 pandas==0.22.0
 protobuf==3.4.0
 geopyspark==0.4.2
