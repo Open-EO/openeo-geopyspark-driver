@@ -24,3 +24,19 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
     def leaveArgument(self, argument_id, node: Dict):
         self.builder.argumentEnd()
         return self
+
+    def constantArgument(self, argument_id: str, value):
+        pass
+
+    def enterArray(self, argument_id):
+        self.builder.arrayStart(argument_id)
+
+    def constantArrayElement(self,value):
+        self.builder.constantArrayElement(value)
+
+    def arrayElementDone(self):
+        self.builder.arrayElementDone()
+
+    def leaveArray(self, argument_id):
+        self.builder.arrayEnd()
+

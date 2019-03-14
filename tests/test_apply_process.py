@@ -174,12 +174,13 @@ class TestCustomFunctions(TestCase):
             },
             "divide": {
                 "arguments": {
-                    "y": {
-                        "from_node": "subtract"
-                    },
-                    "x": {
+                    "data":[ {
                         "from_node": "sum"
+                    },
+                    {
+                        "from_node": "subtract"
                     }
+                    ]
                 },
                 "process_id": "divide",
                 "result": True
