@@ -10,11 +10,11 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         self.builder = jvm.org.openeo.geotrellis.OpenEOProcessScriptBuilder()
 
     def enterProcess(self,process_id, arguments:Dict):
-        self.builder.expressionStart(process_id,None)
+        self.builder.expressionStart(process_id,arguments)
         return self
 
     def leaveProcess(self, process_id, arguments: Dict):
-        self.builder.expressionEnd(process_id, None)
+        self.builder.expressionEnd(process_id, arguments)
         return self
 
     def enterArgument(self,argument_id,node:Dict):
