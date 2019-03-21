@@ -190,3 +190,48 @@ class TestCustomFunctions(TestCase):
         stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
+
+    def test_reduce_bands_arrayelement(self):
+        input = self.create_spacetime_layer()
+        input = gps.Pyramid({0: input})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+
+        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+        visitor = GeotrellisTileProcessGraphVisitor()
+        graph = {
+            "sum": {
+                "arguments": {
+                    "data": {
+                        "from_argument": "dimension_data"
+                    }
+                },
+                "process_id": "sum"
+            },
+            "array_element": {
+                "arguments": {
+                    "data": {
+                        "from_argument": "dimension_data"
+                    },
+                    "index": 1
+                },
+                "process_id": "array_element"
+            },
+            "divide": {
+                "arguments": {
+                    "data":[ {
+                        "from_node": "sum"
+                    },
+                    {
+                        "from_node": "array_element"
+                    }
+                    ]
+                },
+                "process_id": "divide",
+                "result": True
+            }
+        }
+        visitor.accept_process_graph(graph)
+        stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEqual(3.0, stitched.cells[0][0][0])
