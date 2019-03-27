@@ -140,11 +140,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     wavelength = bands_metadata[i-1]['wavelength_nm']
                 if len(bands_numpy.shape) == 3:
                     print(band.shape)
-                    rc_tile = RasterCollectionTile(name, extent, np.array([band]),wavelength=wavelength,start_times=start_times)
+                    rc_tile = RasterCollectionTile(name, extent, np.array([band]),wavelength=wavelength,start_times=start_times,end_times=start_times)
                 elif len(bands_numpy.shape) == 4:
                     print("4D data: " + str(band.shape))
                     print(start_times)
-                    rc_tile = RasterCollectionTile(name, extent, np.array(band), wavelength=wavelength,start_times=start_times)
+                    rc_tile = RasterCollectionTile(name, extent, np.array(band), wavelength=wavelength,start_times=start_times,end_times=start_times)
                 result.append(rc_tile)
                 i = i+1
             return result
@@ -169,13 +169,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
-            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(multidim_array, extent,bands_metadata = openeo_metadata.get('bands',None) ,start_times=pd.DatetimeIndex(dates)))
+            input_rct = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(multidim_array,
+                                                                                         extent,
+                                                                                         bands_metadata=openeo_metadata.get('bands', None),
+                                                                                         start_times=pd.DatetimeIndex(dates)
+
+                                                                                         )
+
+            data = UdfData({"EPSG":900913}, input_rct)
 
             from openeo_udf.api.base import RasterCollectionTile
 
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
             result = data.raster_collection_tiles
-            return Tile(result[0].get_data(),CellType.FLOAT64,tile_list[0][1].no_data_value)
+            #result is an array, containing one RasterCollectionTile per band
+            multiband_tile = np.array([rct.get_data() for rct in result])
+            #TODO can the result contain multiple dates?
+            return Tile(multiband_tile,CellType.FLOAT64,tile_list[0][1].no_data_value)
 
         def rdd_function(openeo_metadata,rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
