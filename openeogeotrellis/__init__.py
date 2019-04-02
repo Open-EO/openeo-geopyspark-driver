@@ -5,6 +5,8 @@ from subprocess import CalledProcessError
 import uuid
 import json
 import re
+from collections import deque
+import traceback
 
 from typing import Dict,List
 
@@ -161,6 +163,11 @@ def create_batch_job(specification: Dict) -> str:
     return job_id
 
 
+class _BatchJobError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
+
 def run_batch_job(job_id: str) -> None:
     from pyspark import SparkContext
 
@@ -192,26 +199,29 @@ def run_batch_job(job_id: str) -> None:
 
         batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
 
-        # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-        application_id = _extract_application_id(batch_job.stderr)
-
-        if application_id:
+        try:
+            # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
+            application_id = _extract_application_id(batch_job.stderr)
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
-        else:
-            raise CalledProcessError(batch_job.wait(), batch_job.args)
 
-        registry.update(job_id, application_id=application_id)
+            registry.update(job_id, application_id=application_id)
+        except _BatchJobError:
+            traceback.print_exc(file=sys.stderr)
+            raise CalledProcessError(batch_job.wait(), batch_job.args)
 
 
 def _extract_application_id(stream) -> str:
+    line_buffer = deque(maxlen=100)
+
     while True:
         line = stream.readline()
 
         if line:
             text = line.decode('utf8').strip()
+            line_buffer.append(text)
 
             match = re.match(r".*Application report for (application_\d{13}_\d+)\s\(state:.*", text)
             if match:
                 return match.group(1)
         else:
-            return None
+            raise _BatchJobError("\n".join(line_buffer))
