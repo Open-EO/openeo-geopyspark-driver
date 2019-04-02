@@ -30,7 +30,7 @@ export PYSPARK_PYTHON="./python"
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
 
-extensions=$(ls GeoPySparkExtensions-*.jar)
+extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar)
 
 spark-submit \
@@ -42,6 +42,7 @@ spark-submit \
  --conf spark.dynamicAllocation.minExecutors=20 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$PYSPARK_PYTHON" \
+ --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --files python,$(ls typing-*-none-any.whl),layercatalog.json,"${processGraphFile}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
