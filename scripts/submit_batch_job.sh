@@ -25,7 +25,8 @@ keyTab=$5
 
 kinit -kt ${keyTab} ${principal}
 
-export SPARK_HOME=/usr/hdp/current/spark2-client
+export HDP_VERSION=3.0.0.0-1634
+export SPARK_HOME=/usr/hdp/$HDP_VERSION/spark2/
 export PYSPARK_PYTHON="./python"
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
@@ -33,7 +34,7 @@ export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar)
 
-spark-submit \
+${SPARK_HOME}/bin/spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.executor.memory=8G \
