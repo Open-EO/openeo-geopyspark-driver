@@ -1,5 +1,6 @@
 from typing import Dict
 from kazoo.client import KazooClient
+import json
 
 
 class InMemoryServiceRegistry:
@@ -29,15 +30,41 @@ class ZooKeeperServiceRegistry:
     """The idea is that 1) Traefik will use this to map an url to a port and 2) this application will use it
     to map ID's to service details (exposed in the API)."""
 
+    def __init__(self):
+        self._root = '/openeo/services'
+        ZooKeeperServiceRegistry._with_zk(lambda zk: zk.ensure_path(self._root))
+
     def register(self, service_id: str, specification: Dict, host: str, port: int):
         ZooKeeperServiceRegistry._with_zk(lambda zk: (
-            self._persist_details(service_id, specification),
+            self._persist_details(zk, service_id, specification),
             Traefik(zk).route(service_id, host, port)
         ))
 
-    def _persist_details(self, service_id, specification):
-        # TODO: persist specification in ZooKeeper
-        pass
+    def _persist_details(self, zk, service_id, specification):
+        service_info = {
+            'specification': specification
+        }
+
+        data = json.dumps(service_info).encode()
+        zk.create(self._path(service_id), data)
+
+    def _path(self, service_id):
+        return self._root + "/" + service_id
+
+    def get(self, service_id) -> Dict:
+        return ZooKeeperServiceRegistry._with_zk(lambda zk: self._load_details(zk, service_id))
+
+    def _load_details(self, zk, service_id):
+        data, _ = zk.get(self._path(service_id))
+        return json.loads(data.decode())
+
+    def get_all(self) -> Dict[str, Dict]:
+        return ZooKeeperServiceRegistry._with_zk(self._load_all_details)
+
+    def _load_all_details(self, zk):
+        service_ids = zk.get_children(self._root)
+
+        return {service_id: self._load_details(zk, service_id) for service_id in service_ids}
 
     @staticmethod
     def _with_zk(callback):
@@ -45,7 +72,7 @@ class ZooKeeperServiceRegistry:
         zk.start()
 
         try:
-            callback(zk)
+            return callback(zk)
         finally:
             zk.stop()
 
@@ -77,7 +104,7 @@ class Traefik:
         self._zk.create(frontend_key + "/entrypoints", b"web")
         self._zk.create(frontend_key + "/backend", backend_id.encode())
 
-        match_path = "Path:/%s" % service_id
+        match_path = "PathPrefixStrip: /openeo/services/%s/" % service_id
         self._zk.create(test_key + "/rule", match_path.encode())
 
     def _trigger_configuration_update(self):
