@@ -16,7 +16,7 @@ from geopyspark import TiledRasterLayer, LayerType
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
-from .service_registry import InMemoryServiceRegistry
+from .service_registry import ZooKeeperServiceRegistry
 from dateutil.parser import parse
 
 from py4j.java_gateway import *
@@ -30,7 +30,7 @@ log_stream_handler = logging.StreamHandler()
 log_stream_handler.setFormatter(log_formatter)
 logger.addHandler( log_stream_handler )
 
-_service_registry = InMemoryServiceRegistry()
+_service_registry = ZooKeeperServiceRegistry()
 
 
 def health_check():

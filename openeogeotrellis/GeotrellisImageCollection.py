@@ -543,6 +543,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             self._service_registry.register(service_id, specification={
                 'type': type,
                 'process_graph': process_graph
-            }, port=self.wmts.getPort())
+            }, host=host, port=self.wmts.getPort())
 
             return service_id
