@@ -104,7 +104,7 @@ class Traefik:
         self._zk.create(frontend_key + "/entrypoints", b"web")
         self._zk.create(frontend_key + "/backend", backend_id.encode())
 
-        match_path = "PathPrefixStrip: /openeo/services/%s/" % service_id
+        match_path = "PathPrefixStripRegex: /openeo/services/%s,/openeo/{version}/services/%s" % (service_id, service_id)
         self._zk.create(test_key + "/rule", match_path.encode())
 
     def _trigger_configuration_update(self):
