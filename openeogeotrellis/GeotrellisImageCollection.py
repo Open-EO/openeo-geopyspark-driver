@@ -510,7 +510,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             pysc = gps.get_spark_context()
 
             random_port = 0
-            self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port)
+            service_id = str(uuid.uuid4())
+            wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
+
+            self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
 
             if(kwargs.get("style") is not None):
                 max_zoom = self.pyramid.max_zoom
@@ -536,13 +539,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                  [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]])
                               if l][0][0]
 
-            #self._proxy(host, self.wmts.getPort())
             print(self.wmts.getURI())
 
-            service_id = str(uuid.uuid4())
             self._service_registry.register(service_id, specification={
                 'type': type,
                 'process_graph': process_graph
             }, host=host, port=self.wmts.getPort())
 
-            return service_id
+            return {
+                'type': 'WMTS',
+                'url': wmts_base_url + "/service/wmts"
+            }

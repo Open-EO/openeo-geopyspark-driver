@@ -46,6 +46,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 --conf spark.yarn.appMasterEnv.XDG_DATA_DIRS=/opt/rh/rh-python35/root/usr/share \
  --conf spark.yarn.appMasterEnv.OPENEO_VENV_ZIP=${hdfsVenvZip} \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
+ --conf spark.yarn.appMasterEnv.WMTS_BASE_URL_PATTERN=http://localhost/openeo/services/%s \
  --files $(ls typing-*-none-any.whl),scripts/log4j.properties,layercatalog.json,scripts/submit_batch_job.sh,openeogeotrellis/deploy/batch_job.py \
  --archives "${hdfsVenvZip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
