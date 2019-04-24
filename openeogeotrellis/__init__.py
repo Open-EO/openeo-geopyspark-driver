@@ -230,6 +230,15 @@ def _extract_application_id(stream) -> str:
             raise _BatchJobError("\n".join(line_buffer))
 
 
+def cancel_batch_job(job_id: str):
+    from .job_registry import JobRegistry
+
+    with JobRegistry() as registry:
+        application_id = registry.get_job(job_id)['application_id']
+
+    subprocess.call(["yarn", "application", "-kill", application_id])
+
+
 def get_secondary_services_info() -> List[Dict]:
     return [_merge(details['specification'], 'service_id', service_id) for service_id, details in _service_registry.get_all().items()]
 
