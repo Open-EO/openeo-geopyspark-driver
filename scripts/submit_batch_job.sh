@@ -5,6 +5,11 @@ if [ -z "${OPENEO_VENV_ZIP}" ]; then
     exit 1
 fi
 
+if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+    >&2 echo "Environment variables AWS_ACCESS_KEY_ID and/or AWS_SECRET_ACCESS_KEY are not set"
+    exit 1
+fi
+
 if [ "$#" -ne 5 ]; then
     >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file>"
     exit 1
@@ -48,6 +53,8 @@ spark-submit \
  --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
+ --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+ --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
  --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --files $(ls typing-*-none-any.whl),layercatalog.json,"${processGraphFile}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
