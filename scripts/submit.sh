@@ -22,7 +22,7 @@ hadoop fs -put -f venv.zip ${hdfsVenvDir}
 
 hdfsVenvZip=hdfs:/user/$(hadoop fs -stat %u ${hdfsVenvDir}/venv.zip)/${hdfsVenvDir}/venv.zip
 
-extensions=$(ls -1 geotrellis-extensions-*.jar | tail -n 1)
+extensions=$(ls -1 jars/geotrellis-extensions-*.jar | tail -n 1)
 backend_assembly=$(find venv -name 'geotrellis-backend-assembly-*.jar' | tail -n 1)
 
 spark-submit \
