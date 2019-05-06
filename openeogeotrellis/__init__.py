@@ -93,7 +93,7 @@ def getImageCollection(product_id:str, viewingParameters):
     if product_id not in catalog.catalog:
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
     layer_config = catalog.layer(product_id)
-    internal_layer_name = layer_config['data_id']
+    data_source_type = layer_config.get('data_source', {}).get('type', 'Accumulo')
 
     service_type = viewingParameters.get('service_type', '')
 
@@ -114,10 +114,22 @@ def getImageCollection(product_id:str, viewingParameters):
     if(left is not None and right is not None and top is not None and bottom is not None):
         extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
 
-    pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
-                                                                            "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+    def accumulo_pyramid():
+        pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
+                                                                                "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+        accumulo_layer_name = layer_config['data_id']
+        return pyramidFactory.pyramid_seq(accumulo_layer_name, extent,srs, from_date, to_date)
 
-    pyramid = pyramidFactory.pyramid_seq(internal_layer_name, extent,srs, from_date, to_date)
+    def s3_pyramid():
+        endpoint = layer_config['data_source']['endpoint']
+        region = layer_config['data_source']['region']
+        bucket_name = layer_config['data_source']['bucket_name']
+
+        return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
+            .pyramid_seq(extent, srs, from_date, to_date)
+
+    pyramid = s3_pyramid() if data_source_type.lower() == 's3' else accumulo_pyramid()
+
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
