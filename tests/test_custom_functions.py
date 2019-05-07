@@ -9,6 +9,7 @@ from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from shapely.geometry import Point, Polygon
 import pytz
 
@@ -159,7 +160,7 @@ class TestCustomFunctions(TestCase):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         transformed_collection = imagecollection.apply_pixel([0, 1], custom_function)
 
         for p in self.points[0:3]:
@@ -177,7 +178,7 @@ class TestCustomFunctions(TestCase):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}),self.openeo_metadata)
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry(), self.openeo_metadata)
         transformed_collection = imagecollection.apply_tiles( udf_code)
 
         for p in self.points[0:3]:
@@ -192,7 +193,7 @@ class TestCustomFunctions(TestCase):
 
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}),self.openeo_metadata)
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry(), self.openeo_metadata)
 
         means = imagecollection.polygonal_mean_timeseries(polygon)
         assert len(means) == 1
@@ -236,7 +237,7 @@ class TestCustomFunctions(TestCase):
     def test_another_polygon_series(self):
         input = self._create_spacetime_layer(no_data=-1.0)
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
 
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
 

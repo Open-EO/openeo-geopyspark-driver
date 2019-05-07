@@ -9,6 +9,7 @@ from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from shapely.geometry import Point, Polygon
 import pytz
 
@@ -102,7 +103,6 @@ class TestCustomFunctions(TestCase):
         }
     }
 
-
     def create_spacetime_layer(self):
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
@@ -135,7 +135,7 @@ class TestCustomFunctions(TestCase):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}))
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         transformed_collection = imagecollection.apply("cos")
         import math
         for p in self.points[0:3]:
@@ -151,7 +151,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
         from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
@@ -195,7 +195,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
         from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()

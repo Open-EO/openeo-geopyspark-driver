@@ -3,6 +3,7 @@ from .base_test_class import BaseTestClass
 BaseTestClass.setup_local_spark()
 from unittest import TestCase
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 import numpy as np
 from geopyspark import Tile
 
@@ -35,7 +36,7 @@ class TestMultiBandUDF(TestCase):
     tile = Tile.from_numpy_array(bands,np.nan)
 
     def test_convert_multiband_tile(self):
-        imagecollection = GeotrellisTimeSeriesImageCollection("test")
+        imagecollection = GeotrellisTimeSeriesImageCollection("test", InMemoryServiceRegistry())
         imagecollection.metadata = {
             'bands': [
                 {

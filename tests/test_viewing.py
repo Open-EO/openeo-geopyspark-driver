@@ -12,6 +12,7 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from shapely.geometry import Point
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from pyspark import SparkContext
 
 
@@ -90,8 +91,8 @@ class TestViewing(TestCase):
 
     def test_viewing(self):
         geotrellis_layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geotrellis_layer}))
-        metadata = imagecollection.tiled_viewing_service(type="TMS")
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geotrellis_layer}), InMemoryServiceRegistry())
+        metadata = imagecollection.tiled_viewing_service(type="TMS", process_graph={})
         print(metadata)
         self.assertEqual('TMS',metadata['type'])
         self.assertIsNotNone(metadata['bounds'])

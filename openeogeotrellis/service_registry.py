@@ -11,13 +11,11 @@ class InMemoryServiceRegistry:
         self._mapping = {}
 
     def register(self, service_id: str, specification: Dict, host: str, port: int):
-        details = {
-            'host': host,
-            'port': port,
+        service_info = {
             'specification': specification
         }
 
-        self._mapping[service_id] = details
+        self._mapping[service_id] = service_info
 
     def get(self, service_id) -> Dict:
         return self._mapping[service_id]

@@ -12,6 +12,7 @@ import geopyspark as gps
 from shapely.geometry import Point
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from shapely.geometry import Polygon
 from pyspark import SparkContext
 
@@ -97,7 +98,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}))
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
 
         polygon = Polygon(shell=[
             (0.0, 0.0),

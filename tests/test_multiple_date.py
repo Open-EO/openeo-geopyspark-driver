@@ -11,6 +11,7 @@ from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.numpy_aggregators import *
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from unittest import skip, TestCase
 from pyspark import SparkContext
 
@@ -82,7 +83,6 @@ class TestMultipleDates(TestCase):
     rdd2 = SparkContext.getOrCreate().parallelize(layer2)
     raster_rdd = RasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd2)
 
-
     points = [
         Point(1.0, -3.0),
         Point(0.5, 0.5),
@@ -94,7 +94,7 @@ class TestMultipleDates(TestCase):
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
         stitched = imagecollection.reduce("max","temporal").pyramid.levels[0].stitch()
         print(stitched)
@@ -104,7 +104,7 @@ class TestMultipleDates(TestCase):
     def test_reduce_nontemporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
         with self.assertRaises(AttributeError) as context:
             imagecollection.reduce("max","spectral").pyramid.levels[0].stitch()
         print(context.exception)
@@ -112,7 +112,7 @@ class TestMultipleDates(TestCase):
     def test_aggregate_temporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
         stitched = imagecollection.aggregate_temporal(["2017-01-01","2018-01-01"],["2017-01-03"],"max").pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
 
@@ -125,7 +125,7 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid( {0:self.tiled_raster_rdd })
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
         stitched = imagecollection.max_time().pyramid.levels[0].stitch()
         print(stitched)
@@ -134,7 +134,7 @@ class TestMultipleDates(TestCase):
     def test_min_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
         min_time = imagecollection.min_time()
         max_time = imagecollection.max_time()
 
@@ -151,7 +151,7 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input,{
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), {
             "bands": [
                 {
                     "band_id": "2",
@@ -185,9 +185,9 @@ class TestMultipleDates(TestCase):
         mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
         mask = Pyramid({0: mask_layer})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input)
-        stitched = \
-        imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask),replacement=10.0).pyramid.levels[0].to_spatial_layer().stitch()
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        stitched = imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
+                                        replacement=10.0).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])
         self.assertEquals(10.0, stitched.cells[0][0][1])
