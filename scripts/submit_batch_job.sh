@@ -5,11 +5,6 @@ if [ -z "${OPENEO_VENV_ZIP}" ]; then
     exit 1
 fi
 
-if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
-    >&2 echo "Environment variables AWS_ACCESS_KEY_ID and/or AWS_SECRET_ACCESS_KEY are not set"
-    exit 1
-fi
-
 if [ "$#" -ne 5 ]; then
     >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file>"
     exit 1
