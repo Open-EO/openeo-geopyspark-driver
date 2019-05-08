@@ -13,21 +13,17 @@ import pandas as pd
 from shapely.geometry import Point,Polygon,MultiPolygon
 import json
 import os
+import uuid
 
 from openeo.imagecollection import ImageCollection
 
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
-    def __init__(self, image_collection_id):
-        super().__init__()
-        self.image_collection_id = image_collection_id
-        self.tms = None
-        #TODO load real layer rdd
-
-    def __init__(self, pyramid: Pyramid, metadata:Dict=None):
+    def __init__(self, pyramid: Pyramid, service_registry, metadata: Dict = None):
         self.pyramid = pyramid
         self.tms = None
+        self._service_registry = service_registry
         self.metadata = metadata
 
     def apply_to_levels(self, func):
@@ -37,7 +33,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry)
 
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
@@ -59,7 +55,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             return gps.TiledRasterLayer(layer_type, srdd)
 
         pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry)
 
     def band_filter(self, bands) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.bands(bands))
@@ -474,6 +470,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def tiled_viewing_service(self,**kwargs) -> Dict:
         type = kwargs['type']
+        process_graph = kwargs['process_graph']
 
         if type.lower() == "tms":
             if self.pyramid.layer_type != gps.LayerType.SPATIAL:
@@ -512,7 +509,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 self.wmts.stop()
             pysc = gps.get_spark_context()
 
-            self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer()
+            random_port = 0
+            service_id = str(uuid.uuid4())
+            wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
+
+            self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
 
             if(kwargs.get("style") is not None):
                 max_zoom = self.pyramid.max_zoom
@@ -538,13 +539,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                  [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]])
                               if l][0][0]
 
-
-            self._proxy(host, self.wmts.getPort())
             print(self.wmts.getURI())
-            url ="http://openeo.vgt.vito.be/tile/service/wmts"
+
+            self._service_registry.register(service_id, specification={
+                'type': type,
+                'process_graph': process_graph
+            }, host=host, port=self.wmts.getPort())
 
             return {
-                "type": "WMTS",
-                "url": url
-                #    "bounds":level_bounds
+                'type': 'WMTS',
+                'url': wmts_base_url + "/service/wmts"
             }

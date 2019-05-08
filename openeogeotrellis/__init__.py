@@ -5,8 +5,10 @@ from subprocess import CalledProcessError
 import uuid
 import json
 import re
+from collections import deque
+import traceback
 
-from typing import Dict,List
+from typing import Union, List
 
 import pytz
 from geopyspark import TiledRasterLayer, LayerType
@@ -14,6 +16,8 @@ from geopyspark import TiledRasterLayer, LayerType
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
+from .service_registry import *
+from openeo.error_summary import *
 from dateutil.parser import parse
 
 from py4j.java_gateway import *
@@ -26,6 +30,8 @@ log_formatter = logging.Formatter("%(asctime)s [%(levelname)s - THREAD: %(thread
 log_stream_handler = logging.StreamHandler()
 log_stream_handler.setFormatter(log_formatter)
 logger.addHandler( log_stream_handler )
+
+_service_registry = InMemoryServiceRegistry() if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
 
 
 def health_check():
@@ -88,7 +94,7 @@ def getImageCollection(product_id:str, viewingParameters):
     if product_id not in catalog.catalog:
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
     layer_config = catalog.layer(product_id)
-    internal_layer_name = layer_config['data_id']
+    data_source_type = layer_config.get('data_source', {}).get('type', 'Accumulo')
 
     service_type = viewingParameters.get('service_type', '')
 
@@ -109,14 +115,26 @@ def getImageCollection(product_id:str, viewingParameters):
     if(left is not None and right is not None and top is not None and bottom is not None):
         extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
 
-    pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
-                                                                            "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+    def accumulo_pyramid():
+        pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
+                                                                                "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+        accumulo_layer_name = layer_config['data_id']
+        return pyramidFactory.pyramid_seq(accumulo_layer_name, extent,srs, from_date, to_date)
 
-    pyramid = pyramidFactory.pyramid_seq(internal_layer_name, extent,srs, from_date, to_date)
+    def s3_pyramid():
+        endpoint = layer_config['data_source']['endpoint']
+        region = layer_config['data_source']['region']
+        bucket_name = layer_config['data_source']['bucket_name']
+
+        return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
+            .pyramid_seq(extent, srs, from_date, to_date)
+
+    pyramid = s3_pyramid() if data_source_type.lower() == 's3' else accumulo_pyramid()
+
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), catalog.catalog[product_id])
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), _service_registry, catalog.catalog[product_id])
 
 def create_process_visitor():
     from .geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -161,6 +179,11 @@ def create_batch_job(specification: Dict) -> str:
     return job_id
 
 
+class _BatchJobError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
+
 def run_batch_job(job_id: str) -> None:
     from pyspark import SparkContext
 
@@ -192,26 +215,63 @@ def run_batch_job(job_id: str) -> None:
 
         batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
 
-        # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-        application_id = _extract_application_id(batch_job.stderr)
-
-        if application_id:
+        try:
+            # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
+            application_id = _extract_application_id(batch_job.stderr)
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
-        else:
-            raise CalledProcessError(batch_job.wait(), batch_job.args)
 
-        registry.update(job_id, application_id=application_id)
+            registry.update(job_id, application_id=application_id)
+        except _BatchJobError:
+            traceback.print_exc(file=sys.stderr)
+            raise CalledProcessError(batch_job.wait(), batch_job.args)
 
 
 def _extract_application_id(stream) -> str:
+    line_buffer = deque(maxlen=100)
+
     while True:
         line = stream.readline()
 
         if line:
             text = line.decode('utf8').strip()
+            line_buffer.append(text)
 
             match = re.match(r".*Application report for (application_\d{13}_\d+)\s\(state:.*", text)
             if match:
                 return match.group(1)
         else:
-            return None
+            raise _BatchJobError("\n".join(line_buffer))
+
+
+def cancel_batch_job(job_id: str):
+    from .job_registry import JobRegistry
+
+    with JobRegistry() as registry:
+        application_id = registry.get_job(job_id)['application_id']
+
+    subprocess.call(["yarn", "application", "-kill", application_id])
+
+
+def get_secondary_services_info() -> List[Dict]:
+    return [_merge(details['specification'], 'service_id', service_id) for service_id, details in _service_registry.get_all().items()]
+
+
+def get_secondary_service_info(service_id: str) -> Dict:
+    details = _service_registry.get(service_id)
+    return _merge(details['specification'], 'service_id', service_id)
+
+
+def _merge(original: Dict, key, value) -> Dict:
+    copy = dict(original)
+    copy[key] = value
+    return copy
+
+
+def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
+    if isinstance(error, Py4JJavaError):
+        java_exception_class_name = error.java_exception.getClass().getName()
+        is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException'
+
+        return ErrorSummary(error, is_client_error, summary=error.java_exception.getMessage())
+
+    return error
