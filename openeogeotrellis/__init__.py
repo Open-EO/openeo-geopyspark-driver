@@ -8,7 +8,7 @@ import re
 from collections import deque
 import traceback
 
-from typing import Dict,List
+from typing import Union, List
 
 import pytz
 from geopyspark import TiledRasterLayer, LayerType
@@ -17,6 +17,7 @@ from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 from .service_registry import *
+from openeo.error_summary import *
 from dateutil.parser import parse
 
 from py4j.java_gateway import *
@@ -264,3 +265,13 @@ def _merge(original: Dict, key, value) -> Dict:
     copy = dict(original)
     copy[key] = value
     return copy
+
+
+def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
+    if isinstance(error, Py4JJavaError):
+        java_exception_class_name = error.java_exception.getClass().getName()
+        is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException'
+
+        return ErrorSummary(error, is_client_error, summary=error.java_exception.getMessage())
+
+    return error
