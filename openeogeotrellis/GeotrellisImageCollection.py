@@ -29,6 +29,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def apply_to_levels(self, func):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is of type TiledRasterLayer
+
         :param func:
         :return:
         """
@@ -37,7 +38,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
-        Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD
+        Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD.
+
         :param func:
         :return:
         """
@@ -165,12 +167,16 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
+            if openeo_metadata != None:
+                bands_metadata = openeo_metadata.get('bands', None)
+            else:
+                bands_metadata = None
             input_rct = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(multidim_array,
-                                                                                         extent,
-                                                                                         bands_metadata=openeo_metadata.get('bands', None),
-                                                                                         start_times=pd.DatetimeIndex(dates)
+                                                                                          extent,
+                                                                                          bands_metadata=bands_metadata,
+                                                                                          start_times=pd.DatetimeIndex(dates)
 
-                                                                                         )
+                                                                                          )
 
             data = UdfData({"EPSG":900913}, input_rct)
 
@@ -330,8 +336,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
-
-        masked_layer = max_level.mask(polygon)
+        layer_crs = max_level.layer_metadata.crs
+        reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon, "+init=EPSG:4326" ,layer_crs)
+        masked_layer = max_level.mask(reprojected_polygon)
 
         def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
             n_bands = len(tile.cells)
