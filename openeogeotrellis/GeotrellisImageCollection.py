@@ -157,8 +157,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
 
-        def tilefunction(metadata:Metadata,openeo_metadata,tiles:List[Tuple[SpaceTimeKey,Tile]]):
-            tile_list = list(tiles)
+        def tilefunction(metadata:Metadata, openeo_metadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
+            tile_list = list(tiles[1])
             #sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
             dates = map(lambda t: t[0].instant, tile_list)

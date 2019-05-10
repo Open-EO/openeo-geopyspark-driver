@@ -14,6 +14,7 @@ from openeogeotrellis.numpy_aggregators import *
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from unittest import skip, TestCase
 from pyspark import SparkContext
+from numpy.testing import *
 
 
 class TestMultipleDates(TestCase):
@@ -204,8 +205,8 @@ def rct_savitzky_golay(udf_data):
     # Iterate over each tile
     for tile in udf_data.raster_collection_tiles:
         timeseries_array = tile.data
-        smoothed_array = savgol_filter(timeseries_array, 3, 2)
-        tile.set_data(smoothed_array)
+        
+        tile.set_data(timeseries_array)
 
 
 # This function call is the entry point for the UDF.
@@ -217,8 +218,14 @@ rct_savitzky_golay(data)
 
 
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
-        keys = result.pyramid.levels[0].collect_keys()
-        print(keys)
+        local_tiles = result.pyramid.levels[0].to_numpy_rdd().collect()
+        print(local_tiles)
+        self.assertEquals(len(TestMultipleDates.layer),len(local_tiles))
+        ref_dict = {e[0]:e[1] for e in TestMultipleDates.layer}
+        result_dict = {e[0]: e[1] for e in local_tiles}
+        for k,v in ref_dict.items():
+            tile = result_dict[k]
+            assert_array_almost_equal(v.cells,np.squeeze(tile.cells),decimal=2)
 
 
     def test_mask_raster(self):
