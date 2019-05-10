@@ -171,11 +171,55 @@ class TestMultipleDates(TestCase):
             udf_code = f.read()
 
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
-        stitched = result.pyramid.levels[0].stitch()
+        stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(4,stitched.cells[0][0][0])
         self.assertEqual(6, stitched.cells[0][0][5])
         self.assertEqual(4, stitched.cells[0][5][5])
+
+    def test_apply_dimension_spatiotemporal(self):
+        import openeo_udf.functions
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), {
+            "bands": [
+                {
+                    "band_id": "2",
+                    "name": "blue",
+                    "wavelength_nm": 496.6,
+                    "res_m": 10,
+                    "scale": 0.0001,
+                    "offset": 0,
+                    "type": "int16",
+                    "unit": "1"
+                }]
+        })
+
+
+        udf_code = """
+def rct_savitzky_golay(udf_data):
+    from scipy.signal import savgol_filter
+
+    # Iterate over each tile
+    for tile in udf_data.raster_collection_tiles:
+        timeseries_array = tile.data
+        smoothed_array = savgol_filter(timeseries_array, 3, 2)
+        tile.set_data(smoothed_array)
+
+
+# This function call is the entry point for the UDF.
+# The caller will provide all required data in the **data** object.
+rct_savitzky_golay(data)
+        
+        
+        """
+
+
+        result = imagecollection.apply_tiles_spatiotemporal(udf_code)
+        keys = result.pyramid.levels[0].collect_keys()
+        print(keys)
+
 
     def test_mask_raster(self):
         input = Pyramid({0: self.tiled_raster_rdd})

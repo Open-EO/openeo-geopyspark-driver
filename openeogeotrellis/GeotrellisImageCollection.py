@@ -184,17 +184,36 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
             result = data.raster_collection_tiles
+
+            #result can contain multiple dates, so we need to properly unwrap it
+            date_to_tiles = {}
+            for rct in result:
+                date_index = 0
+                for date in rct.get_start_times():
+                    tiles_for_date = date_to_tiles.get(date,[])
+                    tiles_for_date.append(rct.get_data()[date_index])
+                    date_to_tiles[date] = tiles_for_date
+                    date_index = date_index +1
+
             #result is an array, containing one RasterCollectionTile per band
-            multiband_tile = np.array([rct.get_data() for rct in result])
-            #TODO can the result contain multiple dates?
-            return Tile(multiband_tile,CellType.FLOAT64,tile_list[0][1].no_data_value)
+            """
+            
+            if len(date_to_tiles) ==1:
+                #full reduction
+                print(list(date_to_tiles.values())[0])
+                multiband_tile = np.array(list(date_to_tiles.values())[0])
+                return [(tiles[0], Tile(multiband_tile, CellType.FLOAT64, tile_list[0][1].no_data_value))]
+            else:
+            """
+            return [(SpaceTimeKey(col=tiles[0].col,row=tiles[0].row,instant=k),Tile(np.array(v), CellType.FLOAT64, tile_list[0][1].no_data_value)) for k,v in date_to_tiles.items()]
+
 
         def rdd_function(openeo_metadata,rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
             grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
 
-            return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL,
-                                                       grouped_by_spatial_key.mapValues(
+            return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME,
+                                                       grouped_by_spatial_key.flatMap(
                                                     partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
                                                        rdd.layer_metadata)
         from functools import partial
