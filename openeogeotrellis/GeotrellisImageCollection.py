@@ -157,6 +157,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
 
+        #early compile to detect syntax errors
+        compiled_code = compile(function,'UDF.py',mode='exec')
+
         def tilefunction(metadata:Metadata, openeo_metadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
             tile_list = list(tiles[1])
             #sort by instant
