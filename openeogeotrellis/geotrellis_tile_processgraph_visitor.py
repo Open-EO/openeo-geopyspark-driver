@@ -1,3 +1,5 @@
+import numbers
+
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from typing import Dict
 
@@ -26,7 +28,11 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         return self
 
     def constantArgument(self, argument_id: str, value):
-        pass
+        if isinstance(value, numbers.Real):
+            self.builder.constantArgument(argument_id,value)
+        else:
+            raise ValueError('Only numeric constants are accepted, but got: ' + str(value) + ' for argument: ' + str(argument_id))
+        return self
 
     def enterArray(self, argument_id):
         self.builder.arrayStart(argument_id)

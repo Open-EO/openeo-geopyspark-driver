@@ -129,6 +129,32 @@ class TestCustomFunctions(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
+    def create_spacetime_layer_singleband(self):
+        cells = np.array([self.first], dtype='int')
+        tile = Tile.from_numpy_array(cells, -1)
+
+        layer = [(SpaceTimeKey(0, 0, self.now), tile),
+                 (SpaceTimeKey(1, 0, self.now), tile),
+                 (SpaceTimeKey(0, 1, self.now), tile),
+                 (SpaceTimeKey(1, 1, self.now), tile)]
+
+        rdd = SparkContext.getOrCreate().parallelize(layer)
+
+        metadata = {'cellType': 'int32ud-1',
+                    'extent': self.extent,
+                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+                    'bounds': {
+                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
+                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
+                    },
+                    'layoutDefinition': {
+                        'extent': self.extent,
+                        'tileLayout': self.layout
+                    }
+                    }
+
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+
 
 
     def test_point_series(self):
@@ -190,6 +216,39 @@ class TestCustomFunctions(TestCase):
         stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
+
+    def test_reduce_bands_logical_ops(self):
+        input = self.create_spacetime_layer_singleband()
+        input = gps.Pyramid({0: input})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+
+        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+        visitor = GeotrellisTileProcessGraphVisitor()
+        graph = {
+            "eq": {
+                "arguments": {
+                    "x": {
+                        "from_argument": "data"
+                    },
+                    "y": 10
+                },
+                "process_id": "eq",
+            },
+            "not": {
+                "arguments": {
+                    "expression": {
+                        "from_node": "eq"
+                    }
+                },
+                "process_id": "not",
+                "result": True
+            }
+        }
+        visitor.accept_process_graph(graph)
+        stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEqual(0, stitched.cells[0][0][0])
 
     def test_reduce_bands_arrayelement(self):
         input = self.create_spacetime_layer()

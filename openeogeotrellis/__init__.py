@@ -31,7 +31,7 @@ log_stream_handler = logging.StreamHandler()
 log_stream_handler.setFormatter(log_formatter)
 logger.addHandler( log_stream_handler )
 
-_service_registry = InMemoryServiceRegistry() if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
+_service_registry = InMemoryServiceRegistry() #if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
 
 
 def health_check():
@@ -269,9 +269,12 @@ def _merge(original: Dict, key, value) -> Dict:
 
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
     if isinstance(error, Py4JJavaError):
-        java_exception_class_name = error.java_exception.getClass().getName()
+        java_exception = error.java_exception
+        while(java_exception.getCause() != None and java_exception != java_exception.getCause()):
+            java_exception = java_exception.getCause()
+        java_exception_class_name = java_exception.getClass().getName()
         is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException'
 
-        return ErrorSummary(error, is_client_error, summary=error.java_exception.getMessage())
+        return ErrorSummary(error, is_client_error, summary=java_exception.getMessage())
 
     return error
