@@ -277,7 +277,13 @@
         null
       ]
     },
-    "bands":[],
+    "bands":[ {
+        "band_id": "classification",
+        "name": "classification",
+        "res_m": 20,
+        "type": "int8",
+        "unit": "1"
+      }],
     "links": [
       {
         "rel": "alternate",
