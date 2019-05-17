@@ -1,7 +1,7 @@
 from typing import Dict, List, Union, Iterable, Tuple
 
 import geopyspark as gps
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from geopyspark import TiledRasterLayer, TMS, Pyramid,Tile,SpaceTimeKey,Metadata,Extent
 from geopyspark.geotrellis.constants import CellType
 from geopyspark.geotrellis import color
@@ -89,7 +89,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pysc = gps.get_spark_context()
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd,pgVisitor.builder))
+        float_datacube = self.apply_to_levels(lambda layer : layer.convert_data_type("float32"))
+        result = float_datacube._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
+        return result
 
     def _normalize_reducer(self, dimension, reducer):
         if dimension != 'temporal':
@@ -323,8 +326,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                  options=gps.RasterizerOptions()))
         elif rastermask is not None:
             pysc = gps.get_spark_context()
+            #mask needs to be the same layout as this layer
+            mask_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in rastermask.pyramid.levels.items()}
             return self._apply_to_levels_geotrellis_rdd(
-                lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask(rdd, rastermask.pyramid.levels[level].srdd.rdd(),replacement))
+                lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(),replacement))
         else:
             raise AttributeError("mask process: either a polygon or a rastermask should be provided.")
 
@@ -360,6 +365,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon, "+init=EPSG:4326" ,layer_crs)
+
+        timeseries = max_level.mean_series(reprojected_polygon)
+
+        return {timestamp.isoformat(): values for timestamp, values in timeseries}
+
+        #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
         masked_layer = max_level.mask(reprojected_polygon)
 
         def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
