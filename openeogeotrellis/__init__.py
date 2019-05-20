@@ -31,7 +31,7 @@ log_stream_handler = logging.StreamHandler()
 log_stream_handler.setFormatter(log_formatter)
 logger.addHandler( log_stream_handler )
 
-_service_registry = InMemoryServiceRegistry() #if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
+_service_registry = InMemoryServiceRegistry() if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
 
 
 def health_check():
