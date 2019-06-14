@@ -495,7 +495,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _proxy(self, host, port):
         from kazoo.client import KazooClient
-        zk = KazooClient(hosts='epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181')
+        zk = KazooClient(hosts='epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181')
         zk.start()
         zk.ensure_path("discovery/services/openeo-viewer-test")
         # id = uuid.uuid4()

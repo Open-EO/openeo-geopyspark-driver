@@ -117,7 +117,7 @@ def getImageCollection(product_id:str, viewingParameters):
 
     def accumulo_pyramid():
         pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
-                                                                                "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+                                                                                "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
         accumulo_layer_name = layer_config['data_id']
         return pyramidFactory.pyramid_seq(accumulo_layer_name, extent,srs, from_date, to_date)
 

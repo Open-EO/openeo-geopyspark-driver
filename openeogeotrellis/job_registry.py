@@ -5,7 +5,7 @@ import json
 
 
 class JobRegistry:
-    def __init__(self, zookeeper_hosts: str="epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181"):
+    def __init__(self, zookeeper_hosts: str="epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181"):
         self._root = '/openeo/jobs'
         self._zk = KazooClient(hosts=zookeeper_hosts)
 
