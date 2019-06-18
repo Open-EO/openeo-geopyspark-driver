@@ -60,7 +60,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry)
 
     def band_filter(self, bands) -> 'ImageCollection':
-        return self.apply_to_levels(lambda rdd: rdd.bands(bands))
+        data_source_type = self.metadata.get('data_source', {}).get('type', 'Accumulo')
+        return self if data_source_type.lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
 
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':

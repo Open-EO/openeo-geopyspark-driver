@@ -107,6 +107,7 @@ def getImageCollection(product_id:str, viewingParameters):
     top = viewingParameters.get("top",None)
     bottom = viewingParameters.get("bottom",None)
     srs = viewingParameters.get("srs",None)
+    band_indices = viewingParameters.get("bands", [])
     pysc = gps.get_spark_context()
     extent = None
 
@@ -129,7 +130,16 @@ def getImageCollection(product_id:str, viewingParameters):
         return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
             .pyramid_seq(extent, srs, from_date, to_date)
 
-    pyramid = s3_pyramid() if data_source_type.lower() == 's3' else accumulo_pyramid()
+    def file_pyramid():
+        return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
+            .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+    if data_source_type.lower() == 's3':
+        pyramid = s3_pyramid()
+    elif data_source_type.lower() == 'file':
+        pyramid = file_pyramid()
+    else:
+        pyramid = accumulo_pyramid()
 
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option

@@ -291,5 +291,33 @@
         "title": "Product web page."
       }
     ]
+  },
+  {
+    "name": "S2_NDVI_S3",
+    "data_source": {
+      "type": "S3",
+      "endpoint": "http://oss.eu-west-0.prod-cloud-ocb.orange-business.com",
+      "region": "eu-west-0",
+      "bucket_name": "s2-ndvi"
+    }
+  },
+  {
+    "name": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
+    "data_source": {
+      "type": "file"
+    },
+    "bands": [
+      { "band_id": "1" },
+      { "band_id": "2" },
+      { "band_id": "3" },
+      { "band_id": "4" },
+      { "band_id": "5" },
+      { "band_id": "6" },
+      { "band_id": "7" },
+      { "band_id": "8" },
+      { "band_id": "11" },
+      { "band_id": "12" },
+      { "band_id": "8A" }
+    ]
   }
 ]
