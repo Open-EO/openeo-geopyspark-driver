@@ -10,7 +10,7 @@ from openeo_udf.api.base import UdfData,RasterCollectionTile,SpatialExtent
 
 from pandas import Series
 import pandas as pd
-from shapely.geometry import Point,Polygon,MultiPolygon
+from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import json
 import os
 import uuid
@@ -359,8 +359,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> 'Dict':
-        return self.polygonal_mean_timeseries(regions)
+    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> Union[Dict, List]:
+        return [self.polygonal_mean_timeseries(polygon) for polygon in regions.geoms] if isinstance(regions, GeometryCollection) \
+            else self.polygonal_mean_timeseries(regions)
 
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
