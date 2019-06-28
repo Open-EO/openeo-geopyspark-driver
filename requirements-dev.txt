@@ -1,0 +1,3 @@
+pytest
+requests
+scipy==1.3.0

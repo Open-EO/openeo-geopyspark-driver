@@ -12,7 +12,12 @@ matplotlib>=2.0.0,<3.0.0
 colortools>=0.1.2
 pyproj<2.2.0
 geopandas==0.3.0
+numpy
+openeo_driver
 openeo_udf
+py4j
+python_dateutil
+pytz
 rasterio
 affine
-scipy==1.3.0
+Shapely
