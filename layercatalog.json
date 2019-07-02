@@ -229,6 +229,14 @@
     "bands":[],
     "links":[]
   },
+  {
+    "name": "S2_NDVI_PYRAMID",
+    "data_id": "S2_NDVI_PYRAMID_EARLY"
+  },
+  {
+    "name": "S2_LAI_PYRAMID",
+    "data_id": "S2_LAI_PYRAMID_20190625"
+  },
 
   {
     "name":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
