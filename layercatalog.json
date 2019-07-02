@@ -119,7 +119,7 @@
   {
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "title": "Sentinel 2 Bottom-of-atmosphere reflectances.",
-    "data_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
+    "data_id": "CGS_SENTINEL2_RADIOMETRY_V102_EARLY",
     "product_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry, provided by Terrascope.",
@@ -186,7 +186,7 @@
   {
     "name":"S2_FAPAR_V102_WEBMERCATOR2",
     "title": "10m fAPAR product based on Sentinel-2",
-    "data_id":"S2_FAPAR_PYRAMID",
+    "data_id":"S2_FAPAR_PYRAMID_EARLY",
     "product_id":"S2_FAPAR_V102_WEBMERCATOR2",
     "id":"S2_FAPAR_V102_WEBMERCATOR2",
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
@@ -212,7 +212,7 @@
   {
     "name":"S2_FCOVER_PYRAMID",
     "title": "Sentinel 2 based fCover",
-    "data_id":"S2_FCOVER_PYRAMID",
+    "data_id":"S2_FCOVER_PYRAMID_EARLY",
     "product_id":"S2_FCOVER_PYRAMID",
     "id":"S2_FCOVER_PYRAMID",
     "description": "Sentinel 2 Level-3: fCOVER, web mercator projection, with overviews.",
@@ -264,7 +264,7 @@
     "name":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "title": "Sen2Cor Scene Classification layer",
     "description": "Sen2Cor Scene Classification layer, from Sentinel 2 data.",
-    "data_id":"S2_SCENECLASSIFICATION_PYRAMID",
+    "data_id":"S2_SCENECLASSIFICATION_PYRAMID_20190624",
     "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "source": "Terrascope - VITO",
