@@ -13,7 +13,7 @@ import datetime
 __version__ = None
 date = datetime.datetime.today().strftime('%Y%m%d')
 
-with open('openeo_driver/_version.py') as fp:
+with open('openeogeotrellis/_version.py') as fp:
     exec(fp.read())
 
 if os.environ.get('BUILD_NUMBER') and os.environ.get('BRANCH_NAME'):
