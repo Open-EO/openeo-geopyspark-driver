@@ -4,25 +4,15 @@ from pyspark import SparkContext
 from openeogeotrellis import kerberos
 from openeo import ImageCollection
 from openeo_driver import ProcessGraphDeserializer
-from typing import Dict, Any, List
+from openeo_driver.save_result import *
+from typing import Dict, List
 
 
-def parse(job_specification_file: str) -> Dict:
+def _parse(job_specification_file: str) -> Dict:
     with open(job_specification_file, 'r') as f:
         job_specification = json.load(f)
 
     return job_specification
-
-
-def save(result: Any, output_file, format_options) -> None:
-    if isinstance(result, ImageCollection):
-        result.download(output_file, bbox="", time="", **format_options)
-        print("wrote image collection to %s" % output_file)
-    else:
-        with open(output_file, 'w') as f:
-            json.dump(result, f)
-
-        print("wrote JSON result to %s" % output_file)
 
 
 def main(argv: List[str]) -> None:
@@ -32,14 +22,33 @@ def main(argv: List[str]) -> None:
 
     job_specification_file, output_file = argv[1], argv[2]
 
-    job_specification = parse(job_specification_file)
+    job_specification = _parse(job_specification_file)
 
     sc = SparkContext.getOrCreate()
 
     try:
         kerberos()
         result = ProcessGraphDeserializer.evaluate(processGraph=job_specification['process_graph'])
-        save(result, output_file, job_specification['output'])
+
+        if isinstance(result, ImageCollection):
+            format_options = job_specification.get('output', {})
+            result.download(output_file, bbox="", time="", **format_options)
+
+            print("wrote image collection to %s" % output_file)
+        elif isinstance(result, ImageCollectionResult):
+            result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
+
+            print("wrote image collection to %s" % output_file)
+        elif isinstance(result, JSONResult):
+            with open(output_file, 'w') as f:
+                json.dump(result.json_dict, f)
+
+            print("wrote JSON result to %s" % output_file)
+        else:
+            with open(output_file, 'w') as f:
+                json.dump(result, f)
+
+            print("wrote JSON result to %s" % output_file)
     finally:
         sc.stop()
 
