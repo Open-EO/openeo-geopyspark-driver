@@ -29,6 +29,8 @@ setup(
     version=version,
     packages=['openeogeotrellis'],
     include_package_data=True,
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest','mock'],
     install_requires=[
         'flask',
         'openeo-api',
