@@ -31,7 +31,6 @@ setup(
     include_package_data=True,
     install_requires=[
         'flask',
-        'openeo_driver',
         'openeo-api',
         'geopandas==0.3.0',
         'geopyspark==0.4.2'
