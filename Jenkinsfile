@@ -12,5 +12,5 @@ pythonPipeline {
   package_name = 'openeo_geopyspark'
   wipeout_workspace = true
   hadoop = true
-  pre_test_script = 'SPARK_HOME=$(find_spark_home.py) geopyspark install-jar'
+  pre_test_script = 'pre_test.sh'
 }
