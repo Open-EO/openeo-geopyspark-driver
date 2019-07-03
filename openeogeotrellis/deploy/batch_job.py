@@ -17,18 +17,20 @@ def _parse(job_specification_file: str) -> Dict:
 
 def main(argv: List[str]) -> None:
     if len(argv) < 3:
-        print("usage: %s <job specification input file> <results output file>" % argv[0])
+        print("usage: %s <job specification input file> <results output file> [api version]" % argv[0])
         exit(1)
 
     job_specification_file, output_file = argv[1], argv[2]
+    api_version = argv[3] if len(argv) == 4 else None
 
     job_specification = _parse(job_specification_file)
+    viewing_parameters = {'version': api_version} if api_version else None
 
     sc = SparkContext.getOrCreate()
 
     try:
         kerberos()
-        result = ProcessGraphDeserializer.evaluate(processGraph=job_specification['process_graph'])
+        result = ProcessGraphDeserializer.evaluate(job_specification['process_graph'], viewing_parameters)
 
         if isinstance(result, ImageCollection):
             format_options = job_specification.get('output', {})
