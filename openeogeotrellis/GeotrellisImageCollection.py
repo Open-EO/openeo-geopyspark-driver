@@ -14,6 +14,7 @@ from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import json
 import os
 import uuid
+import pytz
 
 from openeo.imagecollection import ImageCollection
 
@@ -359,36 +360,37 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> Union[Dict, List]:
-        import pytz
+    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> Union[List, Dict]:
+        def by_compute_stats_geotrellis():
+            def insert_timezone(instant):
+                return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        def insert_timezone(instant):
-            return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
+            metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
 
-        metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
+            jvm = gps.get_spark_context()._gateway.jvm
 
-        jvm = gps.get_spark_context()._gateway.jvm
+            product_id = self.metadata['name']
+            polygon_wkts = [str(ob) for ob in regions]
+            polygons_srs = 'EPSG:4326'
+            from_date = insert_timezone(metadata.bounds.minKey.instant)
+            to_date = insert_timezone(metadata.bounds.maxKey.instant)
+            zoom = self.pyramid.max_zoom
 
-        product_id = 'PROBAV_L3_S10_TOC_NDVI_333M'
-        polygon_wkts = [str(ob) for ob in regions]
-        polygons_srs = 'EPSG:4326'
-        from_date = insert_timezone(metadata.bounds.minKey.instant)
-        to_date = insert_timezone(metadata.bounds.maxKey.instant)
-        zoom = self.pyramid.max_zoom
+            jvm.java.lang.System.setProperty('zookeeper.connectionstring', "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+            compute_stats_geotrellis = jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
 
-        jvm.java.lang.System.setProperty('zookeeper.connectionstring', "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
-        compute_stats_geotrellis = jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
+            result = compute_stats_geotrellis.compute_average_timeseries(
+                product_id,
+                polygon_wkts,
+                polygons_srs,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                zoom
+            )
 
-        result = compute_stats_geotrellis.compute_average_timeseries(
-            product_id,
-            polygon_wkts,
-            polygons_srs,
-            from_date.isoformat(),
-            to_date.isoformat(),
-            zoom
-        )
+            return {iso_timestamp: list(means) for iso_timestamp, means in dict(result).items()}
 
-        return {iso_timestamp: list(means) for iso_timestamp, means in dict(result).items()}
+        return by_compute_stats_geotrellis() if isinstance(regions, GeometryCollection) else self.polygonal_mean_timeseries(regions)
 
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
