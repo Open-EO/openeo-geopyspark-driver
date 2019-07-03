@@ -21,6 +21,7 @@ from openeo.error_summary import *
 from dateutil.parser import parse
 
 from py4j.java_gateway import *
+from ._version import __version__
 
 import logging
 logger = logging.getLogger("openeo")
