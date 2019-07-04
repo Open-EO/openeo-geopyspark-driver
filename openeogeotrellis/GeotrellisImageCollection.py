@@ -26,6 +26,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.tms = None
         self._service_registry = service_registry
         self.metadata = metadata
+        self._band_index = 0
 
     def apply_to_levels(self, func):
         """
@@ -35,7 +36,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, self.metadata)._with_band_index(self._band_index)
 
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
@@ -58,12 +59,22 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             return gps.TiledRasterLayer(layer_type, srdd)
 
         pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, self.metadata)._with_band_index(self._band_index)
+
+    def _with_band_index(self, band_index):
+        self._band_index = band_index
+        return self
 
     def band_filter(self, bands) -> 'ImageCollection':
-        data_source_type = self.metadata.get('data_source', {}).get('type', 'Accumulo')
-        return self if data_source_type.lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
+        if isinstance(bands, int):
+            self._band_index = bands
+        elif isinstance(bands, list) and len(bands) == 1:
+            self._band_index = bands[0]
 
+        return self if self._data_source_type().lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
+
+    def _data_source_type(self):
+        return self.metadata.get('data_source', {}).get('type', 'Accumulo')
 
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
@@ -379,18 +390,22 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             jvm.java.lang.System.setProperty('zookeeper.connectionstring', "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
             compute_stats_geotrellis = jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
 
-            result = compute_stats_geotrellis.compute_average_timeseries(
+            stats = compute_stats_geotrellis.compute_average_timeseries(
                 product_id,
                 polygon_wkts,
                 polygons_srs,
                 from_date.isoformat(),
                 to_date.isoformat(),
-                zoom
+                zoom,
+                self._band_index
             )
 
-            return {iso_timestamp: list(means) for iso_timestamp, means in dict(result).items()}
+            return {iso_timestamp: list(means) for iso_timestamp, means in dict(stats).items()}
 
-        return by_compute_stats_geotrellis() if isinstance(regions, GeometryCollection) else self.polygonal_mean_timeseries(regions)
+        use_compute_stats_geotrellis = \
+            isinstance(regions, GeometryCollection) and self._data_source_type().lower() == 'accumulo'
+
+        return by_compute_stats_geotrellis() if use_compute_stats_geotrellis else self.polygonal_mean_timeseries(regions)
 
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
