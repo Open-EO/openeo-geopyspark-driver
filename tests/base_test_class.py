@@ -35,6 +35,12 @@ class BaseTestClass(unittest.TestCase):
             conf.set('spark.ui.enabled', True)
 
         pysc = SparkContext.getOrCreate(conf)
+        #create a class to validate the setup
+        processes = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
+        print(processes)
+        print(pysc._jvm.geopyspark.geotrellis.TemporalRasterLayer.fromProtoEncodedRDD)
+
+
 
     def __init__(self):
         BaseTestClass.setup_local_spark()
