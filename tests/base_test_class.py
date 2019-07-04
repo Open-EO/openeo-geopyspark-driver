@@ -14,6 +14,7 @@ class BaseTestClass(unittest.TestCase):
         from glob import glob
 
         spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
+        print("Found Spark: " + spark_python)
         py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
         sys.path[:0] = [spark_python, py4j]
         if 'TRAVIS' in os.environ:
@@ -24,11 +25,14 @@ class BaseTestClass(unittest.TestCase):
         from geopyspark import geopyspark_conf, Pyramid, TiledRasterLayer
         conf = geopyspark_conf(master=master_str, appName="test")
         conf.set('spark.kryoserializer.buffer.max', value='1G')
-        conf.set('spark.ui.enabled', True)
+
 
         if 'TRAVIS' in os.environ:
             conf.set(key='spark.driver.memory', value='2G')
             conf.set(key='spark.executor.memory', value='2G')
+            conf.set('spark.ui.enabled', False)
+        else:
+            conf.set('spark.ui.enabled', True)
 
         pysc = SparkContext.getOrCreate(conf)
 

@@ -13,4 +13,5 @@ pythonPipeline {
   wipeout_workspace = true
   hadoop = true
   pre_test_script = 'pre_test.sh'
+  extra_env_variables = 'TRAVIS=1'
 }
