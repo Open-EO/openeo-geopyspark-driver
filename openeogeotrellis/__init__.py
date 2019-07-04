@@ -144,7 +144,7 @@ def getImageCollection(product_id:str, viewingParameters):
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), _service_registry, catalog.catalog[product_id])
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), _service_registry, catalog.catalog[product_id]).band_filter(band_indices)
 
 def create_process_visitor():
     from .geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
