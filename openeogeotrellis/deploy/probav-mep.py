@@ -62,11 +62,7 @@ def update_zookeeper(host: str, port):
     zk.close()
     print("Zookeeper node created: discovery/services/openeo-test/"+str(id))
 
-
-
-if __name__ == '__main__':
-
-
+def main():
     from pyspark import SparkContext
     print("starting spark context")
     pysc = SparkContext.getOrCreate()
@@ -80,8 +76,8 @@ if __name__ == '__main__':
     options = {
         'bind': '%s:%s' % (local_ip, port),
         'workers': number_of_workers(),
-        'worker_class':'gaiohttp',
-        'timeout':1000
+        'worker_class': 'gaiohttp',
+        'timeout': 1000
     }
     tcp.close()
     from openeo_driver import app
@@ -94,4 +90,8 @@ if __name__ == '__main__':
 
     application.run()
     print(application)
+
+
+if __name__ == '__main__':
+    main()
 
