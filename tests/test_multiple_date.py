@@ -238,7 +238,7 @@ rct_savitzky_golay(data)
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
         stitched = imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
-                                        replacement=10.0).pyramid.levels[0].to_spatial_layer().stitch()
+                                        replacement=10.0).max_time().pyramid.levels[0].stitch()
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])
         self.assertEquals(10.0, stitched.cells[0][0][1])
