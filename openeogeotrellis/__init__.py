@@ -145,7 +145,7 @@ def getImageCollection(product_id:str, viewingParameters):
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), _service_registry, catalog.catalog[product_id])
+    return GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), _service_registry, catalog.catalog[product_id]).band_filter(band_indices)
 
 def create_process_visitor():
     from .geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -180,12 +180,12 @@ def get_batch_job_result_output_dir(job_id: str) -> str:
     return "/mnt/ceph/Projects/OpenEO/%s" % job_id
 
 
-def create_batch_job(specification: Dict) -> str:
+def create_batch_job(api_version: str, specification: Dict) -> str:
     job_id = str(uuid.uuid4())
 
     from .job_registry import JobRegistry
     with JobRegistry() as registry:
-        registry.register(job_id, specification)
+        registry.register(job_id, api_version, specification)
 
     return job_id
 
@@ -201,6 +201,7 @@ def run_batch_job(job_id: str) -> None:
     from .job_registry import JobRegistry
     with JobRegistry() as registry:
         job_info = registry.get_job(job_id)
+        api_version = job_info.get('api_version')
 
         # FIXME: mark_undone in case of re-queue
 
@@ -223,6 +224,8 @@ def run_batch_job(job_id: str) -> None:
         principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
         args = ["./submit_batch_job.sh", "OpenEO batch job %s" % job_id, input_file, output_file, principal, key_tab]
+        if api_version:
+            args.append(api_version)
 
         batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
 

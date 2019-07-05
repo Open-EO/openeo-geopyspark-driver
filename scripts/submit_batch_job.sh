@@ -5,8 +5,8 @@ if [ -z "${OPENEO_VENV_ZIP}" ]; then
     exit 1
 fi
 
-if [ "$#" -ne 5 ]; then
-    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file>"
+if [ "$#" -lt 5 ]; then
+    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file> [api version]"
     exit 1
 fi
 
@@ -22,6 +22,7 @@ processGraphFile=$2
 outputFile=$3
 principal=$4
 keyTab=$5
+apiVersion=$6
 
 pysparkPython="venv/bin/python"
 
@@ -55,4 +56,4 @@ spark-submit \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
- --name "${jobName}" batch_job.py "$(basename "${processGraphFile}")" "${outputFile}"
+ --name "${jobName}" batch_job.py "$(basename "${processGraphFile}")" "${outputFile}" "${apiVersion}"
