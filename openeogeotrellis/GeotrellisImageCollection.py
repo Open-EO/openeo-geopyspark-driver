@@ -412,10 +412,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon, "+init=EPSG:4326" ,layer_crs)
 
-        timeseries = max_level.mean_series(reprojected_polygon)
-
-        return {timestamp.isoformat(): values for timestamp, values in timeseries}
-
         #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
         masked_layer = max_level.mask(reprojected_polygon)
 
