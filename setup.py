@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup,find_packages
 import os
 import datetime
 
@@ -27,8 +27,10 @@ else:
 setup(
     name='openeo-geopyspark',
     version=version,
-    packages=['openeogeotrellis'],
-    include_package_data=True,
+    packages=find_packages(exclude=('tests', 'scripts')),
+    include_package_data = True,
+    scripts = ['scripts/submit_batch_job.sh'],
+    data_files=['layercatalog.json','scripts/log4j.properties'],
     setup_requires=['pytest-runner'],
     tests_require=['pytest','mock'],
     install_requires=[
