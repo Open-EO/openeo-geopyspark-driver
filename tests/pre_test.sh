@@ -1,5 +1,5 @@
 #!/bin/sh
-runuser -l jenkins -c '
+runuser jenkins -c '
 mkdir -p jars
 cd jars
 curl -L -O -C - https://artifactory.vgt.vito.be/libs-release-public/org/openeo/geotrellis-extensions/1.1.0/geotrellis-extensions-1.1.0.jar
