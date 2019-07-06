@@ -38,8 +38,8 @@ setup(
         'openeo-api',
         'geopandas==0.3.0',
         'geopyspark==0.4.2',
-        'aiohttp',
+        'aiohttp==1.3.5',
         'gunicorn',
-        'kazoo'
+        'kazoo==2.4.0'
     ],
 )
