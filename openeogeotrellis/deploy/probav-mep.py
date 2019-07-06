@@ -19,7 +19,7 @@ def number_of_workers():
 
 def when_ready(server):
     print(server)
-
+    from pyspark import SparkContext
     sc = SparkContext.getOrCreate()
 
     principal = sc.getConf().get("spark.yarn.principal")
