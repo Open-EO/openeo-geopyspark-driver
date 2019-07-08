@@ -1,3 +1,32 @@
+import logging
+
+from logging.config import dictConfig
+from logging import StreamHandler
+
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    }},
+    'handlers': {'wsgi': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://flask.logging.wsgi_errors_stream',
+        'formatter': 'default'
+    }},
+    'root': {
+        'level': 'INFO',
+        'handlers': ['wsgi']
+    },
+    'werkzeug': {
+        'level': 'DEBUG',
+        'handlers': ['wsgi']
+    },
+    'flask': {
+        'level': 'DEBUG',
+        'handlers': ['wsgi']
+    }
+})
+
 import gunicorn.app.base
 from gunicorn.six import iteritems
 
@@ -51,6 +80,9 @@ def when_ready(server):
     from openeogeotrellis.job_tracker import JobTracker
     from openeogeotrellis.job_registry import JobRegistry
 
+    logging.getLogger('gunicorn.error').info('Gunicorn info logging enabled!')
+    logging.getLogger('flask').info('Flask info logging enabled!')
+
     job_tracker = JobTracker(JobRegistry, principal, keytab)
     threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
 
@@ -86,11 +118,17 @@ if __name__ == '__main__':
         'bind': '%s:%s' % ("127.0.0.1", 8080),
         'workers': number_of_workers(),
         'worker_class':'sync',
-        'timeout':1000
+        'timeout':1000,
+        'loglevel': 'DEBUG'
     }
+
     from openeo_driver import app
+    #app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel('DEBUG')
     application = StandaloneApplication(app, options)
 
+    app.logger.info('App info logging enabled!')
+    app.logger.debug('App debug logging enabled!')
 
     application.run()
     print(application)
