@@ -117,9 +117,11 @@ if __name__ == '__main__':
     options = {
         'bind': '%s:%s' % ("127.0.0.1", 8080),
         'workers': number_of_workers(),
-        'worker_class':'sync',
+        'worker_class':'gaiohttp',
         'timeout':1000,
-        'loglevel': 'DEBUG'
+        'loglevel': 'DEBUG',
+        'accesslog':'-',
+        'errorlog': '-'
     }
 
     from openeo_driver import app

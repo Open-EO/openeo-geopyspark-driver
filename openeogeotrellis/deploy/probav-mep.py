@@ -113,7 +113,9 @@ def main():
         'workers': number_of_workers(),
         'worker_class': 'gaiohttp',
         'timeout': 1000,
-        'loglevel': 'DEBUG'
+        'loglevel': 'DEBUG',
+        'accesslog': '-',
+        'errorlog': '-'
     }
     tcp.close()
     from openeo_driver import app
