@@ -5,25 +5,19 @@ set -exo pipefail
 jobName="OpenEO-GeoPySpark"
 pysparkPython="venv/bin/python"
 
-export HDP_VERSION=3.0.0.0-1634
+export HDP_VERSION=3.1.0.0-78
 export SPARK_MAJOR_VERSION=2
 export SPARK_HOME=/usr/hdp/${HDP_VERSION}/spark2
 export LD_LIBRARY_PATH="/opt/rh/rh-python35/root/usr/lib64"
 export PYTHONPATH=""
 
-pushd venv/
-zip -r ../venv.zip *
-popd
 
-hdfsVenvDir=${jobName}
+hdfsVenvZip=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv.zip
+extensions=https://artifactory.vgt.vito.be/libs-release-public/org/openeo/geotrellis-extensions/1.1.0/geotrellis-extensions-1.1.0.jar
+backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.2.jar
 
-hadoop fs -mkdir -p ${hdfsVenvDir}
-hadoop fs -put -f venv.zip ${hdfsVenvDir}
+echo "Found backend assembly: ${backend_assembly}"
 
-hdfsVenvZip=hdfs:/user/$(hadoop fs -stat %u ${hdfsVenvDir}/venv.zip)/${hdfsVenvDir}/venv.zip
-
-extensions=$(ls -1 jars/geotrellis-extensions-*.jar | tail -n 1)
-backend_assembly=$(find venv -name 'geotrellis-backend-assembly-*.jar' | tail -n 1)
 
 spark-submit \
  --master yarn --deploy-mode cluster \
@@ -49,7 +43,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
- --files $(ls typing-*-none-any.whl),scripts/log4j.properties,layercatalog.json,scripts/submit_batch_job.sh,openeogeotrellis/deploy/batch_job.py \
+ --files scripts/log4j.properties,layercatalog.json,scripts/submit_batch_job.sh,openeogeotrellis/deploy/batch_job.py \
  --archives "${hdfsVenvZip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars ${extensions},${backend_assembly} \
