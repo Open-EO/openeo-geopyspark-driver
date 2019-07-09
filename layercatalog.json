@@ -186,7 +186,7 @@
   {
     "name":"S2_FAPAR_V102_WEBMERCATOR2",
     "title": "10m fAPAR product based on Sentinel-2",
-    "data_id":"S2_FAPAR_PYRAMID_EARLY",
+    "data_id":"S2_FAPAR_PYRAMID_20190708",
     "product_id":"S2_FAPAR_V102_WEBMERCATOR2",
     "id":"S2_FAPAR_V102_WEBMERCATOR2",
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
