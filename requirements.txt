@@ -6,7 +6,7 @@ setuptools
 gunicorn
 kazoo==2.4.0
 aiohttp==1.3.5
-openeo-api
+openeo
 cloudpickle
 matplotlib>=2.0.0,<3.0.0
 colortools>=0.1.2

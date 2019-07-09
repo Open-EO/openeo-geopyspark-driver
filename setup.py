@@ -34,7 +34,7 @@ setup(
     tests_require=['pytest','mock'],
     install_requires=[
         'flask',
-        'openeo-api',
+        'openeo',
         'geopandas==0.3.0',
         'geopyspark==0.4.2',
         'aiohttp==1.3.5',
