@@ -250,6 +250,7 @@ def run_batch_job(job_id: str) -> None:
 
         try:
             # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
+            logger.info(output_string)
             application_id = _extract_application_id(output_string)
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
@@ -260,20 +261,11 @@ def run_batch_job(job_id: str) -> None:
 
 
 def _extract_application_id(stream) -> str:
-    line_buffer = deque(maxlen=100)
-
-    while True:
-        line = stream.readline()
-
-        if line:
-            text = line.decode('utf8').strip()
-            line_buffer.append(text)
-
-            match = re.match(r".*Application report for (application_\d{13}_\d+)\s\(state:.*", text)
-            if match:
-                return match.group(1)
-        else:
-            raise _BatchJobError("\n".join(line_buffer))
+    match = re.match(r".*Application report for (application_\d{13}_\d+)\s\(state:.*", stream)
+    if match:
+        return match.group(1)
+    else:
+        raise _BatchJobError(stream)
 
 
 def cancel_batch_job(job_id: str):
