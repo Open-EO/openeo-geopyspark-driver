@@ -7,6 +7,7 @@ import json
 import re
 from collections import deque
 import traceback
+import pkg_resources
 
 from typing import Union, List
 
@@ -226,21 +227,36 @@ def run_batch_job(job_id: str) -> None:
         conf = SparkContext.getOrCreate().getConf()
         principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
-        args = ["./submit_batch_job.sh", "OpenEO batch job %s" % job_id, input_file, output_file, principal, key_tab]
+        script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
+
+        args = [script_location, "OpenEO batch job %s" % job_id, input_file, output_file]
+        if principal is not None and key_tab is not None:
+            args.append(principal)
+            args.append(key_tab)
+        else:
+            args.append("no_principal")
+            args.append("no_keytab")
         if api_version:
             args.append(api_version)
 
-        batch_job = subprocess.Popen(args, stderr=subprocess.PIPE)
+        try:
+            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT)
+        except CalledProcessError as e:
+            logger.exception(e)
+            logger.error(e.stdout)
+            logger.error(e.stderr)
+            raise e
+
 
         try:
             # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-            application_id = _extract_application_id(batch_job.stderr)
+            application_id = _extract_application_id(output_string)
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
             registry.update(job_id, application_id=application_id)
         except _BatchJobError:
             traceback.print_exc(file=sys.stderr)
-            raise CalledProcessError(batch_job.wait(), batch_job.args)
+            raise CalledProcessError(1)
 
 
 def _extract_application_id(stream) -> str:
