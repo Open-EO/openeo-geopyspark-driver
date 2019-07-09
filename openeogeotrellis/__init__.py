@@ -44,18 +44,26 @@ def health_check():
     return 'Health check: ' + str(count)
 
 
-
 def kerberos():
     import geopyspark as gps
+
+    if 'HADOOP_CONF_DIR' not in os.environ:
+        logger.warn('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
 
     sc = gps.get_spark_context()
     gateway = JavaGateway(gateway_parameters=sc._gateway.gateway_parameters)
     jvm = gateway.jvm
+
+    hadoop_auth = jvm.org.apache.hadoop.conf.Configuration().get('hadoop.security.authentication')
+    if hadoop_auth != 'kerberos':
+        logger.warn('Hadoop client does not have hadoop.security.authentication=kerberos.')
+
     currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
     if currentUser.hasKerberosCredentials():
         return
-    logger.info(currentUser.toString())
-    logger.info(jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled())
+    logger.info("Kerberos currentUser={u!r} isSecurityEnabled={s!r}".format(
+        u=currentUser.toString(), s=jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled()
+    ))
     #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().getAuthenticationMethod().toString())
 
     principal = sc.getConf().get("spark.yarn.principal")
