@@ -255,9 +255,9 @@ def run_batch_job(job_id: str) -> None:
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
             registry.update(job_id, application_id=application_id)
-        except _BatchJobError:
+        except _BatchJobError as e:
             traceback.print_exc(file=sys.stderr)
-            raise CalledProcessError(1)
+            raise CalledProcessError(1,str(args),output=output_string)
 
 
 def _extract_application_id(stream) -> str:
