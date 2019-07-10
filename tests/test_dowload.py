@@ -1,5 +1,6 @@
 import datetime
 from unittest import TestCase
+from pathlib import Path
 
 import numpy as np
 from .base_test_class import BaseTestClass
@@ -13,6 +14,7 @@ from pyspark import SparkContext
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
+
 
 class TestDownload(TestCase):
 
@@ -59,6 +61,12 @@ class TestDownload(TestCase):
         (Point(-10.0, 15.0), None, None)
     ]
 
+    def setUp(self):
+        self.temp_folder = Path.cwd() / 'tmp'
+        if not self.temp_folder.exists():
+            self.temp_folder.mkdir()
+        assert self.temp_folder.is_dir()
+
     def create_spacetime_layer(self):
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
@@ -91,7 +99,7 @@ class TestDownload(TestCase):
         input = self.create_spacetime_layer()
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        geotiffs = imagecollection.download("test_download_result.geotiff")
+        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_result.geotiff"))
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
@@ -103,7 +111,7 @@ class TestDownload(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection = imagecollection.mask(polygon)
-        geotiffs = imagecollection.download("test_download_masked_result.geotiff")
+        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.geotiff"))
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
@@ -126,6 +134,6 @@ class TestDownload(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection = imagecollection.mask(reprojected,"EPSG:3857")
-        geotiffs = imagecollection.download("test_download_masked_result.3857")
+        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.3857"))
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.

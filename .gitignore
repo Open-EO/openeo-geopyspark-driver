@@ -103,3 +103,9 @@ ENV/
 # JetBrains
 .idea
 
+# Temp dirs
+temp/
+tmp/
+
+# runtime jars
+jars/
