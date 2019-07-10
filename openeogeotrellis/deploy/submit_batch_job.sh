@@ -44,7 +44,7 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.2.jar
 fi
 
-main_py_file=$(ls **/openeogeotrellis/deploy/batch_job.py)
+main_py_file='venv/lib64/python3.5/site-packages/openeogeotrellis/openeogeotrellis/deploy/batch_job.py'
 
 spark-submit \
  --master yarn --deploy-mode cluster \
