@@ -103,3 +103,6 @@ ENV/
 # JetBrains
 .idea
 
+# Temp dirs
+temp/
+tmp/
