@@ -9,7 +9,7 @@ from collections import deque
 import traceback
 import pkg_resources
 
-from typing import Union, List
+from typing import Union, List, Tuple
 
 import pytz
 from geopyspark import TiledRasterLayer, LayerType
@@ -19,6 +19,7 @@ from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 from .service_registry import *
 from openeo.error_summary import *
+from openeo_driver import backend
 from dateutil.parser import parse
 
 from py4j.java_gateway import *
@@ -106,8 +107,6 @@ def getImageCollection(product_id:str, viewingParameters):
         raise ValueError("Product id not available, list of available data can be retrieved at /data.")
     layer_config = catalog.layer(product_id)
     data_source_type = layer_config.get('data_source', {}).get('type', 'Accumulo')
-
-    service_type = viewingParameters.get('service_type', '')
 
     import geopyspark as gps
     from_date = normalize_date(viewingParameters.get("from",None))
@@ -285,19 +284,57 @@ def cancel_batch_job(job_id: str):
     subprocess.call(["yarn", "application", "-kill", application_id])
 
 
-def get_secondary_services_info() -> List[Dict]:
-    return [_merge(details['specification'], 'service_id', service_id) for service_id, details in _service_registry.get_all().items()]
-
-
-def get_secondary_service_info(service_id: str) -> Dict:
-    details = _service_registry.get(service_id)
-    return _merge(details['specification'], 'service_id', service_id)
 
 
 def _merge(original: Dict, key, value) -> Dict:
+    # TODO: move this to a more general module (e.g. openeo client)?
     copy = dict(original)
     copy[key] = value
     return copy
+
+
+class SecondaryServices(backend.SecondaryServices):
+
+    # TODO pass ServiceRegistry _service_registry to __init__?
+
+    def service_types(self) -> dict:
+        return {
+            "WMTS": {
+                "parameters": {
+                    "version": {
+                        "type": "string",
+                        "description": "The WMTS version to use.",
+                        "default": "1.0.0",
+                        "enum": [
+                            "1.0.0"
+                        ]
+                    }
+                },
+                "attributes": {
+                    "layers": {
+                        "type": "array",
+                        "description": "Array of layer names.",
+                        "example": [
+                            "roads",
+                            "countries",
+                            "water_bodies"
+                        ]
+                    }
+                }
+            }
+        }
+
+    def list_services(self) -> List[dict]:
+        return [
+            _merge(details['specification'], 'service_id', service_id)
+            for service_id, details in _service_registry.get_all().items()
+        ]
+
+    def service_info(self, service_id: str) -> dict:
+        # TODO: raise SecondaryServiceNotFound when failing to get service
+        # TODO: add fields: id, url, enabled, parameters, attributes
+        details = _service_registry.get(service_id)
+        return _merge(details['specification'], 'service_id', service_id)
 
 
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
@@ -311,3 +348,9 @@ def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
         return ErrorSummary(error, is_client_error, summary=java_exception.getMessage())
 
     return error
+
+
+def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
+    return backend.OpenEoBackendImplementation(
+        secondary_services=SecondaryServices()
+    )

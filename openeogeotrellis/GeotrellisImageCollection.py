@@ -630,5 +630,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             return {
                 'type': 'WMTS',
-                'url': wmts_base_url + "/service/wmts"
+                'url': wmts_base_url + "/service/wmts",
+                'service_id': service_id
             }

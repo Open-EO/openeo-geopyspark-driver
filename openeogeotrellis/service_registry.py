@@ -1,6 +1,9 @@
 from typing import Dict
-from kazoo.client import KazooClient
+from kazoo.client import KazooClient, NoNodeError
+
 import json
+
+from openeo_driver.errors import SecondaryServiceNotFound
 
 
 class InMemoryServiceRegistry:
@@ -52,8 +55,11 @@ class ZooKeeperServiceRegistry:
     def get(self, service_id) -> Dict:
         return ZooKeeperServiceRegistry._with_zk(lambda zk: self._load_details(zk, service_id))
 
-    def _load_details(self, zk, service_id):
-        data, _ = zk.get(self._path(service_id))
+    def _load_details(self, zk: KazooClient, service_id):
+        try:
+            data, _ = zk.get(self._path(service_id))
+        except NoNodeError:
+            raise SecondaryServiceNotFound(service_id)
         return json.loads(data.decode())
 
     def get_all(self) -> Dict[str, Dict]:

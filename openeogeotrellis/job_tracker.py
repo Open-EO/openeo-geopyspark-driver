@@ -11,6 +11,8 @@ from openeogeotrellis.job_registry import JobRegistry
 
 _log = logging.getLogger(__name__)
 
+# TODO: make this job tracker logic an internal implementation detail of JobRegistry?
+
 class JobTracker:
     class _UnknownApplicationIdException(ValueError):
         pass
