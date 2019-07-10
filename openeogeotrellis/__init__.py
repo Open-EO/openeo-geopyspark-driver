@@ -240,7 +240,7 @@ def run_batch_job(job_id: str) -> None:
             args.append(api_version)
 
         try:
-            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT)
+            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT,universal_newlines=True)
         except CalledProcessError as e:
             logger.exception(e)
             logger.error(e.stdout)

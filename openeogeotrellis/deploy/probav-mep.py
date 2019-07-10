@@ -24,6 +24,10 @@ dictConfig({
     'flask': {
         'level': 'DEBUG',
         'handlers': ['wsgi']
+    },
+    'openeo': {
+        'level': 'DEBUG',
+        'handlers': ['wsgi']
     }
 })
 
