@@ -1,7 +1,9 @@
-import logging
+"""
+Script to start a local server. This script can serve as the entry-point for doing spark-submit.
+"""
 
+import logging
 from logging.config import dictConfig
-from logging import StreamHandler
 
 dictConfig({
     'version': 1,
@@ -28,35 +30,32 @@ dictConfig({
 })
 
 import gunicorn.app.base
+
+import os
+import sys
+import threading
+from glob import glob
+
+import gunicorn.app.base
 from gunicorn.six import iteritems
 
-import json
-import sys
-import datetime
-
-import threading
-
-
-"""
-Script to start a local server. This script can serve as the entry-point for doing spark-submit.
-"""
+_log = logging.getLogger('openeo-geotrellis-local')
 
 
 def setup_local_spark():
-    from pyspark import find_spark_home
-    import os, sys
-    from glob import glob
+    from pyspark import find_spark_home, SparkContext
 
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
+    _log.debug('sys.path: {p!r}'.format(p=sys.path))
     if 'TRAVIS' in os.environ:
         master_str = "local[2]"
     else:
         master_str = "local[*]"
 
-    from geopyspark import geopyspark_conf, Pyramid, TiledRasterLayer
-    conf = geopyspark_conf(master=master_str, appName="test")
+    from geopyspark import geopyspark_conf
+    conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local")
     conf.set('spark.kryoserializer.buffer.max', value='1G')
     conf.set('spark.ui.enabled', True)
     conf.set('spark.driver.extraJavaOptions', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009')
@@ -65,13 +64,18 @@ def setup_local_spark():
         conf.set(key='spark.driver.memory', value='2G')
         conf.set(key='spark.executor.memory', value='2G')
 
+    _log.info('Creating Spark context with config: {c!r}'.format(c=conf.getAll()))
     pysc = SparkContext.getOrCreate(conf)
+    _log.info('Created Spark Context {s}'.format(s=pysc))
+
 
 def number_of_workers():
     return 3#(multiprocessing.cpu_count() * 2) + 1
 
+
 def when_ready(server):
-    print(server)
+    _log.info('When ready: {s}'.format(s=server))
+    from pyspark import SparkContext
 
     sc = SparkContext.getOrCreate()
 
@@ -105,15 +109,11 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
         return self.application
 
 
-
 if __name__ == '__main__':
 
-
-    from pyspark import SparkContext
-    print("starting spark context")
     setup_local_spark()
-    # Modification 3: pass Flask app instead of handler_app
 
+    # Modification 3: pass Flask app instead of handler_app
     options = {
         'bind': '%s:%s' % ("127.0.0.1", 8080),
         'workers': number_of_workers(),
@@ -133,5 +133,4 @@ if __name__ == '__main__':
     app.logger.debug('App debug logging enabled!')
 
     application.run()
-    print(application)
-
+    _log.info('application: {a}'.format(a=application))
