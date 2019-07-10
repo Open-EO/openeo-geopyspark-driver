@@ -49,6 +49,7 @@ main_py_file='venv/lib64/python3.5/site-packages/openeogeotrellis/deploy/batch_j
 spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
+ --conf spark.yarn.submit.waitAppCompletion=false \
  --conf spark.executor.memory=8G \
  --conf spark.speculation=true \
  --conf spark.speculation.quantile=0.4 --conf spark.speculation.multiplier=1.1 \
