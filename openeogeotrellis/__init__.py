@@ -261,7 +261,7 @@ def run_batch_job(job_id: str) -> None:
 
 
 def _extract_application_id(stream) -> str:
-    match = re.match(r".*Application report for (application_\d{13}_\d+)\s\(state:.*", stream)
+    match = re.compile(r"^.*Application report for (application_\d{13}_\d+)\s\(state:.*", re.MULTILINE).search(stream)
     if match:
         return match.group(1)
     else:
