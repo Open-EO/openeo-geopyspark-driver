@@ -1,13 +1,15 @@
-import time
+import logging
 import subprocess
 from subprocess import CalledProcessError
 import re
 from typing import Callable
 import traceback
 import sys
+import time
 
 from openeogeotrellis.job_registry import JobRegistry
 
+_log = logging.getLogger(__name__)
 
 class JobTracker:
     class _UnknownApplicationIdException(ValueError):
@@ -99,7 +101,11 @@ class JobTracker:
         return new_status
 
     def _refresh_kerberos_tgt(self):
-        subprocess.check_call(["kinit", "-kt", self._keytab, self._principal])
+        if self._keytab and self._principal:
+            subprocess.check_call(["kinit", "-kt", self._keytab, self._principal])
+        else:
+            _log.warn("No Kerberos principal/keytab: will not refresh TGT")
+
 
 
 if __name__ == '__main__':

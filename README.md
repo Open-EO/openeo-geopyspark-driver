@@ -38,10 +38,13 @@ https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-exten
 Geopyspark will search for any jar in the 'jars' directory and add it to the classpath. So make
 sure that this jar can be found in the correct location.
  
-For development, you can run the service using Flask:
-export FLASK_APP=openeogeotrellis/__init__.py
-export SPARK_HOME=/usr/lib64/python3.6/site-packages/pyspark
-FLASK_DEBUG=1 flask run
+For development, you can run the service:
+
+    export SPARK_HOME=$(find_spark_home.py)
+    export HADOOP_CONF_DIR=/etc/hadoop/conf
+    export FLASK_DEBUG=1
+    export DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis
+    python openeogeotrellis/deploy/local.py
 
 
 For production, a gunicorn server script is available:
