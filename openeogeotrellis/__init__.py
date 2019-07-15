@@ -295,7 +295,8 @@ def _merge(original: Dict, key, value) -> Dict:
 
 class SecondaryServices(backend.SecondaryServices):
 
-    # TODO pass ServiceRegistry _service_registry to __init__?
+    def __init__(self, service_registry: InMemoryServiceRegistry = _service_registry):
+        self._service_registry = service_registry
 
     def service_types(self) -> dict:
         return {
@@ -326,15 +327,18 @@ class SecondaryServices(backend.SecondaryServices):
 
     def list_services(self) -> List[dict]:
         return [
-            _merge(details['specification'], 'service_id', service_id)
-            for service_id, details in _service_registry.get_all().items()
+            _merge(details, 'service_id', service_id)
+            for service_id, details in self._service_registry.get_all_specifications().items()
         ]
 
     def service_info(self, service_id: str) -> dict:
         # TODO: raise SecondaryServiceNotFound when failing to get service
         # TODO: add fields: id, url, enabled, parameters, attributes
-        details = _service_registry.get(service_id)
-        return _merge(details['specification'], 'service_id', service_id)
+        details = self._service_registry.get_specification(service_id)
+        return _merge(details, 'service_id', service_id)
+
+    def remove_service(self, service_id: str) -> None:
+        self._service_registry.stop_service(service_id)
 
 
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
