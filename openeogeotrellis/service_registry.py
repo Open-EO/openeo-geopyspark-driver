@@ -33,13 +33,15 @@ class ZooKeeperServiceRegistry:
 
     def __init__(self):
         self._root = '/openeo/services'
-        ZooKeeperServiceRegistry._with_zk(lambda zk: zk.ensure_path(self._root))
+        # TODO: move these hosts to config, argument or constant?
+        self._hosts = 'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
+        with self._zk_client() as zk:
+            zk.ensure_path(self._root)
 
     def register(self, service_id: str, specification: Dict, host: str, port: int):
-        ZooKeeperServiceRegistry._with_zk(lambda zk: (
+        with self._zk_client() as zk:
             self._persist_details(zk, service_id, specification),
             Traefik(zk).route(service_id, host, port)
-        ))
 
     def _persist_details(self, zk, service_id, specification):
         service_info = {
@@ -53,7 +55,8 @@ class ZooKeeperServiceRegistry:
         return self._root + "/" + service_id
 
     def get(self, service_id) -> Dict:
-        return ZooKeeperServiceRegistry._with_zk(lambda zk: self._load_details(zk, service_id))
+        with self._zk_client() as zk:
+            return self._load_details(zk, service_id)
 
     def _load_details(self, zk: KazooClient, service_id):
         try:
@@ -63,22 +66,16 @@ class ZooKeeperServiceRegistry:
         return json.loads(data.decode())
 
     def get_all(self) -> Dict[str, Dict]:
-        return ZooKeeperServiceRegistry._with_zk(self._load_all_details)
+        with self._zk_client() as zk:
+            service_ids = zk.get_children(self._root)
+            return {service_id: self._load_details(zk, service_id) for service_id in service_ids}
 
-    def _load_all_details(self, zk):
-        service_ids = zk.get_children(self._root)
-
-        return {service_id: self._load_details(zk, service_id) for service_id in service_ids}
-
-    @staticmethod
-    def _with_zk(callback):
-        zk = KazooClient(hosts='epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181')
+    @contextlib.contextmanager
+    def _zk_client(self):
+        zk = KazooClient(hosts=self._hosts)
         zk.start()
-
-        try:
-            return callback(zk)
-        finally:
-            zk.stop()
+        yield zk
+        zk.stop()
 
 
 class Traefik:
