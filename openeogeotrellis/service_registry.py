@@ -12,7 +12,9 @@ _log = logging.getLogger(__name__)
 
 class WMTSService:
     """Container with information about running WMTS service."""
-    # TODO: move the whole `WMTSServer.createServer` creation part also into this class?
+
+    # TODO create an abstract base service class and provide other kind of services too?
+    # TODO move the whole `WMTSServer.createServer` creation part also into this class?
     def __init__(self, service_id: str, specification: dict, host: str, port: int, server):
         self.service_id = service_id
         self.specification = specification
@@ -22,7 +24,7 @@ class WMTSService:
 
     def stop(self):
         self.server.stop()
-        # TODO: check if `.stop()` is enough (e.g. are all Spark RDDs and caches also released properly?)
+        # TODO check if `.stop()` is enough (e.g. are all Spark RDDs and caches also released properly?)
 
     def __str__(self):
         return '{c}[{i}]@{h}:{p}({s})'.format(
@@ -36,6 +38,14 @@ class InMemoryServiceRegistry:
     Traefik will not be able to expose the service to the outside world.
     """
 
+    # TODO support other services apart from WMTSService?
+    # TODO InMemoryServiceRegistry is used as base class for ZooKeeperServiceRegistry, which is not ideal naming-wise.
+    #   It is done that way to easily reuse the `stop_service` functionality
+    #   without too much overengineering at the moment.
+    #   This whole ServiceRegistry needs more refactoring anyway in the longer term,
+    #   e.g. to support platforms without Zookeeper or Traefik, or to have full lifecycle management like
+    #   restarting secondary services (from persisted metadata) after restart of OpenEO Backend.
+
     def __init__(self, services: Dict[str, WMTSService] = None):
         _log.info('Creating new {c}: {s}'.format(c=self.__class__.__name__, s=self))
         self._services = services or {}
@@ -45,6 +55,8 @@ class InMemoryServiceRegistry:
         self._services[service.service_id] = service
 
     def get_specification(self, service_id: str) -> dict:
+        if service_id not in self._services:
+            raise SecondaryServiceNotFound(service_id)
         return self._services[service_id].specification
 
     def get_all_specifications(self) -> Dict[str, dict]:
@@ -70,9 +82,6 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
         with self._zk_client() as zk:
             zk.ensure_path(self._root)
 
-        # TODO: what about services that are defined in Zookeeper/Traefic but are already dead? Revive them? remove them?
-        #    More general: what is the point of persisting this if the service is lost when backend stops anyway?
-
     def register(self, service: WMTSService):
         super().register(service)
         with self._zk_client() as zk:
@@ -80,6 +89,7 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
             Traefik(zk).route(service.service_id, service.host, service.port)
 
     def _persist_details(self, zk: KazooClient, service_id: str, specification: dict):
+        # TODO: add more metadata: date, user, ...
         service_info = {
             'specification': specification
         }
@@ -114,7 +124,9 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
 
     def stop_service(self, service_id: str):
         super().stop_service(service_id)
-        # TODO: also remove from zookeerer and Traefic
+        with self._zk_client() as zk:
+            zk.delete(self._path(service_id))
+            Traefik(zk).remove(service_id)
 
 
 class Traefik:
@@ -125,6 +137,10 @@ class Traefik:
         backend_id = self._create_backend_server(service_id, host, port)
         self._create_frontend_rule(service_id, backend_id)
         self._trigger_configuration_update()
+
+    def remove(self, service_id):
+        # TODO
+        pass
 
     def _create_backend_server(self, service_id, host, port):
         backend_id = "backend%s" % service_id

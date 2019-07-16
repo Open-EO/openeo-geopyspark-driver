@@ -9,7 +9,7 @@ from collections import deque
 import traceback
 import pkg_resources
 
-from typing import Union, List, Tuple
+from typing import Union, List
 
 import pytz
 from geopyspark import TiledRasterLayer, LayerType
@@ -19,7 +19,6 @@ from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
 from .service_registry import *
 from openeo.error_summary import *
-from openeo_driver import backend
 from dateutil.parser import parse
 
 from py4j.java_gateway import *
@@ -284,63 +283,6 @@ def cancel_batch_job(job_id: str):
     subprocess.call(["yarn", "application", "-kill", application_id])
 
 
-
-
-def _merge(original: Dict, key, value) -> Dict:
-    # TODO: move this to a more general module (e.g. openeo client)?
-    copy = dict(original)
-    copy[key] = value
-    return copy
-
-
-class SecondaryServices(backend.SecondaryServices):
-
-    def __init__(self, service_registry: InMemoryServiceRegistry = _service_registry):
-        self._service_registry = service_registry
-
-    def service_types(self) -> dict:
-        return {
-            "WMTS": {
-                "parameters": {
-                    "version": {
-                        "type": "string",
-                        "description": "The WMTS version to use.",
-                        "default": "1.0.0",
-                        "enum": [
-                            "1.0.0"
-                        ]
-                    }
-                },
-                "attributes": {
-                    "layers": {
-                        "type": "array",
-                        "description": "Array of layer names.",
-                        "example": [
-                            "roads",
-                            "countries",
-                            "water_bodies"
-                        ]
-                    }
-                }
-            }
-        }
-
-    def list_services(self) -> List[dict]:
-        return [
-            _merge(details, 'service_id', service_id)
-            for service_id, details in self._service_registry.get_all_specifications().items()
-        ]
-
-    def service_info(self, service_id: str) -> dict:
-        # TODO: raise SecondaryServiceNotFound when failing to get service
-        # TODO: add fields: id, url, enabled, parameters, attributes
-        details = self._service_registry.get_specification(service_id)
-        return _merge(details, 'service_id', service_id)
-
-    def remove_service(self, service_id: str) -> None:
-        self._service_registry.stop_service(service_id)
-
-
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
     if isinstance(error, Py4JJavaError):
         java_exception = error.java_exception
@@ -354,7 +296,7 @@ def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
     return error
 
 
-def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
-    return backend.OpenEoBackendImplementation(
-        secondary_services=SecondaryServices()
-    )
+# Late import to avoid circular dependency issues.
+# TODO avoid this. Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/12
+from openeogeotrellis.backend import get_openeo_backend_implementation
+
