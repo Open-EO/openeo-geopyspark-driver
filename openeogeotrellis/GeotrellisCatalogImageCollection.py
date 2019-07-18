@@ -16,6 +16,7 @@ import os
 
 from openeo.imagecollection import ImageCollection
 
+# TODO this is deprecated apparently: remove it?
 
 class GeotrellisCatalogImageCollection(ImageCollection):
 

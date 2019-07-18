@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Union, Iterable, Tuple
 
 import geopyspark as gps
@@ -17,11 +18,13 @@ import uuid
 import pytz
 
 from openeo.imagecollection import ImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
 
+_log = logging.getLogger(__name__)
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
-    def __init__(self, pyramid: Pyramid, service_registry, metadata: Dict = None):
+    def __init__(self, pyramid: Pyramid, service_registry: InMemoryServiceRegistry, metadata: Dict = None):
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
@@ -587,15 +590,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 "bounds": level_bounds
             }
         else:
-            if ('wmts' in self.__dir__()):
-                self.wmts.stop()
+
             pysc = gps.get_spark_context()
 
             random_port = 0
             service_id = str(uuid.uuid4())
             wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
 
-            self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
+
+            # TODO: instead of storing in self, keep in a registry to allow cleaning up (wmts.stop)
+            wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
+            _log.info('Created WMTSServer: {w!s} ({u!s}, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
 
             if(kwargs.get("style") is not None):
                 max_zoom = self.pyramid.max_zoom
@@ -609,26 +614,30 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 #color_map = gps.ColorMap.from_colors(breaks=[x for x in range(0,250)], color_list=gps.get_colors_from_matplotlib("YlGn"))
                 color_map = gps.ColorMap.build(histogram, matplotlib_name)
                 srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
-                self.wmts.addPyramidLayer("RDD", srdd_dict,color_map.cmap)
+                wmts.addPyramidLayer("RDD", srdd_dict,color_map.cmap)
             else:
                 srdd_dict = {k: v.srdd.rdd() for k, v in self.pyramid.levels.items()}
-                self.wmts.addPyramidLayer("RDD", srdd_dict)
+                wmts.addPyramidLayer("RDD", srdd_dict)
 
             import socket
+            # TODO what is this host logic about?
             host = [l for l in
                               ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1],
                                [[(s.connect(('8.8.8.8', 53)), s.getsockname()[0], s.close()) for s in
                                  [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]])
                               if l][0][0]
 
-            print(self.wmts.getURI())
-
-            self._service_registry.register(service_id, specification={
-                'type': type,
-                'process_graph': process_graph
-            }, host=host, port=self.wmts.getPort())
+            self._service_registry.register(WMTSService(
+                service_id=service_id,
+                specification={
+                    'type': type,
+                    'process_graph': process_graph
+                },
+                host=host, port=wmts.getPort(), server=wmts
+            ))
 
             return {
                 'type': 'WMTS',
-                'url': wmts_base_url + "/service/wmts"
+                'url': wmts_base_url + "/service/wmts",
+                'service_id': service_id
             }

@@ -107,8 +107,6 @@ def getImageCollection(product_id:str, viewingParameters):
     layer_config = catalog.layer(product_id)
     data_source_type = layer_config.get('data_source', {}).get('type', 'Accumulo')
 
-    service_type = viewingParameters.get('service_type', '')
-
     import geopyspark as gps
     from_date = normalize_date(viewingParameters.get("from",None))
     to_date = normalize_date(viewingParameters.get("to",None))
@@ -285,21 +283,6 @@ def cancel_batch_job(job_id: str):
     subprocess.call(["yarn", "application", "-kill", application_id])
 
 
-def get_secondary_services_info() -> List[Dict]:
-    return [_merge(details['specification'], 'service_id', service_id) for service_id, details in _service_registry.get_all().items()]
-
-
-def get_secondary_service_info(service_id: str) -> Dict:
-    details = _service_registry.get(service_id)
-    return _merge(details['specification'], 'service_id', service_id)
-
-
-def _merge(original: Dict, key, value) -> Dict:
-    copy = dict(original)
-    copy[key] = value
-    return copy
-
-
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
     if isinstance(error, Py4JJavaError):
         java_exception = error.java_exception
@@ -311,3 +294,9 @@ def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
         return ErrorSummary(error, is_client_error, summary=java_exception.getMessage())
 
     return error
+
+
+# Late import to avoid circular dependency issues.
+# TODO avoid this. Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/12
+from openeogeotrellis.backend import get_openeo_backend_implementation
+
