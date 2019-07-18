@@ -122,7 +122,7 @@ def main():
         'errorlog': '-'
     }
     tcp.close()
-    from openeo_driver import app
+    from openeo_driver.views import app
 
     app.logger.setLevel('DEBUG')
     application = StandaloneApplication(app, options)
