@@ -124,7 +124,7 @@ if __name__ == '__main__':
         'errorlog': '-'
     }
 
-    from openeo_driver import app
+    from openeo_driver.views import app
     #app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel('DEBUG')
     application = StandaloneApplication(app, options)
