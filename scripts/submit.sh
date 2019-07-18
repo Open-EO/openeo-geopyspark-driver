@@ -13,7 +13,7 @@ export PYTHONPATH=""
 
 
 hdfsVenvZip=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv.zip
-extensions=https://artifactory.vgt.vito.be/libs-release-public/org/openeo/geotrellis-extensions/1.1.0/geotrellis-extensions-1.1.0.jar
+extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.2.0-SNAPSHOT/geotrellis-extensions-1.2.0-SNAPSHOT.jar
 backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.2.jar
 
 echo "Found backend assembly: ${backend_assembly}"
@@ -43,7 +43,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
- --files scripts/log4j.properties,layercatalog.json,scripts/submit_batch_job.sh,openeogeotrellis/deploy/batch_job.py \
+ --files scripts/log4j.properties,layercatalog.json \
  --archives "${hdfsVenvZip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars ${extensions},${backend_assembly} \
