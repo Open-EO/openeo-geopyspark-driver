@@ -83,6 +83,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
     def bbox_filter(self, left: float, right: float, top: float, bottom: float, srs: str) -> 'ImageCollection':
+        # TODO?
         return self
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':

@@ -125,8 +125,13 @@ if __name__ == '__main__':
     }
 
     from openeo_driver.views import app
+    from openeogeotrellis import get_backend_version
+
     #app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel('DEBUG')
+    app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
+    app.config['OPENEO_TITLE'] = 'Local GeoPySpark'
+    app.config['OPENEO_DESCRIPTION'] = 'Local openEO API using GeoPySpark driver'
     application = StandaloneApplication(app, options)
 
     app.logger.info('App info logging enabled!')

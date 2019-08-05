@@ -37,6 +37,10 @@ logger.addHandler( log_stream_handler )
 _service_registry = InMemoryServiceRegistry() if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
 
 
+def get_backend_version() -> str:
+    return __version__
+
+
 def health_check():
     from pyspark import SparkContext
     sc = SparkContext.getOrCreate()
