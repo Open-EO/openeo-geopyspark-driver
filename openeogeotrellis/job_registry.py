@@ -3,9 +3,10 @@ from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
 import json
 
+from openeogeotrellis.configparams import ConfigParams
 
 class JobRegistry:
-    def __init__(self, zookeeper_hosts: str="epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181"):
+    def __init__(self, zookeeper_hosts: str=','.join(ConfigParams().zookeepernodes)):
         self._root = '/openeo/jobs'
         self._zk = KazooClient(hosts=zookeeper_hosts)
 

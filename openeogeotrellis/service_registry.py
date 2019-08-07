@@ -7,6 +7,8 @@ from kazoo.client import KazooClient, NoNodeError
 
 from openeo_driver.errors import SecondaryServiceNotFound
 
+from openeogeotrellis.configparams import ConfigParams
+
 _log = logging.getLogger(__name__)
 
 
@@ -78,7 +80,7 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
         super().__init__()
         self._root = '/openeo/services'
         # TODO: move these hosts to config, argument or constant?
-        self._hosts = 'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
+        self._hosts = ','.join(ConfigParams().zookeepernodes)
         with self._zk_client() as zk:
             zk.ensure_path(self._root)
 

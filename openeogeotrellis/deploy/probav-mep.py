@@ -89,7 +89,7 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 def update_zookeeper(host: str, port):
     print("Registering with zookeeper.")
     from kazoo.client import KazooClient
-    zk = KazooClient(hosts='epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181')
+    zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
     zk.ensure_path("discovery/services/openeo-test")
     #id = uuid.uuid4()

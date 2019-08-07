@@ -390,7 +390,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             to_date = insert_timezone(metadata.bounds.maxKey.instant)
             zoom = self.pyramid.max_zoom
 
-            jvm.java.lang.System.setProperty('zookeeper.connectionstring', "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+            jvm.java.lang.System.setProperty('zookeeper.connectionstring', ','.join(ConfigParams().zookeepernodes))
             compute_stats_geotrellis = jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
 
             stats = compute_stats_geotrellis.compute_average_timeseries(
@@ -540,7 +540,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _proxy(self, host, port):
         from kazoo.client import KazooClient
-        zk = KazooClient(hosts='epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181')
+        zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
         zk.start()
         zk.ensure_path("discovery/services/openeo-viewer-test")
         # id = uuid.uuid4()

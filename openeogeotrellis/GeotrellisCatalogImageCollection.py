@@ -64,7 +64,7 @@ class GeotrellisCatalogImageCollection(ImageCollection):
             return tms.url_pattern
         else:
             from kazoo.client import KazooClient
-            zk = KazooClient(hosts='epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181')
+            zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
             zk.start()
             zk.ensure_path("discovery/services/openeo-viewer-test")
             #id = uuid.uuid4()
@@ -96,10 +96,10 @@ class GeotrellisCatalogImageCollection(ImageCollection):
             if(self.tms is None):
                 pysc = gps.get_spark_context()
                 gps._ensure_callback_gateway_initialized(pysc._gateway)
-                reader = pysc._gateway.jvm.geopyspark.geotrellis.tms.TileReaders.createCatalogReader("accumulo://epod-master1.vgt.vito.be:2181/hdp-accumulo-instance", self.image_collection_id, False)
+                reader = pysc._gateway.jvm.geopyspark.geotrellis.tms.TileReaders.createCatalogReader("accumulo://"+ConfigParams().zookeepernodes[0]+"/hdp-accumulo-instance", self.image_collection_id, False)
                 route = pysc._jvm.geopyspark.geotrellis.tms.TMSServerRoutes.temporalRenderingTileRoute(reader, TileRender(render_rgb))
                 self.tms = TMS(pysc._jvm.geopyspark.geotrellis.tms.TMSServer.createServer(route))
-                #self.tms = TMS.build(source=("accumulo://epod-master1.vgt.vito.be:2181/hdp-accumulo-instance","S2_FAPAR_V101"),display = greens)
+                #self.tms = TMS.build(source=("accumulo://"+ConfigParams().zookeepernodes[0]+"/hdp-accumulo-instance","S2_FAPAR_V101"),display = greens)
                 self.tms.bind(host="0.0.0.0",requested_port=8000)
 
             #url = self._proxy_tms(self.tms)
@@ -116,7 +116,7 @@ class GeotrellisCatalogImageCollection(ImageCollection):
                 self.wmts.stop()
             pysc = gps.get_spark_context()
             self.wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer()
-            self.wmts.addAccumuloLayer(self.image_collection_id, True, "hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
+            self.wmts.addAccumuloLayer(self.image_collection_id, True, "hdp-accumulo-instance", ','.join(ConfigParams().zookeepernodes));
 
             return {
                 "type": "WMTS",
