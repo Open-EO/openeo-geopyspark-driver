@@ -30,7 +30,7 @@ spark-submit \
  --conf spark.driver.maxResultSize=2g \
  --conf spark.speculation=true \
  --conf spark.speculation.quantile=0.4 --conf spark.speculation.multiplier=1.1 \
- --conf spark.dynamicAllocation.minExecutors=5 \
+ --conf spark.dynamicAllocation.minExecutors=5 --conf spark.dynamicAllocation.maxExecutors=30 \
  --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf spark.yarn.appMasterEnv.PYSPARK_PYTHON=${pysparkPython} \
