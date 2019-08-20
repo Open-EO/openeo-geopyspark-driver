@@ -356,16 +356,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #converting a numpy array into a geotrellis tile seems non-trivial :-)
         kernel_tile = Tile.from_numpy_array(kernel, no_data_value=None)
         rdd = pysc.parallelize([(gps.SpatialKey(0,0), kernel_tile)])
-        extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
-        layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 1, 'tileRows': 1}
         metadata = {'cellType': str(kernel.dtype),
-                    'extent': extent,
+                    'extent': {'xmin': 0.0, 'ymin': 0.0, 'xmax': 1.0, 'ymax': 1.0},
                     'crs': '+proj=longlat +datum=WGS84 +no_defs ',
                     'bounds': {
                         'minKey': {'col': 0, 'row': 0},
                         'maxKey': {'col': 0, 'row': 0}},
                     'layoutDefinition': {
-                        'extent': extent,
+                        'extent': {'xmin': 0.0, 'ymin': 0.0, 'xmax': 1.0, 'ymax': 1.0},
                         'tileLayout': {'tileCols': 5, 'tileRows': 5, 'layoutCols': 1, 'layoutRows': 1}}}
         geopyspark_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, rdd, metadata)
         geotrellis_tile = geopyspark_layer.srdd.rdd().collect()[0]._2().band(0)
