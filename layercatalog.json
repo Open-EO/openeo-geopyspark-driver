@@ -327,5 +327,17 @@
       { "band_id": "12" },
       { "band_id": "8A" }
     ]
+  },
+  {
+    "name": "S1_IW",
+    "data_source": {
+      "type": "sentinel-hub"
+    },
+    "bands": [
+      { "band_id": "VV" },
+      { "band_id": "VH" },
+      { "band_id": "VV_DB" },
+      { "band_id": "VH_DB" }
+    ]
   }
 ]
