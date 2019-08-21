@@ -51,8 +51,7 @@ spark-submit \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.yarn.submit.waitAppCompletion=false \
  --conf spark.executor.memory=8G \
- --conf spark.speculation=true \
- --conf spark.speculation.quantile=0.4 --conf spark.speculation.multiplier=1.1 \
+ --conf spark.speculation=false \
  --conf spark.dynamicAllocation.minExecutors=20 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
@@ -61,7 +60,7 @@ spark-submit \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
- --conf spark.locality.wait=300ms --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
+ --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --files layercatalog.json,"${processGraphFile}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \

@@ -27,6 +27,7 @@ spark-submit \
  --driver-memory 10G \
  --executor-memory 5G \
  --conf spark.driver.memoryOverhead=3g \
+ --conf spark.executor.memoryOverhead=2g \
  --conf spark.driver.maxResultSize=2g \
  --conf spark.speculation=true \
  --conf spark.speculation.quantile=0.4 --conf spark.speculation.multiplier=1.1 \
