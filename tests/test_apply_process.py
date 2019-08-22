@@ -250,6 +250,31 @@ class TestCustomFunctions(TestCase):
         print(stitched)
         self.assertEqual(0, stitched.cells[0][0][0])
 
+    def test_reduce_bands_comparison_ops(self):
+        input = self.create_spacetime_layer_singleband()
+        input = gps.Pyramid({0: input})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+
+        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+        visitor = GeotrellisTileProcessGraphVisitor()
+        graph = {
+            "gt": {
+                "arguments": {
+                    "x": {
+                        "from_argument": "data"
+                    },
+                    "y": 6.0
+                },
+                "process_id": "gt",
+                "result": True
+            }
+        }
+        visitor.accept_process_graph(graph)
+        stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEqual(1, stitched.cells[0][0][0])
+
     def test_reduce_bands_arrayelement(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
@@ -258,38 +283,90 @@ class TestCustomFunctions(TestCase):
 
         from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
-        graph = {
-            "sum": {
-                "arguments": {
-                    "data": {
-                        "from_argument": "dimension_data"
-                    }
-                },
-                "process_id": "sum"
-            },
-            "array_element": {
-                "arguments": {
-                    "data": {
-                        "from_argument": "dimension_data"
+        graph ={
+                    "arrayelement3": {
+                        "process_id": "array_element",
+                        "result": False,
+                        "arguments": {
+                            "data": {
+                                "from_argument": "data"
+                            },
+                            "index": 0
+                        }
                     },
-                    "index": 1
-                },
-                "process_id": "array_element"
-            },
-            "divide": {
-                "arguments": {
-                    "data":[ {
-                        "from_node": "sum"
+                    "subtract1": {
+                        "process_id": "subtract",
+                        "result": False,
+                        "arguments": {
+                            "data": [
+                                {
+                                    "from_node": "arrayelement1"
+                                },
+                                {
+                                    "from_node": "arrayelement2"
+                                }
+                            ]
+                        }
                     },
-                    {
-                        "from_node": "array_element"
+                    "arrayelement4": {
+                        "process_id": "array_element",
+                        "result": False,
+                        "arguments": {
+                            "data": {
+                                "from_argument": "data"
+                            },
+                            "index": 1
+                        }
+                    },
+                    "arrayelement1": {
+                        "process_id": "array_element",
+                        "result": False,
+                        "arguments": {
+                            "data": {
+                                "from_argument": "data"
+                            },
+                            "index": 0
+                        }
+                    },
+                    "divide1": {
+                        "process_id": "divide",
+                        "result": True,
+                        "arguments": {
+                            "data": [
+                                {
+                                    "from_node": "subtract1"
+                                },
+                                {
+                                    "from_node": "sum1"
+                                }
+                            ]
+                        }
+                    },
+                    "sum1": {
+                        "process_id": "sum",
+                        "result": False,
+                        "arguments": {
+                            "data": [
+                                {
+                                    "from_node": "arrayelement3"
+                                },
+                                {
+                                    "from_node": "arrayelement4"
+                                }
+                            ]
+                        }
+                    },
+                    "arrayelement2": {
+                        "process_id": "array_element",
+                        "result": False,
+                        "arguments": {
+                            "data": {
+                                "from_argument": "data"
+                            },
+                            "index": 1
+                        }
                     }
-                    ]
-                },
-                "process_id": "divide",
-                "result": True
-            }
-        }
+                }
         visitor.accept_process_graph(graph)
         stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
