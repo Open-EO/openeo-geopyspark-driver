@@ -457,8 +457,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 grid = tile.cells[i]
 
                 # special treatment for a UDF layer (NO_DATA is nan so every value, including nan, is not equal to nan)
-                sum = grid[(~np.isnan(grid)) & (grid != tile.no_data_value)].sum()
-                count = ((~np.isnan(grid)) & (grid != tile.no_data_value)).sum()
+                without_no_data = (~np.isnan(grid)) & (grid != tile.no_data_value)
+
+                sum = grid[without_no_data].sum()
+                count = without_no_data.sum()
 
                 acc[i] = acc[i][0] + sum, acc[i][1] + count
 
