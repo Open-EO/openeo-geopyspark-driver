@@ -432,12 +432,30 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 self._band_index
             )
 
-            return {iso_timestamp: list(means) for iso_timestamp, means in dict(stats).items()}
+            return self._as_python(stats)
 
         use_compute_stats_geotrellis = \
             isinstance(regions, GeometryCollection) and self._data_source_type().lower() == 'accumulo'
 
         return by_compute_stats_geotrellis() if use_compute_stats_geotrellis else self.polygonal_mean_timeseries(regions)
+
+    # FIXME: define this somewhere else?
+    def _as_python(self, java_object):
+        """
+        Converts Java collection objects retrieved from Py4J to their Python counterparts, recursively.
+        :param java_object: a JavaList or JavaMap
+        :return: a Python list or dictionary, respectively
+        """
+
+        from py4j.java_collections import JavaList, JavaMap
+
+        if isinstance(java_object, JavaList):
+            return [self._as_python(elem) for elem in list(java_object)]
+
+        if isinstance(java_object, JavaMap):
+            return {self._as_python(key): self._as_python(value) for key, value in dict(java_object).items()}
+
+        return java_object
 
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
