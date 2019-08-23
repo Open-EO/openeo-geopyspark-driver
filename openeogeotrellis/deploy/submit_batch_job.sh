@@ -50,7 +50,10 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.yarn.submit.waitAppCompletion=false \
- --conf spark.executor.memory=8G \
+ --driver-memory 3G \
+ --executor-memory 4G \
+ --conf spark.driver.memoryOverhead=1g \
+ --conf spark.executor.memoryOverhead=2g \
  --conf spark.speculation=false \
  --conf spark.dynamicAllocation.minExecutors=20 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
