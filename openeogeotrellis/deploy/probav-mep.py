@@ -123,14 +123,16 @@ def main():
     }
     tcp.close()
     from openeo_driver.views import app
+    from openeogeotrellis import get_backend_version
 
     app.logger.setLevel('DEBUG')
+    app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
+    app.config['OPENEO_TITLE'] = 'VITO Remote Sensing openEO API'
+    app.config['OPENEO_DESCRIPTION'] = 'OpenEO API to the VITO Remote Sensing product catalog and processing services (using GeoPySpark driver).'
     application = StandaloneApplication(app, options)
 
     app.logger.info('App info logging enabled!')
     app.logger.debug('App debug logging enabled!')
-
-    application = StandaloneApplication(app, options)
 
     zookeeper = len(sys.argv) <= 1 or sys.argv[1] != "no-zookeeper"
 
