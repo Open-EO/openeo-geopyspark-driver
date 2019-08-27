@@ -1,11 +1,11 @@
 [
   {
+    "id":"BIOPAR_FAPAR_V1_GLOBAL",
     "name":"BIOPAR_FAPAR_V1_GLOBAL",
+    "product_id":"BIOPAR_FAPAR_V1_GLOBAL",
     "title": "Copernicus Global Land FAPAR product V1",
     "description": "The FAPAR quantifies the fraction of the solar radiation absorbed by live leaves for the photosynthesis activity. Then, it refers only to the green and alive elements of the canopy. The FAPAR depends on the canopy structure, vegetation element optical properties, atmospheric conditions, and angular configuration. To overcome this latter dependency, a daily integrated FAPAR value is assessed.\n\nFAPAR is recognized as an Essential Climate Variable (ECV) by the Global Climate Observing System (GCOS).",
     "data_id":"BIOPAR_FAPAR_V1_GLOBAL",
-    "product_id":"BIOPAR_FAPAR_V1_GLOBAL",
-    "id":"BIOPAR_FAPAR_V1_GLOBAL",
     "license": "free",
     "bands":[],
     "extent": {
@@ -26,11 +26,11 @@
 
   },
   {
+    "id": "S1_GRD_SIGMA0_ASCENDING",
     "name": "S1_GRD_SIGMA0_ASCENDING",
+    "product_id": "S1_GRD_SIGMA0_ASCENDING",
     "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
     "data_id": "S1_GRD_SIGMA0_ASCENDING_V110_ALL",
-    "product_id": "S1_GRD_SIGMA0_ASCENDING",
-    "id": "S1_GRD_SIGMA0_ASCENDING",
     "description": "Sentinel 1 GRD Sigma0, mosaic of all ascending relative orbits. Provided by Terrascope.",
     "source": "Terrascope - VITO",
     "license": "free",
@@ -71,11 +71,11 @@
     ]
   },
   {
+    "id": "S1_GRD_SIGMA0_DESCENDING",
     "name": "S1_GRD_SIGMA0_DESCENDING",
+    "product_id": "S1_GRD_SIGMA0_DESCENDING",
     "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
     "data_id": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP",
-    "product_id": "S1_GRD_SIGMA0_DESCENDING",
-    "id": "S1_GRD_SIGMA0_DESCENDING",
     "description": "Sentinel 1 GRD Sigma0, mosaic of all descending relative orbits. Provided by Terrascope.",
     "source": "Terrascope - VITO",
     "license": "free",
@@ -117,11 +117,11 @@
   },
 
   {
+    "id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_001",
+    "product_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "title": "Sentinel 2 Bottom-of-atmosphere reflectances.",
     "data_id": "CGS_SENTINEL2_RADIOMETRY_V102_EARLY",
-    "product_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
-    "id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
     "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry, provided by Terrascope.",
     "source": "Terrascope - VITO",
     "license": "free",
@@ -184,11 +184,11 @@
     ]
   },
   {
+    "id":"S2_FAPAR_V102_WEBMERCATOR2",
     "name":"S2_FAPAR_V102_WEBMERCATOR2",
+    "product_id":"S2_FAPAR_V102_WEBMERCATOR2",
     "title": "10m fAPAR product based on Sentinel-2",
     "data_id":"S2_FAPAR_PYRAMID_20190708",
-    "product_id":"S2_FAPAR_V102_WEBMERCATOR2",
-    "id":"S2_FAPAR_V102_WEBMERCATOR2",
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
     "source": "Terrascope - VITO",
     "license": "free",
@@ -210,11 +210,11 @@
     ]
   },
   {
+    "id":"S2_FCOVER_PYRAMID",
     "name":"S2_FCOVER_PYRAMID",
+    "product_id":"S2_FCOVER_PYRAMID",
     "title": "Sentinel 2 based fCover",
     "data_id":"S2_FCOVER_PYRAMID_EARLY",
-    "product_id":"S2_FCOVER_PYRAMID",
-    "id":"S2_FCOVER_PYRAMID",
     "description": "Sentinel 2 Level-3: fCOVER, web mercator projection, with overviews.",
     "source": "Terrascope - VITO",
     "license": "free",
@@ -230,21 +230,23 @@
     "links":[]
   },
   {
+    "id": "S2_NDVI_PYRAMID",
     "name": "S2_NDVI_PYRAMID",
     "data_id": "S2_NDVI_PYRAMID_EARLY"
   },
   {
+    "id": "S2_LAI_PYRAMID",
     "name": "S2_LAI_PYRAMID",
     "data_id": "S2_LAI_PYRAMID_20190625"
   },
 
   {
+    "id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
     "name":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
+    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
     "title": "300m NDVI, 10-daily cloud-free composite",
     "description": "300m NDVI, 10-daily cloud-free composite derived from PROBA-V data.",
     "data_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
-    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
-    "id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
     "license": "free",
     "extent": {
       "crs": "EPSG:4326",
@@ -269,12 +271,12 @@
     ]
   },
   {
+    "id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "name":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
+    "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "title": "Sen2Cor Scene Classification layer",
     "description": "Sen2Cor Scene Classification layer, from Sentinel 2 data.",
     "data_id":"S2_SCENECLASSIFICATION_PYRAMID_20190624",
-    "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
-    "id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
     "source": "Terrascope - VITO",
     "license": "free",
     "extent": {
@@ -301,6 +303,7 @@
     ]
   },
   {
+    "id": "S2_NDVI_S3",
     "name": "S2_NDVI_S3",
     "data_source": {
       "type": "S3",
@@ -310,6 +313,7 @@
     }
   },
   {
+    "id": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
     "data_source": {
       "type": "file"
@@ -329,6 +333,7 @@
     ]
   },
   {
+    "id": "S1_IW",
     "name": "S1_IW",
     "data_source": {
       "type": "sentinel-hub"

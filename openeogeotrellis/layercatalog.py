@@ -1,19 +1,20 @@
-import unittest
-from typing import List,Dict
+import json
+from pathlib import Path
+from typing import List, Dict
 
 import geopyspark as gps
-import json
-import os
 
-class LayerCatalog():
+
+class LayerCatalog:
 
     """Catalog providing access to GeoPySpark layers"""
-    def __init__(self):
-        if os.path.isfile("layercatalog.json"):
-            with open("layercatalog.json","r") as f:
-                self.catalog = {layer["name"]:layer for layer in json.load(f)}
-        else:
+    def __init__(self, filename='layercatalog.json'):
+        path = Path(filename)
+        if not path.is_file():
             raise RuntimeError("layercatalog.json not found, please make sure that it is available in the working directory.")
+
+        with path.open() as f:
+            self.catalog = {layer["id"]: layer for layer in json.load(f)}
 
     def layers(self) -> List:
         """Returns all available layers."""
@@ -26,7 +27,6 @@ class LayerCatalog():
     def _clean_config(cls, layer_config):
         desired_keys = set(layer_config.keys()) - {"data_id"}
         return {k:v for k,v in layer_config.items() if k in desired_keys}
-
 
     def layer(self,product_id) -> Dict:
         """Returns the layer config for a given id."""
