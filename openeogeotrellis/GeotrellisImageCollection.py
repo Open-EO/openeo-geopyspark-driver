@@ -404,40 +404,66 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return result
 
     def zonal_statistics(self, regions, func, scale=1000, interval="day") -> Union[List, Dict]:
-        def by_compute_stats_geotrellis():
-            def insert_timezone(instant):
-                return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
+        def insert_timezone(instant):
+            return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-            metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
+        if func == 'histogram':
+            def by_compute_stats_geotrellis():
+                layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
 
-            jvm = gps.get_spark_context()._gateway.jvm
+                multiple_geometries = isinstance(regions, GeometryCollection)
 
-            product_id = self.metadata['name']
-            polygon_wkts = [str(ob) for ob in regions]
-            polygons_srs = 'EPSG:4326'
-            from_date = insert_timezone(metadata.bounds.minKey.instant)
-            to_date = insert_timezone(metadata.bounds.maxKey.instant)
-            zoom = self.pyramid.max_zoom
+                product_id = self.metadata['name']
+                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
+                polygons_srs = 'EPSG:4326'
+                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+                zoom = self.pyramid.max_zoom
 
-            jvm.java.lang.System.setProperty('zookeeper.connectionstring', "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
-            compute_stats_geotrellis = jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
+                implementation = self._compute_stats_geotrellis().compute_histograms_time_series if multiple_geometries \
+                    else self._compute_stats_geotrellis().compute_histogram_time_series
 
-            stats = compute_stats_geotrellis.compute_average_timeseries(
-                product_id,
-                polygon_wkts,
-                polygons_srs,
-                from_date.isoformat(),
-                to_date.isoformat(),
-                zoom,
-                self._band_index
-            )
+                return implementation(
+                    product_id,
+                    polygon_wkts,
+                    polygons_srs,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    zoom,
+                    self._band_index
+                )
 
-            return self._as_python(stats)
+            return self._as_python(by_compute_stats_geotrellis())
+        else:  # defaults to mean, historically
+            def by_compute_stats_geotrellis():
+                layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
 
-        use_compute_stats_geotrellis = \
-            isinstance(regions, GeometryCollection) and self._data_source_type().lower() == 'accumulo'
+                product_id = self.metadata['name']
+                polygon_wkts = [str(ob) for ob in regions]
+                polygons_srs = 'EPSG:4326'
+                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+                zoom = self.pyramid.max_zoom
 
-        return by_compute_stats_geotrellis() if use_compute_stats_geotrellis else self.polygonal_mean_timeseries(regions)
+                return self._compute_stats_geotrellis().compute_average_timeseries(
+                    product_id,
+                    polygon_wkts,
+                    polygons_srs,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    zoom,
+                    self._band_index
+                )
+
+            use_compute_stats_geotrellis = \
+                isinstance(regions, GeometryCollection) and self._data_source_type().lower() == 'accumulo'
+
+            return self._as_python(by_compute_stats_geotrellis()) if use_compute_stats_geotrellis else self.polygonal_mean_timeseries(regions)
+
+    def _compute_stats_geotrellis(self):
+        jvm = gps.get_spark_context()._gateway.jvm
+        jvm.java.lang.System.setProperty('zookeeper.connectionstring',"epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+        return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
 
     # FIXME: define this somewhere else?
     def _as_python(self, java_object):
