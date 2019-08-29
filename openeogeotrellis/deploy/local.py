@@ -8,7 +8,7 @@ from logging.config import dictConfig
 dictConfig({
     'version': 1,
     'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+        'format': '[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
     }},
     'handlers': {'wsgi': {
         'class': 'logging.StreamHandler',
@@ -22,10 +22,12 @@ dictConfig({
     'loggers': {
         'werkzeug': {'level': 'DEBUG'},
         'flask': {'level': 'DEBUG'},
+        'openeo': {'level': 'DEBUG'},
+        'openeo_driver': {'level': 'DEBUG'},
+        'openeogeotrellis': {'level': 'DEBUG'},
+        'kazoo': {'level': 'WARN'},
     }
 })
-
-import gunicorn.app.base
 
 import os
 import sys
@@ -54,6 +56,7 @@ def setup_local_spark():
     conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local")
     conf.set('spark.kryoserializer.buffer.max', value='1G')
     conf.set('spark.ui.enabled', True)
+    # Some options to allow attaching a Java debugger to running Spark driver
     conf.set('spark.driver.extraJavaOptions', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009')
 
     if 'TRAVIS' in os.environ:
@@ -69,6 +72,12 @@ def number_of_workers():
     return 3#(multiprocessing.cpu_count() * 2) + 1
 
 
+def show_log_level(logger: logging.Logger):
+    """Helper to show threshold log level of a logger."""
+    level = logger.getEffectiveLevel()
+    logger.log(level, 'Logger {n!r} level: {t}'.format(n=logger.name, t=logging.getLevelName(level)))
+
+
 def when_ready(server):
     _log.info('When ready: {s}'.format(s=server))
     from pyspark import SparkContext
@@ -80,8 +89,9 @@ def when_ready(server):
     from openeogeotrellis.job_tracker import JobTracker
     from openeogeotrellis.job_registry import JobRegistry
 
-    logging.getLogger('gunicorn.error').info('Gunicorn info logging enabled!')
-    logging.getLogger('flask').info('Flask info logging enabled!')
+    show_log_level(logging.getLogger('gunicorn.error'))
+    show_log_level(logging.getLogger('flask'))
+    show_log_level(logging.getLogger('werkzeug'))
 
     job_tracker = JobTracker(JobRegistry, principal, keytab)
     threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
@@ -106,6 +116,7 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 
 
 if __name__ == '__main__':
+    _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
     setup_local_spark()
 
@@ -123,15 +134,14 @@ if __name__ == '__main__':
     from openeo_driver.views import app
     from openeogeotrellis import get_backend_version
 
-    #app.logger.handlers = gunicorn_logger.handlers
-    app.logger.setLevel('DEBUG')
+    show_log_level(logging.getLogger('openeo'))
+    show_log_level(logging.getLogger('openeo_driver'))
+    show_log_level(logging.getLogger('openeogeotrellis'))
+    show_log_level(app.logger)
+
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'Local GeoPySpark'
     app.config['OPENEO_DESCRIPTION'] = 'Local openEO API using GeoPySpark driver'
     application = StandaloneApplication(app, options)
 
-    app.logger.info('App info logging enabled!')
-    app.logger.debug('App debug logging enabled!')
-
     application.run()
-    _log.info('application: {a}'.format(a=application))
