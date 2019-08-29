@@ -1,7 +1,6 @@
 import logging
 
 from logging.config import dictConfig
-from logging import StreamHandler
 
 dictConfig({
     'version': 1,
@@ -17,17 +16,10 @@ dictConfig({
         'level': 'INFO',
         'handlers': ['wsgi']
     },
-    'werkzeug': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
-    },
-    'flask': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
-    },
-    'openeo': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
+    'loggers': {
+        'werkzeug': {'level': 'DEBUG'},
+        'flask': {'level': 'DEBUG'},
+        'openeo': {'level': 'DEBUG'},
     }
 })
 

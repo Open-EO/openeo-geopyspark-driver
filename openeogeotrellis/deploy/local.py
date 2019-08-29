@@ -19,13 +19,9 @@ dictConfig({
         'level': 'INFO',
         'handlers': ['wsgi']
     },
-    'werkzeug': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
-    },
-    'flask': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
+    'loggers': {
+        'werkzeug': {'level': 'DEBUG'},
+        'flask': {'level': 'DEBUG'},
     }
 })
 
