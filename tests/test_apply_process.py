@@ -334,10 +334,10 @@ class TestCustomFunctions(TestCase):
                         "arguments": {
                             "data": [
                                 {
-                                    "from_node": "subtract1"
+                                    "from_node": "sum1"
                                 },
                                 {
-                                    "from_node": "sum1"
+                                    "from_node": "subtract1"
                                 }
                             ]
                         }
