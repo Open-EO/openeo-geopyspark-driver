@@ -63,6 +63,9 @@ def setup_local_spark():
         conf.set(key='spark.driver.memory', value='2G')
         conf.set(key='spark.executor.memory', value='2G')
 
+    if 'PYSPARK_PYTHON' not in os.environ:
+        os.environ['PYSPARK_PYTHON'] = sys.executable
+
     _log.info('Creating Spark context with config: {c!r}'.format(c=conf.getAll()))
     pysc = SparkContext.getOrCreate(conf)
     _log.info('Created Spark Context {s}'.format(s=pysc))
