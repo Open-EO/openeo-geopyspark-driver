@@ -307,7 +307,14 @@
       "endpoint": "http://oss.eu-west-0.prod-cloud-ocb.orange-business.com",
       "region": "eu-west-0",
       "bucket_name": "s2-ndvi"
-    }
+    },
+    "bands":[],
+    "title": "TerraScope test dataset on SoblooDias",
+    "description": "NDVI",
+    "data_id":"S2_NDVI_S3",
+    "product_id":"S2_NDVI_S3",
+    "id":"S2_NDVI_S3",
+    "license": "free"
   },
   {
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
