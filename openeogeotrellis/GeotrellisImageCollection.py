@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Union, Iterable, Tuple
+from typing import Dict, List, Union, Iterable, Tuple, Sequence
 
 import geopyspark as gps
 from datetime import datetime, date, timezone
@@ -378,6 +378,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if(factor != 1.0):
             result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
+
+    #TODO EP-3068 implement!
+    def resample_spatial(self,resolution:Union[Union[int,float],Sequence[Union[int,float]]],projection:Union[int,str]=None,method:str='near',align:str='lower-left'):
+        """
+        https://open-eo.github.io/openeo-api/v/0.4.0/processreference/#resample_spatial
+        :param resolution:
+        :param projection:
+        :param method:
+        :param align:
+        :return:
+        """
+        if(projection is not None):
+            resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
+            #TODO map resample methods
+            return self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
+            #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
+        return self
 
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
