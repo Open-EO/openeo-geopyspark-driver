@@ -20,8 +20,9 @@ class LayerCatalog():
     def layers(self) -> List:
         """Returns all available layers."""
         #TODO make this work with Kerberos authentication
-        store = gps.AttributeStore("accumulo+kerberos://"+ConfigParams().zookeepernodes[0]+"/hdp-accumulo-instance")
-        layers = store.layers()
+        if ConfigParams().register_layers_to_accumulo:
+            store = gps.AttributeStore("accumulo+kerberos://"+ConfigParams().zookeepernodes[0]+"/hdp-accumulo-instance")
+            layers = store.layers()
         return [LayerCatalog._clean_config(config)  for config in self.catalog.values()]
 
     @classmethod
