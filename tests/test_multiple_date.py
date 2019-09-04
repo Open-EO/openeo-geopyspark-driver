@@ -242,3 +242,14 @@ rct_savitzky_golay(data)
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])
         self.assertEquals(10.0, stitched.cells[0][0][1])
+
+    def test_apply_kernel(self):
+        kernel = np.array([[0.0,1.0,0.0],[1.0,1.0,1.0],[0.0,1.0,0.0]])
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        stitched = imagecollection.apply_kernel(kernel,2.0).max_time().pyramid.levels[0].stitch()
+
+        self.assertEquals(12.0, stitched.cells[0][0][0])
+        self.assertEquals(16.0, stitched.cells[0][0][1])
+        self.assertEquals(20.0, stitched.cells[0][1][1])

@@ -39,6 +39,10 @@ logger.addHandler( log_stream_handler )
 _service_registry = InMemoryServiceRegistry() if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
 
 
+def get_backend_version() -> str:
+    return __version__
+
+
 def health_check():
     from pyspark import SparkContext
     sc = SparkContext.getOrCreate()
@@ -145,10 +149,16 @@ def getImageCollection(product_id:str, viewingParameters):
         return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
             .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
+    def sentinel_hub_pyramid():
+        return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
+            .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
     if data_source_type.lower() == 's3':
         pyramid = s3_pyramid()
     elif data_source_type.lower() == 'file':
         pyramid = file_pyramid()
+    elif data_source_type.lower() == 'sentinel-hub':
+        pyramid = sentinel_hub_pyramid()
     else:
         pyramid = accumulo_pyramid()
 

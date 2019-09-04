@@ -1,12 +1,11 @@
 import logging
 
 from logging.config import dictConfig
-from logging import StreamHandler
 
 dictConfig({
     'version': 1,
     'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+        'format': '[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
     }},
     'handlers': {'wsgi': {
         'class': 'logging.StreamHandler',
@@ -17,17 +16,10 @@ dictConfig({
         'level': 'INFO',
         'handlers': ['wsgi']
     },
-    'werkzeug': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
-    },
-    'flask': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
-    },
-    'openeo': {
-        'level': 'DEBUG',
-        'handlers': ['wsgi']
+    'loggers': {
+        'werkzeug': {'level': 'DEBUG'},
+        'flask': {'level': 'DEBUG'},
+        'openeo': {'level': 'DEBUG'},
     }
 })
 
@@ -124,14 +116,16 @@ def main():
     }
     tcp.close()
     from openeo_driver.views import app
+    from openeogeotrellis import get_backend_version
 
     app.logger.setLevel('DEBUG')
+    app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
+    app.config['OPENEO_TITLE'] = 'VITO Remote Sensing openEO API'
+    app.config['OPENEO_DESCRIPTION'] = 'OpenEO API to the VITO Remote Sensing product catalog and processing services (using GeoPySpark driver).'
     application = StandaloneApplication(app, options)
 
     app.logger.info('App info logging enabled!')
     app.logger.debug('App debug logging enabled!')
-
-    application = StandaloneApplication(app, options)
 
     zookeeper = len(sys.argv) <= 1 or sys.argv[1] != "no-zookeeper"
 
