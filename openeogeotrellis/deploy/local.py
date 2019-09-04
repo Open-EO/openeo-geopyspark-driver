@@ -121,10 +121,14 @@ if __name__ == '__main__':
         'timeout':1000,
         'loglevel': 'DEBUG',
         'accesslog':'-',
-        'errorlog': '-'
+        'errorlog': '-'#,
+        #'certfile': 'test.pem',
+        #'keyfile': 'test.key'
     }
 
     from openeo_driver.views import app
+    from flask_cors import CORS
+    CORS(app)
     #app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel('DEBUG')
     application = StandaloneApplication(app, options)
