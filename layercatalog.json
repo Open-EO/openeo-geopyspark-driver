@@ -3,11 +3,89 @@
     "id":"BIOPAR_FAPAR_V1_GLOBAL",
     "name":"BIOPAR_FAPAR_V1_GLOBAL",
     "product_id":"BIOPAR_FAPAR_V1_GLOBAL",
-    "title": "Copernicus Global Land FAPAR product V1",
-    "description": "The FAPAR quantifies the fraction of the solar radiation absorbed by live leaves for the photosynthesis activity. Then, it refers only to the green and alive elements of the canopy. The FAPAR depends on the canopy structure, vegetation element optical properties, atmospheric conditions, and angular configuration. To overcome this latter dependency, a daily integrated FAPAR value is assessed.\n\nFAPAR is recognized as an Essential Climate Variable (ECV) by the Global Climate Observing System (GCOS).",
+    "title": "Copernicus Global Land FAPAR product V1, 1km resolution, 10-daily",
+    "description": "Global FAPAR at 1km resolution, 10-daily. The FAPAR quantifies the fraction of the solar radiation absorbed by live leaves for the photosynthesis activity. Then, it refers only to the green and alive elements of the canopy. The FAPAR depends on the canopy structure, vegetation element optical properties, atmospheric conditions, and angular configuration. To overcome this latter dependency, a daily integrated FAPAR value is assessed.\n\nFAPAR is recognized as an Essential Climate Variable (ECV) by the Global Climate Observing System (GCOS).",
     "data_id":"BIOPAR_FAPAR_V1_GLOBAL",
     "license": "free",
-    "bands":[],
+    "bands":["fapar"],
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "1999-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/fapar",
+        "title": "Product web page."
+      }
+    ]
+
+  },
+    {
+    "id":"CGLS_FAPAR_V2_GLOBAL",
+    "name":"CGLS_FAPAR_V2_GLOBAL",
+    "product_id":"CGLS_FAPAR_V2_GLOBAL",
+    "title": "Copernicus Global Land FAPAR product V2, 1km resolution, 10-daily",
+    "description": "Global FAPAR at 1km resolution, 10-daily. The FAPAR quantifies the fraction of the solar radiation absorbed by live leaves for the photosynthesis activity. Then, it refers only to the green and alive elements of the canopy. The FAPAR depends on the canopy structure, vegetation element optical properties, atmospheric conditions, and angular configuration. To overcome this latter dependency, a daily integrated FAPAR value is assessed.\n\nFAPAR is recognized as an Essential Climate Variable (ECV) by the Global Climate Observing System (GCOS).",
+    "data_id":"BIOPAR_FAPAR_V2_GLOBAL",
+    "license": "free",
+    "bands":["fapar"],
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "1999-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/fapar",
+        "title": "Product web page."
+      }
+    ]
+
+  },
+  {
+    "id":"CGLS_LAI_V2_GLOBAL",
+    "name":"CGLS_LAI_V2_GLOBAL",
+    "product_id":"CGLS_LAI_V2_GLOBAL",
+    "title": "Copernicus Global Land LAI product V2, 1km resolution, 10-daily",
+    "description": "Global LAI at 1km resolution, 10-daily. The Leaf Area Index is defined as half the total area of green elements of the canopy per unit horizontal ground area. The satellite-derived value corresponds to the total green LAI of all the canopy layers, including the understory which may represent a very significant contribution, particularly for forests. Practically, the LAI quantifies the thickness of the vegetation cover.",
+    "data_id":"BIOPAR_LAI_V2_GLOBAL",
+    "license": "free",
+    "bands":["fapar"],
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "1999-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/lai",
+        "title": "Product web page."
+      }
+    ]
+
+  },
+  {
+    "id":"CGLS_LAI300_V1_GLOBAL",
+    "name":"CGLS_LAI300_V1_GLOBAL",
+    "product_id":"CGLS_LAI300_V1_GLOBAL",
+    "title": "Copernicus Global Land LAI product V2, 300m resolution, 10-daily",
+    "description": "Global LAI at 300m resolution, 10-daily. The Leaf Area Index is defined as half the total area of green elements of the canopy per unit horizontal ground area. The satellite-derived value corresponds to the total green LAI of all the canopy layers, including the understory which may represent a very significant contribution, particularly for forests. Practically, the LAI quantifies the thickness of the vegetation cover.",
+    "data_id":"BIOPAR_LAI300_V1_GLOBAL",
+    "license": "free",
+    "bands":["lai"],
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -19,7 +97,59 @@
     "links": [
       {
         "rel": "alternate",
-        "href": "https://land.copernicus.eu/global/products/fapar",
+        "href": "https://land.copernicus.eu/global/products/lai",
+        "title": "Product web page."
+      }
+    ]
+
+  },
+  {
+    "id":"CGLS_NDVI300_V1_GLOBAL",
+    "name":"CGLS_NDVI300_V1_GLOBAL",
+    "product_id":"CGLS_NDVI300_V1_GLOBAL",
+    "title": "Copernicus Global Land NDVI product V1, 300m resolution, 10-daily",
+    "description": "Global NDVI at 300m resolution, 10-daily. The Normalized Difference Vegetation Index (NDVI) is an indicator of the greenness of the biomes. As such, it is closely linked to the FAPAR.",
+    "data_id":"BIOPAR_NDVI300_V1_GLOBAL",
+    "license": "free",
+    "bands":["ndvi"],
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2014-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/ndvi",
+        "title": "Product web page."
+      }
+    ]
+
+  },
+   {
+    "id":"CGLS_BA300_V1_GLOBAL",
+    "name":"CGLS_BA300_V1_GLOBAL",
+    "product_id":"CGLS_BA300_V1_GLOBAL",
+    "title": "Copernicus Global Land burnt area product V1, 300m resolution, 10-daily",
+    "description": "Global burnt area at 300m resolution, 10-daily. The Burnt Area product maps the burnt scars, and gives temporal information on the fire season. ",
+    "data_id":"BIOPAR_BA300_V1_GLOBAL",
+    "license": "free",
+    "bands":["ba"],
+    "extent": {
+      "crs": "EPSG:4326",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2014-01-01",
+        null
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://land.copernicus.eu/global/products/ba",
         "title": "Product web page."
       }
     ]
@@ -210,9 +340,9 @@
     ]
   },
   {
-    "id":"S2_FCOVER_PYRAMID",
-    "name":"S2_FCOVER_PYRAMID",
-    "product_id":"S2_FCOVER_PYRAMID",
+    "id":"SENTINEL2_FCOVER_TERRASCOPE",
+    "name":"SENTINEL2_FCOVER_TERRASCOPE",
+    "product_id":"SENTINEL2_FCOVER_TERRASCOPE",
     "title": "Sentinel 2 based fCover",
     "data_id":"S2_FCOVER_PYRAMID_EARLY",
     "description": "Sentinel 2 Level-3: fCOVER, web mercator projection, with overviews.",
@@ -230,20 +360,20 @@
     "links":[]
   },
   {
-    "id": "S2_NDVI_PYRAMID",
-    "name": "S2_NDVI_PYRAMID",
+    "id": "SENTINEL2_NDVI_TERRASCOPE",
+    "name": "SENTINEL2_NDVI_TERRASCOPE",
     "data_id": "S2_NDVI_PYRAMID_EARLY"
   },
   {
-    "id": "S2_LAI_PYRAMID",
-    "name": "S2_LAI_PYRAMID",
+    "id": "SENTINEL2_LAI_TERRASCOPE",
+    "name": "SENTINEL2_LAI_TERRASCOPE",
     "data_id": "S2_LAI_PYRAMID_20190625"
   },
 
   {
-    "id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
-    "name":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
-    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
+    "id":"PROBAV_L3_S10_TOC_NDVI_333M",
+    "name":"PROBAV_L3_S10_TOC_NDVI_333M",
+    "product_id":"PROBAV_L3_S10_TOC_NDVI_333M",
     "title": "300m NDVI, 10-daily cloud-free composite",
     "description": "300m NDVI, 10-daily cloud-free composite derived from PROBA-V data.",
     "data_id":"PROBAV_L3_S10_TOC_NDVI_333M_V2",
@@ -333,16 +463,35 @@
     ]
   },
   {
-    "id": "S1_IW",
-    "name": "S1_IW",
+    "id": "SENTINEL1_GAMMA0_SENTINELHUB",
+    "name": "SENTINEL1_GAMMA0_SENTINELHUB",
+    "title": "Sentinel 1 Gamma0, 10m resolution, provided by SentinelHub",
+    "description": "Global Sentinel 1 Gamma0, provided by SentinelHub. IW mode, VV and VH bands.",
     "data_source": {
       "type": "sentinel-hub"
+    },
+    "source": "SentinelHub",
+    "license": "free",
+     "extent": {
+      "crs": "EPSG:3857",
+      "spatial":[180,-56,-180,83],
+      "temporal": [
+        "2014-10-06",
+        null
+      ]
     },
     "bands": [
       { "band_id": "VV" },
       { "band_id": "VH" },
       { "band_id": "VV_DB" },
       { "band_id": "VH_DB" }
+    ],
+     "links": [
+      {
+        "rel": "alternate",
+        "href": "https://www.sentinel-hub.com/develop/documentation/eo_products/Sentinel1EOproducts",
+        "title": "Product web page."
+      }
     ]
   }
 ]
