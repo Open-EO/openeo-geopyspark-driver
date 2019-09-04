@@ -50,7 +50,7 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.yarn.submit.waitAppCompletion=false \
- --driver-memory 3G \
+ --driver-memory 6G \
  --executor-memory 4G \
  --conf spark.driver.memoryOverhead=1g \
  --conf spark.executor.memoryOverhead=2g \
