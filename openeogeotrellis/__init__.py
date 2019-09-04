@@ -17,7 +17,6 @@ from geopyspark import TiledRasterLayer, LayerType
 from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from .layercatalog import LayerCatalog
-from .service_registry import *
 from openeo.error_summary import *
 from dateutil.parser import parse
 
@@ -35,8 +34,6 @@ log_formatter = logging.Formatter("%(asctime)s [%(levelname)s - THREAD: %(thread
 log_stream_handler = logging.StreamHandler()
 log_stream_handler.setFormatter(log_formatter)
 logger.addHandler( log_stream_handler )
-
-_service_registry = InMemoryServiceRegistry() if 'TRAVIS' in os.environ else ZooKeeperServiceRegistry()
 
 
 def get_backend_version() -> str:
@@ -89,7 +86,7 @@ def get_layers()->List:
     kerberos()
     return LayerCatalog().layers()
 
-def get_layer(product_id)->Dict:
+def get_layer(product_id) -> dict:
     from pyspark import SparkContext
     kerberos()
     return LayerCatalog().layer(product_id)
@@ -166,7 +163,8 @@ def getImageCollection(product_id:str, viewingParameters):
     option = jvm.scala.Option
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
 
-    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), _service_registry, catalog.catalog[product_id])
+    service_registry = get_openeo_backend_implementation().secondary_services.service_registry
+    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), service_registry, catalog.catalog[product_id])
     return image_collection.band_filter(band_indices) if band_indices else image_collection
 
 def create_process_visitor():
@@ -174,7 +172,7 @@ def create_process_visitor():
     return GeotrellisTileProcessGraphVisitor()
 
 
-def get_batch_job_info(job_id: str) -> Dict:
+def get_batch_job_info(job_id: str) -> dict:
     """Returns detailed information about a submitted batch job,
     or None if the batch job with this job_id is unknown."""
     from kazoo.exceptions import NoNodeError
@@ -202,7 +200,7 @@ def get_batch_job_result_output_dir(job_id: str) -> str:
     return "/mnt/ceph/Projects/OpenEO/%s" % job_id
 
 
-def create_batch_job(api_version: str, specification: Dict) -> str:
+def create_batch_job(api_version: str, specification: dict) -> str:
     job_id = str(uuid.uuid4())
 
     from .job_registry import JobRegistry

@@ -1,8 +1,8 @@
+import os
 from typing import List
 
 from openeo_driver import backend
-from openeogeotrellis import _service_registry
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
 
 
 def _merge(original: dict, key, value) -> dict:
@@ -15,8 +15,8 @@ def _merge(original: dict, key, value) -> dict:
 class GpsSecondaryServices(backend.SecondaryServices):
     """Secondary Services implementation for GeoPySpark backend"""
 
-    def __init__(self, service_registry: InMemoryServiceRegistry = _service_registry):
-        self._service_registry = service_registry
+    def __init__(self, service_registry: InMemoryServiceRegistry):
+        self.service_registry = service_registry
 
     def service_types(self) -> dict:
         return {
@@ -48,19 +48,24 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def list_services(self) -> List[dict]:
         return [
             _merge(details, 'service_id', service_id)
-            for service_id, details in self._service_registry.get_all_specifications().items()
+            for service_id, details in self.service_registry.get_all_specifications().items()
         ]
 
     def service_info(self, service_id: str) -> dict:
         # TODO: add fields: id, url, enabled, parameters, attributes
-        details = self._service_registry.get_specification(service_id)
+        details = self.service_registry.get_specification(service_id)
         return _merge(details, 'service_id', service_id)
 
     def remove_service(self, service_id: str) -> None:
-        self._service_registry.stop_service(service_id)
+        self.service_registry.stop_service(service_id)
 
 
 def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
+    # TODO: do this with a config instead of hardcoding rules?
+    service_registry = (
+        InMemoryServiceRegistry() if any(k in os.environ for k in ['TRAVIS', 'OPENEO_USE_IN_MEMORY_SERVICE_REGISTRY'])
+        else ZooKeeperServiceRegistry()
+    )
     return backend.OpenEoBackendImplementation(
-        secondary_services=GpsSecondaryServices()
+        secondary_services=GpsSecondaryServices(service_registry=service_registry)
     )
