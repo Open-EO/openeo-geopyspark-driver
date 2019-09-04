@@ -117,7 +117,7 @@ if __name__ == '__main__':
     options = {
         'bind': '%s:%s' % ("127.0.0.1", 8080),
         'workers': number_of_workers(),
-        'worker_class':'gaiohttp',
+        'worker_class':'gthread',   #'gaiohttp',
         'timeout':1000,
         'loglevel': 'DEBUG',
         'accesslog':'-',
