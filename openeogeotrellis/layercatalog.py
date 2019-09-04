@@ -5,6 +5,8 @@ import geopyspark as gps
 import json
 import os
 
+from openeogeotrellis.configparams import ConfigParams
+
 class LayerCatalog():
 
     """Catalog providing access to GeoPySpark layers"""

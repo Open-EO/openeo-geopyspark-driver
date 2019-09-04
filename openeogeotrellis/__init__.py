@@ -25,6 +25,8 @@ from py4j.java_gateway import *
 from py4j.protocol import Py4JJavaError
 from ._version import __version__
 
+from openeogeotrellis.configparams import ConfigParams
+
 import logging
 logger = logging.getLogger("openeo")
 logger.setLevel(logging.INFO)

@@ -15,6 +15,7 @@ import json
 import os
 
 from openeo.imagecollection import ImageCollection
+from openeogeotrellis.configparams import ConfigParams
 
 # TODO this is deprecated apparently: remove it?
 

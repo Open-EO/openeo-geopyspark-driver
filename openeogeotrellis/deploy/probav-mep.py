@@ -89,6 +89,7 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 def update_zookeeper(host: str, port):
     print("Registering with zookeeper.")
     from kazoo.client import KazooClient
+    from openeogeotrellis.configparams import ConfigParams
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
     zk.ensure_path("discovery/services/openeo-test")

@@ -19,6 +19,7 @@ import pytz
 
 from openeo.imagecollection import ImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
+from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
 
