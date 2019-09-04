@@ -26,5 +26,6 @@ python setup.py install bdist_egg
 cd ../openeo-geopyspark-driver
 pip install $(cat requirements.txt | tr '\n' ' ' | sed -e 's/openeo-api==0.0.1/openeo-api/') --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
 SPARK_HOME=$(find_spark_home.py) geopyspark install-jar
-mkdir -p jars && mvn dependency:copy -Dartifact=org.openeo:geotrellis-extensions:1.1.0-SNAPSHOT -DoutputDirectory=jars
+#mkdir -p jars && mvn dependency:copy -Dartifact=org.openeo:geotrellis-extensions:1.1.0-SNAPSHOT -DoutputDirectory=jars
+mkdir -p jars && mvn dependency:get -DremoteRepositories=https://artifactory.vgt.vito.be/libs-snapshot-public/  -Dartifact=org.openeo:geotrellis-extensions:1.1.0-SNAPSHOT -DoutputDirectory=jars
 python setup.py install bdist_egg
