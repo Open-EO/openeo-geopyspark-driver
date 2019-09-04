@@ -109,3 +109,5 @@ tmp/
 
 # runtime jars
 jars/
+/.project
+/.pydevproject
