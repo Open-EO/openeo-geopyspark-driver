@@ -41,6 +41,7 @@ setup(
         'geopyspark==0.4.2',
         'aiohttp==1.3.5',
         'gunicorn',
-        'kazoo==2.4.0'
+        'kazoo==2.4.0',
+        'flask-cors',
     ],
 )
