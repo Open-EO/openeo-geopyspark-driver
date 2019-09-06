@@ -83,8 +83,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
-    def bbox_filter(self, left: float, right: float, top: float, bottom: float, srs: str) -> 'ImageCollection':
-        # TODO?
+    def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'ImageCollection':
+        # Note: the bbox is already extracted in `apply_process` and applied in `getImageCollection` through the viewingParameters
         return self
 
     def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
