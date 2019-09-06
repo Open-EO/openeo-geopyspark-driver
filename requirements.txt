@@ -1,5 +1,5 @@
 pyspark>=2.3.1
-pandas==0.25.0
+pandas>=0.24.2
 protobuf==3.4.0
 geopyspark==0.4.2
 setuptools
