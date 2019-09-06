@@ -545,10 +545,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return {timestamp.isoformat(): list(map(to_mean, values)) for timestamp, values in polygon_mean_by_timestamp.collect()}
 
-    def download(self,outputfile:str, bbox="", time="",**format_options) -> str:
+    def download(self,outputfile:str, **format_options) -> str:
         """Extracts a geotiff from this image collection."""
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
-        #TODO better timeseries support, bbox and time is currently ignored
         filename = outputfile
         if outputfile is None:
             import tempfile

@@ -56,7 +56,7 @@ class GeotrellisCatalogImageCollection(ImageCollection):
         raise NotImplementedError
 
 
-    def download(self,outputfile:str, bbox="", time="",**format_options) -> str:
+    def download(self,outputfile:str, **format_options) -> str:
         """Extracts a geotiff from this image collection."""
         raise NotImplementedError
 
