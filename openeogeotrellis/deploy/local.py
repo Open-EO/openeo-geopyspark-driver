@@ -51,6 +51,7 @@ def setup_local_spark():
         master_str = "local[2]"
     else:
         master_str = "local[*]"
+    
 
     from geopyspark import geopyspark_conf
     conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local")
@@ -68,6 +69,32 @@ def setup_local_spark():
 
     _log.info('Creating Spark context with config: {c!r}'.format(c=conf.getAll()))
     pysc = SparkContext.getOrCreate(conf)
+    _log.info('Created Spark Context {s}'.format(s=pysc))
+
+def setup_nonintrusive_spark():
+    from pyspark import find_spark_home, SparkContext
+    from geopyspark import geopyspark_conf
+    
+    sc=SparkContext().getOrCreate()
+    confin=sc.getConf()
+    sc.stop()
+    confin.set('spark.kryoserializer.buffer.max', value='1G')
+    confin.set('spark.ui.enabled', True)
+    #confin.set(key='spark.driver.memory', value='2G')
+    #confin.set(key='spark.executor.memory', value='2G')
+    
+    confeo=geopyspark_conf(appName="empty")
+    
+    for (ikey,ival) in confeo.getAll():
+        if (confin.get(ikey) is None):
+            confin.set(ikey,ival)
+        else:
+            if ( ival != confin.get(ikey) ):
+                _log.warn("Existing conf "+ikey+": omitting "+ival+" for "+confin.get(ikey))
+    
+    for (ikey,ival) in confin.getAll():
+        _log.info('Config: '+ikey+" : "+ival)
+    pysc = SparkContext.getOrCreate(confin)
     _log.info('Created Spark Context {s}'.format(s=pysc))
 
 
@@ -121,7 +148,8 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 if __name__ == '__main__':
     _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
-    setup_local_spark()
+    #setup_local_spark()
+    setup_nonintrusive_spark()
 
     # Modification 3: pass Flask app instead of handler_app
     options = {
