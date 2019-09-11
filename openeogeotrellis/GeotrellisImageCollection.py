@@ -17,19 +17,20 @@ import os
 import uuid
 import pytz
 
-from openeo.imagecollection import ImageCollection
+from openeo.imagecollection import ImageCollection, CollectionMetadata
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
 from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
 
+
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
-    def __init__(self, pyramid: Pyramid, service_registry: InMemoryServiceRegistry, metadata: Dict = None):
+    def __init__(self, pyramid: Pyramid, service_registry: InMemoryServiceRegistry, metadata: CollectionMetadata = None):
+        super().__init__(metadata=metadata)
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
-        self.metadata = metadata
         self._band_index = 0
 
     def apply_to_levels(self, func):
@@ -40,7 +41,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, self.metadata)._with_band_index(self._band_index)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
 
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
@@ -63,7 +64,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             return gps.TiledRasterLayer(layer_type, srdd)
 
         pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, self.metadata)._with_band_index(self._band_index)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
 
     def _with_band_index(self, band_index):
         self._band_index = band_index
@@ -78,7 +79,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self if self._data_source_type().lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
     def _data_source_type(self):
-        return self.metadata.get('_vito', {}).get('data_source', {}).get('type', 'Accumulo')
+        return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
@@ -134,7 +135,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return SpatialExtent(ex.ymax - yinc * spatialKey.row,ex.ymax - yinc * (spatialKey.row + 1),ex.xmin + xinc * (spatialKey.col + 1),ex.xmin + xinc * spatialKey.col,layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
 
     @classmethod
-    def _tile_to_rastercollectiontile(cls, bands_numpy: np.ndarray, extent: SpatialExtent, bands_metadata, start_times=None):
+    def _tile_to_rastercollectiontile(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
+                                      bands_metadata: List[CollectionMetadata.Band], start_times=None):
         """
         Convert from geopyspark tile format into rastercollection tile format
         Geopyspark: A tile is a 3D array, associated with a time instant: (time_instant,(bands,x,y))
@@ -150,13 +152,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 #swap from time,bands,y,x to bands,time,y,x
                 bands_numpy = np.swapaxes(bands_numpy,0,1)
             result = []
-            i = 1
-            for band in bands_numpy:
-                name = "B" + str(i)
+            for i, band in enumerate(bands_numpy):
+                name = "B{i:d}".format(i=i+1)
                 wavelength = None
-                if bands_metadata is not None and len(bands_metadata) == bands_numpy.shape[0]:
-                    name = bands_metadata[i-1]['name']
-                    wavelength = bands_metadata[i-1]['wavelength_nm']
+                if len(bands_metadata) == bands_numpy.shape[0]:
+                    name = bands_metadata[i].name
+                    wavelength = bands_metadata[i].wavelength_um * 1000
                 if len(bands_numpy.shape) == 3:
                     print(band.shape)
                     rc_tile = RasterCollectionTile(name, extent, np.array([band]),wavelength=wavelength,start_times=start_times,end_times=start_times)
@@ -165,7 +166,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     print(start_times)
                     rc_tile = RasterCollectionTile(name, extent, np.array(band), wavelength=wavelength,start_times=start_times,end_times=start_times)
                 result.append(rc_tile)
-                i = i+1
             return result
 
         else:
@@ -181,7 +181,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #early compile to detect syntax errors
         compiled_code = compile(function,'UDF.py',mode='exec')
 
-        def tilefunction(metadata:Metadata, openeo_metadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
+        def tilefunction(metadata:Metadata, openeo_metadata: CollectionMetadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
             tile_list = list(tiles[1])
             #sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
@@ -191,16 +191,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
-            if openeo_metadata != None:
-                bands_metadata = openeo_metadata.get('bands', None)
-            else:
-                bands_metadata = None
-            input_rct = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(multidim_array,
-                                                                                          extent,
-                                                                                          bands_metadata=bands_metadata,
-                                                                                          start_times=pd.DatetimeIndex(dates)
-
-                                                                                          )
+            input_rct = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(
+                multidim_array,
+                extent=extent,
+                bands_metadata=openeo_metadata.bands,
+                start_times=pd.DatetimeIndex(dates)
+            )
 
             data = UdfData({"EPSG":900913}, input_rct)
 
@@ -231,8 +227,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             """
             return [(SpaceTimeKey(col=tiles[0].col,row=tiles[0].row,instant=k),Tile(np.array(v), CellType.FLOAT64, tile_list[0][1].no_data_value)) for k,v in date_to_tiles.items()]
 
-
-        def rdd_function(openeo_metadata,rdd):
+        def rdd_function(openeo_metadata: CollectionMetadata, rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
             grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
 
@@ -241,32 +236,37 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                                     partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
                                                        rdd.layer_metadata)
         from functools import partial
-        return self.apply_to_levels(partial(rdd_function,self.metadata))
+        return self.apply_to_levels(partial(rdd_function, self.metadata))
 
 
     def apply_tiles(self, function) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
 
-        def tilefunction(metadata:Metadata,openeo_metadata,geotrellis_tile:Tuple[SpaceTimeKey,Tile]):
+        def tilefunction(metadata: Metadata, openeo_metadata: CollectionMetadata,
+                         geotrellis_tile: Tuple[SpaceTimeKey, Tile]):
 
             key = geotrellis_tile[0]
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
 
-            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(geotrellis_tile[1].cells, extent,bands_metadata = openeo_metadata.get('bands',None) ))
+            data = UdfData({"EPSG":900913}, GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(
+                geotrellis_tile[1].cells,
+                extent=extent,
+                bands_metadata=openeo_metadata.bands
+            ))
 
             from openeo_udf.api.base import RasterCollectionTile
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
             result = data.raster_collection_tiles
             return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
-        def rdd_function(openeo_metadata,rdd):
+        def rdd_function(openeo_metadata: CollectionMetadata, rdd):
             return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
                                                 rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd().map(
                                                     partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
                                                 rdd.layer_metadata)
         from functools import partial
-        return self.apply_to_levels(partial(rdd_function,self.metadata))
+        return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
@@ -432,7 +432,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
                 multiple_geometries = isinstance(regions, GeometryCollection)
 
-                product_id = self.metadata['name']
+                product_id = self.metadata.get('id')
                 polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
                 polygons_srs = 'EPSG:4326'
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
@@ -457,7 +457,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             def by_compute_stats_geotrellis():
                 layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
 
-                product_id = self.metadata['name']
+                product_id = self.metadata.get('id')
                 polygon_wkts = [str(ob) for ob in regions]
                 polygons_srs = 'EPSG:4326'
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)

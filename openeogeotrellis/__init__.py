@@ -16,6 +16,7 @@ from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
 from openeo.error_summary import ErrorSummary
+from openeo.imagecollection import CollectionMetadata
 from openeogeotrellis.GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis._version import __version__
@@ -157,7 +158,8 @@ def getImageCollection(product_id:str, viewingParameters):
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
 
     service_registry = get_openeo_backend_implementation().secondary_services.service_registry
-    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), service_registry, layer_metadata)
+    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), service_registry,
+                                                           metadata=CollectionMetadata(layer_metadata))
     return image_collection.band_filter(band_indices) if band_indices else image_collection
 
 def create_process_visitor():

@@ -34,7 +34,7 @@ setup(
     tests_require=['pytest','mock'],
     install_requires=[
         'flask',
-        'openeo',
+        'openeo>=0.0.8',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
         'geopandas==0.3.0',
