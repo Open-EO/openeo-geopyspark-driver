@@ -735,3 +735,40 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 'url': wmts_base_url + "/service/wmts",
                 'service_id': service_id
             }
+
+    def ndvi(self, name: str = "ndvi") -> 'ImageCollection':
+        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+        # TODO: get correct indices from metadata
+        red_index = 2
+        nir_index = 3
+        reduce_graph = {
+            "red": {
+                "process_id": "array_element", "result": False,
+                "arguments": {"data": {"from_argument": "data"}, "index": red_index}
+            },
+            "nir": {
+                "process_id": "array_element", "result": False,
+                "arguments": {"data": {"from_argument": "data"}, "index": nir_index}
+            },
+            "nirminusred": {
+                "process_id": "subtract", "result": False,
+                "arguments": {
+                    "data": [{"from_node": "nir"}, {"from_node": "red"}]
+                }
+            },
+            "nirplusred": {
+                "process_id": "sum", "result": False,
+                "arguments": {
+                    "data": [{"from_node": "nir"}, {"from_node": "red"}]
+                }
+            },
+            "ndvi": {
+                "process_id": "divide", "result": True,
+                "arguments": {
+                    "data": [{"from_node": "nirminusred"}, {"from_node": "nirplusred"}]
+                }
+            },
+        }
+        visitor = GeotrellisTileProcessGraphVisitor()
+        # TODO: how to set name (argument `name`) of newly created band?
+        return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
