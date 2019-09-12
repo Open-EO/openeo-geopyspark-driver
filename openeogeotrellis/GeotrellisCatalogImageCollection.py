@@ -12,7 +12,6 @@ from pandas import Series
 import pandas as pd
 from shapely.geometry import Point,Polygon,MultiPolygon
 import json
-import os
 
 from openeo.imagecollection import ImageCollection
 from openeogeotrellis.configparams import ConfigParams
@@ -61,7 +60,7 @@ class GeotrellisCatalogImageCollection(ImageCollection):
         raise NotImplementedError
 
     def _proxy_tms(self,tms):
-        if 'TRAVIS' in os.environ:
+        if ConfigParams().is_ci_context:
             return tms.url_pattern
         else:
             from kazoo.client import KazooClient

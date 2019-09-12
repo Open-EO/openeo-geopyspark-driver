@@ -1,7 +1,7 @@
-import os
 from typing import List
 
 from openeo_driver import backend
+from openeogeotrellis import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
 
 
@@ -63,7 +63,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
 def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
     # TODO: do this with a config instead of hardcoding rules?
     service_registry = (
-        InMemoryServiceRegistry() if any(k in os.environ for k in ['TRAVIS', 'OPENEO_USE_IN_MEMORY_SERVICE_REGISTRY'])
+        InMemoryServiceRegistry() if ConfigParams().is_ci_context
         else ZooKeeperServiceRegistry()
     )
     return backend.OpenEoBackendImplementation(

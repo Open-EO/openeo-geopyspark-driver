@@ -8,6 +8,8 @@ from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 
+from openeogeotrellis.configparams import ConfigParams
+
 
 class TestLayers:
 
@@ -18,7 +20,7 @@ class TestLayers:
         conf.set('spark.kryoserializer.buffer.max', value='1G')
         conf.set('spark.ui.enabled', True)
 
-        if 'TRAVIS' in os.environ:
+        if ConfigParams().is_ci_context:
             conf.set(key='spark.driver.memory', value='2G')
             conf.set(key='spark.executor.memory', value='2G')
 

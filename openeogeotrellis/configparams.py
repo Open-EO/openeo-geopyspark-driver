@@ -2,10 +2,12 @@ import os
 
 class ConfigParams:
 
-    def __init__(self):
-        self.zookeepernodes=os.environ.get("ZOOKEEPERNODES",
+    def __init__(self, env=os.environ):
+        self.zookeepernodes=env.get("ZOOKEEPERNODES",
             'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'    
         ).split(',') 
-    
-    
-    
+
+        # Are we running in a unittest or continuous integration context?
+        self.is_ci_context = any(v in env for v in ['TRAVIS', 'PYTEST_CURRENT_TEST'])
+
+

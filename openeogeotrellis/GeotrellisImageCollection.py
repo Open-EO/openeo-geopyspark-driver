@@ -623,7 +623,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 f.write(chunk)
 
     def _proxy_tms(self,tms):
-        if 'TRAVIS' in os.environ:
+        if ConfigParams().is_ci_context:
             return tms.url_pattern
         else:
             host = tms.host
