@@ -1,20 +1,21 @@
 import datetime
 
 from .base_test_class import BaseTestClass
+
 BaseTestClass.setup_local_spark()
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
-from geopyspark.geotrellis.constants import LayerType, CellType
+from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer,Pyramid
 from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from openeogeotrellis.numpy_aggregators import *
+from openeogeotrellis.numpy_aggregators import max_composite
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from unittest import skip, TestCase
+from unittest import TestCase
 from pyspark import SparkContext
-from numpy.testing import *
+from numpy.testing import assert_array_almost_equal
 
 
 class TestMultipleDates(TestCase):
@@ -179,7 +180,6 @@ class TestMultipleDates(TestCase):
         self.assertEqual(4, stitched.cells[0][5][5])
 
     def test_apply_dimension_spatiotemporal(self):
-        import openeo_udf.functions
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
