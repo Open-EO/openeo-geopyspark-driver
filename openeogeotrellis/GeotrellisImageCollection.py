@@ -737,10 +737,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             }
 
     def ndvi(self, name: str = "ndvi") -> 'ImageCollection':
-        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-        # TODO: get correct indices from metadata
-        red_index = 2
-        nir_index = 3
+        try:
+            red_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'red']
+            nir_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'nir']
+        except ValueError:
+            raise ValueError("Failed to detect 'red' and 'nir' bands")
+
         reduce_graph = {
             "red": {
                 "process_id": "array_element", "result": False,
@@ -769,6 +771,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 }
             },
         }
+
+        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
         # TODO: how to set name (argument `name`) of newly created band?
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
