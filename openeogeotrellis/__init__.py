@@ -1,32 +1,27 @@
+import logging
 import os
-import pandas as pd
-import subprocess
-from subprocess import CalledProcessError
-import uuid
-import json
 import re
-from collections import deque
+import subprocess
+import sys
 import traceback
-import pkg_resources
-
+import uuid
+from subprocess import CalledProcessError
 from typing import Union, List
 
+import pkg_resources
 import pytz
-from geopyspark import TiledRasterLayer, LayerType
-
-from .GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from .GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
-from .layercatalog import LayerCatalog
-from openeo.error_summary import *
 from dateutil.parser import parse
-
-from py4j.java_gateway import *
+from geopyspark import TiledRasterLayer, LayerType
+from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
-from ._version import __version__
 
+from openeo.error_summary import ErrorSummary
+from openeogeotrellis.GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis._version import __version__
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.layercatalog import LayerCatalog
 
-import logging
 logger = logging.getLogger("openeo")
 logger.setLevel(logging.INFO)
 log_formatter = logging.Formatter("%(asctime)s [%(levelname)s - THREAD: %(threadName)s - %(name)s] : %(message)s")
