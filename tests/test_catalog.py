@@ -2,9 +2,6 @@ import re
 from unittest import skip, TestCase
 
 from openeogeotrellis.layercatalog import LayerCatalog
-from .base_test_class import BaseTestClass
-
-BaseTestClass.setup_local_spark()
 
 
 class TestLayerCatalog(TestCase):

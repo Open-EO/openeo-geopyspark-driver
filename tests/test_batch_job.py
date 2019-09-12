@@ -1,9 +1,4 @@
-import datetime
 from unittest import TestCase
-
-from .base_test_class import BaseTestClass
-BaseTestClass.setup_local_spark()
-
 
 
 class TestBatchJob(TestCase):

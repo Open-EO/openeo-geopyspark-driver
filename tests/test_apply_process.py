@@ -1,20 +1,17 @@
 import datetime
 from unittest import TestCase
 
-from .base_test_class import BaseTestClass
-BaseTestClass.setup_local_spark()
-import numpy as np
 import geopyspark as gps
+import numpy as np
+import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from pyspark import SparkContext
+from shapely.geometry import Point
+
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from shapely.geometry import Point, Polygon
-import pytz
-
-import openeo_udf.functions
-from pyspark import SparkContext
 
 
 class TestCustomFunctions(TestCase):

@@ -1,20 +1,18 @@
 import datetime
-import pytz
+from unittest import TestCase
 
-from unittest import skip, TestCase
+import geopyspark as gps
 import numpy as np
-from .base_test_class import BaseTestClass
-BaseTestClass.setup_local_spark()
+import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-import geopyspark as gps
+from pyspark import SparkContext
 from shapely.geometry import Point
+from shapely.geometry import Polygon
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from shapely.geometry import Polygon
-from pyspark import SparkContext
 
 
 class TestTimeSeries(TestCase):

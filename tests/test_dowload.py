@@ -1,16 +1,14 @@
 import datetime
-from unittest import TestCase
 from pathlib import Path
+from unittest import TestCase
 
-import numpy as np
-from .base_test_class import BaseTestClass
-BaseTestClass.setup_local_spark()
 import geopyspark as gps
+import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from shapely.geometry import Point
 from pyspark import SparkContext
+from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry

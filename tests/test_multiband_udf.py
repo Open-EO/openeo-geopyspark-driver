@@ -1,11 +1,11 @@
 
-from .base_test_class import BaseTestClass
-BaseTestClass.setup_local_spark()
 from unittest import TestCase
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
+
 import numpy as np
 from geopyspark import Tile
+
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
 class TestMultiBandUDF(TestCase):

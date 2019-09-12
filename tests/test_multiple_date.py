@@ -1,21 +1,18 @@
 import datetime
+from unittest import TestCase
 
-from .base_test_class import BaseTestClass
-
-BaseTestClass.setup_local_spark()
 import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
 from geopyspark.geotrellis.constants import LayerType
-from geopyspark.geotrellis.layer import TiledRasterLayer,Pyramid
+from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
+from numpy.testing import assert_array_almost_equal
+from pyspark import SparkContext
 from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.numpy_aggregators import max_composite
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from unittest import TestCase
-from pyspark import SparkContext
-from numpy.testing import assert_array_almost_equal
 
 
 class TestMultipleDates(TestCase):

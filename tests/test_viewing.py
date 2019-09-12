@@ -1,19 +1,17 @@
 import datetime
 from unittest import TestCase
 
-import numpy as np
-
-from .base_test_class import BaseTestClass
-BaseTestClass.setup_local_spark()
 import geopyspark as gps
+import numpy as np
+import requests
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from pyspark import SparkContext
 from shapely.geometry import Point
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from pyspark import SparkContext
 
 
 class TestViewing(TestCase):
@@ -96,8 +94,7 @@ class TestViewing(TestCase):
         print(metadata)
         self.assertEqual('TMS',metadata['type'])
         self.assertIsNotNone(metadata['bounds'])
-        import requests
-        tileresponse = requests.get(metadata['url'].format(x=0, y=0, z=0))
+        tileresponse = requests.get(metadata['url'].format(x=0, y=0, z=0), timeout=2)
         self.assertEqual(200,tileresponse.status_code)
-        tileresponse = requests.get(metadata['url'].format(x=1, y=1, z=0))
+        tileresponse = requests.get(metadata['url'].format(x=1, y=1, z=0), timeout=2)
         self.assertEqual(200,tileresponse.status_code)
