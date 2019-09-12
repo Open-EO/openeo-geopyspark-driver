@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 
 from openeo_driver.errors import SecondaryServiceNotFound
-from openeogeotrellis import InMemoryServiceRegistry, WMTSService
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
 
 
 class TestInMemoryServiceRegistry:
