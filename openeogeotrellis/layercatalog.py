@@ -48,7 +48,7 @@ class LayerCatalog:
 
         if hide_private:
             # Don't expose "private" fields
-            for key in (k for k in metadata.keys() if k.startswith('_')):
+            for key in [k for k in metadata.keys() if k.startswith('_')]:
                 del metadata[key]
 
         return metadata
