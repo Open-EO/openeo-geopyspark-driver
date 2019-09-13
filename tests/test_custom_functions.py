@@ -94,7 +94,6 @@ class TestCustomFunctions(TestCase):
             "top": 71
         },
         "product_id": "CGS_SENTINEL2_RADIOMETRY_V101",
-        "source": "Terrascope - VITO",
         "time": {
             "from": "2016-01-01",
             "to": "2019-10-01"

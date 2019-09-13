@@ -197,7 +197,7 @@
       }
     },
     "description": "Sentinel 1 GRD Sigma0, mosaic of all ascending relative orbits. Provided by Terrascope.",
-    "source": "Terrascope - VITO",
+    "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
@@ -260,7 +260,7 @@
       }
     },
     "description": "Sentinel 1 GRD Sigma0, mosaic of all descending relative orbits. Provided by Terrascope.",
-    "source": "Terrascope - VITO",
+    "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
@@ -324,7 +324,7 @@
       }
     },
     "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry, provided by Terrascope.",
-    "source": "Terrascope - VITO",
+    "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
@@ -410,7 +410,7 @@
       }
     },
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
-    "source": "Terrascope - VITO",
+    "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
@@ -441,7 +441,7 @@
       }
     },
     "description": "Sentinel 2 Level-3: fCOVER, web mercator projection, with overviews.",
-    "source": "Terrascope - VITO",
+    "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
@@ -522,7 +522,7 @@
         "data_id": "S2_SCENECLASSIFICATION_PYRAMID_20190624"
       }
     },
-    "source": "Terrascope - VITO",
+    "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
@@ -617,7 +617,7 @@
         "type": "sentinel-hub"
       }
     },
-    "source": "SentinelHub",
+    "providers": [{"name": "SentinelHub"}],
     "license": "free",
     "extent": {
       "crs": "EPSG:3857",
