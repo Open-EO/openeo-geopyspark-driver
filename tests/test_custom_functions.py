@@ -84,7 +84,7 @@ class TestCustomFunctions(TestCase):
                 "wavelength_nm": 835.1
             }
         ],
-        "data_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+        "_vito": {"accumulo_data_id": "CGS_SENTINEL2_RADIOMETRY_V101"},
         "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
         "extent": {
             "bottom": 39,
@@ -94,7 +94,6 @@ class TestCustomFunctions(TestCase):
             "top": 71
         },
         "product_id": "CGS_SENTINEL2_RADIOMETRY_V101",
-        "source": "Terrascope - VITO",
         "time": {
             "from": "2016-01-01",
             "to": "2019-10-01"

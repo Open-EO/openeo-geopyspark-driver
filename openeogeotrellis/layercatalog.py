@@ -1,37 +1,67 @@
+import copy
 import json
+import warnings
 from pathlib import Path
-from typing import List, Dict
 
-import geopyspark as gps
+
+class UnknownCollectionException(ValueError):
+    # TODO move this to openeo package?
+    # TODO subclass from openeo base exception?
+    def __init__(self, collection_id):
+        super().__init__("Unknown collection {c!r}".format(c=collection_id))
 
 
 class LayerCatalog:
+    """Catalog describing the available image collections."""
 
-    """Catalog providing access to GeoPySpark layers"""
+    _stac_version = "0.7.0"
+
     def __init__(self, filename='layercatalog.json'):
         path = Path(filename)
         if not path.is_file():
-            raise RuntimeError("layercatalog.json not found, please make sure that it is available in the working directory.")
+            raise RuntimeError("LayerCatalog file not found: {f}".format(f=path))
 
         with path.open() as f:
             self.catalog = {layer["id"]: layer for layer in json.load(f)}
 
-    def layers(self) -> List:
+    def _normalize_layer_metadata(self, metadata: dict, hide_private=True) -> dict:
+        """Make sure the layer metadata follows OpenEO spec to some extent."""
+        metadata = copy.deepcopy(metadata)
+
+        collection_id = metadata["id"]
+
+        # Make sure required fields are set.
+        metadata.setdefault("stac_version", self._stac_version)
+        metadata.setdefault("links", [])
+        metadata.setdefault("other_properties", {})
+        # Warn about missing fields where sensible defaults are not feasible
+        fallbacks = {
+            "description": "Description of {c} (#TODO)".format(c=collection_id),
+            "license": "proprietary",
+            "extent": {"spatial": [0, 0, 0, 0], "temporal": [None, None]},
+            "properties": {"cube:dimensions": {}},
+        }
+        for key, value in fallbacks.items():
+            if key not in metadata:
+                warnings.warn("Collection {c} is missing required metadata field {k!r}.".format(c=collection_id, k=key))
+            metadata[key] = value
+
+        if hide_private:
+            # Don't expose "private" fields
+            for key in [k for k in metadata.keys() if k.startswith('_')]:
+                del metadata[key]
+
+        return metadata
+
+    def assert_collection_id(self, collection_id):
+        if collection_id not in self.catalog:
+            raise UnknownCollectionException(collection_id)
+
+    def layers(self) -> list:
         """Returns all available layers."""
-        #TODO make this work with Kerberos authentication
-        return [LayerCatalog._clean_config(config)  for config in self.catalog.values()]
+        return [self._normalize_layer_metadata(m) for m in self.catalog.values()]
 
-    @classmethod
-    def _clean_config(cls, layer_config):
-        desired_keys = set(layer_config.keys()) - {"data_id"}
-        return {k:v for k,v in layer_config.items() if k in desired_keys}
-
-    def layer(self,product_id) -> Dict:
+    def layer(self, collection_id: str, hide_private=True) -> dict:
         """Returns the layer config for a given id."""
-        if product_id in self.catalog:
-            return self.catalog[product_id]
-        else:
-            raise ValueError("Unknown collection id: " + product_id)
-
-
-
+        self.assert_collection_id(collection_id)
+        return self._normalize_layer_metadata(self.catalog[collection_id], hide_private=hide_private)
