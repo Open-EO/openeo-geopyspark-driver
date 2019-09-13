@@ -24,7 +24,7 @@ class LayerCatalog:
         with path.open() as f:
             self.catalog = {layer["id"]: layer for layer in json.load(f)}
 
-    def _normalize_layer_metadata(self, metadata: dict) -> dict:
+    def _normalize_layer_metadata(self, metadata: dict, hide_private=True) -> dict:
         """Make sure the layer metadata follows OpenEO spec to some extent."""
         metadata = copy.deepcopy(metadata)
 
@@ -46,9 +46,11 @@ class LayerCatalog:
                 warnings.warn("Collection {c} is missing required metadata field {k!r}.".format(c=collection_id, k=key))
             metadata[key] = value
 
-        key_blacklist = {"data_id"}
-        for key in key_blacklist:
-            metadata.pop(key, None)
+        if hide_private:
+            # Don't expose "private" fields
+            for key in (k for k in metadata.keys() if k.startswith('_')):
+                del metadata[key]
+
         return metadata
 
     def assert_collection_id(self, collection_id):
@@ -59,7 +61,7 @@ class LayerCatalog:
         """Returns all available layers."""
         return [self._normalize_layer_metadata(m) for m in self.catalog.values()]
 
-    def layer(self, collection_id: str) -> dict:
+    def layer(self, collection_id: str, hide_private=True) -> dict:
         """Returns the layer config for a given id."""
         self.assert_collection_id(collection_id)
-        return self._normalize_layer_metadata(self.catalog[collection_id])
+        return self._normalize_layer_metadata(self.catalog[collection_id], hide_private=hide_private)

@@ -83,7 +83,7 @@ class TestCustomFunctions(TestCase):
                 "wavelength_nm": 835.1
             }
         ],
-        "data_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+        "_vito": {"accumulo_data_id": "CGS_SENTINEL2_RADIOMETRY_V101"},
         "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
         "extent": {
             "bottom": 39,

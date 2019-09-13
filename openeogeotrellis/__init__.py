@@ -99,11 +99,9 @@ def getImageCollection(product_id:str, viewingParameters):
     print("Creating layer for %s with viewingParameters %s" % (product_id, viewingParameters))
     kerberos()
 
-    catalog = LayerCatalog()
-    if product_id not in catalog.catalog:
-        raise ValueError("Product id not available, list of available data can be retrieved at /data.")
-    layer_config = catalog.layer(product_id)
-    data_source_type = layer_config.get('data_source', {}).get('type', 'Accumulo')
+    layer_metadata = LayerCatalog().layer(product_id, hide_private=False)
+    layer_source_info = layer_metadata.get("_vito", {}).get("data_source", {})
+    layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
     import geopyspark as gps
     from_date = normalize_date(viewingParameters.get("from",None))
@@ -126,13 +124,13 @@ def getImageCollection(product_id:str, viewingParameters):
     def accumulo_pyramid():
         pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                                 ','.join(ConfigParams().zookeepernodes))
-        accumulo_layer_name = layer_config['data_id']
+        accumulo_layer_name = layer_source_info['data_id']
         return pyramidFactory.pyramid_seq(accumulo_layer_name, extent,srs, from_date, to_date)
 
     def s3_pyramid():
-        endpoint = layer_config['data_source']['endpoint']
-        region = layer_config['data_source']['region']
-        bucket_name = layer_config['data_source']['bucket_name']
+        endpoint = layer_source_info['endpoint']
+        region = layer_source_info['region']
+        bucket_name = layer_source_info['bucket_name']
 
         return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
             .pyramid_seq(extent, srs, from_date, to_date)
@@ -145,11 +143,11 @@ def getImageCollection(product_id:str, viewingParameters):
         return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
             .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-    if data_source_type.lower() == 's3':
+    if layer_source_type == 's3':
         pyramid = s3_pyramid()
-    elif data_source_type.lower() == 'file':
+    elif layer_source_type == 'file':
         pyramid = file_pyramid()
-    elif data_source_type.lower() == 'sentinel-hub':
+    elif layer_source_type == 'sentinel-hub':
         pyramid = sentinel_hub_pyramid()
     else:
         pyramid = accumulo_pyramid()
@@ -159,7 +157,7 @@ def getImageCollection(product_id:str, viewingParameters):
     levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
 
     service_registry = get_openeo_backend_implementation().secondary_services.service_registry
-    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), service_registry, catalog.catalog[product_id])
+    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), service_registry, layer_metadata)
     return image_collection.band_filter(band_indices) if band_indices else image_collection
 
 def create_process_visitor():

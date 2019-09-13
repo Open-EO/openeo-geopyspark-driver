@@ -78,7 +78,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self if self._data_source_type().lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
     def _data_source_type(self):
-        return self.metadata.get('data_source', {}).get('type', 'Accumulo')
+        return self.metadata.get('_vito', {}).get('data_source', {}).get('type', 'Accumulo')
 
     def date_range_filter(self, start_date: Union[str, datetime, date],end_date: Union[str, datetime, date]) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
