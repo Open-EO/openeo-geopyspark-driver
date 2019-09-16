@@ -2,6 +2,7 @@ import copy
 import json
 import warnings
 from pathlib import Path
+from typing import Union, List, Dict
 
 
 class UnknownCollectionException(ValueError):
@@ -16,13 +17,20 @@ class LayerCatalog:
 
     _stac_version = "0.7.0"
 
-    def __init__(self, filename='layercatalog.json'):
-        path = Path(filename)
-        if not path.is_file():
-            raise RuntimeError("LayerCatalog file not found: {f}".format(f=path))
+    def __init__(self, source: Union[str, List[dict], Dict[str, dict]] = 'layercatalog.json'):
+        if isinstance(source, (str, Path)):
+            path = Path(source)
+            if not path.is_file():
+                raise OSError("LayerCatalog file not found: {f}".format(f=path))
+            with path.open() as f:
+                source = json.load(f)
 
-        with path.open() as f:
-            self.catalog = {layer["id"]: layer for layer in json.load(f)}
+        if isinstance(source, list) and all(isinstance(layer, dict) for layer in source):
+            self.catalog = {layer["id"]: layer for layer in source}
+        elif isinstance(source, dict) and all(isinstance(layer, dict) for layer in source.values()):
+            self.catalog = source.copy()
+        else:
+            raise ValueError("Don't know how to handle {s!r}".format(s=source))
 
     def _normalize_layer_metadata(self, metadata: dict, hide_private=True) -> dict:
         """Make sure the layer metadata follows OpenEO spec to some extent."""
@@ -44,7 +52,7 @@ class LayerCatalog:
         for key, value in fallbacks.items():
             if key not in metadata:
                 warnings.warn("Collection {c} is missing required metadata field {k!r}.".format(c=collection_id, k=key))
-            metadata[key] = value
+                metadata[key] = value
 
         if hide_private:
             # Don't expose "private" fields

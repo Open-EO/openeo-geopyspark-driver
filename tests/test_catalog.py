@@ -37,3 +37,21 @@ def test_issue77_band_metadata():
             assert old_bands == eo_bands
             assert old_bands == cube_dimension_bands
         assert eo_bands == cube_dimension_bands
+
+
+def test_layercatalog_normalization_defaults():
+    catalog = LayerCatalog([{"id": "SENTINEL2"}])
+    layer = catalog.layer("SENTINEL2")
+    assert layer["links"] == []
+    assert "description" in layer
+    assert "stac_version" in layer
+    assert "properties" in layer
+    assert "license" in layer
+
+
+def test_layercatalog_normalization_dont_override():
+    catalog = LayerCatalog([{"id": "SENTINEL2", "license": "free", "properties": {"eo:bands": [{"name": "red"}]}}])
+    layer = catalog.layer("SENTINEL2")
+    assert layer["license"] == "free"
+    assert layer["properties"] == {"eo:bands": [{"name": "red"}]}
+    assert layer["links"] == []
