@@ -1,4 +1,5 @@
 import datetime
+import math
 from unittest import TestCase
 
 import geopyspark as gps
@@ -10,7 +11,9 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from openeo.imagecollection import CollectionMetadata
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
@@ -99,58 +102,41 @@ class TestCustomFunctions(TestCase):
         }
     }
 
-    def create_spacetime_layer(self):
+    def _create_spacetime_layer(self, cells: np.ndarray = None) -> TiledRasterLayer:
+        # TODO all these "create_spacetime_layer" functions are duplicated across all tests
+        #       and better should be moved to some kind of general factory or test fixture
+        assert len(cells.shape) == 4
+        tile = Tile.from_numpy_array(cells, -1)
+
+        layer = [(SpaceTimeKey(0, 0, self.now), tile),
+                 (SpaceTimeKey(1, 0, self.now), tile),
+                 (SpaceTimeKey(0, 1, self.now), tile),
+                 (SpaceTimeKey(1, 1, self.now), tile)]
+
+        rdd = SparkContext.getOrCreate().parallelize(layer)
+
+        metadata = {'cellType': 'int32ud-1',
+                    'extent': self.extent,
+                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+                    'bounds': {
+                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
+                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
+                    },
+                    'layoutDefinition': {
+                        'extent': self.extent,
+                        'tileLayout': self.layout
+                    }
+                    }
+
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+
+    def create_spacetime_layer(self) -> TiledRasterLayer:
         cells = np.array([self.first, self.second], dtype='int')
-        tile = Tile.from_numpy_array(cells, -1)
+        return self._create_spacetime_layer(cells)
 
-        layer = [(SpaceTimeKey(0, 0, self.now), tile),
-                 (SpaceTimeKey(1, 0, self.now), tile),
-                 (SpaceTimeKey(0, 1, self.now), tile),
-                 (SpaceTimeKey(1, 1, self.now), tile)]
-
-        rdd = SparkContext.getOrCreate().parallelize(layer)
-
-        metadata = {'cellType': 'int32ud-1',
-                    'extent': self.extent,
-                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
-                    'bounds': {
-                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
-                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
-                    },
-                    'layoutDefinition': {
-                        'extent': self.extent,
-                        'tileLayout': self.layout
-                    }
-                    }
-
-        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
-
-    def create_spacetime_layer_singleband(self):
+    def create_spacetime_layer_singleband(self) -> TiledRasterLayer:
         cells = np.array([self.first], dtype='int')
-        tile = Tile.from_numpy_array(cells, -1)
-
-        layer = [(SpaceTimeKey(0, 0, self.now), tile),
-                 (SpaceTimeKey(1, 0, self.now), tile),
-                 (SpaceTimeKey(0, 1, self.now), tile),
-                 (SpaceTimeKey(1, 1, self.now), tile)]
-
-        rdd = SparkContext.getOrCreate().parallelize(layer)
-
-        metadata = {'cellType': 'int32ud-1',
-                    'extent': self.extent,
-                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
-                    'bounds': {
-                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
-                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
-                    },
-                    'layoutDefinition': {
-                        'extent': self.extent,
-                        'tileLayout': self.layout
-                    }
-                    }
-
-        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
-
+        return self._create_spacetime_layer(cells)
 
 
     def test_point_series(self):
@@ -159,7 +145,6 @@ class TestCustomFunctions(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         transformed_collection = imagecollection.apply("cos")
-        import math
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)
             print(result)
@@ -175,7 +160,6 @@ class TestCustomFunctions(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
             "sum": {
@@ -219,7 +203,6 @@ class TestCustomFunctions(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
             "eq": {
@@ -252,7 +235,6 @@ class TestCustomFunctions(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
             "gt": {
@@ -277,7 +259,6 @@ class TestCustomFunctions(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
         graph ={
                     "arrayelement3": {
@@ -367,3 +348,27 @@ class TestCustomFunctions(TestCase):
         stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
+
+    def test_ndvi(self):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
+        pyramid = gps.Pyramid({0: layer})
+        metadata = CollectionMetadata({
+            "properties": {
+                "eo:bands": [
+                    {"name": "B04", "common_name": "red"},
+                    {"name": "B08", "common_name": "nir"},
+                ]
+            }
+        })
+        imagecollection = GeotrellisTimeSeriesImageCollection(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+
+        stitched = imagecollection.ndvi().pyramid.levels[0].to_spatial_layer().stitch()
+        cells = stitched.cells[0, 0:4, 0:4]
+        expected = np.array([
+            [np.nan, 1 / 1, 2 / 2, 3 / 3],
+            [-1 / 1, 0 / 2, 1 / 3, 2 / 4],
+            [-2 / 2, -1 / 3, 0 / 4, 1 / 5],
+            [-3 / 3, -2 / 4, -1 / 5, 0 / 6]
+        ])
+        np.testing.assert_array_almost_equal(cells, expected)

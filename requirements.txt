@@ -6,13 +6,13 @@ setuptools
 gunicorn
 kazoo==2.5.0
 aiohttp==1.3.5
-openeo
 cloudpickle
 matplotlib>=2.0.0,<3.0.0
 colortools>=0.1.2
 pyproj<2.2.0
 geopandas==0.3.0
 numpy==1.17.0
+openeo>=0.0.8
 openeo_driver
 openeo_udf
 py4j
