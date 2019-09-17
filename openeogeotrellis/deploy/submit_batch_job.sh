@@ -2,7 +2,7 @@
 
 if [ -z "${OPENEO_VENV_ZIP}" ]; then
     >&2 echo "Environment variable OPENEO_VENV_ZIP is not set, falling back to default.\n"
-    OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv.zip
+    OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
 fi
 
 if [ "$#" -lt 5 ]; then
@@ -36,7 +36,9 @@ export HDP_VERSION=3.0.0.0-1634
 export SPARK_HOME=/usr/hdp/$HDP_VERSION/spark2
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
-export LD_LIBRARY_PATH="/opt/rh/rh-python35/root/usr/lib64"
+export LD_LIBRARY_PATH="venv/lib64"
+
+export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
@@ -58,8 +60,8 @@ spark-submit \
  --conf spark.dynamicAllocation.minExecutors=20 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 \
- --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
+ --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
