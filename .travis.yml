@@ -1,7 +1,11 @@
 language: python
 python:
-  - "3.5"
   - "3.6"
+dist: trusty
+addons:
+  apt:
+    packages:
+      - openjdk-8-jdk
 # command to install dependencies
 install:
   - pip install -r requirements.txt --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
