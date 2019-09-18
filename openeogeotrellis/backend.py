@@ -3,7 +3,7 @@ from typing import List
 from openeo_driver import backend
 from openeo_driver.utils import read_json
 from openeogeotrellis import ConfigParams
-from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, get_layer_catalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
 
 
@@ -70,10 +70,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             InMemoryServiceRegistry() if ConfigParams().is_ci_context
             else ZooKeeperServiceRegistry()
         )
-        catalog = read_json("layercatalog.json")
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=service_registry),
-            catalog=GeoPySparkLayerCatalog(all_metadata=catalog, service_registry=service_registry),
+            catalog=get_layer_catalog(service_registry=service_registry),
         )
 
     def health_check(self) -> str:

@@ -1,3 +1,4 @@
+import collections
 import logging
 import os
 
@@ -40,3 +41,31 @@ def kerberos():
     # print(loginUser.hasKerberosCredentials())
     # currentUser.addCredentials(loginUser.getCredentials())
     # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
+
+
+def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
+    """
+    Merge two dictionaries recursively
+
+    :param a: first dictionary
+    :param b: second dictionary
+    :param overwrite: whether values of b can overwrite values of a
+    :return: merged dictionary
+
+    # TODO move this to utils module in openeo-python-driver or openeo-python-client?
+    """
+    # Start with shallow copy, we'll copy deeper parts where necessary through recursion.
+    result = a.copy()
+    for key, value in b.items():
+        if key in result:
+            if isinstance(value, collections.Mapping) and isinstance(result[key], collections.Mapping):
+                result[key] = dict_merge_recursive(result[key], value, overwrite=overwrite)
+            elif overwrite:
+                result[key] = value
+            elif result[key] == value:
+                pass
+            else:
+                raise ValueError("Can not automatically merge {a!r} and {b!r}".format(a=result[key], b=value))
+        else:
+            result[key] = value
+    return result

@@ -12,7 +12,7 @@ from openeo_driver.utils import read_json
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from openeogeotrellis.utils import kerberos
+from openeogeotrellis.utils import kerberos, dict_merge_recursive
 
 logger = logging.getLogger(__name__)
 
@@ -120,12 +120,24 @@ def normalize_date(date_string):
     return None
 
 
-def get_default_layer_catalog(service_registry: InMemoryServiceRegistry = None):
+def get_layer_catalog(service_registry: InMemoryServiceRegistry = None) -> GeoPySparkLayerCatalog:
     """
-    Factory for default layer catalog
-    TODO can we eliminate the need for a default catalog with default json file??
+    Get layer catalog (from JSON files)
     """
+    catalog_files = ConfigParams().layer_catalog_metadata_files
+    logger.info("Reading layer catalog metadata from {f!r}".format(f=catalog_files[0]))
+    metadata = read_json(catalog_files[0])
+    if len(catalog_files) > 1:
+        # Merge metadata recursively
+        metadata = {l["id"]: l for l in metadata}
+        for path in catalog_files[1:]:
+            logger.info("Updating layer catalog metadata from {f!r}".format(f=path))
+            updates = {l["id"]:l for l in read_json(path)}
+            metadata = dict_merge_recursive(metadata, updates, overwrite=True)
+        metadata = list(metadata.values())
+
+
     return GeoPySparkLayerCatalog(
-        all_metadata=read_json("layercatalog.json"),
+        all_metadata=metadata,
         service_registry=service_registry or InMemoryServiceRegistry()
     )
