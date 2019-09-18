@@ -14,4 +14,4 @@ install:
   - mkdir -p jars && curl -sSf https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.1.0-SNAPSHOT/geotrellis-extensions-1.1.0-SNAPSHOT.jar -o jars/geotrellis-extensions-1.1.0-SNAPSHOT.jar
 # command to run tests
 script:
-  - SPARK_HOME=$(find_spark_home.py) pytest
+  - pytest
