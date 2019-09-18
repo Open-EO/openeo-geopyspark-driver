@@ -31,17 +31,6 @@ def get_backend_version() -> str:
     return __version__
 
 
-def health_check():
-    from pyspark import SparkContext
-    sc = SparkContext.getOrCreate()
-    count = sc.parallelize([1,2,3]).count()
-    return 'Health check: ' + str(count)
-
-
-
-
-
-
 def create_process_visitor():
     from .geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
     return GeotrellisTileProcessGraphVisitor()
