@@ -564,7 +564,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if tiled:
             self.save_stitched_tiled(spatial_rdd, filename)
         else:
-            spatial_rdd.save_stitched(filename)
+            jvm = gps.get_spark_context()._gateway.jvm
+
+            save_stitched = jvm.org.openeo.geotrellis.geotiff.package.saveStitched
+            max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(9)
+
+            save_stitched(spatial_rdd.srdd.rdd(), filename, max_compression)
 
         return filename
 
