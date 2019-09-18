@@ -1,8 +1,9 @@
 ## OpenEO Geopyspark Driver
 
 [![Status](https://img.shields.io/badge/Status-proof--of--concept-yellow.svg)]()
+[![Build Status](https://travis-ci.org/Open-EO/openeo-geopyspark-driver.svg?branch=master)](https://travis-ci.org/Open-EO/openeo-geopyspark-driver)
 
-Python version: 3.5
+Python version: 3.6
 
 This driver implements the GeoPySpark/Geotrellis specific backend for OpenEO.
 

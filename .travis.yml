@@ -11,7 +11,7 @@ install:
   - pip install -r requirements.txt --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
   - pip install . --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
   - SPARK_HOME=$(find_spark_home.py) geopyspark install-jar
-  - mkdir -p jars && curl -sSf https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.1.0-SNAPSHOT/geotrellis-extensions-1.1.0-SNAPSHOT.jar -o jars/geotrellis-extensions-1.1.0-SNAPSHOT.jar
+  - mkdir -p jars && curl -sSf https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.2.0-SNAPSHOT/geotrellis-extensions-1.2.0-SNAPSHOT.jar -o jars/geotrellis-extensions-1.2.0-SNAPSHOT.jar
 # command to run tests
 script:
   - pytest
