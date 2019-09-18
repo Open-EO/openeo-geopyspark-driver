@@ -1,7 +1,9 @@
 from typing import List
 
 from openeo_driver import backend
+from openeo_driver.utils import read_json
 from openeogeotrellis import ConfigParams
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
 
 
@@ -66,6 +68,8 @@ def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
         InMemoryServiceRegistry() if ConfigParams().is_ci_context
         else ZooKeeperServiceRegistry()
     )
+    catalog = read_json("layercatalog.json")
     return backend.OpenEoBackendImplementation(
-        secondary_services=GpsSecondaryServices(service_registry=service_registry)
+        secondary_services=GpsSecondaryServices(service_registry=service_registry),
+        catalog=GeoPySparkLayerCatalog(all_metadata=catalog, service_registry=service_registry),
     )

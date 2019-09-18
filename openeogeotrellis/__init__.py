@@ -9,19 +9,14 @@ from subprocess import CalledProcessError
 from typing import Union, List
 
 import pkg_resources
-import pytz
-from dateutil.parser import parse
-from geopyspark import TiledRasterLayer, LayerType
-from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
 from openeo.error_summary import ErrorSummary
-from openeo.imagecollection import CollectionMetadata
 from openeogeotrellis.GeotrellisCatalogImageCollection import GeotrellisCatalogImageCollection
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis._version import __version__
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.layercatalog import LayerCatalog
+from openeogeotrellis.utils import kerberos
 
 logger = logging.getLogger("openeo")
 logger.setLevel(logging.INFO)
@@ -43,124 +38,9 @@ def health_check():
     return 'Health check: ' + str(count)
 
 
-def kerberos():
-    import geopyspark as gps
-
-    if 'HADOOP_CONF_DIR' not in os.environ:
-        logger.warn('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
-
-    sc = gps.get_spark_context()
-    gateway = JavaGateway(gateway_parameters=sc._gateway.gateway_parameters)
-    jvm = gateway.jvm
-
-    hadoop_auth = jvm.org.apache.hadoop.conf.Configuration().get('hadoop.security.authentication')
-    if hadoop_auth != 'kerberos':
-        logger.warn('Hadoop client does not have hadoop.security.authentication=kerberos.')
-
-    currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
-    if currentUser.hasKerberosCredentials():
-        return
-    logger.info("Kerberos currentUser={u!r} isSecurityEnabled={s!r}".format(
-        u=currentUser.toString(), s=jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled()
-    ))
-    #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().getAuthenticationMethod().toString())
-
-    principal = sc.getConf().get("spark.yarn.principal")
-    sparkKeytab = sc.getConf().get("spark.yarn.keytab")
-    if principal is not None and sparkKeytab is not None:
-        jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal,sparkKeytab)
-        jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().setAuthenticationMethod(jvm.org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS);
-    #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().toString())
-    #loginUser = jvm.org.apache.hadoop.security.UserGroupInformation.getLoginUser()
-    #print(loginUser.toString())
-    #print(loginUser.hasKerberosCredentials())
-    #currentUser.addCredentials(loginUser.getCredentials())
-    #print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
-
-def get_layers()->List:
-    from pyspark import SparkContext
-    kerberos()
-    return LayerCatalog().layers()
-
-def get_layer(product_id) -> dict:
-    from pyspark import SparkContext
-    kerberos()
-    return LayerCatalog().layer(product_id)
-
-def normalize_date(date_string):
-    if (date_string is not None):
-        date = parse(date_string)
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=pytz.UTC)
-        return date.isoformat()
-    return None
 
 
-def getImageCollection(product_id:str, viewingParameters):
-    print("Creating layer for %s with viewingParameters %s" % (product_id, viewingParameters))
-    kerberos()
 
-    layer_metadata = LayerCatalog().layer(product_id, hide_private=False)
-    layer_source_info = layer_metadata.get("_vito", {}).get("data_source", {})
-    layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-
-    import geopyspark as gps
-    from_date = normalize_date(viewingParameters.get("from",None))
-    to_date = normalize_date(viewingParameters.get("to",None))
-
-    left = viewingParameters.get("left",None)
-    right = viewingParameters.get("right",None)
-    top = viewingParameters.get("top",None)
-    bottom = viewingParameters.get("bottom",None)
-    srs = viewingParameters.get("srs",None)
-    band_indices = viewingParameters.get("bands")
-    pysc = gps.get_spark_context()
-    extent = None
-
-    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
-    jvm = gateway.jvm
-    if(left is not None and right is not None and top is not None and bottom is not None):
-        extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
-
-    def accumulo_pyramid():
-        pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
-                                                                                ','.join(ConfigParams().zookeepernodes))
-        accumulo_layer_name = layer_source_info['data_id']
-        return pyramidFactory.pyramid_seq(accumulo_layer_name, extent,srs, from_date, to_date)
-
-    def s3_pyramid():
-        endpoint = layer_source_info['endpoint']
-        region = layer_source_info['region']
-        bucket_name = layer_source_info['bucket_name']
-
-        return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
-            .pyramid_seq(extent, srs, from_date, to_date)
-
-    def file_pyramid():
-        return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
-            .pyramid_seq(extent, srs, from_date, to_date, band_indices)
-
-    def sentinel_hub_pyramid():
-        return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
-            .pyramid_seq(extent, srs, from_date, to_date, band_indices)
-
-    if layer_source_type == 's3':
-        pyramid = s3_pyramid()
-    elif layer_source_type == 'file':
-        pyramid = file_pyramid()
-    elif layer_source_type == 'sentinel-hub':
-        pyramid = sentinel_hub_pyramid()
-    else:
-        pyramid = accumulo_pyramid()
-
-    temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-    option = jvm.scala.Option
-    levels = {pyramid.apply(index)._1():TiledRasterLayer(LayerType.SPACETIME,temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()),pyramid.apply(index)._2())) for index in range(0,pyramid.size())}
-
-    service_registry = get_openeo_backend_implementation().secondary_services.service_registry
-    image_collection = GeotrellisTimeSeriesImageCollection(gps.Pyramid(levels), service_registry,
-                                                           metadata=CollectionMetadata(layer_metadata))
-    return image_collection.band_filter(band_indices) if band_indices else image_collection
 
 def create_process_visitor():
     from .geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor

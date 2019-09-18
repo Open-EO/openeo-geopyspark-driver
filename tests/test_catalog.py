@@ -1,30 +1,21 @@
 import re
-from unittest import skip, TestCase
 
-from openeogeotrellis.layercatalog import LayerCatalog
-
-
-class TestLayerCatalog(TestCase):
-
-    @skip("Depends on VITO infrastructure")
-    def testRetrieveAllLayers(self):
-        catalog = LayerCatalog()
-        layers = catalog.layers()
-        print(layers)
+from openeogeotrellis.layercatalog import get_default_layer_catalog
 
 
 def test_layercatalog_json():
-    for layer in LayerCatalog().catalog.values():
+    catalog = get_default_layer_catalog()
+    for layer in catalog.get_all_metadata():
         assert re.match(r'^[A-Za-z0-9_\-\.~\/]+$', layer['id'])
-        # TODO enable these other checks too
-        # assert 'stac_version' in layer
-        # assert 'description' in layer
-        # assert 'license' in layer
-        # assert 'extent' in layer
+        assert 'stac_version' in layer
+        assert 'description' in layer
+        assert 'license' in layer
+        assert 'extent' in layer
 
 
 def test_issue77_band_metadata():
-    for layer in LayerCatalog().catalog.values():
+    catalog = get_default_layer_catalog()
+    for layer in catalog.get_all_metadata():
         # print(layer['id'])
         # TODO: stop doing this non-standard band metadata ("bands" item in metadata root)
         old_bands = [b if isinstance(b, str) else b["band_id"] for b in layer.get("bands", [])]
@@ -37,21 +28,3 @@ def test_issue77_band_metadata():
             assert old_bands == eo_bands
             assert old_bands == cube_dimension_bands
         assert eo_bands == cube_dimension_bands
-
-
-def test_layercatalog_normalization_defaults():
-    catalog = LayerCatalog([{"id": "SENTINEL2"}])
-    layer = catalog.layer("SENTINEL2")
-    assert layer["links"] == []
-    assert "description" in layer
-    assert "stac_version" in layer
-    assert "properties" in layer
-    assert "license" in layer
-
-
-def test_layercatalog_normalization_dont_override():
-    catalog = LayerCatalog([{"id": "SENTINEL2", "license": "free", "properties": {"eo:bands": [{"name": "red"}]}}])
-    layer = catalog.layer("SENTINEL2")
-    assert layer["license"] == "free"
-    assert layer["properties"] == {"eo:bands": [{"name": "red"}]}
-    assert layer["links"] == []
