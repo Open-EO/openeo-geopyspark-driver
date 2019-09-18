@@ -1,0 +1,16 @@
+[
+  {
+    "id": "BAR",
+    "description": "The BAR layer"
+  },
+  {
+    "id": "FOO",
+    "license": "apache",
+    "links": [
+      "example.com/foo"
+    ]
+  },
+  {
+    "id": "QUU"
+  }
+]

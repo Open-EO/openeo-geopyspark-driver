@@ -1,11 +1,13 @@
-import sys
 import json
+import sys
+from typing import Dict, List
+
 from pyspark import SparkContext
-from openeogeotrellis import kerberos
+
 from openeo import ImageCollection
 from openeo_driver import ProcessGraphDeserializer
-from openeo_driver.save_result import *
-from typing import Dict, List
+from openeo_driver.save_result import ImageCollectionResult, JSONResult
+from openeogeotrellis.utils import kerberos
 
 
 def _parse(job_specification_file: str) -> Dict:
