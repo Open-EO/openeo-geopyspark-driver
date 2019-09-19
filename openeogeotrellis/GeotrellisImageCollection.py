@@ -5,7 +5,7 @@ import geopyspark as gps
 from datetime import datetime, date, timezone
 from geopyspark import TiledRasterLayer, TMS, Pyramid,Tile,SpaceTimeKey,Metadata,Extent
 from geopyspark.geotrellis.constants import CellType
-from geopyspark.geotrellis import color
+from geopyspark.geotrellis import Extent
 import numpy as np
 from openeo_udf.api.base import UdfData,RasterCollectionTile,SpatialExtent
 
@@ -16,6 +16,7 @@ import json
 import os
 import uuid
 import pytz
+import pyproj
 
 from openeo.imagecollection import ImageCollection, CollectionMetadata
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
@@ -320,7 +321,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     @classmethod
     def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
-        import pyproj
         from shapely.ops import transform
         from functools import partial
 
@@ -401,7 +401,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
-        import pyproj
         (x_layer,y_layer) = pyproj.transform(pyproj.Proj(init=srs),pyproj.Proj(max_level.layer_metadata.crs),x,y)
         points = [
             Point(x_layer, y_layer),
@@ -562,19 +561,49 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         tiled = (format_options.get("format", "GTiff") == "GTiff" and
                  format_options.get("parameters", {}).get("tiled", False))
 
-        if tiled:
-            self.save_stitched_tiled(spatial_rdd, filename)
+        xmin, ymin, xmax, ymax = format_options.get('left'), format_options.get('bottom'),\
+                                 format_options.get('right'), format_options.get('top')
+
+        if xmin and ymin and xmax and ymax:
+            srs = format_options.get('srs', 'EPSG:4326')
+
+            src_proj = pyproj.Proj("+init=" + srs)
+            dst_proj = pyproj.Proj(spatial_rdd.layer_metadata.crs)
+
+            def reproject_point(x, y):
+                return pyproj.transform(
+                    src_proj,
+                    dst_proj,
+                    x, y
+                )
+
+            reprojected_xmin, reprojected_ymin = reproject_point(xmin, ymin)
+            reprojected_xmax, reprojected_ymax = reproject_point(xmax, ymax)
+
+            crop_bounds =\
+                Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
         else:
-            jvm = gps.get_spark_context()._gateway.jvm
+            crop_bounds = None
 
-            save_stitched = jvm.org.openeo.geotrellis.geotiff.package.saveStitched
-            max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(9)
-
-            save_stitched(spatial_rdd.srdd.rdd(), filename, max_compression)
+        if tiled:
+            self._save_stitched_tiled(spatial_rdd, filename)
+        else:
+            self._save_stitched(spatial_rdd, filename, crop_bounds)
 
         return filename
 
-    def save_stitched_tiled(self, spatial_rdd, filename):
+    def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
+        jvm = gps.get_spark_context()._gateway.jvm
+
+        max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(9)
+
+        if crop_bounds:
+            jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
+                                                                   max_compression)
+        else:
+            jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
+
+    def _save_stitched_tiled(self, spatial_rdd, filename):
         import rasterio as rstr
         from affine import Affine
         import rasterio._warp as rwarp
