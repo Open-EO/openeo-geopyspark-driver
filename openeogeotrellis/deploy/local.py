@@ -126,7 +126,8 @@ if __name__ == '__main__':
     # Modification 3: pass Flask app instead of handler_app
     options = {
         'bind': '%s:%s' % ("127.0.0.1", 8080),
-        'workers': number_of_workers(),
+        'workers': 1,
+        'threads': 4,
         'worker_class':'gthread',   #'gaiohttp',
         'timeout':1000,
         'loglevel': 'DEBUG',

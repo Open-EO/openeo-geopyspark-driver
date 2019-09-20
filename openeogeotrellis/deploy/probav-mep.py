@@ -105,10 +105,14 @@ def main():
     tcp.bind(('', 0))
     host, port = tcp.getsockname()
 
+    #note the use of 1 worker and multiple threads
+    # we were seeing strange py4j errors when executing multiple requests in parallel
+    # this seems to be related by the type and configuration of worker that gunicorn uses, aiohttp also gave very bad results
     options = {
         'bind': '%s:%s' % (local_ip, port),
-        'workers': number_of_workers(),
-        'worker_class': 'aiohttp.worker.GunicornWebWorker',
+        'workers': 1,
+        'threads': 10,
+        'worker_class': 'gthread',
         'timeout': 1000,
         'loglevel': 'DEBUG',
         'accesslog': '-',
