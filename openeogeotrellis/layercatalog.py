@@ -1,75 +1,143 @@
-import copy
-import json
-import warnings
-from pathlib import Path
-from typing import Union, List, Dict
+import logging
+
+import pytz
+from dateutil.parser import parse
+from geopyspark import TiledRasterLayer, LayerType
+from py4j.java_gateway import JavaGateway
+
+from openeo import ImageCollection, List
+from openeo.imagecollection import CollectionMetadata
+from openeo_driver.backend import CollectionCatalog
+from openeo_driver.utils import read_json
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from openeogeotrellis.utils import kerberos, dict_merge_recursive
+
+logger = logging.getLogger(__name__)
 
 
-class UnknownCollectionException(ValueError):
-    # TODO move this to openeo package?
-    # TODO subclass from openeo base exception?
-    def __init__(self, collection_id):
-        super().__init__("Unknown collection {c!r}".format(c=collection_id))
+class GeoPySparkLayerCatalog(CollectionCatalog):
 
+    # TODO: eliminate the dependency/coupling with service registry
 
-class LayerCatalog:
-    """Catalog describing the available image collections."""
+    def __init__(self, all_metadata: List[dict], service_registry: InMemoryServiceRegistry):
+        super().__init__(all_metadata=all_metadata)
+        self._service_registry = service_registry
 
-    _stac_version = "0.7.0"
+    def _strip_private_metadata(self, d: dict) -> dict:
+        """Strip fields starting with underscore from a dictionary."""
+        return {k: v for (k, v) in d.items() if not k.startswith('_')}
 
-    def __init__(self, source: Union[str, List[dict], Dict[str, dict]] = 'layercatalog.json'):
-        if isinstance(source, (str, Path)):
-            path = Path(source)
-            if not path.is_file():
-                raise OSError("LayerCatalog file not found: {f}".format(f=path))
-            with path.open() as f:
-                source = json.load(f)
+    def get_all_metadata(self) -> List[dict]:
+        return [self._strip_private_metadata(d) for d in super().get_all_metadata()]
 
-        if isinstance(source, list) and all(isinstance(layer, dict) for layer in source):
-            self.catalog = {layer["id"]: layer for layer in source}
-        elif isinstance(source, dict) and all(isinstance(layer, dict) for layer in source.values()):
-            self.catalog = source.copy()
-        else:
-            raise ValueError("Don't know how to handle {s!r}".format(s=source))
-
-    def _normalize_layer_metadata(self, metadata: dict, hide_private=True) -> dict:
-        """Make sure the layer metadata follows OpenEO spec to some extent."""
-        metadata = copy.deepcopy(metadata)
-
-        collection_id = metadata["id"]
-
-        # Make sure required fields are set.
-        metadata.setdefault("stac_version", self._stac_version)
-        metadata.setdefault("links", [])
-        metadata.setdefault("other_properties", {})
-        # Warn about missing fields where sensible defaults are not feasible
-        fallbacks = {
-            "description": "Description of {c} (#TODO)".format(c=collection_id),
-            "license": "proprietary",
-            "extent": {"spatial": [0, 0, 0, 0], "temporal": [None, None]},
-            "properties": {"cube:dimensions": {}},
-        }
-        for key, value in fallbacks.items():
-            if key not in metadata:
-                warnings.warn("Collection {c} is missing required metadata field {k!r}.".format(c=collection_id, k=key))
-                metadata[key] = value
-
-        if hide_private:
-            # Don't expose "private" fields
-            for key in [k for k in metadata.keys() if k.startswith('_')]:
-                del metadata[key]
-
+    def get_collection_metadata(self, collection_id, strip_private=True) -> dict:
+        metadata = super().get_collection_metadata(collection_id)
+        if strip_private:
+            metadata = self._strip_private_metadata(metadata)
         return metadata
 
-    def assert_collection_id(self, collection_id):
-        if collection_id not in self.catalog:
-            raise UnknownCollectionException(collection_id)
+    def load_collection(self, collection_id: str, viewing_parameters: dict) -> ImageCollection:
+        logger.info("Creating layer for {c} with viewingParameters {v}".format(c=collection_id, v=viewing_parameters))
 
-    def layers(self) -> list:
-        """Returns all available layers."""
-        return [self._normalize_layer_metadata(m) for m in self.catalog.values()]
+        # TODO is it necessary to do this kerberos stuff here?
+        kerberos()
 
-    def layer(self, collection_id: str, hide_private=True) -> dict:
-        """Returns the layer config for a given id."""
-        self.assert_collection_id(collection_id)
-        return self._normalize_layer_metadata(self.catalog[collection_id], hide_private=hide_private)
+        layer_metadata = self.get_collection_metadata(collection_id, strip_private=False)
+        layer_source_info = layer_metadata.get("_vito", {}).get("data_source", {})
+        layer_source_type = layer_source_info.get("type", "Accumulo").lower()
+
+        import geopyspark as gps
+        from_date = normalize_date(viewing_parameters.get("from", None))
+        to_date = normalize_date(viewing_parameters.get("to", None))
+
+        left = viewing_parameters.get("left", None)
+        right = viewing_parameters.get("right", None)
+        top = viewing_parameters.get("top", None)
+        bottom = viewing_parameters.get("bottom", None)
+        srs = viewing_parameters.get("srs", None)
+        band_indices = viewing_parameters.get("bands")
+        pysc = gps.get_spark_context()
+        extent = None
+
+        gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
+        jvm = gateway.jvm
+        if (left is not None and right is not None and top is not None and bottom is not None):
+            extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
+
+        def accumulo_pyramid():
+            pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
+                                                                              ','.join(ConfigParams().zookeepernodes))
+            accumulo_layer_name = layer_source_info['data_id']
+            return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
+
+        def s3_pyramid():
+            endpoint = layer_source_info['endpoint']
+            region = layer_source_info['region']
+            bucket_name = layer_source_info['bucket_name']
+
+            return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
+                .pyramid_seq(extent, srs, from_date, to_date)
+
+        def file_pyramid():
+            return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_pyramid():
+            return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        if layer_source_type == 's3':
+            pyramid = s3_pyramid()
+        elif layer_source_type == 'file':
+            pyramid = file_pyramid()
+        elif layer_source_type == 'sentinel-hub':
+            pyramid = sentinel_hub_pyramid()
+        else:
+            pyramid = accumulo_pyramid()
+
+        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+        option = jvm.scala.Option
+        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
+            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in range(0, pyramid.size())}
+
+        image_collection = GeotrellisTimeSeriesImageCollection(
+            pyramid=gps.Pyramid(levels),
+            service_registry=self._service_registry,
+            metadata=CollectionMetadata(layer_metadata)
+        )
+        return image_collection.band_filter(band_indices) if band_indices else image_collection
+
+
+def normalize_date(date_string):
+    # TODO move this functionality to a more general utility module?
+    if date_string is not None:
+        date = parse(date_string)
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=pytz.UTC)
+        return date.isoformat()
+    return None
+
+
+def get_layer_catalog(service_registry: InMemoryServiceRegistry = None) -> GeoPySparkLayerCatalog:
+    """
+    Get layer catalog (from JSON files)
+    """
+    catalog_files = ConfigParams().layer_catalog_metadata_files
+    logger.info("Reading layer catalog metadata from {f!r}".format(f=catalog_files[0]))
+    metadata = read_json(catalog_files[0])
+    if len(catalog_files) > 1:
+        # Merge metadata recursively
+        metadata = {l["id"]: l for l in metadata}
+        for path in catalog_files[1:]:
+            logger.info("Updating layer catalog metadata from {f!r}".format(f=path))
+            updates = {l["id"]:l for l in read_json(path)}
+            metadata = dict_merge_recursive(metadata, updates, overwrite=True)
+        metadata = list(metadata.values())
+
+
+    return GeoPySparkLayerCatalog(
+        all_metadata=metadata,
+        service_registry=service_registry or InMemoryServiceRegistry()
+    )

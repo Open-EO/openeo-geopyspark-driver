@@ -1,7 +1,9 @@
 from typing import List
 
 from openeo_driver import backend
+from openeo_driver.utils import read_json
 from openeogeotrellis import ConfigParams
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, get_layer_catalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
 
 
@@ -60,12 +62,25 @@ class GpsSecondaryServices(backend.SecondaryServices):
         self.service_registry.stop_service(service_id)
 
 
+class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
+
+    def __init__(self):
+        # TODO: do this with a config instead of hardcoding rules?
+        service_registry = (
+            InMemoryServiceRegistry() if ConfigParams().is_ci_context
+            else ZooKeeperServiceRegistry()
+        )
+        super().__init__(
+            secondary_services=GpsSecondaryServices(service_registry=service_registry),
+            catalog=get_layer_catalog(service_registry=service_registry),
+        )
+
+    def health_check(self) -> str:
+        from pyspark import SparkContext
+        sc = SparkContext.getOrCreate()
+        count = sc.parallelize([1, 2, 3]).count()
+        return 'Health check: ' + str(count)
+
+
 def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
-    # TODO: do this with a config instead of hardcoding rules?
-    service_registry = (
-        InMemoryServiceRegistry() if ConfigParams().is_ci_context
-        else ZooKeeperServiceRegistry()
-    )
-    return backend.OpenEoBackendImplementation(
-        secondary_services=GpsSecondaryServices(service_registry=service_registry)
-    )
+    return GeoPySparkBackendImplementation()

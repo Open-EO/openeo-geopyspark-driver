@@ -1,30 +1,22 @@
 import re
-from unittest import skip, TestCase
+import unittest.mock as mock
 
-from openeogeotrellis.layercatalog import LayerCatalog
-
-
-class TestLayerCatalog(TestCase):
-
-    @skip("Depends on VITO infrastructure")
-    def testRetrieveAllLayers(self):
-        catalog = LayerCatalog()
-        layers = catalog.layers()
-        print(layers)
+from openeogeotrellis.layercatalog import get_layer_catalog
 
 
 def test_layercatalog_json():
-    for layer in LayerCatalog().catalog.values():
+    catalog = get_layer_catalog()
+    for layer in catalog.get_all_metadata():
         assert re.match(r'^[A-Za-z0-9_\-\.~\/]+$', layer['id'])
-        # TODO enable these other checks too
-        # assert 'stac_version' in layer
-        # assert 'description' in layer
-        # assert 'license' in layer
-        # assert 'extent' in layer
+        assert 'stac_version' in layer
+        assert 'description' in layer
+        assert 'license' in layer
+        assert 'extent' in layer
 
 
 def test_issue77_band_metadata():
-    for layer in LayerCatalog().catalog.values():
+    catalog = get_layer_catalog()
+    for layer in catalog.get_all_metadata():
         # print(layer['id'])
         # TODO: stop doing this non-standard band metadata ("bands" item in metadata root)
         old_bands = [b if isinstance(b, str) else b["band_id"] for b in layer.get("bands", [])]
@@ -39,19 +31,17 @@ def test_issue77_band_metadata():
         assert eo_bands == cube_dimension_bands
 
 
-def test_layercatalog_normalization_defaults():
-    catalog = LayerCatalog([{"id": "SENTINEL2"}])
-    layer = catalog.layer("SENTINEL2")
-    assert layer["links"] == []
-    assert "description" in layer
-    assert "stac_version" in layer
-    assert "properties" in layer
-    assert "license" in layer
-
-
-def test_layercatalog_normalization_dont_override():
-    catalog = LayerCatalog([{"id": "SENTINEL2", "license": "free", "properties": {"eo:bands": [{"name": "red"}]}}])
-    layer = catalog.layer("SENTINEL2")
-    assert layer["license"] == "free"
-    assert layer["properties"] == {"eo:bands": [{"name": "red"}]}
-    assert layer["links"] == []
+def test_get_layer_catalog_with_updates():
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "tests/data/layercatalog01.json",
+            "tests/data/layercatalog02.json",
+        ]
+        catalog = get_layer_catalog()
+        assert sorted(l["id"] for l in catalog.get_all_metadata()) == ["BAR", "BZZ", "FOO", "QUU"]
+        foo = catalog.get_collection_metadata("FOO")
+        assert foo["license"] == "apache"
+        assert foo["links"] == ["example.com/foo"]
+        bar = catalog.get_collection_metadata("BAR")
+        assert bar["description"] == "The BAR layer"
+        assert bar["links"] == ["example.com/bar"]
