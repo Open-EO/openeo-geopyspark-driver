@@ -108,7 +108,7 @@ def main():
     options = {
         'bind': '%s:%s' % (local_ip, port),
         'workers': number_of_workers(),
-        'worker_class': 'gaiohttp',
+        'worker_class': 'aiohttp.worker.GunicornWebWorker',
         'timeout': 1000,
         'loglevel': 'DEBUG',
         'accesslog': '-',
