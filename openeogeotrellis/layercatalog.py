@@ -86,7 +86,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def sentinel_hub_pyramid():
             return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+                .pyramid_seq(layer_source_info.get('uuid'),extent, srs, from_date, to_date, band_indices)
 
         if layer_source_type == 's3':
             pyramid = s3_pyramid()

@@ -1,5 +1,6 @@
 import re
 import unittest.mock as mock
+from unittest import skip
 
 from openeogeotrellis.layercatalog import get_layer_catalog
 
@@ -45,3 +46,19 @@ def test_get_layer_catalog_with_updates():
         bar = catalog.get_collection_metadata("BAR")
         assert bar["description"] == "The BAR layer"
         assert bar["links"] == ["example.com/bar"]
+
+#skip because test depends on external config
+@skip
+def test_sentinelhub_layer():
+    catalog = get_layer_catalog()
+    viewingParameters = {}
+    viewingParameters["from"] = "2018-01-01"
+    viewingParameters["to"] = "2018-01-02"
+
+
+    viewingParameters["left"] = 4
+    viewingParameters["right"] = 4.0001
+    viewingParameters["top"] = 50.00001
+    viewingParameters["bottom"] = 50.0
+    viewingParameters["srs"] = "EPSG:4326"
+    datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
