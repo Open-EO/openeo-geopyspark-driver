@@ -48,8 +48,7 @@ def test_get_layer_catalog_with_updates():
         assert bar["links"] == ["example.com/bar"]
 
 #skip because test depends on external config
-@skip
-def test_sentinelhub_layer():
+def skip_sentinelhub_layer():
     catalog = get_layer_catalog()
     viewingParameters = {}
     viewingParameters["from"] = "2018-01-01"
