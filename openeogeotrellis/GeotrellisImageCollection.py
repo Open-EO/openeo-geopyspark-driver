@@ -455,22 +455,21 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             return self._as_python(by_compute_stats_geotrellis())
         else:  # defaults to mean, historically
             def by_compute_stats_geotrellis():
-                layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
+                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+                layer_metadata = highest_level.layer_metadata
 
-                product_id = self.metadata.get('id')
+                scala_data_cube = highest_level.srdd.rdd()
+
                 polygon_wkts = [str(ob) for ob in regions]
                 polygons_srs = 'EPSG:4326'
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-                zoom = self.pyramid.max_zoom
-
-                return self._compute_stats_geotrellis().compute_average_timeseries(
-                    product_id,
+                return self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                    scala_data_cube,
                     polygon_wkts,
                     polygons_srs,
                     from_date.isoformat(),
                     to_date.isoformat(),
-                    zoom,
                     self._band_index
                 )
 

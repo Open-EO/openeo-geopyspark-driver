@@ -9,7 +9,7 @@ from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, GeometryCollection
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -109,3 +109,35 @@ class TestTimeSeries(TestCase):
         result = imagecollection.zonal_statistics(polygon,"mean")
 
         print(result)
+
+    def test_zonal_statistics_datacube(self):
+        layer = self.create_spacetime_layer()
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+
+        polygon = Polygon(shell=[
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (0.0, 0.0)
+        ])
+
+        polygon2 = Polygon(shell=[
+            (2.0, 2.0),
+            (3.0, 2.0),
+            (3.0, 3.0),
+            (2.0, 3.0),
+            (2.0, 2.0)
+        ])
+
+        result = imagecollection.zonal_statistics(GeometryCollection([polygon,polygon2]),"mean")
+
+        print(result)
+        polygon_result = result['2017-09-25T11:37:00Z'][0]
+        polygon2_result = result['2017-09-25T11:37:00Z'][0]
+        #there are 2 bands
+        self.assertEqual(2,len(polygon_result))
+        self.assertEqual(1.0, polygon_result[0])
+        self.assertEqual(2.0, polygon_result[1])
+        #results are the same for both polygons
+        self.assertEqual(polygon_result,polygon2_result)
