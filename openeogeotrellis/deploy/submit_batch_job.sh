@@ -32,7 +32,7 @@ pysparkPython="venv/bin/python"
 
 kinit -kt ${keyTab} ${principal} || true
 
-export HDP_VERSION=3.0.0.0-1634
+export HDP_VERSION=3.1.0.0-78
 export SPARK_HOME=/usr/hdp/$HDP_VERSION/spark2
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
