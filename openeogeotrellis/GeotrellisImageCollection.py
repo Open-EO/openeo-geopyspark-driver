@@ -481,8 +481,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _compute_stats_geotrellis(self):
         jvm = gps.get_spark_context()._gateway.jvm
-        jvm.java.lang.System.setProperty('zookeeper.connectionstring',','.join(ConfigParams().zookeepernodes))
-        return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
+
+        accumulo_instance_name = 'hdp-accumulo-instance'
+        return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
+
+    def _zookeepers(self):
+        return ','.join(ConfigParams().zookeepernodes)
 
     # FIXME: define this somewhere else?
     def _as_python(self, java_object):
@@ -669,7 +673,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _proxy(self, host, port):
         from kazoo.client import KazooClient
-        zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
+        zk = KazooClient(hosts=self._zookeepers())
         zk.start()
         zk.ensure_path("discovery/services/openeo-viewer-test")
         # id = uuid.uuid4()
