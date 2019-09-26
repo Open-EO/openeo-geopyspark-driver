@@ -428,27 +428,28 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         if func == 'histogram':
             def by_compute_stats_geotrellis():
-                layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
+
+                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+                layer_metadata = highest_level.layer_metadata
+
+                scala_data_cube = highest_level.srdd.rdd()
 
                 multiple_geometries = isinstance(regions, GeometryCollection)
 
-                product_id = self.metadata.get('id')
                 polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
                 polygons_srs = 'EPSG:4326'
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-                zoom = self.pyramid.max_zoom
 
                 implementation = self._compute_stats_geotrellis().compute_histograms_time_series if multiple_geometries \
                     else self._compute_stats_geotrellis().compute_histogram_time_series
 
                 return implementation(
-                    product_id,
+                    scala_data_cube,
                     polygon_wkts,
                     polygons_srs,
                     from_date.isoformat(),
                     to_date.isoformat(),
-                    zoom,
                     self._band_index
                 )
 
