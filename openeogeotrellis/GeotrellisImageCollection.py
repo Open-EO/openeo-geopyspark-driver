@@ -17,6 +17,7 @@ import os
 import uuid
 import pytz
 import pyproj
+from py4j.protocol import Py4JJavaError
 
 from openeo.imagecollection import ImageCollection, CollectionMetadata
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
@@ -589,12 +590,36 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             crop_bounds = None
 
-        if tiled:
-            self._save_stitched_tiled(spatial_rdd, filename)
-        else:
-            self._save_stitched(spatial_rdd, filename, crop_bounds)
+        try:
+            if tiled:
+                self._save_stitched_tiled(spatial_rdd, filename)
+            else:
+                self._save_stitched(spatial_rdd, filename, crop_bounds)
 
-        return filename
+            return filename
+        except Py4JJavaError as e:
+            # put it here because there is cause (the AssertionError) as well as context (the bounds)
+            java_exception = e.java_exception
+
+            no_data_found = (java_exception.getClass().getName() == 'java.lang.AssertionError'
+                             and "Cannot stitch empty collection" in java_exception.getMessage())
+
+            if no_data_found:
+                msg = "Cannot construct an image as there is no data for bounds %s" % {
+                    'west': xmin,
+                    'south': ymin,
+                    'east': xmax,
+                    'north': ymax,
+                    'crs': format_options.get('srs', 'EPSG:4326'),
+                    'from': format_options.get('from'),
+                    'to': format_options.get('to')
+                }
+
+                # FIXME: define our own "user error" exception class?
+                jvm = gps.get_spark_context()._gateway.jvm
+                raise Py4JJavaError(e.errmsg, jvm.java.lang.IllegalArgumentException(msg))
+            else:
+                raise e
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
         jvm = gps.get_spark_context()._gateway.jvm
