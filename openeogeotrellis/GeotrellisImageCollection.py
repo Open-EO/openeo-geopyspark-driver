@@ -427,7 +427,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        if func == 'histogram':
+        if func == 'histogram' or func == 'median' or func == 'sd':
             def by_compute_stats_geotrellis():
 
                 highest_level = self.pyramid.levels[self.pyramid.max_zoom]
@@ -442,10 +442,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-                implementation = self._compute_stats_geotrellis().compute_histograms_time_series if multiple_geometries \
-                    else self._compute_stats_geotrellis().compute_histogram_time_series
+                if func == 'histogram':
+                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series if multiple_geometries \
+                        else self._compute_stats_geotrellis().compute_histogram_time_series
+                elif func == 'median':
+                    implementation = self._compute_stats_geotrellis().compute_median_time_series
+                elif func == 'sd':
+                    implementation = self._compute_stats_geotrellis().compute_stddev_time_series
 
-                return implementation(
+                stats = implementation(
                     scala_data_cube,
                     polygon_wkts,
                     polygons_srs,
@@ -453,8 +458,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     to_date.isoformat(),
                     self._band_index
                 )
+                return stats
 
             return self._as_python(by_compute_stats_geotrellis())
+
         else:  # defaults to mean, historically
             def by_compute_stats_geotrellis():
                 highest_level = self.pyramid.levels[self.pyramid.max_zoom]

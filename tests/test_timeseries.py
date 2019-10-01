@@ -1,6 +1,9 @@
 import datetime
 from unittest import TestCase
 
+from base_test_class import BaseTestClass
+BaseTestClass.setup_local_spark()
+
 import geopyspark as gps
 import numpy as np
 import pytz
@@ -141,3 +144,26 @@ class TestTimeSeries(TestCase):
         self.assertEqual(2.0, polygon_result[1])
         #results are the same for both polygons
         self.assertEqual(polygon_result,polygon2_result)
+
+    def test_zonal_statistics_median_datacube(self):
+        layer = self.create_spacetime_layer()
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+
+        polygon = Polygon(shell=[
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (0.0, 0.0)
+        ])
+
+
+        result = imagecollection.zonal_statistics(polygon,"median")
+
+        print(result)
+        polygon_result = result['2017-09-25T11:37:00Z'][0]
+        #there are 2 bands
+        self.assertEqual(2,len(polygon_result))
+        self.assertEqual(1.0, polygon_result[0])
+        self.assertEqual(2.0, polygon_result[1])
+
