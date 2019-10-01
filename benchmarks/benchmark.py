@@ -2,6 +2,7 @@ import sys
 import time
 from pyspark import SparkContext, SparkConf
 import openeo
+from openeo import ImageCollection
 from openeogeotrellis import kerberos
 from openeo_driver import ProcessGraphDeserializer
 # from openeo_driver.utils import replace_nan_values
@@ -32,7 +33,7 @@ def _time(action: Callable[[], object]) -> (object, float):
     return result, end - start
 
 
-def _huge_vector_file_time_series(vector_file, start_date, end_date) -> Dict:
+def _huge_vector_file_time_series(vector_file, start_date, end_date) -> ImageCollection:
     min_x, min_y, max_x, max_y = gpd.read_file(vector_file).total_bounds
 
     session = openeo.connect("http://openeo.vgt.vito.be/openeo/0.4.0")
