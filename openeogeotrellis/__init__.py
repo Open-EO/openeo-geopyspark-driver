@@ -160,12 +160,20 @@ def cancel_batch_job(job_id: str):
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
     if isinstance(error, Py4JJavaError):
         java_exception = error.java_exception
-        while(java_exception.getCause() != None and java_exception != java_exception.getCause()):
-            java_exception = java_exception.getCause()
-        java_exception_class_name = java_exception.getClass().getName()
-        is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException'
 
-        return ErrorSummary(error, is_client_error, summary=java_exception.getMessage())
+        while java_exception.getCause() is not None and java_exception != java_exception.getCause():
+            java_exception = java_exception.getCause()
+
+        java_exception_class_name = java_exception.getClass().getName()
+        java_exception_message = java_exception.getMessage()
+
+        no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
+                         and "Cannot stitch empty collection" in java_exception_message)
+
+        is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
+        summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
+
+        return ErrorSummary(error, is_client_error, summary)
 
     return error
 
