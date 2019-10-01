@@ -9,7 +9,7 @@ from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
-from shapely.geometry import Polygon, GeometryCollection
+from shapely.geometry import Polygon, GeometryCollection, MultiPolygon
 
 from openeogeotrellis import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -130,7 +130,7 @@ class TestTimeSeries(TestCase):
             (2.0, 2.0)
         ])
 
-        result = imagecollection.zonal_statistics(GeometryCollection([polygon,polygon2]),"mean")
+        result = imagecollection.zonal_statistics(GeometryCollection([polygon,MultiPolygon([polygon2])]),"mean")
 
         print(result)
         polygon_result = result['2017-09-25T11:37:00Z'][0]
