@@ -77,6 +77,49 @@ class TestTimeSeries(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
+    def create_spacetime_unsigned_byte_layer(self):
+        """
+        Returns a single-band uint8ud255 layer consisting of four tiles that each look like this:
+
+         ND 220 220 220
+        220 220 220 220
+        220 220 220 220
+        220 220 220 220
+
+        The extent is (0.0, 0.0) to (4.0, 4.0).
+        """
+        no_data = 255
+
+        single_band = np.zeros((1, 4, 4))
+        single_band.fill(220)
+        single_band[0, 0, 0] = no_data
+
+        cells = np.array([single_band], dtype='uint8')
+        tile = Tile.from_numpy_array(cells, no_data)
+
+        layer = [(SpaceTimeKey(0, 0, self.now), tile),
+                 (SpaceTimeKey(1, 0, self.now), tile),
+                 (SpaceTimeKey(0, 1, self.now), tile),
+                 (SpaceTimeKey(1, 1, self.now), tile)]
+
+        rdd = SparkContext.getOrCreate().parallelize(layer)
+
+        metadata = {
+            'cellType': 'uint8ud255',
+            'extent': self.extent,
+            'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+            'bounds': {
+                'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
+                'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
+            },
+            'layoutDefinition': {
+                'extent': self.extent,
+                'tileLayout': self.layout
+            }
+        }
+
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+
     def test_point_series(self):
         result = self.create_spacetime_layer().get_point_values(self.points)
 
@@ -155,3 +198,24 @@ class TestTimeSeries(TestCase):
         self.assertEqual(1.0, polygon_result[0])
         self.assertEqual(2.0, polygon_result[1])
 
+    def test_zonal_statistics_for_unsigned_byte_layer(self):
+        layer = self.create_spacetime_unsigned_byte_layer()
+
+        # layer.to_spatial_layer().save_stitched('/tmp/unsigned_byte_layer.tif')
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+
+        polygon = Polygon(shell=[
+            (0.0, 0.0),
+            (2.0, 0.0),
+            (2.0, 4.0),
+            (0.0, 4.0),
+            (0.0, 0.0)
+        ])
+
+        time_series = imagecollection.zonal_statistics(polygon, "mean")
+        # FIXME: the Python implementation doesn't return a time zone (Z)
+        single_mean = time_series['2017-09-25T11:37:00'][0]
+
+        # the two NO_DATA tiles in the left half are ignored
+        self.assertAlmostEqual(220.0, single_mean, delta=0.1)

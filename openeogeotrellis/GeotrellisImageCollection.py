@@ -521,6 +521,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
         masked_layer = max_level.mask(reprojected_polygon)
 
+        no_data = masked_layer.layer_metadata.no_data_value
+
         def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
             n_bands = len(tile.cells)
 
@@ -531,7 +533,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 grid = tile.cells[i]
 
                 # special treatment for a UDF layer (NO_DATA is nan so every value, including nan, is not equal to nan)
-                without_no_data = (~np.isnan(grid)) & (grid != tile.no_data_value)
+                without_no_data = (~np.isnan(grid)) & (grid != no_data)
 
                 sum = grid[without_no_data].sum()
                 count = without_no_data.sum()
