@@ -1,7 +1,6 @@
 import datetime
 from unittest import TestCase
 
-
 import geopyspark as gps
 import numpy as np
 import pytz
@@ -25,7 +24,7 @@ class TestTimeSeries(TestCase):
     second.fill(2)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
-    layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
+    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 4, 'tileRows': 4}
 
     now = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
     points = [
@@ -44,22 +43,13 @@ class TestTimeSeries(TestCase):
         'E': points[4]
     }
 
-    expected_spatial_points_list = [
-        (Point(1.0, -3.0), [1, 2]),
-        (Point(2.0, 4.0), [1, 2]),
-        (Point(3.0, 3.0), [1, 2]),
-        (Point(1.0, -2.0), [1, 2]),
-        (Point(-10.0, 15.0), None)
-    ]
-
     expected_spacetime_points_list = [
-        (Point(1.0, -3.0), [(now, [1, 2])]),
+        (Point(1.0, -3.0), [(None, None)]),
         (Point(2.0, 4.0), [(now, [1, 2])]),
         (Point(3.0, 3.0), [(now, [1, 2])]),
-        (Point(1.0, -2.0), [(now, [1, 2])]),
+        (Point(1.0, -2.0), [(None, None)]),
         (Point(-10.0, 15.0), [(None, None)])
     ]
-
 
     def create_spacetime_layer(self):
         cells = np.array([self.first, self.second], dtype='int')
