@@ -2,7 +2,7 @@ from unittest import mock
 
 import pytest
 
-from openeo_driver.errors import SecondaryServiceNotFound
+from openeo_driver.errors import ServiceNotFoundException
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
 
 
@@ -27,7 +27,7 @@ class TestInMemoryServiceRegistry:
         reg.stop_service(service_id)
         server.stop.assert_called_with()
         # service should be gone now
-        with pytest.raises(SecondaryServiceNotFound):
+        with pytest.raises(ServiceNotFoundException):
             reg.get_specification(service_id)
-        with pytest.raises(SecondaryServiceNotFound):
+        with pytest.raises(ServiceNotFoundException):
             reg.stop_service(service_id)
