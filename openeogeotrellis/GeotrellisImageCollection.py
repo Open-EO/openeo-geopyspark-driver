@@ -436,18 +436,19 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
                 multiple_geometries = isinstance(regions, GeometryCollection)
 
-                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
+                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
                 polygons_srs = 'EPSG:4326'
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
                 if func == 'histogram':
-                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series if multiple_geometries \
-                        else self._compute_stats_geotrellis().compute_histogram_time_series
+                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube if multiple_geometries \
+                        else self._compute_stats_geotrellis().compute_histogram_time_series_from_datacube
+                    polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
                 elif func == 'median':
-                    implementation = self._compute_stats_geotrellis().compute_median_time_series
+                    implementation = self._compute_stats_geotrellis().compute_median_time_series_from_datacube
                 elif func == 'sd':
-                    implementation = self._compute_stats_geotrellis().compute_stddev_time_series
+                    implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
 
                 stats = implementation(
                     scala_data_cube,
