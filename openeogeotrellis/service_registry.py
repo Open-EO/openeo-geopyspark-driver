@@ -5,7 +5,7 @@ from typing import Dict
 
 from kazoo.client import KazooClient, NoNodeError
 
-from openeo_driver.errors import SecondaryServiceNotFound
+from openeo_driver.errors import ServiceNotFoundException
 
 from openeogeotrellis.configparams import ConfigParams
 
@@ -58,7 +58,7 @@ class InMemoryServiceRegistry:
 
     def get_specification(self, service_id: str) -> dict:
         if service_id not in self._services:
-            raise SecondaryServiceNotFound(service_id)
+            raise ServiceNotFoundException(service_id)
         return self._services[service_id].specification
 
     def get_all_specifications(self) -> Dict[str, dict]:
@@ -66,7 +66,7 @@ class InMemoryServiceRegistry:
 
     def stop_service(self, service_id: str):
         if service_id not in self._services:
-            raise SecondaryServiceNotFound(service_id)
+            raise ServiceNotFoundException(service_id)
         service = self._services.pop(service_id)
         _log.info('Stopping service {s}'.format(s=service))
         service.stop()
@@ -109,7 +109,7 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
         try:
             data, _ = zk.get(self._path(service_id))
         except NoNodeError:
-            raise SecondaryServiceNotFound(service_id)
+            raise ServiceNotFoundException(service_id)
         return json.loads(data.decode())
 
     def get_all_specifications(self) -> Dict[str, dict]:
