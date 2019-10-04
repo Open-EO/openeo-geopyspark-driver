@@ -83,9 +83,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def s3_jp2_pyramid():
             endpoint = layer_source_info['endpoint']
             region = layer_source_info['region']
-            bucket_name = layer_source_info['bucket_name']
 
-            return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region, bucket_name) \
+            return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_pyramid():
