@@ -120,6 +120,8 @@ def main():
     }
     tcp.close()
     from openeo_driver.views import app
+    from flask_cors import CORS
+    CORS(app)
     from openeogeotrellis import get_backend_version
 
     app.logger.setLevel('DEBUG')
