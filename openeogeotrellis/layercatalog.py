@@ -1,7 +1,5 @@
 import logging
 
-import pytz
-from dateutil.parser import parse
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway
 
@@ -12,7 +10,7 @@ from openeo_driver.utils import read_json
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from openeogeotrellis.utils import kerberos, dict_merge_recursive
+from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
 
 logger = logging.getLogger(__name__)
 
@@ -117,16 +115,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata=CollectionMetadata(layer_metadata)
         )
         return image_collection.band_filter(band_indices) if band_indices else image_collection
-
-
-def normalize_date(date_string):
-    # TODO move this functionality to a more general utility module?
-    if date_string is not None:
-        date = parse(date_string)
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=pytz.UTC)
-        return date.isoformat()
-    return None
 
 
 def get_layer_catalog(service_registry: InMemoryServiceRegistry = None) -> GeoPySparkLayerCatalog:
