@@ -89,7 +89,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def output_formats(self) -> dict:
         return {
-            "GTiff": {"gis_data_types": ["raster"]},
+            "GTiff": {
+                "gis_data_types": ["raster"],
+            },
+            "CovJSON": {
+                "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+            },
         }
 
     def load_disk_data(self, format: str, glob_pattern: str, options: dict, viewing_parameters: dict) -> object:

@@ -1,26 +1,26 @@
-import logging
-from typing import Dict, List, Union, Iterable, Tuple, Sequence
-
-import geopyspark as gps
-from datetime import datetime, date, timezone
-from geopyspark import TiledRasterLayer, TMS, Pyramid,Tile,SpaceTimeKey,Metadata,Extent
-from geopyspark.geotrellis.constants import CellType
-from geopyspark.geotrellis import Extent
-import numpy as np
-from openeo_udf.api.base import UdfData,RasterCollectionTile,SpatialExtent
-
-from pandas import Series
-import pandas as pd
-from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import json
+import logging
 import os
 import uuid
-import pytz
+from datetime import datetime, date
+from typing import Dict, List, Union, Tuple, Sequence
+
+import geopyspark as gps
+import numpy as np
+import pandas as pd
 import pyproj
+import pytz
+from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
+from geopyspark.geotrellis import Extent
+from geopyspark.geotrellis.constants import CellType
+from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+from pandas import Series
+from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
 from openeo.imagecollection import ImageCollection, CollectionMetadata
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
+from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
 
 _log = logging.getLogger(__name__)
 
@@ -422,9 +422,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> Union[List, Dict]:
+    def zonal_statistics(self, regions, func) -> AggregatePolygonResult:
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
+
+        multiple_geometries = isinstance(regions, GeometryCollection)
 
         if func == 'histogram' or func == 'median' or func == 'sd':
             def by_compute_stats_geotrellis():
@@ -433,8 +435,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 layer_metadata = highest_level.layer_metadata
 
                 scala_data_cube = highest_level.srdd.rdd()
-
-                multiple_geometries = isinstance(regions, GeometryCollection)
 
                 polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
                 polygons_srs = 'EPSG:4326'
@@ -449,6 +449,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     implementation = self._compute_stats_geotrellis().compute_median_time_series_from_datacube
                 elif func == 'sd':
                     implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
+                else:
+                    raise ValueError(func)
 
                 stats = implementation(
                     scala_data_cube,
@@ -460,36 +462,43 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 )
                 return stats
 
-            return self._as_python(by_compute_stats_geotrellis())
+            return AggregatePolygonResult(
+                timeseries=self._as_python(by_compute_stats_geotrellis()),
+                regions=regions if multiple_geometries else GeometryCollection([regions]),
+            )
 
         else:  # defaults to mean, historically
-            def by_compute_stats_geotrellis():
-                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-                layer_metadata = highest_level.layer_metadata
+            if multiple_geometries and self._data_source_type().lower() == 'accumulo':
+                # TODO eliminate code duplication
+                def by_compute_stats_geotrellis():
+                    highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+                    layer_metadata = highest_level.layer_metadata
+                    scala_data_cube = highest_level.srdd.rdd()
+                    polygon_wkts = [str(ob) for ob in regions]
+                    polygons_srs = 'EPSG:4326'
+                    from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+                    to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+                    return self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                        scala_data_cube,
+                        polygon_wkts,
+                        polygons_srs,
+                        from_date.isoformat(),
+                        to_date.isoformat(),
+                        self._band_index
+                    )
 
-                scala_data_cube = highest_level.srdd.rdd()
-
-                polygon_wkts = [str(ob) for ob in regions]
-                polygons_srs = 'EPSG:4326'
-                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-                return self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                    scala_data_cube,
-                    polygon_wkts,
-                    polygons_srs,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                    self._band_index
+                return AggregatePolygonResult(
+                    timeseries=self._as_python(by_compute_stats_geotrellis()),
+                    regions=regions,
                 )
-
-            use_compute_stats_geotrellis = \
-                isinstance(regions, GeometryCollection) and self._data_source_type().lower() == 'accumulo'
-
-            return self._as_python(by_compute_stats_geotrellis()) if use_compute_stats_geotrellis else self.polygonal_mean_timeseries(regions)
+            else:
+                return AggregatePolygonResult(
+                    timeseries=self.polygonal_mean_timeseries(regions),
+                    regions=GeometryCollection([regions]),
+                )
 
     def _compute_stats_geotrellis(self):
         jvm = gps.get_spark_context()._gateway.jvm
-
         accumulo_instance_name = 'hdp-accumulo-instance'
         return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
 
@@ -557,7 +566,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             sum, count = values
             return sum / count
 
-        return {timestamp.isoformat(): list(map(to_mean, values)) for timestamp, values in polygon_mean_by_timestamp.collect()}
+        collected = polygon_mean_by_timestamp.collect()
+        return {timestamp.isoformat(): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
     def download(self,outputfile:str, **format_options) -> str:
         """Extracts a geotiff from this image collection."""
