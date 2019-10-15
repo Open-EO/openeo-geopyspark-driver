@@ -193,7 +193,7 @@
     "_vito": {
       "data_source": {
         "type": "Accumulo",
-        "data_id": "S1_GRD_SIGMA0_ASCENDING_V110_ALL"
+        "data_id": "S1_GRD_SIGMA0_ASCENDING_PYRAMID"
       }
     },
     "description": "Sentinel 1 GRD Sigma0, mosaic of all ascending relative orbits. Provided by Terrascope.",
@@ -256,7 +256,7 @@
     "_vito": {
       "data_source": {
         "type": "Accumulo",
-        "data_id": "S1_GRD_SIGMA0_DESCENDING_V110_ALL-1548102680728_BACKUP"
+        "data_id": "S1_GRD_SIGMA0_DESCENDING_PYRAMID"
       }
     },
     "description": "Sentinel 1 GRD Sigma0, mosaic of all descending relative orbits. Provided by Terrascope.",
