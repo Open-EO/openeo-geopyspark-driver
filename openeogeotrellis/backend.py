@@ -87,6 +87,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         count = sc.parallelize([1, 2, 3]).count()
         return 'Health check: ' + str(count)
 
+    def output_formats(self) -> dict:
+        return {
+            "GTiff": {"gis_data_types": ["raster"]},
+        }
+
     def load_disk_data(self, format: str, glob_pattern: str, options: dict, viewing_parameters: dict) -> object:
         if format != 'GTiff':
             raise NotImplemented("The format is not supported by the backend: " + format)
