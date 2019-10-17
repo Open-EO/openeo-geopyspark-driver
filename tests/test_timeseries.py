@@ -139,10 +139,23 @@ class TestTimeSeries(TestCase):
             (0.0, 1.0),
             (0.0, 0.0)
         ])
+        result = imagecollection.zonal_statistics(polygon, "mean")
+        assert result.data == {'2017-09-25T11:37:00': [[1.0, 2.0]]}
 
-        result = imagecollection.zonal_statistics(polygon,"mean")
+        covjson = result.to_covjson()
+        assert covjson["ranges"] == {
+            "band0": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 1),
+                "values": [1.0]
+            },
+            "band1": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 1),
+                "values": [2.0]
+            },
+        }
 
-        print(result)
 
     def test_zonal_statistics_datacube(self):
         layer = self.create_spacetime_layer()
@@ -164,22 +177,29 @@ class TestTimeSeries(TestCase):
             (2.0, 2.0)
         ])
 
-        result = imagecollection.zonal_statistics(GeometryCollection([polygon,MultiPolygon([polygon2])]),"mean")
+        regions = GeometryCollection([polygon, MultiPolygon([polygon2])])
+        result = imagecollection.zonal_statistics(regions, "mean")
+        assert result.data == {
+            '2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]
+        }
 
-        print(result)
-        polygon_result = result['2017-09-25T11:37:00Z'][0]
-        polygon2_result = result['2017-09-25T11:37:00Z'][0]
-        #there are 2 bands
-        self.assertEqual(2,len(polygon_result))
-        self.assertEqual(1.0, polygon_result[0])
-        self.assertEqual(2.0, polygon_result[1])
-        #results are the same for both polygons
-        self.assertEqual(polygon_result,polygon2_result)
+        covjson = result.to_covjson()
+        assert covjson["ranges"] == {
+            "band0": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 2),
+                "values": [1.0, 1.0]
+            },
+            "band1": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 2),
+                "values": [2.0, 2.0]
+            },
+        }
 
     def test_zonal_statistics_median_datacube(self):
         layer = self.create_spacetime_layer()
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
-
         polygon = Polygon(shell=[
             (0.0, 0.0),
             (1.0, 0.0),
@@ -187,24 +207,27 @@ class TestTimeSeries(TestCase):
             (0.0, 1.0),
             (0.0, 0.0)
         ])
+        result = imagecollection.zonal_statistics(polygon, "median")
+        assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
 
-
-        result = imagecollection.zonal_statistics(polygon,"median")
-
-        print(result)
-        polygon_result = result['2017-09-25T11:37:00Z'][0]
-        #there are 2 bands
-        self.assertEqual(2,len(polygon_result))
-        self.assertEqual(1.0, polygon_result[0])
-        self.assertEqual(2.0, polygon_result[1])
+        covjson = result.to_covjson()
+        assert covjson["ranges"] == {
+            "band0": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 1),
+                "values": [1.0]
+            },
+            "band1": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 1),
+                "values": [2.0]
+            }
+        }
 
     def test_zonal_statistics_for_unsigned_byte_layer(self):
         layer = self.create_spacetime_unsigned_byte_layer()
-
         # layer.to_spatial_layer().save_stitched('/tmp/unsigned_byte_layer.tif')
-
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
-
         polygon = Polygon(shell=[
             (0.0, 0.0),
             (2.0, 0.0),
@@ -212,10 +235,15 @@ class TestTimeSeries(TestCase):
             (0.0, 4.0),
             (0.0, 0.0)
         ])
-
-        time_series = imagecollection.zonal_statistics(polygon, "mean")
+        result = imagecollection.zonal_statistics(polygon, "mean")
         # FIXME: the Python implementation doesn't return a time zone (Z)
-        single_mean = time_series['2017-09-25T11:37:00'][0]
+        assert result.data == {'2017-09-25T11:37:00': [[220.0]]}
 
-        # the two NO_DATA tiles in the left half are ignored
-        self.assertAlmostEqual(220.0, single_mean, delta=0.1)
+        covjson = result.to_covjson()
+        assert covjson["ranges"] == {
+            "band0": {
+                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                "shape": (1, 1),
+                "values": [220.0]
+            }
+        }

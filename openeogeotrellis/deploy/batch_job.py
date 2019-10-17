@@ -45,8 +45,7 @@ def main(argv: List[str]) -> None:
             print("wrote image collection to %s" % output_file)
         elif isinstance(result, JSONResult):
             with open(output_file, 'w') as f:
-                json.dump(result.json_dict, f)
-
+                json.dump(result.prepare_for_json(), f)
             print("wrote JSON result to %s" % output_file)
         else:
             with open(output_file, 'w') as f:
