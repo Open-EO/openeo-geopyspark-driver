@@ -143,7 +143,7 @@ def run_batch_job(job_id: str, user_id: str) -> None:
             application_id = _extract_application_id(output_string)
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
-            registry.set_application_id(job_id, application_id)
+            registry.set_application_id(job_id, user_id, application_id)
         except _BatchJobError as e:
             traceback.print_exc(file=sys.stderr)
             raise CalledProcessError(1,str(args),output=output_string)
@@ -157,11 +157,11 @@ def _extract_application_id(stream) -> str:
         raise _BatchJobError(stream)
 
 
-def cancel_batch_job(job_id: str):
+def cancel_batch_job(job_id: str, user_id: str):
     from .job_registry import JobRegistry
 
     with JobRegistry() as registry:
-        application_id = registry.get_job(job_id)['application_id']
+        application_id = registry.get_job(job_id, user_id)['application_id']
 
     subprocess.call(["yarn", "application", "-kill", application_id])
 
