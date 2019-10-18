@@ -36,25 +36,34 @@ def create_process_visitor():
     return GeotrellisTileProcessGraphVisitor()
 
 
-def get_batch_job_info(job_id: str) -> dict:
+def get_batch_job_info(job_id: str, user_id: str) -> dict:
     """Returns detailed information about a submitted batch job,
     or None if the batch job with this job_id is unknown."""
-    from kazoo.exceptions import NoNodeError
-    from .job_registry import JobRegistry
+    from .job_registry import JobRegistry, JobNotFoundException
     try:
         with JobRegistry() as registry:
-            status = registry.get_job(job_id)['status']
+            status = registry.get_job(job_id, user_id)['status']
 
         return {
             'job_id': job_id,
             'status': status
         }
-    except NoNodeError:
+    except JobNotFoundException:
         return None
 
 
-def get_batch_job_result_filenames(job_id: str) -> List[str]:
-    job_info = get_batch_job_info(job_id)
+def get_batch_jobs_info(user_id: str) -> List[dict]:
+    from .job_registry import JobRegistry
+
+    with JobRegistry() as registry:
+        return [{
+            'job_id': job_info['job_id'],
+            'status': job_info['status']
+        } for job_info in registry.get_jobs(user_id)]
+
+
+def get_batch_job_result_filenames(job_id: str, user_id: str) -> List[str]:
+    job_info = get_batch_job_info(job_id, user_id)
     results_available = job_info and job_info.get('status') == 'finished'
 
     return ["out"] if results_available else None
@@ -64,12 +73,12 @@ def get_batch_job_result_output_dir(job_id: str) -> str:
     return "/mnt/ceph/Projects/OpenEO/%s" % job_id
 
 
-def create_batch_job(api_version: str, specification: dict) -> str:
+def create_batch_job(user_id: str, api_version: str, specification: dict) -> str:
     job_id = str(uuid.uuid4())
 
     from .job_registry import JobRegistry
     with JobRegistry() as registry:
-        registry.register(job_id, api_version, specification)
+        registry.register(job_id, user_id, api_version, specification)
 
     return job_id
 
@@ -79,12 +88,12 @@ class _BatchJobError(Exception):
         super().__init__(message)
 
 
-def run_batch_job(job_id: str) -> None:
+def run_batch_job(job_id: str, user_id: str) -> None:
     from pyspark import SparkContext
 
     from .job_registry import JobRegistry
     with JobRegistry() as registry:
-        job_info = registry.get_job(job_id)
+        job_info = registry.get_job(job_id, user_id)
         api_version = job_info.get('api_version')
 
         # FIXME: mark_undone in case of re-queue
@@ -134,7 +143,7 @@ def run_batch_job(job_id: str) -> None:
             application_id = _extract_application_id(output_string)
             print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
-            registry.update(job_id, application_id=application_id)
+            registry.set_application_id(job_id, application_id)
         except _BatchJobError as e:
             traceback.print_exc(file=sys.stderr)
             raise CalledProcessError(1,str(args),output=output_string)

@@ -38,7 +38,8 @@ class JobTracker:
                         jobs_to_track = registry.get_running_jobs()
 
                         for job in jobs_to_track:
-                            job_id, application_id, current_status = job['job_id'], job['application_id'], job['status']
+                            job_id, user_id = job['job_id'], job['user_id']
+                            application_id, current_status = job['application_id'], job['status']
 
                             if application_id:
                                 try:
@@ -46,14 +47,14 @@ class JobTracker:
                                     new_status = JobTracker._to_openeo_status(state, final_state)
 
                                     if current_status != new_status:
-                                        registry.update(job_id, status=new_status)
+                                        registry.set_status(job_id, user_id, new_status)
                                         print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
                                     if final_state != "UNDEFINED":
-                                        registry.mark_done(job_id)
+                                        registry.mark_done(job_id, user_id)
                                         print("marked %s as done" % job_id)
                                 except JobTracker._UnknownApplicationIdException:
-                                    registry.mark_done(job_id)
+                                    registry.mark_done(job_id, user_id)
                 except Exception:
                     traceback.print_exc(file=sys.stderr)
 
@@ -107,7 +108,6 @@ class JobTracker:
             subprocess.check_call(["kinit", "-kt", self._keytab, self._principal])
         else:
             _log.warn("No Kerberos principal/keytab: will not refresh TGT")
-
 
 
 if __name__ == '__main__':

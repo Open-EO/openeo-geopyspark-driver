@@ -56,6 +56,9 @@ def when_ready(server):
     logging.getLogger('gunicorn.error').info('Gunicorn info logging enabled!')
     logging.getLogger('flask').info('Flask info logging enabled!')
 
+    with JobRegistry() as job_registry:
+        job_registry.ensure_paths()
+
     job_tracker = JobTracker(JobRegistry, principal, keytab)
     threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
 
