@@ -35,7 +35,7 @@ import datetime
 import threading
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
-
+from openeogeotrellis.traefik import Traefik
 
 
 """
@@ -82,17 +82,14 @@ def update_zookeeper(host: str, port):
     print("Registering with zookeeper.")
     from kazoo.client import KazooClient
     from openeogeotrellis.configparams import ConfigParams
+
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
-    zk.ensure_path("discovery/services/openeo-test")
-    #id = uuid.uuid4()
-    #print(id)
-    id = 0
-    zk.ensure_path("discovery/services/openeo-test/"+str(id))
-    zk.set("discovery/services/openeo-test/"+str(id),str.encode(json.dumps({"name":"openeo-test","id":str(id),"address":host,"port":port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
-    zk.stop()
-    zk.close()
-    print("Zookeeper node created: discovery/services/openeo-test/"+str(id))
+
+    try:
+        Traefik(zk).add_load_balanced_server(cluster_id='openeo-test', server_id="0", host=host, port=port)
+    finally:
+        zk.stop()
 
 def main():
     from pyspark import SparkContext

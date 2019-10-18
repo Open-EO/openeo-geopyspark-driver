@@ -8,6 +8,7 @@ from kazoo.client import KazooClient, NoNodeError
 from openeo_driver.errors import ServiceNotFoundException
 
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.traefik import Traefik
 
 _log = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
         super().register(service)
         with self._zk_client() as zk:
             self._persist_details(zk, service.service_id, service.specification),
-            Traefik(zk).route(service.service_id, service.host, service.port)
+            Traefik(zk).proxy_service(service.service_id, service.host, service.port)
 
     def _persist_details(self, zk: KazooClient, service_id: str, specification: dict):
         # TODO: add more metadata: date, user, ...
@@ -129,42 +130,3 @@ class ZooKeeperServiceRegistry(InMemoryServiceRegistry):
         with self._zk_client() as zk:
             zk.delete(self._path(service_id))
             Traefik(zk).remove(service_id)
-
-
-class Traefik:
-    def __init__(self, zk):
-        self._zk = zk
-
-    def route(self, service_id, host, port):
-        backend_id = self._create_backend_server(service_id, host, port)
-        self._create_frontend_rule(service_id, backend_id)
-        self._trigger_configuration_update()
-
-    def remove(self, service_id):
-        # TODO
-        pass
-
-    def _create_backend_server(self, service_id, host, port):
-        backend_id = "backend%s" % service_id
-        server_key = "/traefik/backends/%s/servers/server1" % backend_id
-        self._zk.ensure_path(server_key)
-
-        url = "http://%s:%d" % (host, port)
-        self._zk.create(server_key + "/url", url.encode())
-
-        return backend_id
-
-    def _create_frontend_rule(self, service_id, backend_id):
-        frontend_key = "/traefik/frontends/frontend%s" % service_id
-        test_key = frontend_key + "/routes/test"
-        self._zk.ensure_path(test_key)
-
-        self._zk.create(frontend_key + "/entrypoints", b"web")
-        self._zk.create(frontend_key + "/backend", backend_id.encode())
-
-        match_path = "PathPrefixStripRegex: /openeo/services/%s,/openeo/{version}/services/%s" % (service_id, service_id)
-        self._zk.create(test_key + "/rule", match_path.encode())
-
-    def _trigger_configuration_update(self):
-        # https://github.com/containous/traefik/issues/2068
-        self._zk.delete("/traefik/leader", recursive=True)
