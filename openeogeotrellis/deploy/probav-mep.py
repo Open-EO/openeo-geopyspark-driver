@@ -90,6 +90,8 @@ def update_zookeeper(host: str, port):
         Traefik(zk).add_load_balanced_server(cluster_id='openeo-test', server_id="0", host=host, port=port)
     finally:
         zk.stop()
+        zk.close()
+
 
 def main():
     from pyspark import SparkContext
