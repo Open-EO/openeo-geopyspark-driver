@@ -59,7 +59,7 @@ def get_batch_jobs_info(user_id: str) -> List[dict]:
         return [{
             'job_id': job_info['job_id'],
             'status': job_info['status']
-        } for job_info in registry.get_jobs(user_id)]
+        } for job_info in registry.get_user_jobs(user_id)]
 
 
 def get_batch_job_result_filenames(job_id: str, user_id: str) -> List[str]:
