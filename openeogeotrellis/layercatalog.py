@@ -89,9 +89,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-        def sentinel_hub_pyramid():
-            return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
-                .pyramid_seq(layer_source_info.get('uuid'),extent, srs, from_date, to_date, band_indices)
+        def sentinel_hub_s1_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_s2_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S2PyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         if layer_source_type == 's3':
             pyramid = s3_pyramid()
@@ -99,8 +103,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = s3_jp2_pyramid()
         elif layer_source_type == 'file':
             pyramid = file_pyramid()
-        elif layer_source_type == 'sentinel-hub':
-            pyramid = sentinel_hub_pyramid()
+        elif layer_source_type == 'sentinel-hub-s1':
+            pyramid = sentinel_hub_s1_pyramid()
+        elif layer_source_type == 'sentinel-hub-s2':
+            pyramid = sentinel_hub_s2_pyramid()
         else:
             pyramid = accumulo_pyramid()
 
