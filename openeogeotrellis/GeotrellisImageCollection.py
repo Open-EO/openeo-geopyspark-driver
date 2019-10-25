@@ -210,7 +210,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             data = UdfData({"EPSG":900913}, input_rct)
 
-            from openeo_udf.api.base import RasterCollectionTile
+            try:
+                from openeo_udf.api.base import RasterCollectionTile
+            except ImportError as e:
+                from openeo_udf.api.raster_collection_tile import RasterCollectionTile
 
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
             result = data.raster_collection_tiles
@@ -265,7 +268,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 bands_metadata=openeo_metadata.bands
             ))
 
-            from openeo_udf.api.base import RasterCollectionTile
+            try:
+                from openeo_udf.api.base import RasterCollectionTile
+            except ImportError as e:
+                from openeo_udf.api.raster_collection_tile import RasterCollectionTile
+
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
             result = data.raster_collection_tiles
             return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))

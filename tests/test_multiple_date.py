@@ -2,6 +2,7 @@ import datetime
 from unittest import TestCase
 
 import numpy as np
+from geopyspark import CellType
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
 from geopyspark.geotrellis.constants import LayerType
@@ -180,9 +181,9 @@ class TestMultipleDates(TestCase):
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
         stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
-        self.assertEqual(np.nan,stitched.cells[0][0][0])
+        self.assertTrue(np.isnan(stitched.cells[0][0][0]))
         self.assertEqual(6, stitched.cells[0][0][5])
-        self.assertEqual(4, stitched.cells[0][5][5])
+        self.assertEqual(4, stitched.cells[0][5][6])
 
     def test_apply_dimension_spatiotemporal(self):
 
@@ -226,11 +227,11 @@ rct_savitzky_golay(data)
         local_tiles = result.pyramid.levels[0].to_numpy_rdd().collect()
         print(local_tiles)
         self.assertEquals(len(TestMultipleDates.layer),len(local_tiles))
-        ref_dict = {e[0]:e[1] for e in TestMultipleDates.layer}
+        ref_dict = {e[0]:e[1] for e in imagecollection.pyramid.levels[0].convert_data_type(CellType.FLOAT64).to_numpy_rdd().collect()}
         result_dict = {e[0]: e[1] for e in local_tiles}
         for k,v in ref_dict.items():
             tile = result_dict[k]
-            assert_array_almost_equal(v.cells,np.squeeze(tile.cells),decimal=2)
+            assert_array_almost_equal(np.squeeze(v.cells),np.squeeze(tile.cells),decimal=2)
 
 
     def test_mask_raster(self):
