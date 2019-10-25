@@ -17,7 +17,7 @@ from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 class TestMultipleDates(TestCase):
     band1 = np.array([
-        [1.0, 1.0, 1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
@@ -26,7 +26,7 @@ class TestMultipleDates(TestCase):
     band2 = np.array([
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
-        [2.0, 2.0, 2.0, 2.0, 2.0],
+        [2.0, 2.0, -1.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0]])
 
@@ -137,6 +137,11 @@ class TestMultipleDates(TestCase):
         min_time = imagecollection.min_time()
         max_time = imagecollection.max_time()
 
+        stitched = min_time.pyramid.levels[0].stitch()
+        print(stitched)
+
+        self.assertEquals(2.0,stitched.cells[0][0][0])
+
         for p in self.points[1:3]:
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
@@ -144,6 +149,8 @@ class TestMultipleDates(TestCase):
             max_result = max_time.timeseries(p.x, p.y,srs="EPSG:3857")
             self.assertEqual(1.0,result['NoDate'])
             self.assertEqual(2.0,max_result['NoDate'])
+
+
 
     def test_apply_spatiotemporal(self):
         import openeo_udf.functions
