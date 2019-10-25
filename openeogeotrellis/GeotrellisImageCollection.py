@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import uuid
+import math
 from datetime import datetime, date
 from typing import Dict, List, Union, Tuple, Sequence
 
@@ -390,7 +391,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
 
-    #TODO EP-3068 implement!
+
     def resample_spatial(self,resolution:Union[Union[int,float],Sequence[Union[int,float]]],projection:Union[int,str]=None,method:str='near',align:str='lower-left'):
         """
         https://open-eo.github.io/openeo-api/v/0.4.0/processreference/#resample_spatial
@@ -400,10 +401,48 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :param align:
         :return:
         """
+
+        #IF projection is defined, we need to warp
         if(projection is not None):
+            raise NotImplementedError("Warping is not yet supported!")
             resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
             #TODO map resample methods
-            return self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
+            reprojected = self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
+
+            #if not isinstance(projection, str):
+            #    crs = str(projection)
+            #else:
+            #    crs = projection
+
+            #scala_crs = jvm.geopyspark.geotrellis.TileLayer.getCRS(crs).get()
+        else:
+            jvm = gps.get_spark_context()._gateway.jvm
+
+            max_level = self.pyramid.levels[self.pyramid.max_zoom]
+            layer_crs = max_level.layer_metadata.crs
+
+            extent = max_level.layer_metadata.layout_definition.extent
+
+            width = extent.xmax - extent.xmin
+            height = extent.ymax - extent.ymin
+
+            nbTilesX = width / (256 * resolution)
+            nbTilesY = height / (256 * resolution)
+
+            exactTileSizeX = width/(resolution * math.ceil(nbTilesX))
+            exactNbTilesX = width/(resolution * exactTileSizeX)
+
+            exactTileSizeY = height / (resolution * math.ceil(nbTilesY))
+            exactNbTilesY = height / (resolution * exactTileSizeY)
+
+
+            newLayout = gps.LayoutDefinition(extent=extent,tileLayout=gps.TileLayout(int(exactNbTilesX),int(exactNbTilesY),int(exactTileSizeX),int(exactTileSizeY)))
+
+            resampled = max_level.tile_to_layout(newLayout)
+
+            pyramid = Pyramid({0:resampled})
+            return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
+                                                       metadata=self.metadata)._with_band_index(self._band_index)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
