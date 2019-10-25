@@ -101,7 +101,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def reduce(self, reducer:str, dimension:str) -> 'ImageCollection':
         reducer = self._normalize_reducer(dimension, reducer)
-        return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
+        if( reducer in ['Min','Max']):
+            #the reducers provided by geopyspark don't have correct nodata handling
+            from .numpy_aggregators import min_composite,max_composite
+            reduce_function = min_composite
+            if reducer == 'Max':
+                reduce_function = max_composite
+            return self._aggregate_over_time_numpy(reduce_function)
+        else:
+            return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
 
     def reduce_bands(self,pgVisitor) -> 'ImageCollection':
         """

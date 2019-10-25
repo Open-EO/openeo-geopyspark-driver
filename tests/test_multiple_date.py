@@ -97,6 +97,7 @@ class TestMultipleDates(TestCase):
 
         stitched = imagecollection.reduce("max","temporal").pyramid.levels[0].stitch()
         print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][1])
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
 
@@ -179,7 +180,7 @@ class TestMultipleDates(TestCase):
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
         stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
-        self.assertEqual(4,stitched.cells[0][0][0])
+        self.assertEqual(np.nan,stitched.cells[0][0][0])
         self.assertEqual(6, stitched.cells[0][0][5])
         self.assertEqual(4, stitched.cells[0][5][5])
 
