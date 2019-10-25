@@ -263,14 +263,13 @@ rct_savitzky_golay(data)
 
     def test_resample_spatial(self):
 
-
         input = Pyramid({0: self.tiled_raster_rdd})
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
         resampled = imagecollection.resample_spatial(resolution=0.05)
 
-        resampled.max_time().download("resampled.tiff",format="GTIFF",parameters={'tiled':True})
+        resampled.reduce('max','temporal').download("resampled.tiff",format="GTIFF",parameters={'tiled':True})
 
         import rasterio
         with rasterio.open("resampled.tiff") as ds:
