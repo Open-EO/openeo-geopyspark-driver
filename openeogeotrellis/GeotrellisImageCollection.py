@@ -312,13 +312,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         reducer = self._normalize_reducer(dimension, reducer)
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
-    def min_time(self) -> 'ImageCollection':
-        from .numpy_aggregators import min_composite
-        return self._aggregate_over_time_numpy(min_composite)
-
-    def max_time(self) -> 'ImageCollection':
-        from .numpy_aggregators import max_composite
-        return self._aggregate_over_time_numpy(max_composite)
 
     def _aggregate_over_time_numpy(self,numpy_function) -> 'ImageCollection':
         """
