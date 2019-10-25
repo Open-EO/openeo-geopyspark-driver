@@ -128,7 +128,7 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        stitched = imagecollection.max_time().pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce('max','temporal').pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
@@ -136,8 +136,8 @@ class TestMultipleDates(TestCase):
         input = Pyramid( {0:self.tiled_raster_rdd })
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        min_time = imagecollection.min_time()
-        max_time = imagecollection.max_time()
+        min_time = imagecollection.reduce('min','temporal')
+        max_time = imagecollection.reduce('max','temporal')
 
         stitched = min_time.pyramid.levels[0].stitch()
         print(stitched)
@@ -244,7 +244,7 @@ rct_savitzky_golay(data)
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
         stitched = imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
-                                        replacement=10.0).max_time().pyramid.levels[0].stitch()
+                                        replacement=10.0).reduce('max','temporal').pyramid.levels[0].stitch()
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])
         self.assertEquals(10.0, stitched.cells[0][0][1])
@@ -254,7 +254,7 @@ rct_savitzky_golay(data)
 
         input = Pyramid({0: self.tiled_raster_rdd})
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        stitched = imagecollection.apply_kernel(kernel,2.0).max_time().pyramid.levels[0].stitch()
+        stitched = imagecollection.apply_kernel(kernel,2.0).reduce('max','temporal').pyramid.levels[0].stitch()
 
         self.assertEquals(12.0, stitched.cells[0][0][0])
         self.assertEquals(16.0, stitched.cells[0][0][1])
