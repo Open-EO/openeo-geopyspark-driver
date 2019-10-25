@@ -93,8 +93,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory(layer_source_info.get('uuid')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-        def sentinel_hub_s2_pyramid():
-            return jvm.org.openeo.geotrellissentinelhub.S2PyramidFactory(layer_source_info.get('uuid')) \
+        def sentinel_hub_s2_l1c_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S2L1CPyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_s2_l2a_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S2L2APyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_l8_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory(layer_source_info.get('uuid')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         if layer_source_type == 's3':
@@ -105,8 +113,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_pyramid()
         elif layer_source_type == 'sentinel-hub-s1':
             pyramid = sentinel_hub_s1_pyramid()
-        elif layer_source_type == 'sentinel-hub-s2':
-            pyramid = sentinel_hub_s2_pyramid()
+        elif layer_source_type == 'sentinel-hub-s2-l1c':
+            pyramid = sentinel_hub_s2_l1c_pyramid()
+        elif layer_source_type == 'sentinel-hub-s2-l2a':
+            pyramid = sentinel_hub_s2_l2a_pyramid()
+        elif layer_source_type == 'sentinel-hub-l8':
+            pyramid = sentinel_hub_l8_pyramid()
         else:
             pyramid = accumulo_pyramid()
 
