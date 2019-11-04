@@ -42,8 +42,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()
 
-        layer_metadata = self.get_collection_metadata(collection_id, strip_private=False)
-        layer_source_info = layer_metadata.get("_vito", {}).get("data_source", {})
+        metadata = CollectionMetadata(self.get_collection_metadata(collection_id, strip_private=False))
+        layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
         import geopyspark as gps
@@ -55,7 +55,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         top = viewing_parameters.get("top", None)
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
-        band_indices = viewing_parameters.get("bands")
+        bands = viewing_parameters.get("bands", [])
+        band_indices = [metadata.get_band_index(b) for b in bands]
         pysc = gps.get_spark_context()
         extent = None
 
@@ -130,7 +131,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
             service_registry=self._service_registry,
-            metadata=CollectionMetadata(layer_metadata)
+            metadata=metadata
         )
         return image_collection.band_filter(band_indices) if band_indices else image_collection
 
