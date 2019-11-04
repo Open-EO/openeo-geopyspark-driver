@@ -14,7 +14,9 @@ import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
-from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+from openeo_udf.api.udf_data import UdfData
+from openeo_udf.api.spatial_extent import SpatialExtent
+from openeo_udf.api.raster_collection_tile import RasterCollectionTile
 from pandas import Series
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
@@ -402,26 +404,42 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
 
+        resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
+        if method == 'bilinear':
+            resample_method = gps.ResampleMethod.BILINEAR
+        elif staticmethod == 'average':
+            resample_method = gps.ResampleMethod.AVERAGE
+        elif staticmethod == 'cubic':
+            resample_method = gps.ResampleMethod.CUBIC_CONVOLUTION
+        elif staticmethod == 'cubicspline':
+            resample_method = gps.ResampleMethod.CUBIC_SPLINE
+        elif staticmethod == 'lanczos':
+            resample_method = gps.ResampleMethod.LANCZOS
+        elif staticmethod == 'mode':
+            resample_method = gps.ResampleMethod.MODE
+        elif staticmethod == 'max':
+            resample_method = gps.ResampleMethod.MAX
+        elif staticmethod == 'min':
+            resample_method = gps.ResampleMethod.MIN
+        elif staticmethod == 'med':
+            resample_method = gps.ResampleMethod.MEDIAN
+
         #IF projection is defined, we need to warp
         if(projection is not None):
-            raise NotImplementedError("Warping is not yet supported!")
-            resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
-            #TODO map resample methods
+
             reprojected = self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
 
-            #if not isinstance(projection, str):
-            #    crs = str(projection)
-            #else:
-            #    crs = projection
-
-            #scala_crs = jvm.geopyspark.geotrellis.TileLayer.getCRS(crs).get()
-        else:
-            jvm = gps.get_spark_context()._gateway.jvm
+            pyramid = Pyramid({0: reprojected})
+            return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
+                                                       metadata=self.metadata)._with_band_index(self._band_index)
+        elif resolution != 0.0:
 
             max_level = self.pyramid.levels[self.pyramid.max_zoom]
-            layer_crs = max_level.layer_metadata.crs
 
             extent = max_level.layer_metadata.layout_definition.extent
+
+            if(projection is not None):
+                extent = self._reproject_extent(max_level.layer_metadata.crs,projection,extent.xmin,extent.ymin,extent.xmax,extent.ymax)
 
             width = extent.xmax - extent.xmin
             height = extent.ymax - extent.ymin
@@ -438,7 +456,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             newLayout = gps.LayoutDefinition(extent=extent,tileLayout=gps.TileLayout(int(exactNbTilesX),int(exactNbTilesY),int(exactTileSizeX),int(exactTileSizeY)))
 
-            resampled = max_level.tile_to_layout(newLayout)
+            if(projection is not None):
+                resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
+            else:
+                resampled = max_level.tile_to_layout(newLayout,resample_method=resample_method)
 
             pyramid = Pyramid({0:resampled})
             return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
@@ -639,21 +660,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if xmin and ymin and xmax and ymax:
             srs = format_options.get('srs', 'EPSG:4326')
 
-            src_proj = pyproj.Proj("+init=" + srs)
-            dst_proj = pyproj.Proj(spatial_rdd.layer_metadata.crs)
-
-            def reproject_point(x, y):
-                return pyproj.transform(
-                    src_proj,
-                    dst_proj,
-                    x, y
-                )
-
-            reprojected_xmin, reprojected_ymin = reproject_point(xmin, ymin)
-            reprojected_xmax, reprojected_ymax = reproject_point(xmax, ymax)
-
-            crop_bounds =\
-                Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
+            src_crs = "+init=" + srs
+            dst_crs = spatial_rdd.layer_metadata.crs
+            crop_bounds = self._reproject_extent(src_crs, dst_crs, xmin, ymin, xmax, ymax)
         else:
             crop_bounds = None
 
@@ -663,6 +672,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             self._save_stitched(spatial_rdd, filename, crop_bounds)
 
         return filename
+
+    def _reproject_extent(self, src_crs, dst_crs, xmin, ymin, xmax, ymax):
+        src_proj = pyproj.Proj(src_crs)
+        dst_proj = pyproj.Proj(dst_crs)
+
+        def reproject_point(x, y):
+            return pyproj.transform(
+                src_proj,
+                dst_proj,
+                x, y
+            )
+
+        reprojected_xmin, reprojected_ymin = reproject_point(xmin, ymin)
+        reprojected_xmax, reprojected_ymax = reproject_point(xmax, ymax)
+        crop_bounds = \
+            Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
+        return crop_bounds
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
         jvm = gps.get_spark_context()._gateway.jvm
