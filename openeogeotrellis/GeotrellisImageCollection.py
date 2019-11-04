@@ -14,9 +14,7 @@ import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
-from openeo_udf.api.udf_data import UdfData
-from openeo_udf.api.spatial_extent import SpatialExtent
-from openeo_udf.api.raster_collection_tile import RasterCollectionTile
+from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
 from pandas import Series
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
