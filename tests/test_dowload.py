@@ -61,6 +61,7 @@ class TestDownload(TestCase):
     ]
 
     def setUp(self):
+        # TODO: make this reusable (or a pytest fixture)
         self.temp_folder = Path.cwd() / 'tmp'
         if not self.temp_folder.exists():
             self.temp_folder.mkdir()

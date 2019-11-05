@@ -1,4 +1,5 @@
 import datetime
+from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
@@ -90,6 +91,14 @@ class TestMultipleDates(TestCase):
         Point(1.0, -2.0),
         Point(-10.0, 15.0)
     ]
+
+    def setUp(self):
+        # TODO: make this reusable (or a pytest fixture)
+        self.temp_folder = Path.cwd() / 'tmp'
+        if not self.temp_folder.exists():
+            self.temp_folder.mkdir()
+        assert self.temp_folder.is_dir()
+
 
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
@@ -260,19 +269,17 @@ rct_savitzky_golay(data)
         self.assertEquals(16.0, stitched.cells[0][0][1])
         self.assertEquals(20.0, stitched.cells[0][1][1])
 
-
     def test_resample_spatial(self):
-
         input = Pyramid({0: self.tiled_raster_rdd})
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
         resampled = imagecollection.resample_spatial(resolution=0.05)
 
-        resampled.reduce('max','temporal').download("resampled.tiff",format="GTIFF",parameters={'tiled':True})
+        path = str(self.temp_folder / "resampled.tiff")
+        resampled.reduce('max', 'temporal').download(path, format="GTIFF", parameters={'tiled': True})
 
         import rasterio
-        with rasterio.open("resampled.tiff") as ds:
+        with rasterio.open(path) as ds:
             print(ds.profile)
-            self.assertAlmostEqual(0.05,ds.res[0],3)
-
+            self.assertAlmostEqual(0.05, ds.res[0], 3)
