@@ -57,6 +57,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         srs = viewing_parameters.get("srs", None)
         bands = viewing_parameters.get("bands", [])
         band_indices = [metadata.get_band_index(b) for b in bands]
+        # TODO: avoid this `still_needs_band_filter` ugliness.
+        #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+        still_needs_band_filter = False
         pysc = gps.get_spark_context()
         extent = None
 
@@ -69,13 +72,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
             accumulo_layer_name = layer_source_info['data_id']
+            nonlocal still_needs_band_filter
+            still_needs_band_filter = bool(band_indices)
             return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
         def s3_pyramid():
             endpoint = layer_source_info['endpoint']
             region = layer_source_info['region']
             bucket_name = layer_source_info['bucket_name']
-
+            nonlocal still_needs_band_filter
+            still_needs_band_filter = bool(band_indices)
             return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
                 .pyramid_seq(extent, srs, from_date, to_date)
 
@@ -133,7 +139,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             service_registry=self._service_registry,
             metadata=metadata
         )
-        return image_collection.band_filter(band_indices) if band_indices else image_collection
+
+        if still_needs_band_filter:
+            # TODO: avoid this `still_needs_band_filter` ugliness.
+            #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+            image_collection = image_collection.band_filter(band_indices)
+
+        return image_collection
 
 
 def get_layer_catalog(service_registry: InMemoryServiceRegistry = None) -> GeoPySparkLayerCatalog:

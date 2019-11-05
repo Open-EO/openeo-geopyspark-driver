@@ -33,6 +33,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
+        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         self._band_index = 0
 
     def apply_to_levels(self, func):
@@ -69,10 +70,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
 
     def _with_band_index(self, band_index):
+        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         self._band_index = band_index
         return self
 
     def band_filter(self, bands) -> 'ImageCollection':
+        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         if isinstance(bands, int):
             self._band_index = bands
         elif isinstance(bands, list) and len(bands) == 1:
