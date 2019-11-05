@@ -187,14 +187,11 @@ class TestCustomFunctions(TestCase):
 
     def test_polygon_series(self):
         input = self.create_spacetime_layer()
-
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
-
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry(), self.openeo_metadata)
 
         means = imagecollection.polygonal_mean_timeseries(polygon)
-        assert len(means) == 1
-        assert [item[1] for item in means.items()][0] == [1.0, 2.0]
+        assert means == {'2017-09-25T11:37:00': [[1.0, 2.0]]}
 
     def _create_spacetime_layer(self, no_data):
         def tile(value):
@@ -233,11 +230,7 @@ class TestCustomFunctions(TestCase):
 
     def test_another_polygon_series(self):
         input = self._create_spacetime_layer(no_data=-1.0)
-
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
-
         means = imagecollection.polygonal_mean_timeseries(polygon)
-        assert len(means) == 1
-        assert [item[1] for item in means.items()][0] == [(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]
+        assert means == {'2017-09-25T11:37:00': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}

@@ -1,7 +1,9 @@
 import datetime
+from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+from geopyspark import CellType
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
 from geopyspark.geotrellis.constants import LayerType
@@ -17,7 +19,7 @@ from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 class TestMultipleDates(TestCase):
     band1 = np.array([
-        [1.0, 1.0, 1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
@@ -26,7 +28,7 @@ class TestMultipleDates(TestCase):
     band2 = np.array([
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
-        [2.0, 2.0, 2.0, 2.0, 2.0],
+        [2.0, 2.0, -1.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0]])
 
@@ -90,6 +92,14 @@ class TestMultipleDates(TestCase):
         Point(-10.0, 15.0)
     ]
 
+    def setUp(self):
+        # TODO: make this reusable (or a pytest fixture)
+        self.temp_folder = Path.cwd() / 'tmp'
+        if not self.temp_folder.exists():
+            self.temp_folder.mkdir()
+        assert self.temp_folder.is_dir()
+
+
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
@@ -97,6 +107,7 @@ class TestMultipleDates(TestCase):
 
         stitched = imagecollection.reduce("max","temporal").pyramid.levels[0].stitch()
         print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][1])
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
 
@@ -126,7 +137,7 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        stitched = imagecollection.max_time().pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce('max','temporal').pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
@@ -134,8 +145,13 @@ class TestMultipleDates(TestCase):
         input = Pyramid( {0:self.tiled_raster_rdd })
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        min_time = imagecollection.min_time()
-        max_time = imagecollection.max_time()
+        min_time = imagecollection.reduce('min','temporal')
+        max_time = imagecollection.reduce('max','temporal')
+
+        stitched = min_time.pyramid.levels[0].stitch()
+        print(stitched)
+
+        self.assertEquals(2.0,stitched.cells[0][0][0])
 
         for p in self.points[1:3]:
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
@@ -144,6 +160,8 @@ class TestMultipleDates(TestCase):
             max_result = max_time.timeseries(p.x, p.y,srs="EPSG:3857")
             self.assertEqual(1.0,result['NoDate'])
             self.assertEqual(2.0,max_result['NoDate'])
+
+
 
     def test_apply_spatiotemporal(self):
         import openeo_udf.functions
@@ -172,9 +190,9 @@ class TestMultipleDates(TestCase):
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
         stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
-        self.assertEqual(4,stitched.cells[0][0][0])
+        self.assertTrue(np.isnan(stitched.cells[0][0][0]))
         self.assertEqual(6, stitched.cells[0][0][5])
-        self.assertEqual(4, stitched.cells[0][5][5])
+        self.assertEqual(4, stitched.cells[0][5][6])
 
     def test_apply_dimension_spatiotemporal(self):
 
@@ -218,11 +236,11 @@ rct_savitzky_golay(data)
         local_tiles = result.pyramid.levels[0].to_numpy_rdd().collect()
         print(local_tiles)
         self.assertEquals(len(TestMultipleDates.layer),len(local_tiles))
-        ref_dict = {e[0]:e[1] for e in TestMultipleDates.layer}
+        ref_dict = {e[0]:e[1] for e in imagecollection.pyramid.levels[0].convert_data_type(CellType.FLOAT64).to_numpy_rdd().collect()}
         result_dict = {e[0]: e[1] for e in local_tiles}
         for k,v in ref_dict.items():
             tile = result_dict[k]
-            assert_array_almost_equal(v.cells,np.squeeze(tile.cells),decimal=2)
+            assert_array_almost_equal(np.squeeze(v.cells),np.squeeze(tile.cells),decimal=2)
 
 
     def test_mask_raster(self):
@@ -235,7 +253,7 @@ rct_savitzky_golay(data)
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
         stitched = imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
-                                        replacement=10.0).max_time().pyramid.levels[0].stitch()
+                                        replacement=10.0).reduce('max','temporal').pyramid.levels[0].stitch()
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])
         self.assertEquals(10.0, stitched.cells[0][0][1])
@@ -245,8 +263,23 @@ rct_savitzky_golay(data)
 
         input = Pyramid({0: self.tiled_raster_rdd})
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        stitched = imagecollection.apply_kernel(kernel,2.0).max_time().pyramid.levels[0].stitch()
+        stitched = imagecollection.apply_kernel(kernel,2.0).reduce('max','temporal').pyramid.levels[0].stitch()
 
         self.assertEquals(12.0, stitched.cells[0][0][0])
         self.assertEquals(16.0, stitched.cells[0][0][1])
         self.assertEquals(20.0, stitched.cells[0][1][1])
+
+    def test_resample_spatial(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+
+        resampled = imagecollection.resample_spatial(resolution=0.05)
+
+        path = str(self.temp_folder / "resampled.tiff")
+        resampled.reduce('max', 'temporal').download(path, format="GTIFF", parameters={'tiled': True})
+
+        import rasterio
+        with rasterio.open(path) as ds:
+            print(ds.profile)
+            self.assertAlmostEqual(0.05, ds.res[0], 3)

@@ -1,6 +1,8 @@
 import collections
 import logging
 import os
+import pytz
+from dateutil.parser import parse
 
 from py4j.java_gateway import JavaGateway
 
@@ -69,3 +71,12 @@ def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
         else:
             result[key] = value
     return result
+
+
+def normalize_date(date_string):
+    if date_string is not None:
+        date = parse(date_string)
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=pytz.UTC)
+        return date.isoformat()
+    return None

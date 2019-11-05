@@ -8,6 +8,7 @@ from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
+from shapely import geometry
 from shapely.geometry import Point
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
@@ -23,7 +24,7 @@ class TestDownload(TestCase):
     second.fill(2)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
-    layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
+    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 4, 'tileRows': 4}
 
     now = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ')
 
@@ -60,6 +61,7 @@ class TestDownload(TestCase):
     ]
 
     def setUp(self):
+        # TODO: make this reusable (or a pytest fixture)
         self.temp_folder = Path.cwd() / 'tmp'
         if not self.temp_folder.exists():
             self.temp_folder.mkdir()
@@ -104,7 +106,6 @@ class TestDownload(TestCase):
     def test_download_masked_geotiff(self):
 
         input = self.create_spacetime_layer()
-        from shapely import geometry
         polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
@@ -116,7 +117,6 @@ class TestDownload(TestCase):
     def test_download_masked_geotiff_reproject(self):
 
         input = self.create_spacetime_layer()
-        from shapely import geometry
         polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
 
         import pyproj

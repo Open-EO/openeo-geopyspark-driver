@@ -39,7 +39,7 @@ setup(
         'colortools>=0.1.2',
         'geopandas==0.3.0',
         'geopyspark==0.4.2',
-        'aiohttp==1.3.5',
+        'cChardet',
         'gunicorn',
         'kazoo==2.4.0',
         'flask-cors',

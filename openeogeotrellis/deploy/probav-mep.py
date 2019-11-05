@@ -35,7 +35,7 @@ import datetime
 import threading
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
-
+from openeogeotrellis.traefik import Traefik
 
 
 """
@@ -55,6 +55,9 @@ def when_ready(server):
 
     logging.getLogger('gunicorn.error').info('Gunicorn info logging enabled!')
     logging.getLogger('flask').info('Flask info logging enabled!')
+
+    with JobRegistry() as job_registry:
+        job_registry.ensure_paths()
 
     job_tracker = JobTracker(JobRegistry, principal, keytab)
     threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
@@ -82,17 +85,16 @@ def update_zookeeper(host: str, port):
     print("Registering with zookeeper.")
     from kazoo.client import KazooClient
     from openeogeotrellis.configparams import ConfigParams
+
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
-    zk.ensure_path("discovery/services/openeo-test")
-    #id = uuid.uuid4()
-    #print(id)
-    id = 0
-    zk.ensure_path("discovery/services/openeo-test/"+str(id))
-    zk.set("discovery/services/openeo-test/"+str(id),str.encode(json.dumps({"name":"openeo-test","id":str(id),"address":host,"port":port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
-    zk.stop()
-    zk.close()
-    print("Zookeeper node created: discovery/services/openeo-test/"+str(id))
+
+    try:
+        Traefik(zk).add_load_balanced_server(cluster_id='openeo-test', server_id="0", host=host, port=port)
+    finally:
+        zk.stop()
+        zk.close()
+
 
 def main():
     from pyspark import SparkContext
@@ -105,10 +107,14 @@ def main():
     tcp.bind(('', 0))
     host, port = tcp.getsockname()
 
+    #note the use of 1 worker and multiple threads
+    # we were seeing strange py4j errors when executing multiple requests in parallel
+    # this seems to be related by the type and configuration of worker that gunicorn uses, aiohttp also gave very bad results
     options = {
         'bind': '%s:%s' % (local_ip, port),
-        'workers': number_of_workers(),
-        'worker_class': 'gaiohttp',
+        'workers': 1,
+        'threads': 10,
+        'worker_class': 'gthread',
         'timeout': 1000,
         'loglevel': 'DEBUG',
         'accesslog': '-',
@@ -116,6 +122,8 @@ def main():
     }
     tcp.close()
     from openeo_driver.views import app
+    from flask_cors import CORS
+    CORS(app)
     from openeogeotrellis import get_backend_version
 
     app.logger.setLevel('DEBUG')

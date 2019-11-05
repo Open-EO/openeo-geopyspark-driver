@@ -1,7 +1,5 @@
 import logging
 
-import pytz
-from dateutil.parser import parse
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway
 
@@ -12,7 +10,7 @@ from openeo_driver.utils import read_json
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
-from openeogeotrellis.utils import kerberos, dict_merge_recursive
+from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +42,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()
 
-        layer_metadata = self.get_collection_metadata(collection_id, strip_private=False)
-        layer_source_info = layer_metadata.get("_vito", {}).get("data_source", {})
+        metadata = CollectionMetadata(self.get_collection_metadata(collection_id, strip_private=False))
+        layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
         import geopyspark as gps
@@ -57,7 +55,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         top = viewing_parameters.get("top", None)
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
-        band_indices = viewing_parameters.get("bands")
+        bands = viewing_parameters.get("bands", [])
+        band_indices = [metadata.get_band_index(b) for b in bands]
+        # TODO: avoid this `still_needs_band_filter` ugliness.
+        #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+        still_needs_band_filter = False
         pysc = gps.get_spark_context()
         extent = None
 
@@ -70,30 +72,60 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
             accumulo_layer_name = layer_source_info['data_id']
+            nonlocal still_needs_band_filter
+            still_needs_band_filter = bool(band_indices)
             return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
         def s3_pyramid():
             endpoint = layer_source_info['endpoint']
             region = layer_source_info['region']
             bucket_name = layer_source_info['bucket_name']
-
+            nonlocal still_needs_band_filter
+            still_needs_band_filter = bool(band_indices)
             return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
                 .pyramid_seq(extent, srs, from_date, to_date)
+
+        def s3_jp2_pyramid():
+            endpoint = layer_source_info['endpoint']
+            region = layer_source_info['region']
+
+            return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_pyramid():
             return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-        def sentinel_hub_pyramid():
-            return jvm.org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory() \
+        def sentinel_hub_s1_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_s2_l1c_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S2L1CPyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_s2_l2a_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.S2L2APyramidFactory(layer_source_info.get('uuid')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+
+        def sentinel_hub_l8_pyramid():
+            return jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory(layer_source_info.get('uuid')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         if layer_source_type == 's3':
             pyramid = s3_pyramid()
+        elif layer_source_type == 's3-jp2':
+            pyramid = s3_jp2_pyramid()
         elif layer_source_type == 'file':
             pyramid = file_pyramid()
-        elif layer_source_type == 'sentinel-hub':
-            pyramid = sentinel_hub_pyramid()
+        elif layer_source_type == 'sentinel-hub-s1':
+            pyramid = sentinel_hub_s1_pyramid()
+        elif layer_source_type == 'sentinel-hub-s2-l1c':
+            pyramid = sentinel_hub_s2_l1c_pyramid()
+        elif layer_source_type == 'sentinel-hub-s2-l2a':
+            pyramid = sentinel_hub_s2_l2a_pyramid()
+        elif layer_source_type == 'sentinel-hub-l8':
+            pyramid = sentinel_hub_l8_pyramid()
         else:
             pyramid = accumulo_pyramid()
 
@@ -105,19 +137,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
             service_registry=self._service_registry,
-            metadata=CollectionMetadata(layer_metadata)
+            metadata=metadata
         )
-        return image_collection.band_filter(band_indices) if band_indices else image_collection
 
+        if still_needs_band_filter:
+            # TODO: avoid this `still_needs_band_filter` ugliness.
+            #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+            image_collection = image_collection.band_filter(band_indices)
 
-def normalize_date(date_string):
-    # TODO move this functionality to a more general utility module?
-    if date_string is not None:
-        date = parse(date_string)
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=pytz.UTC)
-        return date.isoformat()
-    return None
+        return image_collection
 
 
 def get_layer_catalog(service_registry: InMemoryServiceRegistry = None) -> GeoPySparkLayerCatalog:

@@ -1,26 +1,27 @@
-import logging
-from typing import Dict, List, Union, Iterable, Tuple, Sequence
-
-import geopyspark as gps
-from datetime import datetime, date, timezone
-from geopyspark import TiledRasterLayer, TMS, Pyramid,Tile,SpaceTimeKey,Metadata,Extent
-from geopyspark.geotrellis.constants import CellType
-from geopyspark.geotrellis import Extent
-import numpy as np
-from openeo_udf.api.base import UdfData,RasterCollectionTile,SpatialExtent
-
-from pandas import Series
-import pandas as pd
-from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import json
+import logging
 import os
 import uuid
-import pytz
+import math
+from datetime import datetime, date
+from typing import Dict, List, Union, Tuple, Sequence
+
+import geopyspark as gps
+import numpy as np
+import pandas as pd
 import pyproj
+import pytz
+from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
+from geopyspark.geotrellis import Extent
+from geopyspark.geotrellis.constants import CellType
+from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+from pandas import Series
+from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
 from openeo.imagecollection import ImageCollection, CollectionMetadata
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
+from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
 
 _log = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
+        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         self._band_index = 0
 
     def apply_to_levels(self, func):
@@ -68,10 +70,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
 
     def _with_band_index(self, band_index):
+        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         self._band_index = band_index
         return self
 
     def band_filter(self, bands) -> 'ImageCollection':
+        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         if isinstance(bands, int):
             self._band_index = bands
         elif isinstance(bands, list) and len(bands) == 1:
@@ -101,7 +105,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def reduce(self, reducer:str, dimension:str) -> 'ImageCollection':
         reducer = self._normalize_reducer(dimension, reducer)
-        return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
+        if( reducer in ['Min','Max']):
+            #the reducers provided by geopyspark don't have correct nodata handling
+            from .numpy_aggregators import min_composite,max_composite
+            reduce_function = min_composite
+            if reducer == 'Max':
+                reduce_function = max_composite
+            return self._aggregate_over_time_numpy(reduce_function)
+        else:
+            return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
 
     def reduce_bands(self,pgVisitor) -> 'ImageCollection':
         """
@@ -202,7 +214,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             data = UdfData({"EPSG":900913}, input_rct)
 
-            from openeo_udf.api.base import RasterCollectionTile
+            try:
+                from openeo_udf.api.base import RasterCollectionTile
+            except ImportError as e:
+                from openeo_udf.api.raster_collection_tile import RasterCollectionTile
 
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
             result = data.raster_collection_tiles
@@ -257,7 +272,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 bands_metadata=openeo_metadata.bands
             ))
 
-            from openeo_udf.api.base import RasterCollectionTile
+            try:
+                from openeo_udf.api.base import RasterCollectionTile
+            except ImportError as e:
+                from openeo_udf.api.raster_collection_tile import RasterCollectionTile
+
             exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile})
             result = data.raster_collection_tiles
             return (key,Tile(result[0].get_data(),geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
@@ -297,12 +316,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         reducer = self._normalize_reducer(dimension, reducer)
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
-    def min_time(self) -> 'ImageCollection':
-        return self.apply_to_levels(lambda rdd:rdd.to_spatial_layer().aggregate_by_cell("Min"))
-
-    def max_time(self) -> 'ImageCollection':
-        from .numpy_aggregators import max_composite
-        return self._aggregate_over_time_numpy(max_composite)
 
     def _aggregate_over_time_numpy(self,numpy_function) -> 'ImageCollection':
         """
@@ -381,7 +394,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
 
-    #TODO EP-3068 implement!
+
     def resample_spatial(self,resolution:Union[Union[int,float],Sequence[Union[int,float]]],projection:Union[int,str]=None,method:str='near',align:str='lower-left'):
         """
         https://open-eo.github.io/openeo-api/v/0.4.0/processreference/#resample_spatial
@@ -391,10 +404,67 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :param align:
         :return:
         """
+
+        resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
+        if method == 'bilinear':
+            resample_method = gps.ResampleMethod.BILINEAR
+        elif staticmethod == 'average':
+            resample_method = gps.ResampleMethod.AVERAGE
+        elif staticmethod == 'cubic':
+            resample_method = gps.ResampleMethod.CUBIC_CONVOLUTION
+        elif staticmethod == 'cubicspline':
+            resample_method = gps.ResampleMethod.CUBIC_SPLINE
+        elif staticmethod == 'lanczos':
+            resample_method = gps.ResampleMethod.LANCZOS
+        elif staticmethod == 'mode':
+            resample_method = gps.ResampleMethod.MODE
+        elif staticmethod == 'max':
+            resample_method = gps.ResampleMethod.MAX
+        elif staticmethod == 'min':
+            resample_method = gps.ResampleMethod.MIN
+        elif staticmethod == 'med':
+            resample_method = gps.ResampleMethod.MEDIAN
+
+        #IF projection is defined, we need to warp
         if(projection is not None):
-            resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
-            #TODO map resample methods
-            return self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
+
+            reprojected = self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
+
+            pyramid = Pyramid({0: reprojected})
+            return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
+                                                       metadata=self.metadata)._with_band_index(self._band_index)
+        elif resolution != 0.0:
+
+            max_level = self.pyramid.levels[self.pyramid.max_zoom]
+
+            extent = max_level.layer_metadata.layout_definition.extent
+
+            if(projection is not None):
+                extent = self._reproject_extent(max_level.layer_metadata.crs,projection,extent.xmin,extent.ymin,extent.xmax,extent.ymax)
+
+            width = extent.xmax - extent.xmin
+            height = extent.ymax - extent.ymin
+
+            nbTilesX = width / (256 * resolution)
+            nbTilesY = height / (256 * resolution)
+
+            exactTileSizeX = width/(resolution * math.ceil(nbTilesX))
+            exactNbTilesX = width/(resolution * exactTileSizeX)
+
+            exactTileSizeY = height / (resolution * math.ceil(nbTilesY))
+            exactNbTilesY = height / (resolution * exactTileSizeY)
+
+
+            newLayout = gps.LayoutDefinition(extent=extent,tileLayout=gps.TileLayout(int(exactNbTilesX),int(exactNbTilesY),int(exactTileSizeX),int(exactTileSizeY)))
+
+            if(projection is not None):
+                resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
+            else:
+                resampled = max_level.tile_to_layout(newLayout,resample_method=resample_method)
+
+            pyramid = Pyramid({0:resampled})
+            return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
+                                                       metadata=self.metadata)._with_band_index(self._band_index)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
@@ -422,67 +492,88 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def zonal_statistics(self, regions, func, scale=1000, interval="day") -> Union[List, Dict]:
+    def zonal_statistics(self, regions, func) -> AggregatePolygonResult:
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        if func == 'histogram':
+        multiple_geometries = isinstance(regions, GeometryCollection)
+
+        if func == 'histogram' or func == 'median' or func == 'sd':
             def by_compute_stats_geotrellis():
-                layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
 
-                multiple_geometries = isinstance(regions, GeometryCollection)
+                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+                layer_metadata = highest_level.layer_metadata
 
-                product_id = self.metadata.get('id')
-                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
+                scala_data_cube = highest_level.srdd.rdd()
+
+                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
                 polygons_srs = 'EPSG:4326'
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-                zoom = self.pyramid.max_zoom
 
-                implementation = self._compute_stats_geotrellis().compute_histograms_time_series if multiple_geometries \
-                    else self._compute_stats_geotrellis().compute_histogram_time_series
+                if func == 'histogram':
+                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube if multiple_geometries \
+                        else self._compute_stats_geotrellis().compute_histogram_time_series_from_datacube
+                    polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
+                elif func == 'median':
+                    implementation = self._compute_stats_geotrellis().compute_median_time_series_from_datacube
+                elif func == 'sd':
+                    implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
+                else:
+                    raise ValueError(func)
 
-                return implementation(
-                    product_id,
+                stats = implementation(
+                    scala_data_cube,
                     polygon_wkts,
                     polygons_srs,
                     from_date.isoformat(),
                     to_date.isoformat(),
-                    zoom,
                     self._band_index
                 )
+                return stats
 
-            return self._as_python(by_compute_stats_geotrellis())
+            return AggregatePolygonResult(
+                timeseries=self._as_python(by_compute_stats_geotrellis()),
+                regions=regions if multiple_geometries else GeometryCollection([regions]),
+            )
+
         else:  # defaults to mean, historically
-            def by_compute_stats_geotrellis():
-                layer_metadata = self.pyramid.levels[self.pyramid.max_zoom].layer_metadata
+            if multiple_geometries and self._data_source_type().lower() == 'accumulo':
+                # TODO eliminate code duplication
+                def by_compute_stats_geotrellis():
+                    highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+                    layer_metadata = highest_level.layer_metadata
+                    scala_data_cube = highest_level.srdd.rdd()
+                    polygon_wkts = [str(ob) for ob in regions]
+                    polygons_srs = 'EPSG:4326'
+                    from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+                    to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+                    return self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                        scala_data_cube,
+                        polygon_wkts,
+                        polygons_srs,
+                        from_date.isoformat(),
+                        to_date.isoformat(),
+                        self._band_index
+                    )
 
-                product_id = self.metadata.get('id')
-                polygon_wkts = [str(ob) for ob in regions]
-                polygons_srs = 'EPSG:4326'
-                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-                zoom = self.pyramid.max_zoom
-
-                return self._compute_stats_geotrellis().compute_average_timeseries(
-                    product_id,
-                    polygon_wkts,
-                    polygons_srs,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                    zoom,
-                    self._band_index
+                return AggregatePolygonResult(
+                    timeseries=self._as_python(by_compute_stats_geotrellis()),
+                    regions=regions,
                 )
-
-            use_compute_stats_geotrellis = \
-                isinstance(regions, GeometryCollection) and self._data_source_type().lower() == 'accumulo'
-
-            return self._as_python(by_compute_stats_geotrellis()) if use_compute_stats_geotrellis else self.polygonal_mean_timeseries(regions)
+            else:
+                return AggregatePolygonResult(
+                    timeseries=self.polygonal_mean_timeseries(regions),
+                    regions=GeometryCollection([regions]),
+                )
 
     def _compute_stats_geotrellis(self):
         jvm = gps.get_spark_context()._gateway.jvm
-        jvm.java.lang.System.setProperty('zookeeper.connectionstring',','.join(ConfigParams().zookeepernodes))
-        return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter()
+        accumulo_instance_name = 'hdp-accumulo-instance'
+        return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
+
+    def _zookeepers(self):
+        return ','.join(ConfigParams().zookeepernodes)
 
     # FIXME: define this somewhere else?
     def _as_python(self, java_object):
@@ -510,6 +601,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
         masked_layer = max_level.mask(reprojected_polygon)
 
+        no_data = masked_layer.layer_metadata.no_data_value
+
         def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
             n_bands = len(tile.cells)
 
@@ -520,7 +613,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 grid = tile.cells[i]
 
                 # special treatment for a UDF layer (NO_DATA is nan so every value, including nan, is not equal to nan)
-                without_no_data = (~np.isnan(grid)) & (grid != tile.no_data_value)
+                without_no_data = (~np.isnan(grid)) & (grid != no_data)
 
                 sum = grid[without_no_data].sum()
                 count = without_no_data.sum()
@@ -543,7 +636,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             sum, count = values
             return sum / count
 
-        return {timestamp.isoformat(): list(map(to_mean, values)) for timestamp, values in polygon_mean_by_timestamp.collect()}
+        collected = polygon_mean_by_timestamp.collect()
+        return {timestamp.isoformat(): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
     def download(self,outputfile:str, **format_options) -> str:
         """Extracts a geotiff from this image collection."""
@@ -567,21 +661,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if xmin and ymin and xmax and ymax:
             srs = format_options.get('srs', 'EPSG:4326')
 
-            src_proj = pyproj.Proj("+init=" + srs)
-            dst_proj = pyproj.Proj(spatial_rdd.layer_metadata.crs)
-
-            def reproject_point(x, y):
-                return pyproj.transform(
-                    src_proj,
-                    dst_proj,
-                    x, y
-                )
-
-            reprojected_xmin, reprojected_ymin = reproject_point(xmin, ymin)
-            reprojected_xmax, reprojected_ymax = reproject_point(xmax, ymax)
-
-            crop_bounds =\
-                Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
+            src_crs = "+init=" + srs
+            dst_crs = spatial_rdd.layer_metadata.crs
+            crop_bounds = self._reproject_extent(src_crs, dst_crs, xmin, ymin, xmax, ymax)
         else:
             crop_bounds = None
 
@@ -591,6 +673,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             self._save_stitched(spatial_rdd, filename, crop_bounds)
 
         return filename
+
+    def _reproject_extent(self, src_crs, dst_crs, xmin, ymin, xmax, ymax):
+        src_proj = pyproj.Proj(src_crs)
+        dst_proj = pyproj.Proj(dst_crs)
+
+        def reproject_point(x, y):
+            return pyproj.transform(
+                src_proj,
+                dst_proj,
+                x, y
+            )
+
+        reprojected_xmin, reprojected_ymin = reproject_point(xmin, ymin)
+        reprojected_xmax, reprojected_ymax = reproject_point(xmax, ymax)
+        crop_bounds = \
+            Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
+        return crop_bounds
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
         jvm = gps.get_spark_context()._gateway.jvm
@@ -669,7 +768,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _proxy(self, host, port):
         from kazoo.client import KazooClient
-        zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
+        zk = KazooClient(hosts=self._zookeepers())
         zk.start()
         zk.ensure_path("discovery/services/openeo-viewer-test")
         # id = uuid.uuid4()
