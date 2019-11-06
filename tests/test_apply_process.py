@@ -395,4 +395,4 @@ class TestCustomFunctions(TestCase):
             [-2 / 2, -1 / 3, 0 / 4, 1 / 5],
             [-3 / 3, -2 / 4, -1 / 5, 0 / 6]
         ]))
-        np.testing.assert_array_almost_equal(cells, expected)
+        np.testing.assert_array_almost_equal(cells, expected.astype(np.uint8))

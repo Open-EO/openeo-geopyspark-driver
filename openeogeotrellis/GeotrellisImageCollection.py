@@ -476,7 +476,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         output_range = output_max - output_min
         if output_range >1 and type(output_min) == int and type(output_max) == int:
             if output_range < 254 and output_min >= 0:
-                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8))
+                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8,255))
             elif output_range < 65535 and output_min >= 0:
                 rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT16))
         return rescaled
