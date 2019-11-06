@@ -464,6 +464,22 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
+    def linear_scale_range(self, input_min, input_max, output_min, output_max) -> 'ImageCollection':
+        """ Color stretching
+            :param input_min: Minimum input value
+            :param input_max: Maximum input value
+            :param output_min: Minimum output value
+            :param output_max: Maximum output value
+            :return An ImageCollection instance
+        """
+        rescaled = self.apply_to_levels(lambda layer: layer.normalize(output_min, output_max, input_min, input_max))
+        output_range = output_max - output_min
+        if output_range >1 and type(output_min) == int and type(output_max) == int:
+            if output_range < 254 and output_min >= 0:
+                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8))
+            elif output_range < 65535 and output_min >= 0:
+                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT16))
+        return rescaled
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]

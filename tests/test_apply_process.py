@@ -372,3 +372,27 @@ class TestCustomFunctions(TestCase):
             [-3 / 3, -2 / 4, -1 / 5, 0 / 6]
         ])
         np.testing.assert_array_almost_equal(cells, expected)
+
+    def test_linear_scale_range(self):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
+        pyramid = gps.Pyramid({0: layer})
+        metadata = CollectionMetadata({
+            "properties": {
+                "eo:bands": [
+                    {"name": "B04", "common_name": "red"},
+                    {"name": "B08", "common_name": "nir"},
+                ]
+            }
+        })
+        imagecollection = GeotrellisTimeSeriesImageCollection(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+
+        stitched = imagecollection.ndvi().linear_scale_range(-1, 1, 0, 100).pyramid.levels[0].to_spatial_layer().stitch()
+        cells = stitched.cells[0, 0:4, 0:4]
+        expected =50.0*  (1.0 +np.array([
+            [np.nan, 1 / 1, 2 / 2, 3 / 3],
+            [-1 / 1, 0 / 2, 1 / 3, 2 / 4],
+            [-2 / 2, -1 / 3, 0 / 4, 1 / 5],
+            [-3 / 3, -2 / 4, -1 / 5, 0 / 6]
+        ]))
+        np.testing.assert_array_almost_equal(cells, expected)
