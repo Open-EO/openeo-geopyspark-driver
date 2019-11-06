@@ -99,6 +99,23 @@ class TestMultipleDates(TestCase):
             self.temp_folder.mkdir()
         assert self.temp_folder.is_dir()
 
+    def test_reproject_spatial(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+
+        resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3857",method="max")
+        metadata = resampled.pyramid.levels[0].layer_metadata
+        print(metadata)
+        self.assertTrue("proj=merc" in metadata.crs)
+        path = str(self.temp_folder / "reprojected.tiff")
+        resampled.reduce('max', 'temporal').download(path, format="GTIFF", parameters={'tiled': True})
+
+        import rasterio
+        with rasterio.open(path) as ds:
+            print(ds.profile)
+
+
 
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})

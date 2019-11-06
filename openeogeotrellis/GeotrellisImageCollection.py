@@ -408,31 +408,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
         if method == 'bilinear':
             resample_method = gps.ResampleMethod.BILINEAR
-        elif staticmethod == 'average':
+        elif method == 'average':
             resample_method = gps.ResampleMethod.AVERAGE
-        elif staticmethod == 'cubic':
+        elif method == 'cubic':
             resample_method = gps.ResampleMethod.CUBIC_CONVOLUTION
-        elif staticmethod == 'cubicspline':
+        elif method == 'cubicspline':
             resample_method = gps.ResampleMethod.CUBIC_SPLINE
-        elif staticmethod == 'lanczos':
+        elif method == 'lanczos':
             resample_method = gps.ResampleMethod.LANCZOS
-        elif staticmethod == 'mode':
+        elif method == 'mode':
             resample_method = gps.ResampleMethod.MODE
-        elif staticmethod == 'max':
+        elif method == 'max':
             resample_method = gps.ResampleMethod.MAX
-        elif staticmethod == 'min':
+        elif method == 'min':
             resample_method = gps.ResampleMethod.MIN
-        elif staticmethod == 'med':
+        elif method == 'med':
             resample_method = gps.ResampleMethod.MEDIAN
 
         #IF projection is defined, we need to warp
         if(projection is not None):
-
-            reprojected = self.apply_to_levels(lambda layer:layer.reproject(projection,resample_method))
-
-            pyramid = Pyramid({0: reprojected})
-            return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
-                                                       metadata=self.metadata)._with_band_index(self._band_index)
+            reprojected = self.apply_to_levels(lambda layer:gps.TiledRasterLayer(layer.layer_type,layer.srdd.reproject(projection,resample_method,None)))
+            return reprojected
         elif resolution != 0.0:
 
             max_level = self.pyramid.levels[self.pyramid.max_zoom]
