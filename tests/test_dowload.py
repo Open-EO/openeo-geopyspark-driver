@@ -135,3 +135,9 @@ class TestDownload(TestCase):
         geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.3857"))
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
+
+    def test_download_as_catalog(self):
+        input = self.create_spacetime_layer()
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection.download("catalogresult.tiff",format="GTIFF",parameters={"catalog":True})
