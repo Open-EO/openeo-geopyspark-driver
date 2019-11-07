@@ -38,7 +38,7 @@ setup(
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
         'geopandas==0.3.0',
-        'geopyspark==0.4.4+vitomaster',
+        'geopyspark==0.4.4+vitomaster1',
         'cChardet',
         'gunicorn',
         'kazoo==2.4.0',
