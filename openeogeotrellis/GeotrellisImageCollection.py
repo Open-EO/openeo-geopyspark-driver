@@ -690,7 +690,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             crop_bounds = None
 
         if catalog:
-            self._save_to_catalog(spatial_rdd, filename)
+            self._save_on_executors(spatial_rdd, filename)
         if tiled:
             self._save_stitched_tiled(spatial_rdd, filename)
         else:
@@ -715,7 +715,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
         return crop_bounds
 
-    def _save_to_catalog(self,spatial_rdd:gps.TiledRasterLayer,path):
+    def _save_on_executors(self, spatial_rdd:gps.TiledRasterLayer, path):
 
         large_tiles = spatial_rdd.tile_to_layout(layout=gps.LocalLayout(tile_size=4096))
         geotiff_rdd = large_tiles.to_geotiff_rdd(storage_method=gps.StorageMethod.TILED,compression=gps.Compression.DEFLATE_COMPRESSION)
@@ -738,7 +738,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         print("merging results: " + str(tiffs))
 
         import subprocess
-        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
+        merge_args = ["GDAL_CACHEMAX=1024", "gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
         merge_args += tiffs
         subprocess.check_call(" ".join(merge_args),shell=True)
 
