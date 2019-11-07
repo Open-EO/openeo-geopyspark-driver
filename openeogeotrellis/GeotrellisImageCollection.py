@@ -14,7 +14,14 @@ import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
-from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+
+try:
+    from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+except ImportError as e:
+    from openeo_udf.api.udf_data import UdfData
+    from openeo_udf.api.raster_collection_tile import  RasterCollectionTile
+    from openeo_udf.api.spatial_extent import SpatialExtent
+
 from pandas import Series
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
@@ -667,6 +674,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         tiled = (format_options.get("format", "GTiff") == "GTiff" and
                  format_options.get("parameters", {}).get("tiled", False))
 
+        catalog = (format_options.get("format", "GTiff").upper() == "GTIFF" and
+                 format_options.get("parameters", {}).get("catalog", False))
+
         xmin, ymin, xmax, ymax = format_options.get('left'), format_options.get('bottom'),\
                                  format_options.get('right'), format_options.get('top')
 
@@ -679,6 +689,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             crop_bounds = None
 
+        if catalog:
+            self._save_to_catalog(spatial_rdd, filename)
         if tiled:
             self._save_stitched_tiled(spatial_rdd, filename)
         else:
@@ -702,6 +714,34 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         crop_bounds = \
             Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
         return crop_bounds
+
+    def _save_to_catalog(self,spatial_rdd:gps.TiledRasterLayer,path):
+
+        large_tiles = spatial_rdd.tile_to_layout(layout=gps.LocalLayout(tile_size=4096))
+        geotiff_rdd = large_tiles.to_geotiff_rdd(storage_method=gps.StorageMethod.TILED,compression=gps.Compression.DEFLATE_COMPRESSION)
+
+        from pathlib import Path
+        basedir = Path(path).parent / 'catalogresult'
+        basedir.mkdir(parents=True,exist_ok=True)
+        def write_tiff(tuple):
+            key = tuple[0]
+            bytes = tuple[1]
+            path = basedir / (str(key.col) + '-' + str(key.row) + '.tiff')
+            with open(path, 'wb') as f:
+                f.write(bytes)
+
+
+        geotiff_rdd.foreach(write_tiff)
+
+        tiffs = [str(path.absolute()) for path in basedir.glob('*.tiff')]
+
+        print("merging results: " + str(tiffs))
+
+        import subprocess
+        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
+        merge_args += tiffs
+        subprocess.check_call(" ".join(merge_args),shell=True)
+
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
         jvm = gps.get_spark_context()._gateway.jvm
