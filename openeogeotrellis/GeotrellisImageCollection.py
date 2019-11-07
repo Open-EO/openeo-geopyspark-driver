@@ -83,6 +83,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def band_filter(self, bands) -> 'ImageCollection':
         # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+        # TODO also rename to filter_bands for better consistency
         if isinstance(bands, int):
             self._band_index = bands
         elif isinstance(bands, list) and len(bands) == 1:
@@ -147,13 +148,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return reducer
 
     @classmethod
-    def _mapTransform(cls,layoutDefinition, spatialKey):
+    def _mapTransform(cls, layoutDefinition, spatialKey):
         ex = layoutDefinition.extent
         x_range = ex.xmax - ex.xmin
         xinc = x_range / layoutDefinition.tileLayout.layoutCols
         yrange = ex.ymax - ex.ymin
         yinc = yrange / layoutDefinition.tileLayout.layoutRows
-        return SpatialExtent(ex.ymax - yinc * spatialKey.row,ex.ymax - yinc * (spatialKey.row + 1),ex.xmin + xinc * (spatialKey.col + 1),ex.xmin + xinc * spatialKey.col,layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
+        return SpatialExtent(
+            top=ex.ymax - yinc * spatialKey.row,
+            bottom=ex.ymax - yinc * (spatialKey.row + 1),
+            right=ex.xmin + xinc * (spatialKey.col + 1),
+            left=ex.xmin + xinc * spatialKey.col,
+            height=layoutDefinition.tileLayout.tileCols,
+            width=layoutDefinition.tileLayout.tileRows
+        )
 
     @classmethod
     def _tile_to_rastercollectiontile(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
