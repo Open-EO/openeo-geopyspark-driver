@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from unittest import TestCase
+from unittest import TestCase,skip
 
 import geopyspark as gps
 import numpy as np
@@ -136,6 +136,8 @@ class TestDownload(TestCase):
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
+    #skipped because gdal_merge.py is not available on jenkins and Travis
+    @skip
     def test_download_as_catalog(self):
         input = self.create_spacetime_layer()
 
