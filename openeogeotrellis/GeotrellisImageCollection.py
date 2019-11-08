@@ -746,9 +746,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         print("merging results: " + str(tiffs))
 
         import subprocess
-        merge_args = ["GDAL_CACHEMAX=1024", "gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
+        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
         merge_args += tiffs
-        subprocess.check_call(" ".join(merge_args),shell=True)
+        subprocess.check_call(merge_args,shell=False, env={"GDAL_CACHEMAX": "1024"})
 
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
