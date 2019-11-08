@@ -16,4 +16,5 @@ pythonPipeline {
   extra_env_variables = 'TRAVIS=1'
   python_version = ["3.6"]
   downstream_job = 'openeo-geopyspark-integrationtests'
+  wheel_repo = 'python-openeo'
 }
