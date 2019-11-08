@@ -725,8 +725,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def _save_on_executors(self, spatial_rdd:gps.TiledRasterLayer, path):
 
-        large_tiles = spatial_rdd.tile_to_layout(layout=gps.LocalLayout(tile_size=4096))
-        geotiff_rdd = large_tiles.to_geotiff_rdd(storage_method=gps.StorageMethod.TILED,compression=gps.Compression.DEFLATE_COMPRESSION)
+        #large_tiles = spatial_rdd.tile_to_layout(layout=gps.LocalLayout(tile_size=4096))
+        geotiff_rdd = spatial_rdd.to_geotiff_rdd(storage_method=gps.StorageMethod.TILED,compression=gps.Compression.DEFLATE_COMPRESSION)
 
         from pathlib import Path
         basedir = Path(path).parent / 'catalogresult'
