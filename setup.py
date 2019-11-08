@@ -39,6 +39,7 @@ setup(
         'colortools>=0.1.2',
         'geopandas==0.3.0',
         'geopyspark==0.4.4+vitomaster2',
+        'protobuf==3.6.0',
         'cChardet',
         'gunicorn',
         'kazoo==2.4.0',
