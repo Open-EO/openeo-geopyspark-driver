@@ -41,7 +41,7 @@ setup(
         'geopyspark==0.4.4+vitomaster2',
         'protobuf==3.6.0',
         'cChardet',
-        'gunicorn',
+        'gunicorn==19.9.0',
         'kazoo==2.4.0',
         'flask-cors',
     ],
