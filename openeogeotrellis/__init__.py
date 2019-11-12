@@ -70,7 +70,7 @@ def get_batch_job_result_filenames(job_id: str, user_id: str) -> List[str]:
 
 
 def get_batch_job_result_output_dir(job_id: str) -> str:
-    return "/mnt/ceph/Projects/OpenEO/%s" % job_id
+    return "/data/projects/OpenEO/%s" % job_id
 
 
 def create_batch_job(user_id: str, api_version: str, specification: dict) -> str:
