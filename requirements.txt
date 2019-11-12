@@ -3,7 +3,7 @@ pandas>=0.24.2
 protobuf==3.6.0
 geopyspark==0.4.4+vitomaster2
 setuptools
-gunicorn
+gunicorn==19.9.0
 kazoo==2.5.0
 cloudpickle
 matplotlib>=2.0.0,<3.0.0
