@@ -11,6 +11,7 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
+from openeogeotrellis.errors import SpatialBoundsMissingException
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
         jvm = gateway.jvm
-        if (left is not None and right is not None and top is not None and bottom is not None):
+
+        spatial_bounds_present = left is not None and right is not None and top is not None and bottom is not None
+
+        if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
+        elif ConfigParams().require_bounds:
+            raise SpatialBoundsMissingException
+        else:
+            srs = "EPSG:4326"
+            extent = jvm.geotrellis.vector.Extent(-180, -90, 180, 90)
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",

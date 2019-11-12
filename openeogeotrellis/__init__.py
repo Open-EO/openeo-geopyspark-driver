@@ -17,6 +17,7 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from openeogeotrellis._version import __version__
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import kerberos
+from openeogeotrellis.errors import SpatialBoundsMissingException
 
 logger = logging.getLogger("openeo")
 logger.setLevel(logging.INFO)
@@ -183,6 +184,9 @@ def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
         summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
 
         return ErrorSummary(error, is_client_error, summary)
+
+    if isinstance(error, SpatialBoundsMissingException):
+        return ErrorSummary(error, is_client_error=True, summary="spatial bounds missing")
 
     return error
 
