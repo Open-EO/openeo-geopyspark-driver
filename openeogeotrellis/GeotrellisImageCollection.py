@@ -699,7 +699,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         if catalog:
             self._save_on_executors(spatial_rdd, filename)
-        if tiled:
+        elif tiled:
             self._save_stitched_tiled(spatial_rdd, filename)
         else:
             self._save_stitched(spatial_rdd, filename, crop_bounds)
