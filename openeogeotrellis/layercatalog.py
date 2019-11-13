@@ -75,7 +75,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             raise SpatialBoundsMissingException
         else:
             srs = "EPSG:4326"
-            extent = jvm.geotrellis.vector.Extent(-180, -90, 180, 90)
+            extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
