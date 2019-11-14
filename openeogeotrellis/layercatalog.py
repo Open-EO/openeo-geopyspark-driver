@@ -46,6 +46,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = CollectionMetadata(self.get_collection_metadata(collection_id, strip_private=False))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
+        logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
         import geopyspark as gps
         from_date = normalize_date(viewing_parameters.get("from", None))
@@ -56,8 +57,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         top = viewing_parameters.get("top", None)
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
-        bands = viewing_parameters.get("bands", [])
-        band_indices = [metadata.get_band_index(b) for b in bands]
+        bands = viewing_parameters.get("bands", None)
+        band_indices = [metadata.get_band_index(b) for b in bands] if bands else None
+        logger.info("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
