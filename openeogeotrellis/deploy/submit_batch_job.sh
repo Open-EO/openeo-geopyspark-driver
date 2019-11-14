@@ -54,6 +54,7 @@ spark-submit \
  --conf spark.yarn.submit.waitAppCompletion=false \
  --driver-memory 20G \
  --executor-memory 4G \
+ --driver-java-options "-Dscala.concurrent.context.maxThreads=8" \
  --conf spark.driver.cores=4 \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=5g \
