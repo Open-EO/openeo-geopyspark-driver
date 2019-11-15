@@ -4,7 +4,7 @@ import os
 import uuid
 import math
 from datetime import datetime, date
-from typing import Dict, List, Union, Tuple, Sequence
+from typing import Dict, List, Union, Tuple, Sequence, Iterable, Callable
 
 import geopyspark as gps
 import numpy as np
@@ -111,17 +111,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pysc = gps.get_spark_context()
         return self._apply_to_levels_geotrellis_rdd(lambda rdd,k: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
 
-    def reduce(self, reducer:str, dimension:str) -> 'ImageCollection':
+    def reduce(self, reducer: str, dimension: str) -> 'ImageCollection':
+        from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite
+
         reducer = self._normalize_reducer(dimension, reducer)
-        if( reducer in ['Min','Max']):
-            #the reducers provided by geopyspark don't have correct nodata handling
-            from .numpy_aggregators import min_composite,max_composite
-            reduce_function = min_composite
-            if reducer == 'Max':
-                reduce_function = max_composite
-            return self._aggregate_over_time_numpy(reduce_function)
+
+        if reducer == 'Variance':
+            return self._aggregate_over_time_numpy(var_composite)
+        elif reducer == 'StandardDeviation':
+            return self._aggregate_over_time_numpy(std_composite)
+        elif reducer == 'Min':
+            return self._aggregate_over_time_numpy(min_composite)
+        elif reducer == 'Max':
+            return self._aggregate_over_time_numpy(max_composite)
+        elif reducer == 'Sum':
+            return self._aggregate_over_time_numpy(sum_composite)
         else:
-            return self.apply_to_levels(lambda rdd: rdd.to_spatial_layer().aggregate_by_cell(reducer))
+            return self.apply_to_levels(lambda layer: layer.to_spatial_layer().aggregate_by_cell(reducer))
 
     def reduce_bands(self,pgVisitor) -> 'ImageCollection':
         """
@@ -331,20 +337,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         reducer = self._normalize_reducer(dimension, reducer)
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
-
-    def _aggregate_over_time_numpy(self,numpy_function) -> 'ImageCollection':
+    def _aggregate_over_time_numpy(self, reducer: Callable[[Iterable[Tile]], Tile]) -> 'ImageCollection':
         """
         Aggregate over time.
-        :param numpy_function:
+        :param reducer: a function that reduces n Tiles to a single Tile
         :return:
         """
-        def aggregate_spatial_rdd(rdd):
-            grouped_numpy_rdd = rdd.to_spatial_layer().convert_data_type(CellType.FLOAT32).to_numpy_rdd().groupByKey()
+        def aggregate_temporally(layer):
+            grouped_numpy_rdd = layer.to_spatial_layer().convert_data_type(CellType.FLOAT32).to_numpy_rdd().groupByKey()
 
-            composite = grouped_numpy_rdd.mapValues(numpy_function)
-            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, rdd.layer_metadata)
+            composite = grouped_numpy_rdd.mapValues(reducer)
+            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, layer.layer_metadata)
             return aggregated_layer
-        return self.apply_to_levels(aggregate_spatial_rdd)
+
+        return self.apply_to_levels(aggregate_temporally)
 
 
     @classmethod

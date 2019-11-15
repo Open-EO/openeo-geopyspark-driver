@@ -2,16 +2,40 @@ import geopyspark as gps
 from typing import Iterable
 import numpy as np
 
-def max_composite(v:Iterable[gps.Tile]):
-    return composite(np.fmax,v)
 
-def min_composite(v:Iterable[gps.Tile]):
-    return composite(np.fmin,v)
+def max_composite(tiles: Iterable[gps.Tile]):
+    return composite(np.fmax, tiles)  # ignores NaNs (<=> maximum)
 
-def composite(func,v:Iterable[gps.Tile]):
+
+def min_composite(tiles: Iterable[gps.Tile]):
+    return composite(np.fmin, tiles)  # ignores NaN (<=> minimum)
+
+
+def sum_composite(tiles: Iterable[gps.Tile]):
+    def fadd(a_cells, b_cells):
+        return np.add(np.nan_to_num(a_cells), np.nan_to_num(b_cells))
+
+    return composite(fadd, tiles)  # ignores NaN (<=> add)
+
+
+def var_composite(tiles: Iterable[gps.Tile]) -> gps.Tile:
+    cube = np.array([tile.cells for tile in tiles])
+    reduced = np.nanvar(cube, axis=0)  # ignores NaN (<=> var)
+    first_tile = next(iter(tiles))
+    return gps.Tile(cells=reduced, cell_type=first_tile.cell_type, no_data_value=first_tile.no_data_value)
+
+
+def std_composite(tiles: Iterable[gps.Tile]) -> gps.Tile:
+    cube = np.array([tile.cells for tile in tiles])
+    reduced = np.nanstd(cube, axis=0)  # ignores NaN (<=> std)
+    first_tile = next(iter(tiles))
+    return gps.Tile(cells=reduced, cell_type=first_tile.cell_type, no_data_value=first_tile.no_data_value)
+
+
+def composite(func, tiles: Iterable[gps.Tile]):
     from functools import reduce
-    cells = [tile.cells for tile in v]
-    first_tile = v.__iter__().__next__()
+    cells = [tile.cells for tile in tiles]
+    first_tile = next(iter(tiles))
     reduced = reduce(func, cells)
     print(reduced)
     return gps.Tile(cells=reduced, cell_type=first_tile.cell_type, no_data_value=first_tile.no_data_value)

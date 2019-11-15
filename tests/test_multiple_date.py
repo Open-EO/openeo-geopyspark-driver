@@ -115,18 +115,142 @@ class TestMultipleDates(TestCase):
         with rasterio.open(path) as ds:
             print(ds.profile)
 
-
-
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
 
-        stitched = imagecollection.reduce("max","temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("max", "temporal").pyramid.levels[0].stitch()
         print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][1])
         self.assertEqual(2.0, stitched.cells[0][0][0])
+        self.assertEqual(2.0, stitched.cells[0][0][1])
 
+        stitched = imagecollection.reduce("min", "temporal").pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+        self.assertEqual(1.0, stitched.cells[0][0][1])
+
+        stitched = imagecollection.reduce("sum", "temporal").pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+        self.assertEqual(4.0, stitched.cells[0][0][1])
+
+        stitched = imagecollection.reduce("mean", "temporal").pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+        self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
+
+        stitched = imagecollection.reduce("variance", "temporal").pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(0.0, stitched.cells[0][0][0])
+        self.assertAlmostEqual(0.2222222, stitched.cells[0][0][1])
+
+        stitched = imagecollection.reduce("sd", "temporal").pyramid.levels[0].stitch()
+        print(stitched)
+        self.assertEqual(0.0, stitched.cells[0][0][0])
+        self.assertAlmostEqual(0.4714045, stitched.cells[0][0][1])
+
+    def test_reduce_all_data(self):
+        input = Pyramid({0: self._single_pixel_layer({
+            datetime.datetime.strptime("2016-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 1.0,
+            datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
+        })})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+
+        stitched = imagecollection.reduce("min", "temporal").pyramid.levels[0].stitch()
+        self.assertEqual(1.0, stitched.cells[0][0][0])
+
+        stitched = imagecollection.reduce("max", "temporal").pyramid.levels[0].stitch()
+        self.assertEqual(5.0, stitched.cells[0][0][0])
+
+        stitched = imagecollection.reduce("sum", "temporal").pyramid.levels[0].stitch()
+        self.assertEqual(6.0, stitched.cells[0][0][0])
+
+        stitched = imagecollection.reduce("mean", "temporal").pyramid.levels[0].stitch()
+        self.assertAlmostEqual(3.0, stitched.cells[0][0][0], delta=0.001)
+
+        stitched = imagecollection.reduce("variance", "temporal").pyramid.levels[0].stitch()
+        self.assertAlmostEqual(4.0, stitched.cells[0][0][0], delta=0.001)
+
+        stitched = imagecollection.reduce("sd", "temporal").pyramid.levels[0].stitch()
+        self.assertAlmostEqual(2.0, stitched.cells[0][0][0], delta=0.001)
+
+    def test_reduce_some_nodata(self):
+        no_data = -1.0
+
+        input = Pyramid({0: self._single_pixel_layer({
+            datetime.datetime.strptime("2016-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): no_data,
+            datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
+        }, no_data)})
+
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+
+        stitched = imagecollection.reduce("min", "temporal").pyramid.levels[0].stitch()
+        #print(stitched)
+        self.assertEqual(5.0, stitched.cells[0][0][0])
+
+        stitched = imagecollection.reduce("max", "temporal").pyramid.levels[0].stitch()
+        self.assertEqual(5.0, stitched.cells[0][0][0])
+
+        stitched = imagecollection.reduce("sum", "temporal").pyramid.levels[0].stitch()
+        self.assertEqual(5.0, stitched.cells[0][0][0])
+
+        stitched = imagecollection.reduce("mean", "temporal").pyramid.levels[0].stitch()
+        self.assertAlmostEqual(5.0, stitched.cells[0][0][0], delta=0.001)
+
+        stitched = imagecollection.reduce("variance", "temporal").pyramid.levels[0].stitch()
+        self.assertAlmostEqual(0.0, stitched.cells[0][0][0], delta=0.001)
+
+        stitched = imagecollection.reduce("sd", "temporal").pyramid.levels[0].stitch()
+        self.assertAlmostEqual(0.0, stitched.cells[0][0][0], delta=0.001)
+
+    def test_reduce_tiles(self):
+        print("======")
+        tile1 = self._single_pixel_tile(1)
+        tile2 = self._single_pixel_tile(5)
+
+        cube = np.array([tile1.cells, tile2.cells])
+
+        # "MIN", "MAX", "SUM", "MEAN", "VARIANCE"
+
+        std = np.std(cube, axis=0)
+        var = np.var(cube, axis=0)
+        print(var)
+
+    @staticmethod
+    def _single_pixel_tile(value, no_data=-1.0):
+        cells = np.array([[value]])
+        return Tile.from_numpy_array(cells, no_data)
+
+    def _single_pixel_layer(self, grid_value_by_datetime, no_data=-1.0):
+        from collections import OrderedDict
+
+        sorted_by_datetime = OrderedDict(sorted(grid_value_by_datetime.items()))
+
+        def elem(timestamp, value):
+            tile = self._single_pixel_tile(value, no_data)
+            return [(SpaceTimeKey(0, 0, timestamp), tile)]
+
+        layer = [elem(timestamp, value) for timestamp, value in sorted_by_datetime.items()]
+        rdd = SparkContext.getOrCreate().parallelize(layer)
+
+        datetimes = list(sorted_by_datetime.keys())
+
+        extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 1.0, 'ymax': 1.0}
+        layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 1, 'tileRows': 1}
+        metadata = {
+            'cellType': 'float32ud%f' % no_data,
+            'extent': extent,
+            'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+            'bounds': {
+                'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(datetimes[0])},
+                'maxKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(datetimes[-1])}},
+            'layoutDefinition': {
+                'extent': extent,
+                'tileLayout': layout}}
+
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
     def test_reduce_nontemporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
