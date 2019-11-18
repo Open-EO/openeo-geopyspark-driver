@@ -37,7 +37,8 @@ class Traefik:
         :param port: the port the service runs on
         """
 
-        match_openeo = "PathPrefix: /openeo"
+        # FIXME: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional "test" node
+        match_openeo = "PathPrefix: /openeo,/.well-known/openeo"
 
         self._create_backend_server(cluster_id, server_id, host, port)
         self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority=100)
