@@ -415,8 +415,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
 
-
-    def resample_spatial(self,resolution:Union[Union[int,float],Sequence[Union[int,float]]],projection:Union[int,str]=None,method:str='near',align:str='lower-left'):
+    def resample_spatial(
+            self,
+            resolution: Union[float, Tuple[float, float]],
+            projection: Union[int, str] = None,
+            method: str = 'near',
+            align: str = 'upper-left'
+    ):
         """
         https://open-eo.github.io/openeo-api/v/0.4.0/processreference/#resample_spatial
         :param resolution:
@@ -426,38 +431,35 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
 
-        resample_method = gps.ResampleMethod.NEAREST_NEIGHBOR
-        if method == 'bilinear':
-            resample_method = gps.ResampleMethod.BILINEAR
-        elif method == 'average':
-            resample_method = gps.ResampleMethod.AVERAGE
-        elif method == 'cubic':
-            resample_method = gps.ResampleMethod.CUBIC_CONVOLUTION
-        elif method == 'cubicspline':
-            resample_method = gps.ResampleMethod.CUBIC_SPLINE
-        elif method == 'lanczos':
-            resample_method = gps.ResampleMethod.LANCZOS
-        elif method == 'mode':
-            resample_method = gps.ResampleMethod.MODE
-        elif method == 'max':
-            resample_method = gps.ResampleMethod.MAX
-        elif method == 'min':
-            resample_method = gps.ResampleMethod.MIN
-        elif method == 'med':
-            resample_method = gps.ResampleMethod.MEDIAN
+        # TODO: use align
+
+        resample_method = {
+            'bilinear': gps.ResampleMethod.BILINEAR,
+            'average': gps.ResampleMethod.AVERAGE,
+            'cubic': gps.ResampleMethod.CUBIC_CONVOLUTION,
+            'cubicspline': gps.ResampleMethod.CUBIC_SPLINE,
+            'lanczos': gps.ResampleMethod.LANCZOS,
+            'mode': gps.ResampleMethod.MODE,
+            'max': gps.ResampleMethod.MAX,
+            'min': gps.ResampleMethod.MIN,
+            'med': gps.ResampleMethod.MEDIAN,
+        }.get(method, gps.ResampleMethod.NEAREST_NEIGHBOR)
 
         #IF projection is defined, we need to warp
-        if(projection is not None):
-            reprojected = self.apply_to_levels(lambda layer:gps.TiledRasterLayer(layer.layer_type,layer.srdd.reproject(projection,resample_method,None)))
+        if projection is not None:
+            reprojected = self.apply_to_levels(lambda layer: gps.TiledRasterLayer(
+                layer.layer_type, layer.srdd.reproject(str(projection), resample_method, None)
+            ))
             return reprojected
         elif resolution != 0.0:
 
             max_level = self.pyramid.levels[self.pyramid.max_zoom]
-
             extent = max_level.layer_metadata.layout_definition.extent
 
-            if(projection is not None):
-                extent = self._reproject_extent(max_level.layer_metadata.crs,projection,extent.xmin,extent.ymin,extent.xmax,extent.ymax)
+            if projection is not None:
+                extent = self._reproject_extent(
+                    max_level.layer_metadata.crs, projection, extent.xmin, extent.ymin, extent.xmax, extent.ymax
+                )
 
             width = extent.xmax - extent.xmin
             height = extent.ymax - extent.ymin
