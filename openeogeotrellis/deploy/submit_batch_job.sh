@@ -52,12 +52,12 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.yarn.submit.waitAppCompletion=false \
- --driver-memory 20G \
+ --driver-memory 22G \
  --executor-memory 4G \
  --driver-java-options "-Dscala.concurrent.context.maxThreads=8" \
  --conf spark.driver.cores=4 \
  --conf spark.driver.maxResultSize=5g \
- --conf spark.driver.memoryOverhead=5g \
+ --conf spark.driver.memoryOverhead=8g \
  --conf spark.executor.memoryOverhead=2g \
  --conf spark.speculation=false \
  --conf spark.dynamicAllocation.minExecutors=20 \
@@ -70,6 +70,7 @@ spark-submit \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
  --conf spark.yarn.appMasterEnv.OPENEO_REQUIRE_BOUNDS=False \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
+ --conf spark.ui.view.acls.groups=vito \
  --files layercatalog.json,"${processGraphFile}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
