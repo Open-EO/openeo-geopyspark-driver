@@ -365,7 +365,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return transform(project, polygon)  # apply projection
 
-
+    def merge(self,other:'GeotrellisTimeSeriesImageCollection',overlaps_resolver:str=None):
+        #we may need to align datacubes automatically?
+        #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
+        pysc = gps.get_spark_context()
+        return self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(rdd, other.pyramid.levels[
+                level].srdd.rdd(), overlaps_resolver))
 
     def mask(self, polygon: Union[Polygon, MultiPolygon]= None, srs="EPSG:4326",rastermask:'ImageCollection'=None,replacement=None) -> 'ImageCollection':
         if polygon is not None:
