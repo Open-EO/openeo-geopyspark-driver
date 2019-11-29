@@ -186,7 +186,7 @@ def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
         return ErrorSummary(error, is_client_error, summary)
 
     if isinstance(error, SpatialBoundsMissingException):
-        return ErrorSummary(error, is_client_error=True, summary="spatial bounds missing")
+        return ErrorSummary(error, is_client_error=True, summary="The process graph is too complex for for synchronous processing. Please use a batch job instead.")
 
     return error
 
