@@ -97,6 +97,10 @@ def run_batch_job(job_id: str, user_id: str) -> None:
         job_info = registry.get_job(job_id, user_id)
         api_version = job_info.get('api_version')
 
+        extra_options = job_info.get('job_options', {})
+
+        driver_memory = extra_options.get("driver-memory", "22G")
+        executor_memory = extra_options.get("executor-memory", "5G")
         # FIXME: mark_undone in case of re-queue
 
         kerberos()
@@ -128,6 +132,11 @@ def run_batch_job(job_id: str, user_id: str) -> None:
             args.append("no_keytab")
         if api_version:
             args.append(api_version)
+        else:
+            args.append("0.4.0")
+
+        args.append(driver_memory)
+        args.append(executor_memory)
 
         try:
             output_string = subprocess.check_output(args, stderr=subprocess.STDOUT,universal_newlines=True)
