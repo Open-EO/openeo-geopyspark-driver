@@ -82,6 +82,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
+            if layer_source_info.get("split",False):
+                pyramidFactory.setSplitRanges(True)
+
             accumulo_layer_name = layer_source_info['data_id']
             nonlocal still_needs_band_filter
             still_needs_band_filter = bool(band_indices)
