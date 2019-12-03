@@ -27,8 +27,8 @@ outputFile=$3
 principal=$4
 keyTab=$5
 apiVersion=$6
-driver-memory=${7-22G}
-executor-memory=${8-4G}
+drivermemory=${7-22G}
+executormemory=${8-4G}
 
 pysparkPython="venv/bin/python"
 
@@ -54,8 +54,8 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.yarn.submit.waitAppCompletion=false \
- --driver-memory ${driver-memory} \
- --executor-memory ${executor-memory} \
+ --driver-memory ${drivermemory} \
+ --executor-memory ${executormemory} \
  --driver-java-options "-Dscala.concurrent.context.maxThreads=8" \
  --conf spark.driver.cores=4 \
  --conf spark.driver.maxResultSize=5g \
