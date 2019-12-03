@@ -18,6 +18,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import kerberos
 from openeogeotrellis.errors import SpatialBoundsMissingException
+from openeo_driver.errors import JobNotFoundException
 
 logger = logging.getLogger("openeo")
 logger.setLevel(logging.INFO)
@@ -40,7 +41,7 @@ def create_process_visitor():
 def get_batch_job_info(job_id: str, user_id: str) -> dict:
     """Returns detailed information about a submitted batch job,
     or None if the batch job with this job_id is unknown."""
-    from .job_registry import JobRegistry, JobNotFoundException
+    from .job_registry import JobRegistry
     try:
         with JobRegistry() as registry:
             status = registry.get_job(job_id, user_id)['status']

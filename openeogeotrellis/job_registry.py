@@ -4,11 +4,7 @@ from kazoo.exceptions import NoNodeError
 import json
 
 from openeogeotrellis.configparams import ConfigParams
-
-
-class JobNotFoundException(ValueError):
-    def __init__(self, message):
-        super().__init__(message)
+from openeo_driver.errors import JobNotFoundException
 
 
 class JobRegistry:
@@ -122,7 +118,11 @@ class JobRegistry:
         except NoNodeError:
             if include_done:
                 path = self._done(user_id, job_id)
-                data, stat = self._zk.get(path)
+
+                try:
+                    data, stat = self._zk.get(path)
+                except NoNodeError:
+                    raise JobNotFoundException(job_id)
             else:
                 raise JobNotFoundException(job_id)
 
