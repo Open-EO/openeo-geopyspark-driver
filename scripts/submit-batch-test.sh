@@ -26,7 +26,11 @@ spark-submit \
  --name ${jobName} \
  --driver-memory 9G \
  --executor-memory 4G \
+ --driver-java-options "-Dscala.concurrent.context.maxThreads=8" \
  --principal mep_tsviewer@VGT.VITO.BE --keytab mep_tsviewer.keytab \
+  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
+ --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
+ --conf spark.rdd.compress=true \
  --conf spark.driver.memoryOverhead=1g \
  --conf spark.executor.memoryOverhead=2g \
  --conf spark.driver.maxResultSize=3g \
