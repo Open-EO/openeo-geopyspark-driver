@@ -56,7 +56,7 @@ spark-submit \
  --conf spark.yarn.submit.waitAppCompletion=false \
  --driver-memory ${drivermemory} \
  --executor-memory ${executormemory} \
- --driver-java-options "-Dscala.concurrent.context.maxThreads=8" \
+ --driver-java-options "-Dscala.concurrent.context.maxThreads=12" \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
  --conf spark.rdd.compress=true \
