@@ -126,7 +126,7 @@ def run_batch_job(job_id: str, user_id: str) -> None:
 
         script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
 
-        args = [script_location, "OpenEO batch job %s" % job_id, input_file, output_file]
+        args = [script_location, "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id), input_file, output_file]
         if principal is not None and key_tab is not None:
             args.append(principal)
             args.append(key_tab)
