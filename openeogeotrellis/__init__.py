@@ -5,6 +5,7 @@ import subprocess
 import sys
 import traceback
 import uuid
+import json
 from subprocess import CalledProcessError
 from typing import Union, List
 
@@ -98,7 +99,8 @@ def run_batch_job(job_id: str, user_id: str) -> None:
         job_info = registry.get_job(job_id, user_id)
         api_version = job_info.get('api_version')
 
-        extra_options = job_info.get('job_options', {})
+        spec = json.loads(job_info.get('specification'))
+        extra_options = spec.get('job_options', {})
 
         driver_memory = extra_options.get("driver-memory", "22G")
         executor_memory = extra_options.get("executor-memory", "5G")
