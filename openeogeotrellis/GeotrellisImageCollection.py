@@ -1,11 +1,13 @@
 import json
 import logging
+import math
 import os
+import pathlib
+import subprocess
 import tempfile
 import uuid
-import math
 from datetime import datetime, date
-from typing import Dict, List, Union, Tuple, Sequence, Iterable, Callable
+from typing import Dict, List, Union, Tuple, Iterable, Callable
 
 import geopyspark as gps
 import numpy as np
@@ -737,32 +739,29 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
         return crop_bounds
 
-    def _save_on_executors(self, spatial_rdd:gps.TiledRasterLayer, path):
+    def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path):
+        geotiff_rdd = spatial_rdd.to_geotiff_rdd(
+            storage_method=gps.StorageMethod.TILED,
+            compression=gps.Compression.DEFLATE_COMPRESSION
+        )
 
-        #large_tiles = spatial_rdd.tile_to_layout(layout=gps.LocalLayout(tile_size=4096))
-        geotiff_rdd = spatial_rdd.to_geotiff_rdd(storage_method=gps.StorageMethod.TILED,compression=gps.Compression.DEFLATE_COMPRESSION)
+        basedir = pathlib.Path(str(path) + '.catalogresult')
+        basedir.mkdir(parents=True, exist_ok=True)
 
-        from pathlib import Path
-        basedir = Path(path).parent / 'catalogresult'
-        basedir.mkdir(parents=True,exist_ok=True)
-        def write_tiff(tuple):
-            key = tuple[0]
-            bytes = tuple[1]
-            path = basedir / (str(key.col) + '-' + str(key.row) + '.tiff')
-            with open(path, 'wb') as f:
-                f.write(bytes)
-
+        def write_tiff(item):
+            key, data = item
+            path = basedir / '{c}-{r}.tiff'.format(c=key.col, r=key.row)
+            with path.open('wb') as f:
+                f.write(data)
 
         geotiff_rdd.foreach(write_tiff)
-
         tiffs = [str(path.absolute()) for path in basedir.glob('*.tiff')]
 
-        print("merging results: " + str(tiffs))
-
-        import subprocess
+        _log.info("Merging results {t!r}".format(t=tiffs))
         merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
         merge_args += tiffs
-        subprocess.check_call(merge_args,shell=False, env={"GDAL_CACHEMAX": "1024"})
+        _log.info("Executing: {a!r}".format(a=merge_args))
+        subprocess.check_call(merge_args, shell=False, env={"GDAL_CACHEMAX": "1024"})
 
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
