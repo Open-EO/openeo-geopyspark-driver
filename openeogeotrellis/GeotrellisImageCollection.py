@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import tempfile
 import uuid
 import math
 from datetime import datetime, date
@@ -685,8 +686,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
         filename = outputfile
         if outputfile is None:
-            import tempfile
-            (file,filename) = tempfile.mkstemp()
+            _, filename = tempfile.mkstemp(suffix='.oeo-gps-dl')
         else:
             filename = outputfile
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
