@@ -540,61 +540,70 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        multiple_geometries = isinstance(regions, GeometryCollection)
+        from_vector_file = isinstance(regions, str)
+        multiple_geometries = from_vector_file or isinstance(regions, GeometryCollection)
 
         if func == 'histogram' or func == 'median' or func == 'sd':
-            def by_compute_stats_geotrellis():
+            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+            layer_metadata = highest_level.layer_metadata
 
-                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-                layer_metadata = highest_level.layer_metadata
+            scala_data_cube = highest_level.srdd.rdd()
 
-                scala_data_cube = highest_level.srdd.rdd()
+            polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
+            polygons_srs = 'EPSG:4326'
+            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
-                polygons_srs = 'EPSG:4326'
-                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-
-                if func == 'histogram':
-                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube if multiple_geometries \
-                        else self._compute_stats_geotrellis().compute_histogram_time_series_from_datacube
-                    polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else str(regions)
-                elif func == 'median':
-                    implementation = self._compute_stats_geotrellis().compute_median_time_series_from_datacube
-                elif func == 'sd':
-                    implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
+            if func == 'histogram':
+                if multiple_geometries:
+                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube
+                    polygon_wkts = (str(ob) for ob in regions)
                 else:
-                    raise ValueError(func)
+                    implementation = self._compute_stats_geotrellis().compute_histogram_time_series_from_datacube
+                    polygon_wkts = str(regions)
+            elif func == 'median':
+                implementation = self._compute_stats_geotrellis().compute_median_time_series_from_datacube
+            elif func == 'sd':
+                implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
+            else:
+                raise ValueError(func)
 
-                stats = implementation(
-                    scala_data_cube,
-                    polygon_wkts,
-                    polygons_srs,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                    self._band_index
-                )
-                return stats
+            stats = implementation(
+                scala_data_cube,
+                polygon_wkts,
+                polygons_srs,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                self._band_index
+            )
 
             return AggregatePolygonResult(
-                timeseries=self._as_python(by_compute_stats_geotrellis()),
+                timeseries=self._as_python(stats),
                 regions=regions if multiple_geometries else GeometryCollection([regions]),
             )
 
         else:  # defaults to mean, historically
-            if multiple_geometries and self._data_source_type().lower() == 'accumulo':
+            if multiple_geometries:
                 # TODO eliminate code duplication
-                def by_compute_stats_geotrellis():
-                    highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-                    layer_metadata = highest_level.layer_metadata
-                    scala_data_cube = highest_level.srdd.rdd()
-                    polygon_wkts = [str(ob) for ob in regions]
-                    polygons_srs = 'EPSG:4326'
-                    from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-                    to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-                    return self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+                layer_metadata = highest_level.layer_metadata
+                scala_data_cube = highest_level.srdd.rdd()
+                polygons_srs = 'EPSG:4326'
+                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+
+                if from_vector_file:
+                    stats = self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
                         scala_data_cube,
-                        polygon_wkts,
+                        regions,
+                        from_date.isoformat(),
+                        to_date.isoformat(),
+                        self._band_index
+                    )
+                else:
+                    stats = self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                        scala_data_cube,
+                        [str(ob) for ob in regions],
                         polygons_srs,
                         from_date.isoformat(),
                         to_date.isoformat(),
@@ -602,7 +611,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     )
 
                 return AggregatePolygonResult(
-                    timeseries=self._as_python(by_compute_stats_geotrellis()),
+                    timeseries=self._as_python(stats),
                     regions=regions,
                 )
             else:
