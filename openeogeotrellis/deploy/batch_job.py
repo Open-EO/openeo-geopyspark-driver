@@ -4,11 +4,11 @@ import sys
 from typing import Dict, List
 
 from openeo import ImageCollection
+from openeo.util import TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult
 from openeogeotrellis.utils import kerberos
 from pyspark import SparkContext
-
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -63,4 +63,5 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    with TimingLogger("batch_job.py main", logger=logger):
+        main(sys.argv)
