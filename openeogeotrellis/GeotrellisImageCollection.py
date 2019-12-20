@@ -704,8 +704,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
             spatial_rdd = spatial_rdd.to_spatial_layer()
 
-        tiled = (format_options.get("format", "GTiff") == "GTiff" and
-                 format_options.get("parameters", {}).get("tiled", False))
+        tiled = format_options.get("format", "GTiff").upper() == "GTIFF" and format_options.get("tiled", False)
 
         catalog = (format_options.get("format", "GTiff").upper() == "GTIFF" and
                  format_options.get("parameters", {}).get("catalog", False))
@@ -815,7 +814,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                               height=h,
                               transform=Affine(cw, 0.0, ex.xmin,
                                                0.0, -ch, ex.ymax),
-                              crs=rstr.crs.CRS.from_epsg(4326),
+                              crs=rstr.crs.CRS.from_proj4(spatial_rdd.layer_metadata.crs),
                               nodata=nodata,
                               dtype=dtype,
                               compress='lzw',

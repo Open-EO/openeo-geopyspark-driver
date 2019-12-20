@@ -44,5 +44,6 @@ setup(
         'gunicorn==19.9.0',
         'kazoo==2.4.0',
         'flask-cors',
+        'rasterio==1.1.1'
     ],
 )
