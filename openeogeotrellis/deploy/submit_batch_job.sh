@@ -77,6 +77,7 @@ spark-submit \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
  --files layercatalog.json,"${processGraphFile}" \
+ --py-files custom_processes.py,cropsar*.whl \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \

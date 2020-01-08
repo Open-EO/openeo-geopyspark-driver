@@ -39,6 +39,11 @@ def main(argv: List[str]) -> None:
     sc = SparkContext.getOrCreate()
 
     try:
+        import custom_processes
+    except ImportError as e:
+        logger.info('No custom_processes.py found.')
+
+    try:
         kerberos()
         result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
         logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
