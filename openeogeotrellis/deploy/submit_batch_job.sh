@@ -48,9 +48,9 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.5-openeo.jar
 fi
 
-pyfiles = "--py-files cropsar*.whl"
+pyfiles="--py-files cropsar*.whl"
 if [ -f custom_processes.py ]; then
-   pyfiles = ${pyfiles},custom_processes.py
+   pyfiles=${pyfiles},custom_processes.py
 fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
