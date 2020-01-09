@@ -48,6 +48,11 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.5-openeo.jar
 fi
 
+pyfiles = "--py-files cropsar*.whl"
+if [ -f custom_processes.py ]; then
+   pyfiles = ${pyfiles},custom_processes.py
+fi
+
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 spark-submit \
@@ -76,8 +81,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_REQUIRE_BOUNDS=False \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
- --files layercatalog.json,"${processGraphFile}" \
- --py-files custom_processes.py,cropsar*.whl \
+ --files layercatalog.json,"${processGraphFile}" ${pyfiles} \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
