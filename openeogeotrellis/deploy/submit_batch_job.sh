@@ -49,8 +49,8 @@ if [ ! -f ${backend_assembly} ]; then
 fi
 
 pyfiles="--py-files cropsar*.whl"
-if [ -f custom_processes.py ]; then
-   pyfiles=${pyfiles},custom_processes.py
+if [ -f __pyfiles__/custom_processes.py ]; then
+   pyfiles=${pyfiles},__pyfiles__/custom_processes.py
 fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
