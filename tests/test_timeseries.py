@@ -1,6 +1,9 @@
 import datetime
 from unittest import TestCase
 
+from tempfile import NamedTemporaryFile
+import json
+from shapely.geometry import mapping
 import geopyspark as gps
 import numpy as np
 import pytz
@@ -178,24 +181,35 @@ class TestTimeSeries(TestCase):
         ])
 
         regions = GeometryCollection([polygon, MultiPolygon([polygon2])])
-        result = imagecollection.zonal_statistics(regions, "mean")
-        assert result.data == {
-            '2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]
-        }
 
-        covjson = result.to_covjson()
-        assert covjson["ranges"] == {
-            "band0": {
-                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                "shape": (1, 2),
-                "values": [1.0, 1.0]
-            },
-            "band1": {
-                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                "shape": (1, 2),
-                "values": [2.0, 2.0]
-            },
-        }
+        for use_file in [True,False]:
+            with self.subTest():
+                if use_file:
+                    with NamedTemporaryFile(delete=False,suffix='.json',mode='r+') as fp:
+                        json.dump(mapping(regions),fp)
+                        regions_serialized = fp.name
+                else:
+                    regions_serialized = regions
+
+                result = imagecollection.zonal_statistics(regions_serialized, "mean")
+                assert result.data == {
+                    '2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]
+                }
+                result._regions = regions
+
+                covjson = result.to_covjson()
+                assert covjson["ranges"] == {
+                    "band0": {
+                        "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                        "shape": (1, 2),
+                        "values": [1.0, 1.0]
+                    },
+                    "band1": {
+                        "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+                        "shape": (1, 2),
+                        "values": [2.0, 2.0]
+                    },
+                }
 
     def test_zonal_statistics_median_datacube(self):
         layer = self.create_spacetime_layer()
