@@ -537,13 +537,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return result
 
     def zonal_statistics(self, regions, func) -> AggregatePolygonResult:
+        # TODO eliminate code duplication
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
         from_vector_file = isinstance(regions, str)
         multiple_geometries = from_vector_file or isinstance(regions, GeometryCollection)
 
-        if func == 'histogram' or func == 'median' or func == 'sd':
+        if func == 'histogram' or func == 'sd':
             highest_level = self.pyramid.levels[self.pyramid.max_zoom]
             layer_metadata = highest_level.layer_metadata
 
@@ -561,8 +562,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 else:
                     implementation = self._compute_stats_geotrellis().compute_histogram_time_series_from_datacube
                     polygon_wkts = str(regions)
-            elif func == 'median':
-                implementation = self._compute_stats_geotrellis().compute_median_time_series_from_datacube
             elif func == 'sd':
                 implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
             else:
@@ -581,10 +580,42 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 timeseries=self._as_python(stats),
                 regions=regions if multiple_geometries else GeometryCollection([regions]),
             )
+        elif func == 'median':
+            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+            layer_metadata = highest_level.layer_metadata
 
+            scala_data_cube = highest_level.srdd.rdd()
+
+            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+
+            if from_vector_file:
+                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                    scala_data_cube,
+                    regions,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    self._band_index
+                )
+            else:
+                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
+                polygons_srs = 'EPSG:4326'
+
+                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                    scala_data_cube,
+                    polygon_wkts,
+                    polygons_srs,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    self._band_index
+                )
+
+            return AggregatePolygonResult(
+                timeseries=self._as_python(stats),
+                regions=regions if multiple_geometries else GeometryCollection([regions]),
+            )
         else:  # defaults to mean, historically
             if multiple_geometries:
-                # TODO eliminate code duplication
                 highest_level = self.pyramid.levels[self.pyramid.max_zoom]
                 layer_metadata = highest_level.layer_metadata
                 scala_data_cube = highest_level.srdd.rdd()
