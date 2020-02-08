@@ -63,6 +63,7 @@ spark-submit \
  --executor-memory ${executormemory} \
  --driver-java-options "-Dscala.concurrent.context.maxThreads=12" \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
+ --conf spark.kryoserializer.buffer.max=1024m \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
  --conf spark.rdd.compress=true \
  --conf spark.driver.cores=4 \
