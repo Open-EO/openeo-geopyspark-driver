@@ -24,10 +24,10 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  --queue default \
  --name ${jobName} \
- --driver-memory 9G \
+ --driver-memory 16G \
  --executor-memory 4G \
- --conf spark.driver.cores=8 \
- --driver-java-options "-Dscala.concurrent.context.maxThreads=6" \
+ --conf spark.driver.cores=10 \
+ --driver-java-options "-Dscala.concurrent.context.maxThreads=4" \
  --principal mep_tsviewer@VGT.VITO.BE --keytab mep_tsviewer.keytab \
   --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
