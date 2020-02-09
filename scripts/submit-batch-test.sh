@@ -26,8 +26,8 @@ spark-submit \
  --name ${jobName} \
  --driver-memory 16G \
  --executor-memory 4G \
- --conf spark.driver.cores=10 \
- --driver-java-options "-Dscala.concurrent.context.maxThreads=4" \
+ --conf spark.driver.cores=18 \
+ --driver-java-options "-Dscala.concurrent.context.maxThreads=2" \
  --principal mep_tsviewer@VGT.VITO.BE --keytab mep_tsviewer.keytab \
   --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
