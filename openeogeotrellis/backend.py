@@ -87,13 +87,21 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         count = sc.parallelize([1, 2, 3]).count()
         return 'Health check: ' + str(count)
 
-    def output_formats(self) -> dict:
+    def file_formats(self) -> dict:
         return {
-            "GTiff": {
-                "gis_data_types": ["raster"],
+            "input": {
+                "GeoJSON": {
+                    "gis_data_type": ["vector"]
+                }
             },
-            "CovJSON": {
-                "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+            "output": {
+                "GTiff": {
+                    "title": "GeoTiff",
+                    "gis_data_types": ["raster"],
+                },
+                "CovJSON": {
+                    "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+                },
             },
         }
 
