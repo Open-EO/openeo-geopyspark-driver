@@ -92,7 +92,7 @@ class JobTracker:
         elif state == 'RUNNING':
             new_status = 'running'
         else:
-            new_status = 'submitted'
+            new_status = 'created'
 
         if final_state == 'KILLED':
             new_status = 'canceled'

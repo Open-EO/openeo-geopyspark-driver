@@ -22,7 +22,7 @@ class JobRegistry:
         job_info = {
             'job_id': job_id,
             'user_id': user_id,
-            'status': 'submitted',
+            'status': 'created',
             'api_version': api_version,
             'specification': json.dumps(specification),
             'application_id': None,
