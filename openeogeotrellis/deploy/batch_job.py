@@ -6,9 +6,10 @@ from typing import Dict, List
 from openeo import ImageCollection
 from openeo.util import TimingLogger
 from openeo_driver import ProcessGraphDeserializer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from openeogeotrellis.utils import kerberos
 from pyspark import SparkContext
+from shutil import copyfile
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -59,6 +60,11 @@ def main(argv: List[str]) -> None:
             with open(output_file, 'w') as f:
                 json.dump(result.prepare_for_json(), f)
             logger.info("wrote JSON result to %s" % output_file)
+        elif isinstance(result, MultipleFilesResult):
+            assembly = result.assemble()
+            copyfile(assembly, output_file)
+            logger.info("wrote multiple files to %s" % output_file)
+            assembly.unlink()
         else:
             with open(output_file, 'w') as f:
                 json.dump(result, f)
