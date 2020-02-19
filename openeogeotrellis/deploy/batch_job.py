@@ -60,9 +60,8 @@ def main(argv: List[str]) -> None:
                 json.dump(result.prepare_for_json(), f)
             logger.info("wrote JSON result to %s" % output_file)
         elif isinstance(result, MultipleFilesResult):
-            assembly = result.assemble()
-            assembly.rename(output_file)
-            logger.info("wrote multiple files to %s" % output_file)
+            result.reduce(output_file, delete_originals=True)
+            logger.info("reduced %d files to %s" % (len(result.files), output_file))
         else:
             with open(output_file, 'w') as f:
                 json.dump(result, f)
