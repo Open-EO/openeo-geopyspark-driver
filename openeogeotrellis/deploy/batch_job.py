@@ -9,7 +9,6 @@ from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from openeogeotrellis.utils import kerberos
 from pyspark import SparkContext
-from shutil import copyfile
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -62,9 +61,8 @@ def main(argv: List[str]) -> None:
             logger.info("wrote JSON result to %s" % output_file)
         elif isinstance(result, MultipleFilesResult):
             assembly = result.assemble()
-            copyfile(assembly, output_file)
+            assembly.rename(output_file)
             logger.info("wrote multiple files to %s" % output_file)
-            assembly.unlink()
         else:
             with open(output_file, 'w') as f:
                 json.dump(result, f)
