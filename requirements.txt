@@ -22,3 +22,4 @@ affine
 Shapely
 scipy==1.3.0
 flask-cors
+xarray==0.11.2

@@ -173,6 +173,24 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         )
 
     @classmethod
+    def _tile_to_hypercube(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
+                                      bands_metadata: List[CollectionMetadata.Band], start_times=None):
+        from openeo_udf.api.datacube import DataCube
+        import xarray as xr
+        coords = {}
+        dims = ('bands','x', 'y')
+        if len(bands_numpy.shape) == 4:
+            #we have a temporal dimension
+            coords = {'t':start_times}
+            dims = ('t' ,'bands','x', 'y')
+        if bands_metadata is not None:
+            band_names = [ m.name for m in bands_metadata]
+            coords['bands']=band_names
+        the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims)
+        return DataCube(the_array)
+
+
+    @classmethod
     def _tile_to_rastercollectiontile(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
                                       bands_metadata: List[CollectionMetadata.Band], start_times=None):
         """
@@ -229,22 +247,41 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
-            input_rct = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(
-                multidim_array,
-                extent=extent,
-                bands_metadata=openeo_metadata.bands,
-                start_times=pd.DatetimeIndex(dates)
-            )
-
-            data = UdfData({"EPSG":900913}, input_rct)
 
             try:
-                from openeo_udf.api.base import RasterCollectionTile
-            except ImportError as e:
-                from openeo_udf.api.raster_collection_tile import RasterCollectionTile
+                from openeo_udf.api.run_code import run_user_code
+                from openeo_udf.api.datacube import DataCube
+                #new UDF API available
 
-            exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
-            result = data.raster_collection_tiles
+                datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_hypercube(
+                    multidim_array,
+                    extent=extent,
+                    bands_metadata=openeo_metadata.bands,
+                    start_times=pd.DatetimeIndex(dates)
+                )
+
+                data = UdfData({"EPSG": 900913}, [datacube])
+
+                result_data = run_user_code(function,data)
+                result = result_data.raster_collection_tiles
+            except ImportError as e:
+                #old code path, to be phased out after full UDF transition
+
+                input_rct = GeotrellisTimeSeriesImageCollection._tile_to_rastercollectiontile(
+                    multidim_array,
+                    extent=extent,
+                    bands_metadata=openeo_metadata.bands,
+                    start_times=pd.DatetimeIndex(dates)
+                )
+
+                data = UdfData({"EPSG": 900913}, input_rct)
+                try:
+                    from openeo_udf.api.base import RasterCollectionTile
+                except ImportError as e:
+                    from openeo_udf.api.raster_collection_tile import RasterCollectionTile
+
+                exec(function,{'data':data,'RasterCollectionTile':RasterCollectionTile,'numpy':np,'pandas':pd})
+                result = data.raster_collection_tiles
 
             #result can contain multiple dates, so we need to properly unwrap it
             date_to_tiles = {}
