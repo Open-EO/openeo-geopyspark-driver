@@ -35,6 +35,7 @@ setup(
     install_requires=[
         'flask',
         'openeo>=0.0.8',
+        'openeo_udf>=0.0.9',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
         'geopandas==0.3.0',
