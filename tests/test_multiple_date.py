@@ -355,20 +355,11 @@ class TestMultipleDates(TestCase):
 
 
         udf_code = """
-def rct_savitzky_golay(udf_data):
+def rct_savitzky_golay(udf_data:UdfData):
     from scipy.signal import savgol_filter
 
-    # Iterate over each tile
-    for tile in udf_data.raster_collection_tiles:
-        timeseries_array = tile.data
-        
-        tile.set_data(timeseries_array)
-
-
-# This function call is the entry point for the UDF.
-# The caller will provide all required data in the **data** object.
-rct_savitzky_golay(data)
-        
+    print(udf_data.get_datacube_list())
+    return udf_data
         
         """
 
