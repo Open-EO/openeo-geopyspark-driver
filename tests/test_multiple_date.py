@@ -324,14 +324,14 @@ class TestMultipleDates(TestCase):
         })
         import os, openeo_udf
         dir = os.path.dirname(openeo_udf.functions.__file__)
-        file_name = os.path.join(dir, "raster_collections_reduce_time_sum.py")
+        file_name = os.path.join(dir, "datacube_reduce_time_sum.py")
         with open(file_name, "r")  as f:
             udf_code = f.read()
 
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
         stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
-        self.assertTrue(np.isnan(stitched.cells[0][0][0]))
+        self.assertEqual(2,stitched.cells[0][0][0])
         self.assertEqual(6, stitched.cells[0][0][5])
         self.assertEqual(4, stitched.cells[0][5][6])
 

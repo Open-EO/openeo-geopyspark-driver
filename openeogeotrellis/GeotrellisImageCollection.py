@@ -14,12 +14,13 @@ import numpy as np
 import pandas as pd
 import pyproj
 import pytz
-from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
+from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
 
 try:
     from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+
 except ImportError as e:
     from openeo_udf.api.udf_data import UdfData
     from openeo_udf.api.raster_collection_tile import  RasterCollectionTile
@@ -27,6 +28,7 @@ except ImportError as e:
 
 from pandas import Series
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
+import xarray as xr
 
 from openeo.imagecollection import ImageCollection, CollectionMetadata
 from openeo_driver.save_result import AggregatePolygonResult
@@ -176,7 +178,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def _tile_to_hypercube(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
                                       bands_metadata: List[CollectionMetadata.Band], start_times=None):
         from openeo_udf.api.datacube import DataCube
-        import xarray as xr
         coords = {}
         dims = ('bands','x', 'y')
         if len(bands_numpy.shape) == 4:
@@ -186,7 +187,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if bands_metadata is not None:
             band_names = [ m.name for m in bands_metadata]
             coords['bands']=band_names
-        the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims)
+        the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return DataCube(the_array)
 
 
@@ -263,7 +264,18 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 data = UdfData({"EPSG": 900913}, [datacube])
 
                 result_data = run_user_code(function,data)
-                result = result_data.raster_collection_tiles
+                cubes = result_data.get_datacube_list()
+                if len(cubes)!=1:
+                    raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
+                result_array:xr.DataArray = cubes[0].array
+                print(result_array.dims)
+                if 't' in result_array.dims:
+                    raise NotImplementedError("DataCube mapping not yet implemented.")
+                else:
+                    return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=datetime.now()),
+                      Tile(result_array.values, CellType.FLOAT64, tile_list[0][1].no_data_value))]
+
+
             except ImportError as e:
                 #old code path, to be phased out after full UDF transition
 
