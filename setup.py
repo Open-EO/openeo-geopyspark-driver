@@ -16,13 +16,7 @@ date = datetime.datetime.today().strftime('%Y%m%d')
 with open('openeogeotrellis/_version.py') as fp:
     exec(fp.read())
 
-if os.environ.get('BUILD_NUMBER') and os.environ.get('BRANCH_NAME'):
-    if os.environ.get('BRANCH_NAME') == 'develop':
-        version = __version__ + '.' + date + '.' + os.environ['BUILD_NUMBER']
-    else:
-        version = __version__ + '.' + date + '.' + os.environ['BUILD_NUMBER'] + '+' + os.environ['BRANCH_NAME']
-else:
-    version = __version__
+version = __version__
 
 setup(
     name='openeo-geopyspark',
