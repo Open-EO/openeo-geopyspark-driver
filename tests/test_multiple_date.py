@@ -324,14 +324,14 @@ class TestMultipleDates(TestCase):
         })
         import os, openeo_udf
         dir = os.path.dirname(openeo_udf.functions.__file__)
-        file_name = os.path.join(dir, "raster_collections_reduce_time_sum.py")
+        file_name = os.path.join(dir, "datacube_reduce_time_sum.py")
         with open(file_name, "r")  as f:
             udf_code = f.read()
 
         result = imagecollection.apply_tiles_spatiotemporal(udf_code)
         stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
-        self.assertTrue(np.isnan(stitched.cells[0][0][0]))
+        self.assertEqual(2,stitched.cells[0][0][0])
         self.assertEqual(6, stitched.cells[0][0][5])
         self.assertEqual(4, stitched.cells[0][5][6])
 
@@ -355,20 +355,11 @@ class TestMultipleDates(TestCase):
 
 
         udf_code = """
-def rct_savitzky_golay(udf_data):
+def rct_savitzky_golay(udf_data:UdfData):
     from scipy.signal import savgol_filter
 
-    # Iterate over each tile
-    for tile in udf_data.raster_collection_tiles:
-        timeseries_array = tile.data
-        
-        tile.set_data(timeseries_array)
-
-
-# This function call is the entry point for the UDF.
-# The caller will provide all required data in the **data** object.
-rct_savitzky_golay(data)
-        
+    print(udf_data.get_datacube_list())
+    return udf_data
         
         """
 
