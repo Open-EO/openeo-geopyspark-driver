@@ -40,7 +40,7 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
     def constantArrayElement(self,value):
         self.builder.constantArrayElement(value)
 
-    def arrayElementDone(self,value):
+    def arrayElementDone(self,value=None):
         self.builder.arrayElementDone()
 
     def leaveArray(self, argument_id):
