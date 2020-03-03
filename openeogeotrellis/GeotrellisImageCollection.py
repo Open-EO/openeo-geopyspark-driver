@@ -184,7 +184,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             #we have a temporal dimension
             coords = {'t':start_times}
             dims = ('t' ,'bands','x', 'y')
-        if bands_metadata is not None:
+        if bands_metadata is not None and len(bands_metadata) > 0:
             band_names = [ m.name for m in bands_metadata]
             coords['bands']=band_names
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
