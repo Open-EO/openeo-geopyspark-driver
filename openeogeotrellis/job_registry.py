@@ -57,6 +57,17 @@ class JobRegistry:
         self._create(job_info, done=True)
         self._zk.delete(source, version)
 
+    def mark_ongoing(self, job_id: str, user_id: str) -> None:
+        """Marks as job as ongoing (to be tracked)."""
+
+        # FIXME: can be done in a transaction
+        job_info, version = self._read(job_id, user_id, include_done=True)
+
+        source = self._done(user_id, job_id)
+
+        self._create(job_info, done=False)
+        self._zk.delete(source, version)
+
     def get_running_jobs(self) -> List[Dict]:
         """Returns a list of jobs that are currently not finished (should still be tracked)."""
 

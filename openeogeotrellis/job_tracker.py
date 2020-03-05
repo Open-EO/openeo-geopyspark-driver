@@ -24,8 +24,6 @@ class JobTracker:
         self._track_interval = 60  # seconds
 
     def update_statuses(self) -> None:
-        print("tracking statuses...")
-
         try:
             i = 0
 
@@ -35,6 +33,8 @@ class JobTracker:
                         self._refresh_kerberos_tgt()
 
                     with self._job_registry() as registry:
+                        print("tracking statuses...")
+
                         jobs_to_track = registry.get_running_jobs()
 
                         for job in jobs_to_track:

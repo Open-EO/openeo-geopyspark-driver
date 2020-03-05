@@ -99,12 +99,19 @@ def run_batch_job(job_id: str, user_id: str) -> None:
         job_info = registry.get_job(job_id, user_id)
         api_version = job_info.get('api_version')
 
+        current_status = job_info['status']
+        if current_status in ['queued', 'running']:
+            return
+        elif current_status != 'created':
+            registry.mark_ongoing(job_id, user_id)
+            registry.set_application_id(None)
+            registry.set_status(job_id, user_id, 'created')
+
         spec = json.loads(job_info.get('specification'))
         extra_options = spec.get('job_options', {})
 
         driver_memory = extra_options.get("driver-memory", "22G")
         executor_memory = extra_options.get("executor-memory", "5G")
-        # FIXME: mark_undone in case of re-queue
 
         kerberos()
 
