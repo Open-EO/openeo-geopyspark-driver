@@ -124,6 +124,7 @@ def run_batch_job(job_id: str, user_id: str) -> None:
 
         input_file = "%s/in" % output_dir
         output_file = "%s/out" % output_dir
+        log_file = "%s/log" % output_dir
 
         with open(input_file, 'w') as f:
             f.write(job_info['specification'])
@@ -133,7 +134,9 @@ def run_batch_job(job_id: str, user_id: str) -> None:
 
         script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
 
-        args = [script_location, "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id), input_file, output_file]
+        args = [script_location, "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id), input_file, output_file,
+                log_file]
+
         if principal is not None and key_tab is not None:
             args.append(principal)
             args.append(key_tab)
@@ -155,7 +158,6 @@ def run_batch_job(job_id: str, user_id: str) -> None:
             logger.error(e.stdout)
             logger.error(e.stderr)
             raise e
-
 
         try:
             # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
@@ -184,6 +186,30 @@ def cancel_batch_job(job_id: str, user_id: str):
         application_id = registry.get_job(job_id, user_id)['application_id']
 
     subprocess.call(["yarn", "application", "-kill", application_id])
+
+
+def get_batch_job_log_entries(job_id: str, user_id: str, offset: int = 0) -> list:
+    from .job_registry import JobRegistry
+
+    with JobRegistry() as registry:
+        registry.get_job(job_id, user_id)  # will throw if job doesn't match user
+
+    output_dir = get_batch_job_result_output_dir(job_id)
+    log_file = "%s/log" % output_dir
+
+    try:
+        with open(log_file) as f:
+            log_file_contents = f.read()
+
+        return [
+            {
+                'id': "0",
+                'level': 'error',
+                'message': log_file_contents
+            }
+        ]
+    except FileNotFoundError:  # might not have a log (yet)
+        return []
 
 
 def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:

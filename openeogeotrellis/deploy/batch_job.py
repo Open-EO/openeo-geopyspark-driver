@@ -11,6 +11,17 @@ from openeogeotrellis.utils import kerberos
 from pyspark import SparkContext
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
+user_facing_logger = logging.getLogger('openeo-user-log')
+
+
+def _setup_logging(log_file: str) -> None:
+    console_handler = logging.StreamHandler()
+    logger.addHandler(console_handler)
+
+    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler.setLevel(logging.ERROR)
+
+    user_facing_logger.addHandler(file_handler)
 
 
 def _parse(job_specification_file: str) -> Dict:
@@ -21,16 +32,17 @@ def _parse(job_specification_file: str) -> Dict:
 
 
 def main(argv: List[str]) -> None:
-    # TODO: make log level configurable?
-    logging.basicConfig(level=logging.INFO)
+    logger.debug("argv: {a!r}".format(a=argv))
 
-    logger.info("argv: {a!r}".format(a=argv))
-    if len(argv) < 3:
-        print("usage: %s <job specification input file> <results output file> [api version]" % argv[0])
+    if len(argv) < 4:
+        print("usage: %s <job specification input file> <results output file> <user log file> [api version]" % argv[0],
+              file=sys.stderr)
         exit(1)
 
-    job_specification_file, output_file = argv[1], argv[2]
-    api_version = argv[3] if len(argv) == 4 else None
+    job_specification_file, output_file, log_file = argv[1], argv[2], argv[3]
+    api_version = argv[4] if len(argv) == 5 else None
+
+    _setup_logging(log_file)
 
     job_specification = _parse(job_specification_file)
     viewing_parameters = {'version': api_version} if api_version else None
@@ -40,7 +52,7 @@ def main(argv: List[str]) -> None:
 
     try:
         import custom_processes
-    except ImportError as e:
+    except ImportError:
         logger.info('No custom_processes.py found.')
 
     try:
@@ -66,6 +78,10 @@ def main(argv: List[str]) -> None:
             with open(output_file, 'w') as f:
                 json.dump(result, f)
             logger.info("wrote JSON result to %s" % output_file)
+    except Exception as e:
+        logger.exception("error processing batch job")
+        user_facing_logger.exception("error processing batch job")
+        raise e
     finally:
         sc.stop()
 
