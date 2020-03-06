@@ -5,8 +5,8 @@ if [ -z "${OPENEO_VENV_ZIP}" ]; then
     OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
 fi
 
-if [ "$#" -lt 5 ]; then
-    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file> [api version]"
+if [ "$#" -lt 6 ]; then
+    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> [api version]"
     exit 1
 fi
 
@@ -24,11 +24,12 @@ fi
 jobName=$1
 processGraphFile=$2
 outputFile=$3
-principal=$4
-keyTab=$5
-apiVersion=$6
-drivermemory=${7-22G}
-executormemory=${8-4G}
+userLogFile=$4
+principal=$5
+keyTab=$6
+apiVersion=$7
+drivermemory=${8-22G}
+executormemory=${9-4G}
 
 pysparkPython="venv/bin/python"
 
@@ -87,4 +88,4 @@ spark-submit \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
- --name "${jobName}" "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${apiVersion}"
+ --name "${jobName}" "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${userLogFile}" "${apiVersion}"
