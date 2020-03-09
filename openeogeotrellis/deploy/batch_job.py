@@ -44,46 +44,43 @@ def main(argv: List[str]) -> None:
 
     _setup_logging(log_file)
 
-    job_specification = _parse(job_specification_file)
-    viewing_parameters = {'version': api_version} if api_version else None
-    process_graph = job_specification['process_graph']
-
-    sc = SparkContext.getOrCreate()
-
     try:
-        import custom_processes
-    except ImportError:
-        logger.info('No custom_processes.py found.')
+        job_specification = _parse(job_specification_file)
+        viewing_parameters = {'version': api_version} if api_version else None
+        process_graph = job_specification['process_graph']
 
-    try:
-        kerberos()
-        result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
-        logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
+        try:
+            import custom_processes
+        except ImportError:
+            logger.info('No custom_processes.py found.')
 
-        if isinstance(result, ImageCollection):
-            format_options = job_specification.get('output', {})
-            result.download(output_file, bbox="", time="", **format_options)
-            logger.info("wrote image collection to %s" % output_file)
-        elif isinstance(result, ImageCollectionResult):
-            result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
-            logger.info("wrote image collection to %s" % output_file)
-        elif isinstance(result, JSONResult):
-            with open(output_file, 'w') as f:
-                json.dump(result.prepare_for_json(), f)
-            logger.info("wrote JSON result to %s" % output_file)
-        elif isinstance(result, MultipleFilesResult):
-            result.reduce(output_file, delete_originals=True)
-            logger.info("reduced %d files to %s" % (len(result.files), output_file))
-        else:
-            with open(output_file, 'w') as f:
-                json.dump(result, f)
-            logger.info("wrote JSON result to %s" % output_file)
+        with SparkContext.getOrCreate():
+            kerberos()
+            result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
+            logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
+
+            if isinstance(result, ImageCollection):
+                format_options = job_specification.get('output', {})
+                result.download(output_file, bbox="", time="", **format_options)
+                logger.info("wrote image collection to %s" % output_file)
+            elif isinstance(result, ImageCollectionResult):
+                result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
+                logger.info("wrote image collection to %s" % output_file)
+            elif isinstance(result, JSONResult):
+                with open(output_file, 'w') as f:
+                    json.dump(result.prepare_for_json(), f)
+                logger.info("wrote JSON result to %s" % output_file)
+            elif isinstance(result, MultipleFilesResult):
+                result.reduce(output_file, delete_originals=True)
+                logger.info("reduced %d files to %s" % (len(result.files), output_file))
+            else:
+                with open(output_file, 'w') as f:
+                    json.dump(result, f)
+                logger.info("wrote JSON result to %s" % output_file)
     except Exception as e:
         logger.exception("error processing batch job")
         user_facing_logger.exception("error processing batch job")
         raise e
-    finally:
-        sc.stop()
 
 
 if __name__ == '__main__':
