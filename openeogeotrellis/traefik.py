@@ -38,7 +38,7 @@ class Traefik:
         """
 
         # FIXME: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional "test" node
-        if environment = 'dev':
+        if environment == 'dev':
             match_openeo = "PathPrefix: /openeo-dev,/.well-known/openeo"
         else:
             match_openeo = "PathPrefix: /openeo,/.well-known/openeo"
