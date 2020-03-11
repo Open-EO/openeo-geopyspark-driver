@@ -40,11 +40,13 @@ class Traefik:
         # FIXME: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional "test" node
         if environment == 'dev':
             match_openeo = "Host: openeo-dev.vgt.vito.be;PathPrefix: /openeo,/.well-known/openeo"
+            priority = 105
         else:
             match_openeo = "Host: openeo.vgt.vito.be;PathPrefix: /openeo,/.well-known/openeo"
+            priority = 100
 
         self._create_backend_server(cluster_id, server_id, host, port)
-        self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority=100)
+        self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority)
         self._trigger_configuration_update()
 
     def remove(self, service_id):
