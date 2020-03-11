@@ -65,8 +65,8 @@ class Traefik:
         self._zk_merge(frontend_key + "/backend", backend_id.encode())
         self._zk_merge(frontend_key + "/priority", str(priority).encode())  # higher priority matches first
 
-        self._zk_merge(test_key + "/rule", match_path.encode())
-        self._zk_merge(test_key + "/rule", match_hostrule.encode())
+        self._zk_merge(test_key + "/rule/0", match_path.encode())
+        self._zk_merge(test_key + "/rule/1", match_hostrule.encode())
 
     def _zk_merge(self, path, value):
         self._zk.ensure_path(path)
