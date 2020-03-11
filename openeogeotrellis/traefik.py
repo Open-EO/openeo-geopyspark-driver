@@ -39,13 +39,12 @@ class Traefik:
 
         # FIXME: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional "test" node
         if environment == 'dev':
-            match_hostrule = "Host:openeo-dev.vgt.vito.be"
+            match_openeo = "Host: openeo-dev.vgt.vito.be, PathPrefix: /openeo,/.well-known-openeo"
         else:
-            match_hostrule = "Host:openeo.vgt.vito.be"
-        match_openeo = "PathPrefix: /openeo,/.well-known/openeo"
+            match_openeo = "PathPrefix: /openeo,/.well-known/openeo"
 
         self._create_backend_server(cluster_id, server_id, host, port)
-        self._create_frontend_rule(cluster_id, cluster_id, match_openeo, match_hostrule, priority=100)
+        self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority=100)
         self._trigger_configuration_update()
 
     def remove(self, service_id):
@@ -57,7 +56,7 @@ class Traefik:
         url = "http://%s:%d" % (host, port)
         self._zk_merge(url_key, url.encode())
 
-    def _create_frontend_rule(self, frontend_id, backend_id, match_path, match_hostrule, priority: int):
+    def _create_frontend_rule(self, frontend_id, backend_id, match_path, priority: int):
         frontend_key = "/%s/frontends/%s" % (self._prefix, frontend_id)
         test_key = frontend_key + "/routes/test"
 
@@ -65,8 +64,7 @@ class Traefik:
         self._zk_merge(frontend_key + "/backend", backend_id.encode())
         self._zk_merge(frontend_key + "/priority", str(priority).encode())  # higher priority matches first
 
-        self._zk_merge(test_key + "/rule/0", match_path.encode())
-        self._zk_merge(test_key + "/rule/1", match_hostrule.encode())
+        self._zk_merge(test_key + "/rule", match_path.encode())
 
     def _zk_merge(self, path, value):
         self._zk.ensure_path(path)
