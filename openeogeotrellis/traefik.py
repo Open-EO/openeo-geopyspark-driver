@@ -41,7 +41,7 @@ class Traefik:
         if environment == 'dev':
             match_hostrule = "Host:openeo-dev.vgt.vito.be"
         else:
-            match_hostrule = "Host:openen.vgt.vito.be"
+            match_hostrule = "Host:openeo.vgt.vito.be"
         match_openeo = "PathPrefix: /openeo,/.well-known/openeo"
 
         self._create_backend_server(cluster_id, server_id, host, port)
