@@ -18,7 +18,6 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from openeogeotrellis._version import __version__
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import kerberos
-from openeogeotrellis.errors import SpatialBoundsMissingException
 from openeo_driver.errors import JobNotFoundException
 
 logger = logging.getLogger("openeo")
@@ -229,9 +228,6 @@ def summarize_exception(error: Exception) -> Union[ErrorSummary, Exception]:
         summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
 
         return ErrorSummary(error, is_client_error, summary)
-
-    if isinstance(error, SpatialBoundsMissingException):
-        return ErrorSummary(error, is_client_error=True, summary="The process graph is too complex for for synchronous processing. Please use a batch job instead.")
 
     return error
 

@@ -12,7 +12,7 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
-from openeogeotrellis.errors import SpatialBoundsMissingException
+from openeo_driver.errors import ProcessGraphComplexityException
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
         elif ConfigParams().require_bounds:
-            raise SpatialBoundsMissingException
+            raise ProcessGraphComplexityException
         else:
             srs = "EPSG:4326"
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
