@@ -1,6 +1,4 @@
 from setuptools import setup,find_packages
-import os
-import datetime
 
 # Load the openeo version info.
 #
@@ -11,7 +9,6 @@ import datetime
 #   https://packaging.python.org/guides/single-sourcing-package-version
 
 __version__ = None
-date = datetime.datetime.today().strftime('%Y%m%d')
 
 with open('openeogeotrellis/_version.py') as fp:
     exec(fp.read())
@@ -29,6 +26,7 @@ setup(
     install_requires=[
         'flask',
         'openeo>=0.0.8',
+        'openeo_driver==0.1.0a1.20200312.105',
         'openeo_udf>=0.0.9.post0',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
