@@ -130,6 +130,8 @@ def main():
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'VITO Remote Sensing openEO API'
     app.config['OPENEO_DESCRIPTION'] = 'OpenEO API to the VITO Remote Sensing product catalog and processing services (using GeoPySpark driver).'
+    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = {'date': str(datetime.datetime.utcnow())}
+
     application = StandaloneApplication(app, options)
 
     app.logger.info('App info logging enabled!')
