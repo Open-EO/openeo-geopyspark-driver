@@ -98,7 +98,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def load_disk_data(self, format: str, glob_pattern: str, options: dict, viewing_parameters: dict) -> object:
         if format != 'GTiff':
-            raise NotImplemented("The format is not supported by the backend: " + format)
+            raise NotImplementedError("The format is not supported by the backend: " + format)
 
         date_regex = options['date_regex']
 

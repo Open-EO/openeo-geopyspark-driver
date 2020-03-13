@@ -155,7 +155,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             else:
                 reducer = reducer.lower().capitalize()
         else:
-            raise NotImplemented("The reducer is not supported by the backend: " + reducer)
+            raise NotImplementedError("The reducer is not supported by the backend: " + reducer)
         return reducer
 
     @classmethod
