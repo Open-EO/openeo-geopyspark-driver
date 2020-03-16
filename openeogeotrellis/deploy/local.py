@@ -3,6 +3,7 @@ Script to start a local server. This script can serve as the entry-point for doi
 """
 
 import logging
+from datetime import datetime
 from logging.config import dictConfig
 
 dictConfig({
@@ -150,6 +151,7 @@ if __name__ == '__main__':
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'Local GeoPySpark'
     app.config['OPENEO_DESCRIPTION'] = 'Local openEO API using GeoPySpark driver'
+    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = {'date': str(datetime.utcnow())}
     application = StandaloneApplication(app, options)
 
     application.run()
