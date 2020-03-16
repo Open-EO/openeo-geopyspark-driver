@@ -81,16 +81,17 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
         return self.application
 
 
-def update_zookeeper(host: str, port):
+def update_zookeeper(host: str, port, env):
     print("Registering with zookeeper.")
     from kazoo.client import KazooClient
     from openeogeotrellis.configparams import ConfigParams
 
+    cluster_id='openeo-' + env
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
 
     try:
-        Traefik(zk).add_load_balanced_server(cluster_id='openeo-test', server_id="0", host=host, port=port)
+        Traefik(zk).add_load_balanced_server(cluster_id=cluster_id, server_id="0", host=host, port=port, environment=env)
     finally:
         zk.stop()
         zk.close()
@@ -102,6 +103,7 @@ def main():
     pysc = SparkContext.getOrCreate()
     # Modification 3: pass Flask app instead of handler_app
     import socket
+    import argparse
     local_ip = socket.gethostbyname(socket.gethostname())
     tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp.bind(('', 0))
@@ -125,6 +127,11 @@ def main():
     from flask_cors import CORS
     CORS(app)
     from openeogeotrellis import get_backend_version
+    try:
+        import custom_processes
+    except ImportError as e:
+        app.logger.info('No custom_processes.py found.')
+
 
     app.logger.setLevel('DEBUG')
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
@@ -137,10 +144,16 @@ def main():
     app.logger.info('App info logging enabled!')
     app.logger.debug('App debug logging enabled!')
 
-    zookeeper = len(sys.argv) <= 1 or sys.argv[1] != "no-zookeeper"
+    parser = argparse.ArgumentParser(usage="OpenEO deployment")
+    parser.add_argument("--zookeeper", action="store_true", default=False, help='Register in Zookeeper')
+    parser.add_argument("--env", action="store", default='dev', help='Environment to deploy in')
+    args = parser.parse_args()
+
+    zookeeper = args.zookeeper
+    env = args.env
 
     if zookeeper:
-        update_zookeeper(local_ip, port)
+        update_zookeeper(local_ip, port, env)
 
     application.run()
     print(application)
