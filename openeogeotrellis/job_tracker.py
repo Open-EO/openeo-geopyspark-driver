@@ -65,6 +65,19 @@ class JobTracker:
             pass
 
     @staticmethod
+    def yarn_available() -> bool:
+        """Check if YARN tools are available."""
+        try:
+            _log.info("Checking if Hadoop 'yarn' tool is available")
+            output = subprocess.check_output(["yarn", "version"]).decode("ascii")
+            hadoop_yarn_available = "hadoop" in output.lower()
+            _log.info("Hadoop yarn available: {a}".format(a=hadoop_yarn_available))
+            return hadoop_yarn_available
+        except Exception as e:
+            _log.info("Failed to run 'yarn': {e!r}".format(e=e))
+            return False
+
+    @staticmethod
     def _yarn_status(application_id: str) -> (str, str):
         """Returns (State, Final-State) of a job as reported by YARN."""
 

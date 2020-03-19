@@ -84,21 +84,25 @@ def show_log_level(logger: logging.Logger):
 
 def when_ready(server):
     _log.info('When ready: {s}'.format(s=server))
-    from pyspark import SparkContext
-
-    sc = SparkContext.getOrCreate()
-
-    principal = sc.getConf().get("spark.yarn.principal")
-    keytab = sc.getConf().get("spark.yarn.keytab")
-    from openeogeotrellis.job_tracker import JobTracker
-    from openeogeotrellis.job_registry import JobRegistry
 
     show_log_level(logging.getLogger('gunicorn.error'))
     show_log_level(logging.getLogger('flask'))
     show_log_level(logging.getLogger('werkzeug'))
 
-    job_tracker = JobTracker(JobRegistry, principal, keytab)
-    threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+    from openeogeotrellis.job_tracker import JobTracker
+    if JobTracker.yarn_available():
+        _log.info("Launching thread to poll YARN job status")
+        from pyspark import SparkContext
+        from openeogeotrellis.job_registry import JobRegistry
+
+        sc = SparkContext.getOrCreate()
+        principal = sc.getConf().get("spark.yarn.principal")
+        keytab = sc.getConf().get("spark.yarn.keytab")
+        job_tracker = JobTracker(JobRegistry, principal, keytab)
+        threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+    else:
+        _log.info("Not launching thread to poll YARN job status")
+
 
 
 class StandaloneApplication(gunicorn.app.base.BaseApplication):
