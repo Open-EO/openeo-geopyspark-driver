@@ -67,9 +67,12 @@ def setup_local_spark():
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable
 
-    _log.info('Creating Spark context with config: {c!r}'.format(c=conf.getAll()))
+    _log.info('Creating Spark context with config:')
+    for k, v in conf.getAll():
+        _log.info("Spark config: {k!r}: {v!r}".format(k=k, v=v))
     pysc = SparkContext.getOrCreate(conf)
     _log.info('Created Spark Context {s}'.format(s=pysc))
+    _log.info('Spark web UI: http://localhost:{p}/'.format(p=pysc.getConf().get('spark.ui.port') or 4040))
 
 
 def number_of_workers():
