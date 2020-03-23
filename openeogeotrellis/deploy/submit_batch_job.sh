@@ -62,7 +62,7 @@ spark-submit \
  --conf spark.yarn.submit.waitAppCompletion=false \
  --driver-memory ${drivermemory} \
  --executor-memory ${executormemory} \
- --driver-java-options "-Dscala.concurrent.context.maxThreads=1" \
+ --driver-java-options "-Dscala.concurrent.context.maxThreads=1 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof" \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
