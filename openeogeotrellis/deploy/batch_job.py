@@ -14,10 +14,14 @@ logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
 
-def _setup_logging(log_file: str) -> None:
-    console_handler = logging.StreamHandler()
+def _setup_app_logging() -> None:
+    logger.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler(stream=sys.stdout)
+
     logger.addHandler(console_handler)
 
+
+def _setup_user_logging(log_file: str) -> None:
     file_handler = logging.FileHandler(log_file, mode='w')
     file_handler.setLevel(logging.ERROR)
 
@@ -32,6 +36,8 @@ def _parse(job_specification_file: str) -> Dict:
 
 
 def main(argv: List[str]) -> None:
+    _setup_app_logging()
+
     logger.debug("argv: {a!r}".format(a=argv))
 
     if len(argv) < 4:
@@ -42,7 +48,7 @@ def main(argv: List[str]) -> None:
     job_specification_file, output_file, log_file = argv[1], argv[2], argv[3]
     api_version = argv[4] if len(argv) == 5 else None
 
-    _setup_logging(log_file)
+    _setup_user_logging(log_file)
 
     try:
         job_specification = _parse(job_specification_file)
