@@ -103,7 +103,7 @@ def run_batch_job(job_id: str, user_id: str) -> None:
             return
         elif current_status != 'created':
             registry.mark_ongoing(job_id, user_id)
-            registry.set_application_id(None)
+            registry.set_application_id(job_id, user_id, None)
             registry.set_status(job_id, user_id, 'created')
 
         spec = json.loads(job_info.get('specification'))
