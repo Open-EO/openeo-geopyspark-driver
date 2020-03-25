@@ -10,12 +10,12 @@ if [ "$#" -lt 6 ]; then
     exit 1
 fi
 
-export LOG4J_CONFIGURATION_FILE="./log4j.properties"
+sparkSubmitLog4jConfigurationFile="./submit_batch_job_log4j.properties"
 
-if [ ! -f ${LOG4J_CONFIGURATION_FILE} ]; then
-    LOG4J_CONFIGURATION_FILE='scripts/log4j.properties'
-    if [ ! -f ${LOG4J_CONFIGURATION_FILE} ]; then
-        >&2 echo "${LOG4J_CONFIGURATION_FILE} is missing"
+if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
+    sparkSubmitLog4jConfigurationFile='scripts/submit_batch_job_log4j.properties'
+    if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
+        >&2 echo "${sparkSubmitLog4jConfigurationFile} is missing"
         exit 1
     fi
 
@@ -38,7 +38,7 @@ kinit -kt ${keyTab} ${principal} || true
 export HDP_VERSION=3.1.4.0-315
 export SPARK_HOME=/usr/hdp/$HDP_VERSION/spark2
 export PATH="$SPARK_HOME/bin:$PATH"
-export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
+export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="venv/lib64"
 
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
