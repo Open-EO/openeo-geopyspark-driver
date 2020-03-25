@@ -10,7 +10,7 @@ if [ "$#" -lt 6 ]; then
     exit 1
 fi
 
-sparkSubmitLog4jConfigurationFile="./submit_batch_job_log4j.properties"
+sparkSubmitLog4jConfigurationFile="venv/submit_batch_job_log4j.properties"
 
 if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
     sparkSubmitLog4jConfigurationFile='scripts/submit_batch_job_log4j.properties'
@@ -56,13 +56,17 @@ fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
 
+sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=1\
+ -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
+ -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
+
 spark-submit \
  --master yarn --deploy-mode cluster \
  --principal ${principal} --keytab ${keyTab} \
  --conf spark.yarn.submit.waitAppCompletion=false \
  --driver-memory ${drivermemory} \
  --executor-memory ${executormemory} \
- --driver-java-options "-Dscala.concurrent.context.maxThreads=1 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof" \
+ --driver-java-options "${sparkDriverJavaOptions}" \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
