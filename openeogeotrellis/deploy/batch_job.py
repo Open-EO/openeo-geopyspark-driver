@@ -90,5 +90,7 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == '__main__':
+    _setup_app_logging()
+
     with TimingLogger("batch_job.py main", logger=logger):
         main(sys.argv)
