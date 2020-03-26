@@ -20,7 +20,12 @@ setup(
     version=version,
     packages=find_packages(exclude=('tests', 'scripts')),
     include_package_data = True,
-    data_files=['layercatalog.json', 'scripts/submit_batch_job_log4j.properties', 'scripts/batch_job_log4j.properties'],
+    data_files=[
+        'layercatalog.json',
+        'log4j.properties',
+        'scripts/submit_batch_job_log4j.properties',
+        'scripts/batch_job_log4j.properties'
+    ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest','mock'],
     install_requires=[
