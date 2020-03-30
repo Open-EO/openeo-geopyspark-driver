@@ -599,8 +599,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-                if from_vector_file:
-                    with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                    if from_vector_file:
                         self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
                             scala_data_cube,
                             regions,
@@ -610,20 +610,19 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                             temp_file.name
                         )
 
-                        with open(temp_file.name, encoding='utf-8') as f:
-                            timeseries = json.load(f)
-                else:
-                    stats = self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                        scala_data_cube,
-                        [str(ob) for ob in regions],
-                        polygons_srs,
-                        from_date.isoformat(),
-                        to_date.isoformat(),
-                        self._band_index
-                    )
+                    else:
+                        self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                            scala_data_cube,
+                            [str(ob) for ob in regions],
+                            polygons_srs,
+                            from_date.isoformat(),
+                            to_date.isoformat(),
+                            self._band_index,
+                            temp_file.name
+                        )
 
-                    timeseries = self._as_python(stats)
-
+                    with open(temp_file.name, encoding='utf-8') as f:
+                        timeseries = json.load(f)
                 return AggregatePolygonResult(
                     timeseries=timeseries,
                     regions=regions,
