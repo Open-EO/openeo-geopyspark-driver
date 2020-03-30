@@ -600,13 +600,18 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
                 if from_vector_file:
-                    stats = self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                        scala_data_cube,
-                        regions,
-                        from_date.isoformat(),
-                        to_date.isoformat(),
-                        self._band_index
-                    )
+                    with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                        self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                            scala_data_cube,
+                            regions,
+                            from_date.isoformat(),
+                            to_date.isoformat(),
+                            self._band_index,
+                            temp_file.name
+                        )
+
+                        with open(temp_file.name, encoding='utf-8') as f:
+                            timeseries = json.load(f)
                 else:
                     stats = self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
                         scala_data_cube,
@@ -617,8 +622,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                         self._band_index
                     )
 
+                    timeseries = self._as_python(stats)
+
                 return AggregatePolygonResult(
-                    timeseries=self._as_python(stats),
+                    timeseries=timeseries,
                     regions=regions,
                 )
             else:

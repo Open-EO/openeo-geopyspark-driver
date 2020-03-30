@@ -36,8 +36,6 @@ def _parse(job_specification_file: str) -> Dict:
 
 
 def main(argv: List[str]) -> None:
-    _setup_app_logging()
-
     logger.debug("argv: {a!r}".format(a=argv))
 
     if len(argv) < 4:
