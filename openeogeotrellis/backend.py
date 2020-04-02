@@ -1,15 +1,15 @@
 from typing import List
 
+import geopyspark as gps
+from geopyspark import TiledRasterLayer, LayerType
 from openeo_driver import backend
+from py4j.java_gateway import JavaGateway
+
 from openeogeotrellis import ConfigParams
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
 from openeogeotrellis.utils import kerberos, normalize_date
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
-
-from py4j.java_gateway import JavaGateway
-import geopyspark as gps
-from geopyspark import TiledRasterLayer, LayerType
 
 
 def _merge(original: dict, key, value) -> dict:
@@ -91,6 +91,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["raster"],
                 },
                 "CovJSON": {
+                    "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+                },
+                "NetCDF": {
                     "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
                 },
             },
