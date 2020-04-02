@@ -111,6 +111,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
+        def file_s2_pyramid():
+            oscars_collection_id = layer_source_info['oscars_collection_id']
+            oscars_link_title = layer_source_info['oscars_link_title']
+            root_path = layer_source_info['root_path']
+
+            return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
+                oscars_collection_id, oscars_link_title, root_path
+            ).pyramid_seq(extent, srs, from_date, to_date)
+
         def file_s1_coherence_pyramid():
             return jvm.org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory() \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
@@ -137,6 +146,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = s3_jp2_pyramid()
         elif layer_source_type == 'file-s2-radiometry':
             pyramid = file_s2_radiometry_pyramid()
+        elif layer_source_type == 'file-s2':
+            pyramid = file_s2_pyramid()
         elif layer_source_type == 'file-s1-coherence':
             pyramid = file_s1_coherence_pyramid()
         elif layer_source_type == 'sentinel-hub-s1':
