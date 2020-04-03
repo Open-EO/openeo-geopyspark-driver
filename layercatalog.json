@@ -565,8 +565,8 @@
     "license": "free"
   },
   {
-    "id": "S2_FAPAR_V2",
-    "name": "S2_FAPAR_V2",
+    "id": "TERRASCOPE_S2_FAPAR_V2",
+    "name": "TERRASCOPE_S2_FAPAR_V2",
     "_vito": {
       "data_source": {
         "type": "file-s2",
@@ -577,8 +577,8 @@
     }
   },
   {
-    "id": "S2_NDVI_V2",
-    "name": "S2_NDVI_V2",
+    "id": "TERRASCOPE_S2_NDVI_V2",
+    "name": "TERRASCOPE_S2_NDVI_V2",
     "_vito": {
       "data_source": {
         "type": "file-s2",
@@ -589,8 +589,8 @@
     }
   },
   {
-    "id": "S2_LAI_V2",
-    "name": "S2_LAI_V2",
+    "id": "TERRASCOPE_S2_LAI_V2",
+    "name": "TERRASCOPE_S2_LAI_V2",
     "_vito": {
       "data_source": {
         "type": "file-s2",
@@ -601,8 +601,8 @@
     }
   },
   {
-    "id": "S2_FCOVER_V2",
-    "name": "S2_FCOVER_V2",
+    "id": "TERRASCOPE_S2_FCOVER_V2",
+    "name": "TERRASCOPE_S2_FCOVER_V2",
     "_vito": {
       "data_source": {
         "type": "file-s2",
