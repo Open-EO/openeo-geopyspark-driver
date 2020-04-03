@@ -9,7 +9,7 @@
 @Library('lib')_
 
 pythonPipeline {
-  package_name = 'openeo_geopyspark'
+  package_name = 'openeo-geopyspark'
   wipeout_workspace = true
   hadoop = true
   pre_test_script = 'pre_test.sh'
