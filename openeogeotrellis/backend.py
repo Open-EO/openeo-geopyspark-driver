@@ -123,8 +123,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
         jvm = gateway.jvm
 
-        if left is not None and right is not None and top is not None and bottom is not None:
-            extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
+        extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top)) \
+            if left is not None and right is not None and top is not None and bottom is not None else None
 
         pyramid = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex) \
             .pyramid_seq(extent, srs, from_date, to_date)
