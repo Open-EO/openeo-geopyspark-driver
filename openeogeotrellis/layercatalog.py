@@ -38,7 +38,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata = self._strip_private_metadata(metadata)
         return metadata
 
-    def load_collection(self, collection_id: str, viewing_parameters: dict) -> ImageCollection:
+    def load_collection(self, collection_id: str, viewing_parameters: dict) -> 'GeotrellisTimeSeriesImageCollection':
         logger.info("Creating layer for {c} with viewingParameters {v}".format(c=collection_id, v=viewing_parameters))
 
         # TODO is it necessary to do this kerberos stuff here?
@@ -140,6 +140,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory(layer_source_info.get('uuid')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
+        logger.info("loading pyramid {s}".format(s=layer_source_type))
         if layer_source_type == 's3':
             pyramid = s3_pyramid()
         elif layer_source_type == 's3-jp2':
@@ -163,8 +164,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
-        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
-            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in range(0, pyramid.size())}
+        levels = {
+            pyramid.apply(index)._1(): TiledRasterLayer(
+                LayerType.SPACETIME,
+                temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
+            )
+            for index in range(0, pyramid.size())
+        }
 
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
