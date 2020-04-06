@@ -1,7 +1,7 @@
 import numbers
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from typing import Dict
+
 
 class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
 
@@ -11,38 +11,37 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         jvm = gps.get_spark_context()._gateway.jvm
         self.builder = jvm.org.openeo.geotrellis.OpenEOProcessScriptBuilder()
 
-    def enterProcess(self,process_id, arguments:Dict):
-        self.builder.expressionStart(process_id,arguments)
+    def enterProcess(self, process_id: str, arguments: dict):
+        self.builder.expressionStart(process_id, arguments)
         return self
 
-    def leaveProcess(self, process_id, arguments: Dict):
+    def leaveProcess(self, process_id: str, arguments: dict):
         self.builder.expressionEnd(process_id, arguments)
         return self
 
-    def enterArgument(self,argument_id,node:Dict):
+    def enterArgument(self, argument_id: str, value):
         self.builder.argumentStart(argument_id)
         return self
 
-    def leaveArgument(self, argument_id, node: Dict):
+    def leaveArgument(self, argument_id: str, value):
         self.builder.argumentEnd()
         return self
 
     def constantArgument(self, argument_id: str, value):
         if isinstance(value, numbers.Real):
-            self.builder.constantArgument(argument_id,value)
+            self.builder.constantArgument(argument_id, value)
         else:
-            raise ValueError('Only numeric constants are accepted, but got: ' + str(value) + ' for argument: ' + str(argument_id))
+            raise ValueError("Expecting numeric value for {a!r} but got {v!r}".format(v=value, a=argument_id))
         return self
 
-    def enterArray(self, argument_id):
+    def enterArray(self, argument_id: str):
         self.builder.arrayStart(argument_id)
 
-    def constantArrayElement(self,value):
+    def constantArrayElement(self, value):
         self.builder.constantArrayElement(value)
 
-    def arrayElementDone(self,value=None):
+    def arrayElementDone(self, value: dict):
         self.builder.arrayElementDone()
 
-    def leaveArray(self, argument_id):
+    def leaveArray(self, argument_id: str):
         self.builder.arrayEnd()
-
