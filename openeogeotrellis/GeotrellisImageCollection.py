@@ -18,6 +18,8 @@ from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Spati
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
 
+from openeo_driver.backend import ServiceMetadata
+
 try:
     from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
 
@@ -33,14 +35,14 @@ import xarray as xr
 from openeo.imagecollection import ImageCollection, CollectionMetadata
 from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, WMTSService
+from openeogeotrellis.service_registry import SecondaryService, AbstractServiceRegistry
 
 _log = logging.getLogger(__name__)
 
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
-    def __init__(self, pyramid: Pyramid, service_registry: InMemoryServiceRegistry, metadata: CollectionMetadata = None):
+    def __init__(self, pyramid: Pyramid, service_registry: AbstractServiceRegistry, metadata: CollectionMetadata = None):
         super().__init__(metadata=metadata)
         self.pyramid = pyramid
         self.tms = None
@@ -876,11 +878,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         zk.stop()
         zk.close()
 
-    def tiled_viewing_service(self,**kwargs) -> Dict:
-        type = kwargs['type']
-        process_graph = kwargs['process_graph']
+    def tiled_viewing_service(self, service_type: str, process_graph: dict, post_data: dict = {}) -> ServiceMetadata:
+        service_id = str(uuid.uuid4())
 
-        if type.lower() == "tms":
+        if service_type.lower() == "tms":
             if self.pyramid.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = self.apply_to_levels(lambda rdd: rdd.to_spatial_layer())
             print("Creating persisted pyramid.")
@@ -907,32 +908,35 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             level_bounds = {level: tiled_raster_layer.layer_metadata.bounds for level, tiled_raster_layer in
                             pyramid.levels.items()}
             # TODO handle cleanup of tms'es
-            return {
-                "type": "TMS",
-                "url": url,
-                "bounds": level_bounds
-            }
+            return ServiceMetadata(
+                id=service_id,
+                process={"process_graph": process_graph},
+                url=url,
+                type="TMS",
+                enabled=True,
+                attributes={"bounds": level_bounds},
+                created=datetime.utcnow(),
+            )
         else:
 
             pysc = gps.get_spark_context()
 
             random_port = 0
-            service_id = str(uuid.uuid4())
             wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
-
 
             # TODO: instead of storing in self, keep in a registry to allow cleaning up (wmts.stop)
             wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
             _log.info('Created WMTSServer: {w!s} ({u!s}, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
 
-            if(kwargs.get("style") is not None):
+            # TODO: configuration should come from post_data["configuration"] (see API spec)
+            if "style" in post_data:
                 max_zoom = self.pyramid.max_zoom
                 min_zoom = min(self.pyramid.levels.keys())
                 reduced_resolution = max(min_zoom,max_zoom-4)
                 if reduced_resolution not in self.pyramid.levels:
                     reduced_resolution = min_zoom
                 histogram = self.pyramid.levels[reduced_resolution].get_histogram()
-                matplotlib_name = kwargs.get("style").get("colormap","YlGn")
+                matplotlib_name = post_data.get("style").get("colormap","YlGn")
 
                 #color_map = gps.ColorMap.from_colors(breaks=[x for x in range(0,250)], color_list=gps.get_colors_from_matplotlib("YlGn"))
                 color_map = gps.ColorMap.build(histogram, matplotlib_name)
@@ -950,20 +954,25 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                  [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]])
                               if l][0][0]
 
-            self._service_registry.register(WMTSService(
-                service_id=service_id,
-                specification={
-                    'type': type,
-                    'process_graph': process_graph
-                },
+            service_metadata = ServiceMetadata(
+                id=service_id,
+                # TODO: can process graph be extracted from `self` instead of passing it explicitly?
+                process={"process_graph": process_graph},
+                url=wmts_base_url + "/service/wmts",
+                type="WMTS",
+                enabled=True,
+                # TODO: fill in attributes?
+                attributes={},
+                created=datetime.utcnow(),
+                # TODO: fill in more fields?
+            )
+
+            self._service_registry.register(SecondaryService(
+                service_metadata=service_metadata,
                 host=host, port=wmts.getPort(), server=wmts
             ))
 
-            return {
-                'type': 'WMTS',
-                'url': wmts_base_url + "/service/wmts",
-                'service_id': service_id
-            }
+            return service_metadata
 
     def ndvi(self, name: str = "ndvi") -> 'ImageCollection':
         try:

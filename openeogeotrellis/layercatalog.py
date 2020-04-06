@@ -10,7 +10,7 @@ from openeo_driver.backend import CollectionCatalog
 from openeo_driver.utils import read_json
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
 from openeo_driver.errors import ProcessGraphComplexityException
 
@@ -21,7 +21,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     # TODO: eliminate the dependency/coupling with service registry
 
-    def __init__(self, all_metadata: List[dict], service_registry: InMemoryServiceRegistry):
+    def __init__(self, all_metadata: List[dict], service_registry: AbstractServiceRegistry):
         super().__init__(all_metadata=all_metadata)
         self._service_registry = service_registry
         self._geotiff_pyramid_factories = {}
@@ -198,7 +198,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return image_collection
 
 
-def get_layer_catalog(service_registry: InMemoryServiceRegistry = None) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """

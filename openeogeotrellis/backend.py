@@ -5,24 +5,18 @@ from geopyspark import TiledRasterLayer, LayerType
 from openeo_driver import backend
 from py4j.java_gateway import JavaGateway
 
+from openeo_driver.backend import ServiceMetadata
 from openeogeotrellis import ConfigParams
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.layercatalog import get_layer_catalog
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry
+from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, normalize_date
-
-
-def _merge(original: dict, key, value) -> dict:
-    # TODO: move this to a more general module (e.g. openeo client)?
-    copy = dict(original)
-    copy[key] = value
-    return copy
 
 
 class GpsSecondaryServices(backend.SecondaryServices):
     """Secondary Services implementation for GeoPySpark backend"""
 
-    def __init__(self, service_registry: InMemoryServiceRegistry):
+    def __init__(self, service_registry: AbstractServiceRegistry):
         self.service_registry = service_registry
 
     def service_types(self) -> dict:
@@ -38,21 +32,17 @@ class GpsSecondaryServices(backend.SecondaryServices):
                         ]
                     }
                 },
+                # TODO?
                 "process_parameters": [],
                 "links": [],
             }
         }
 
-    def list_services(self) -> List[dict]:
-        return [
-            _merge(details, 'service_id', service_id)
-            for service_id, details in self.service_registry.get_all_specifications().items()
-        ]
+    def list_services(self) -> List[ServiceMetadata]:
+        return list(self.service_registry.get_metadata_all().values())
 
-    def service_info(self, service_id: str) -> dict:
-        # TODO: add fields: id, url, enabled, parameters, attributes
-        details = self.service_registry.get_specification(service_id)
-        return _merge(details, 'service_id', service_id)
+    def service_info(self, service_id: str) -> ServiceMetadata:
+        return self.service_registry.get_metadata(service_id)
 
     def remove_service(self, service_id: str) -> None:
         self.service_registry.stop_service(service_id)

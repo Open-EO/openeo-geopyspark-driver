@@ -47,8 +47,9 @@ def get_batch_job_info(job_id: str, user_id: str) -> dict:
             status = registry.get_job(job_id, user_id)['status']
 
         return {
-            'job_id': job_id,
+            'job_id': job_id,  # TODO: must be 'id' instead of 'job_id'
             'status': status
+            # TODO: required fields 'process' (with 'process_graph'), 'created'
         }
     except JobNotFoundException:
         return None
@@ -59,8 +60,10 @@ def get_batch_jobs_info(user_id: str) -> List[dict]:
 
     with JobRegistry() as registry:
         return [{
-            'job_id': job_info['job_id'],
+            'job_id': job_info['job_id'], # TODO: must be 'id' instead of 'job_id'
             'status': job_info['status']
+            # TODO: required fields 'process' (with 'process_graph'), 'created'
+
         } for job_info in registry.get_user_jobs(user_id)]
 
 
