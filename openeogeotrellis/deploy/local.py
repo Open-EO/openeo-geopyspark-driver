@@ -9,7 +9,7 @@ from logging.config import dictConfig
 dictConfig({
     'version': 1,
     'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
+        'format': '[%(asctime)s] %(process)s %(levelname)s in %(name)s: %(message)s',
     }},
     'handlers': {'wsgi': {
         'class': 'logging.StreamHandler',
@@ -73,6 +73,8 @@ def setup_local_spark():
     pysc = SparkContext.getOrCreate(conf)
     _log.info('Created Spark Context {s}'.format(s=pysc))
     _log.info('Spark web UI: http://localhost:{p}/'.format(p=pysc.getConf().get('spark.ui.port') or 4040))
+
+    return pysc
 
 
 def number_of_workers():
