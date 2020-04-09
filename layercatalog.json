@@ -405,8 +405,9 @@
     "title": "10m fAPAR product based on Sentinel-2",
     "_vito": {
       "data_source": {
-        "type": "Accumulo",
-        "data_id": "S2_FAPAR_PYRAMID_20190708"
+        "type": "geotiff",
+        "glob_pattern": "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/*/*/*/*/*/10M/*_FAPAR_10M_V102.tif",
+        "date_regex": ".*_(\\d{4})(\\d{2})(\\d{2})T.*"
       }
     },
     "description": "Sentinel 2 Level-3: fAPAR in Web Mercator projection, with overviews.",
@@ -484,7 +485,7 @@
     "_vito": {
       "data_source": {
         "type": "Accumulo",
-        "data_id": "PROBAV_L3_S10_TOC_NDVI_333M_V2"
+        "data_id": "PROBAV_L3_S10_TOC_NDVI_333M_V3"
       }
     },
     "license": "free",
@@ -519,7 +520,7 @@
     "_vito": {
       "data_source": {
         "type": "Accumulo",
-        "data_id": "S2_SCENECLASSIFICATION_PYRAMID_20190624"
+        "data_id": "S2_SCENECLASSIFICATION_PYRAMID_20200407"
       }
     },
     "providers": [{"name": "Terrascope/VITO"}],
