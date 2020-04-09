@@ -24,6 +24,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def __init__(self, all_metadata: List[dict], service_registry: InMemoryServiceRegistry):
         super().__init__(all_metadata=all_metadata)
         self._service_registry = service_registry
+        self._geotiff_pyramid_factories = {}
 
     def _strip_private_metadata(self, d: dict) -> dict:
         """Strip fields starting with underscore from a dictionary."""
@@ -120,6 +121,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 oscars_collection_id, oscars_link_title, root_path
             ).pyramid_seq(extent, srs, from_date, to_date)
 
+        def geotiff_pyramid():
+            glob_pattern = layer_source_info['glob_pattern']
+            date_regex = layer_source_info['date_regex']
+
+            new_pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
+
+            return self._geotiff_pyramid_factories.setdefault(collection_id, new_pyramid_factory) \
+                .pyramid_seq(extent, srs, from_date, to_date)
+
         def file_s1_coherence_pyramid():
             return jvm.org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory() \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
@@ -149,6 +159,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_s2_radiometry_pyramid()
         elif layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
+        elif layer_source_type == 'geotiff':
+            pyramid = geotiff_pyramid()
         elif layer_source_type == 'file-s1-coherence':
             pyramid = file_s1_coherence_pyramid()
         elif layer_source_type == 'sentinel-hub-s1':
