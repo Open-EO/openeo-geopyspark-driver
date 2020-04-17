@@ -616,6 +616,11 @@
   {
     "id": "TERRASCOPE_S2_TOC_V2",
     "name": "TERRASCOPE_S2_TOC_V2",
+    "bands": [
+      { "band_id": "B02" },
+      { "band_id": "B03" },
+      { "band_id": "B04" }
+    ],
     "_vito": {
       "data_source": {
         "type": "file-s2",
