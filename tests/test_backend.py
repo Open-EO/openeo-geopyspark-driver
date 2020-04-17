@@ -1,12 +1,9 @@
-from unittest import TestCase
+from openeogeotrellis.backend import GpsBatchJobs
 
 
-class TestBatchJob(TestCase):
-
-    def test_parse_yarn(self):
-        from openeogeotrellis import _extract_application_id
-        yarn_log = """
-        19/07/10 15:56:39 WARN DomainSocketFactory: The short-circuit local reads feature cannot be used because libhadoop cannot be loaded.
+def test_extract_application_id():
+    yarn_log = """
+19/07/10 15:56:39 WARN DomainSocketFactory: The short-circuit local reads feature cannot be used because libhadoop cannot be loaded.
 19/07/10 15:56:39 INFO Client: Attempting to login to the Kerberos using principal: jenkins@VGT.VITO.BE and keytab: jenkins.keytab-2322e03c-bf97-4f59-b9ad-7c2ecb2d1c70
 19/07/10 15:56:39 INFO RequestHedgingRMFailoverProxyProvider: Created wrapped proxy for [rm1, rm2]
 19/07/10 15:56:39 INFO RequestHedgingRMFailoverProxyProvider: Looking for the active RM in [rm1, rm2]...
@@ -61,56 +58,7 @@ class TestBatchJob(TestCase):
 19/07/10 15:57:06 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:57:07 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:57:08 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:09 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:10 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:11 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:12 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:57:13 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:14 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:15 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:16 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:17 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:18 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:19 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:20 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:21 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:22 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:23 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:24 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:25 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:26 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:27 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:28 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:29 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:30 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:31 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:32 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:33 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:34 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:35 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:36 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:37 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:38 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:39 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:40 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:41 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:42 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:43 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:44 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:45 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:46 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:47 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:48 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:49 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:50 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:51 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:52 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:53 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:54 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:55 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:56 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:57 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:58 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:57:59 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:58:00 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:58:01 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
@@ -134,14 +82,5 @@ class TestBatchJob(TestCase):
 19/07/10 15:58:09 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
 19/07/10 15:58:10 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
 19/07/10 15:58:11 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:12 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:13 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:14 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:15 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:16 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:17 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:18 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:19 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:20 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-        """
-        self.assertEquals("application_1562328661428_5542",_extract_application_id(yarn_log))
+    """
+    assert GpsBatchJobs._extract_application_id(yarn_log) == "application_1562328661428_5542"
