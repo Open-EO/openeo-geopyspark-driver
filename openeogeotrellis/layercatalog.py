@@ -114,11 +114,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_s2_pyramid():
             oscars_collection_id = layer_source_info['oscars_collection_id']
-            oscars_link_title = layer_source_info['oscars_link_title']
+            oscars_link_titles = layer_source_info['oscars_link_titles']
             root_path = layer_source_info['root_path']
 
             return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
-                oscars_collection_id, oscars_link_title, root_path
+                oscars_collection_id,
+                oscars_link_titles if isinstance(oscars_link_titles, list) else [oscars_link_titles],
+                root_path
             ).pyramid_seq(extent, srs, from_date, to_date)
 
         def geotiff_pyramid():

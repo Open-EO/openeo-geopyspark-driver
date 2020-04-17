@@ -572,8 +572,8 @@
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-        "oscars_link_title": "FAPAR_10M",
-        "root_path": "/data/MTDA_DEV/CGS_S2/FAPAR_V2"
+        "oscars_link_titles": "FAPAR_10M",
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
       }
     }
   },
@@ -584,8 +584,8 @@
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
-        "oscars_link_title": "NDVI_10M",
-        "root_path": "/data/MTDA_DEV/CGS_S2/NDVI_V2"
+        "oscars_link_titles": "NDVI_10M",
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"
       }
     }
   },
@@ -596,8 +596,8 @@
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
-        "oscars_link_title": "LAI_10M",
-        "root_path": "/data/MTDA_DEV/CGS_S2/LAI_V2"
+        "oscars_link_titles": "LAI_10M",
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/LAI_V2"
       }
     }
   },
@@ -608,8 +608,20 @@
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FCOVER_V2",
-        "oscars_link_title": "FCOVER_10M",
-        "root_path": "/data/MTDA_DEV/CGS_S2/FCOVER_V2"
+        "oscars_link_titles": "FCOVER_10M",
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FCOVER_V2"
+      }
+    }
+  },
+  {
+    "id": "TERRASCOPE_S2_TOC_V2",
+    "name": "TERRASCOPE_S2_TOC_V2",
+    "_vito": {
+      "data_source": {
+        "type": "file-s2",
+        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        "oscars_link_titles": ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M"],
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
       }
     }
   },
