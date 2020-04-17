@@ -117,13 +117,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             oscars_link_titles = layer_source_info['oscars_link_titles']
             root_path = layer_source_info['root_path']
 
-            # FIXME: filter bands up front (pass band_indices) for great justice
-            nonlocal still_needs_band_filter
-            still_needs_band_filter = bool(band_indices)
+            title_list = oscars_link_titles if isinstance(oscars_link_titles, list) else [oscars_link_titles]
+            filtered_link_titles = [title_list[i] for i in band_indices] if band_indices else title_list
 
             return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
                 oscars_collection_id,
-                oscars_link_titles if isinstance(oscars_link_titles, list) else [oscars_link_titles],
+                filtered_link_titles,
                 root_path
             ).pyramid_seq(extent, srs, from_date, to_date)
 
