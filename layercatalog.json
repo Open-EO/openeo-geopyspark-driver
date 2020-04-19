@@ -568,11 +568,21 @@
   {
     "id": "TERRASCOPE_S2_FAPAR_V2",
     "name": "TERRASCOPE_S2_FAPAR_V2",
+    "properties": {
+      "cube:dimensions": {
+        "bands": {
+          "type": "bands",
+          "values": ["FAPAR_10M"]
+        }
+      },
+      "eo:bands": [
+        {"name": "FAPAR_10M"}
+      ]
+    },
     "_vito": {
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-        "oscars_link_titles": "FAPAR_10M",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
       }
     }
@@ -580,11 +590,21 @@
   {
     "id": "TERRASCOPE_S2_NDVI_V2",
     "name": "TERRASCOPE_S2_NDVI_V2",
+    "properties": {
+      "cube:dimensions": {
+        "bands": {
+          "type": "bands",
+          "values": ["NDVI_10M"]
+        }
+      },
+      "eo:bands": [
+        {"name": "NDVI_10M"}
+      ]
+    },
     "_vito": {
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
-        "oscars_link_titles": "NDVI_10M",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"
       }
     }
@@ -592,11 +612,21 @@
   {
     "id": "TERRASCOPE_S2_LAI_V2",
     "name": "TERRASCOPE_S2_LAI_V2",
+    "properties": {
+      "cube:dimensions": {
+        "bands": {
+          "type": "bands",
+          "values": ["LAI_10M"]
+        }
+      },
+      "eo:bands": [
+        {"name": "LAI_10M"}
+      ]
+    },
     "_vito": {
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
-        "oscars_link_titles": "LAI_10M",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/LAI_V2"
       }
     }
@@ -604,28 +634,47 @@
   {
     "id": "TERRASCOPE_S2_FCOVER_V2",
     "name": "TERRASCOPE_S2_FCOVER_V2",
+    "properties": {
+      "cube:dimensions": {
+        "bands": {
+          "type": "bands",
+          "values": ["FCOVER_10M"]
+        }
+      },
+      "eo:bands": [
+        {"name": "FCOVER_10M"}
+      ]
+    },
     "_vito": {
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FCOVER_V2",
-        "oscars_link_titles": "FCOVER_10M",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FCOVER_V2"
       }
     }
   },
-  {
+ {
     "id": "TERRASCOPE_S2_TOC_V2",
     "name": "TERRASCOPE_S2_TOC_V2",
-    "bands": [
-      { "band_id": "B02" },
-      { "band_id": "B03" },
-      { "band_id": "B04" }
-    ],
+    "properties": {
+      "cube:dimensions": {
+        "bands": {
+          "type": "bands",
+          "values": ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M", "TOC-B05_20M", "SCENECLASSIFICATION_20M"]
+        }
+      },
+      "eo:bands": [
+        {"name": "TOC-B02_10M"},
+        {"name": "TOC-B03_10M"},
+        {"name": "TOC-B04_10M"},
+        {"name": "TOC-B05_20M"},
+        {"name": "SCENECLASSIFICATION_20M"}
+      ]
+    },
     "_vito": {
       "data_source": {
         "type": "file-s2",
         "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-        "oscars_link_titles": ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M"],
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
       }
     }

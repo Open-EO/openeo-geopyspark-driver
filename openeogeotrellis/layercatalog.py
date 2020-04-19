@@ -114,11 +114,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_s2_pyramid():
             oscars_collection_id = layer_source_info['oscars_collection_id']
-            oscars_link_titles = layer_source_info['oscars_link_titles']
+            oscars_link_titles = metadata.band_names
             root_path = layer_source_info['root_path']
 
-            title_list = oscars_link_titles if isinstance(oscars_link_titles, list) else [oscars_link_titles]
-            filtered_link_titles = [title_list[i] for i in band_indices] if band_indices else title_list
+            filtered_link_titles = [oscars_link_titles[i] for i in band_indices] if band_indices else oscars_link_titles
 
             return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
                 oscars_collection_id,
