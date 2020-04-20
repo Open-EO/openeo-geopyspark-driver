@@ -87,7 +87,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def health_check(self) -> str:
         from pyspark import SparkContext
         sc = SparkContext.getOrCreate()
-        count = sc.parallelize([1, 2, 3]).count()
+        count = sc.parallelize([1, 2, 3]).map(lambda x: x * x).sum()
         return 'Health check: ' + str(count)
 
     def file_formats(self) -> dict:
@@ -231,6 +231,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if current_status in ['queued', 'running']:
                 return
             elif current_status != 'created':
+                # TODO: is this about restarting a job?
                 registry.mark_ongoing(job_id, user_id)
                 registry.set_application_id(job_id, user_id, None)
                 registry.set_status(job_id, user_id, 'created')
@@ -335,7 +336,11 @@ class GpsBatchJobs(backend.BatchJobs):
         with JobRegistry() as registry:
             application_id = registry.get_job(job_id, user_id)['application_id']
         # TODO: better logging of this kill.
-        subprocess.call(["yarn", "application", "-kill", application_id])
+        subprocess.run(
+            ["yarn", "application", "-kill", application_id],
+            timeout=20,
+            check=True,
+        )
 
 
 class _BatchJobError(Exception):

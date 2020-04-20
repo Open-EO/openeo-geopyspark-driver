@@ -5,10 +5,13 @@ from pathlib import Path
 import pytest
 from _pytest.terminal import TerminalReporter
 
+os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
+
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config):
     """Pytest configuration hook"""
+    os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
     _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
