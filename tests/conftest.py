@@ -29,6 +29,7 @@ def _ensure_geopyspark(out: TerminalReporter):
         out.write_line("Failed to import geopyspark automatically. "
                        "Will set up py4j path using Spark home: {h}".format(h=pyspark_home))
         py4j_zip = next((pyspark_home / 'python' / 'lib').glob('py4j-*-src.zip'))
+        out.write_line("py4j zip: {z!r}".format(z=py4j_zip))
         sys.path.append(str(py4j_zip))
 
 
@@ -54,7 +55,16 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     else:
         conf.set('spark.ui.enabled', True)
 
+    out.write_line("SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
+    out.write_line("JVM info: {d!r}".format(d={
+        f: context._jvm.System.getProperty(f)
+        for f in [
+            "java.version", "java.vendor", "java.home",
+            "java.class.version",
+            # "java.class.path",
+        ]
+    }))
 
     out.write_line("Validating the Spark context")
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
