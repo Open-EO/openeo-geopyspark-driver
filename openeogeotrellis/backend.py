@@ -346,6 +346,3 @@ class GpsBatchJobs(backend.BatchJobs):
 class _BatchJobError(Exception):
     pass
 
-
-def get_openeo_backend_implementation() -> backend.OpenEoBackendImplementation:
-    return GeoPySparkBackendImplementation()

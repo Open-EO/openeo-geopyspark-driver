@@ -14,7 +14,7 @@ from pyspark import SparkContext
 from shapely.geometry import Point
 from shapely.geometry import Polygon, GeometryCollection, MultiPolygon
 
-from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 

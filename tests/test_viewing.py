@@ -10,7 +10,7 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 PNG_SIGNATURE = b'\x89PNG\x0d\x0a\x1a\x0a'
