@@ -186,11 +186,14 @@ class GpsBatchJobs(backend.BatchJobs):
         self._output_root_dir = Path("/data/projects/OpenEO/")
 
     def _parse_job_info(self, job_info: dict) -> BatchJobMetadata:
+        status = job_info.get("status")
+        if status == "submitted":
+            status = "created"
         return BatchJobMetadata(
             id=job_info["job_id"],
             process=json.loads(job_info["specification"]),
-            status=job_info["status"],
-            created=parse_rfc3339(job_info["created"])
+            status=status,
+            created=parse_rfc3339(job_info["created"]) if "created" in job_info else None
         )
 
     def create_job(self, user_id: str, job_specification: dict, api_version: str) -> BatchJobMetadata:
