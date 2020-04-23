@@ -76,7 +76,10 @@ spark-submit \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=8g \
  --conf spark.executor.memoryOverhead=2g \
- --conf spark.speculation=false \
+ --conf spark.blacklist.enabled=true \
+ --conf spark.speculation=true \
+ --conf spark.speculation.interval=5000ms \
+ --conf spark.speculation.multiplier=4 \
  --conf spark.dynamicAllocation.minExecutors=20 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
