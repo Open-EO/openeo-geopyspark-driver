@@ -17,5 +17,6 @@ pythonPipeline {
   python_version = ["3.6"]
   downstream_job = 'geo.OpenEO/openeo-geopyspark-integrationtests'
   wheel_repo = 'python-openeo'
+  wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
 }
