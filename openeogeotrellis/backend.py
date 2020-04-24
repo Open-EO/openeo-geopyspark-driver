@@ -17,7 +17,7 @@ from py4j.protocol import Py4JJavaError
 
 from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.util import ensure_dir
+from openeo.util import ensure_dir, dict_no_none
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata
 from openeo_driver.errors import JobNotFinishedException, JobNotStartedException
@@ -185,38 +185,32 @@ class GpsBatchJobs(backend.BatchJobs):
         super().__init__()
         self._output_root_dir = Path("/data/projects/OpenEO/")
 
-    def _parse_job_info(self, job_info: dict) -> BatchJobMetadata:
-        status = job_info.get("status")
-        if status == "submitted":
-            status = "created"
-        return BatchJobMetadata(
-            id=job_info["job_id"],
-            process=json.loads(job_info["specification"]),
-            status=status,
-            created=parse_rfc3339(job_info["created"]) if "created" in job_info else None
-        )
-
-    def create_job(self, user_id: str, job_specification: dict, api_version: str) -> BatchJobMetadata:
+    def create_job(self, user_id: str, process: dict, api_version: str, job_options: dict = None) -> BatchJobMetadata:
         job_id = str(uuid.uuid4())
         with JobRegistry() as registry:
             job_info = registry.register(
-                job_id=job_id, user_id=user_id,
-                api_version=api_version, specification=job_specification
+                job_id=job_id,
+                user_id=user_id,
+                api_version=api_version,
+                specification=dict_no_none(
+                    process_graph=process["process_graph"],
+                    job_options=job_options,
+                )
             )
         return BatchJobMetadata(
-            id=job_id, process=job_specification, status=job_info["status"],
-            created=parse_rfc3339(job_info["created"])
+            id=job_id, process=process, status=job_info["status"],
+            created=parse_rfc3339(job_info["created"]), job_options=job_options
         )
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
-        return self._parse_job_info(job_info)
+            return registry.job_info_to_metadata(job_info)
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with JobRegistry() as registry:
             return [
-                self._parse_job_info(job_info)
+                registry.job_info_to_metadata(job_info)
                 for job_info in registry.get_user_jobs(user_id)
             ]
 
@@ -348,4 +342,3 @@ class GpsBatchJobs(backend.BatchJobs):
 
 class _BatchJobError(Exception):
     pass
-

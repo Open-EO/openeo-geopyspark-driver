@@ -5,6 +5,8 @@ from kazoo.exceptions import NoNodeError
 import json
 
 from openeo.util import date_to_rfc3339
+from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.utils import parse_rfc3339
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.errors import JobNotFoundException
 
@@ -27,12 +29,31 @@ class JobRegistry:
             'status': 'created',
             # TODO: move api_Version into specification?
             'api_version': api_version,
+            # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
             'specification': json.dumps(specification),
             'application_id': None,
             'created': date_to_rfc3339(datetime.utcnow()),
         }
         self._create(job_info)
         return job_info
+
+    @staticmethod
+    def job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
+        """Convert job info dict to BatchJobMetadata"""
+        status = job_info.get("status")
+        if status == "submitted":
+            status = "created"
+        specification = job_info["specification"]
+        if isinstance(specification, str):
+            specification = json.loads(specification)
+        job_options = specification.pop("job_options", None)
+        return BatchJobMetadata(
+            id=job_info["job_id"],
+            process=specification,
+            status=status,
+            created=parse_rfc3339(job_info["created"]) if "created" in job_info else None,
+            job_options=job_options
+        )
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""

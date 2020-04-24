@@ -186,8 +186,7 @@ class TestBatchJobs:
                 run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
                 # Trigger job start
                 api.post(
-                    '/jobs/{j}/results'.format(j=job_id), json={},
-                    headers=TEST_USER_AUTH_HEADER
+                    '/jobs/{j}/results'.format(j=job_id), json={}, headers=TEST_USER_AUTH_HEADER
                 ).assert_status_code(202)
                 run.assert_called_once()
                 batch_job_args = run.call_args[0][0]
@@ -199,6 +198,8 @@ class TestBatchJobs:
             assert batch_job_args[2] == str(job_input)
             assert batch_job_args[3] == str(job_output)
             assert batch_job_args[4] == str(job_log)
+            assert batch_job_args[7] == api.api_version
+            assert batch_job_args[8:] == ['22G', '5G']
             job_pg = load_json(job_input)
             assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
 
@@ -239,8 +240,7 @@ class TestBatchJobs:
 
             # Download
             res = api.get(
-                '/jobs/{j}/results'.format(j=job_id),
-                headers=TEST_USER_AUTH_HEADER
+                '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
             ).assert_status_code(200).json
             if api.api_version_compare.at_least("1.0.0"):
                 download_url = res["assets"]["out"]["href"]
@@ -252,10 +252,43 @@ class TestBatchJobs:
 
             # Get logs
             res = api.get(
-                '/jobs/{j}/logs'.format(j=job_id),
-                headers=TEST_USER_AUTH_HEADER
+                '/jobs/{j}/logs'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
             ).assert_status_code(200).json
             assert res["logs"] == [{"id": "0", "level": "error", "message": "[INFO] Hello world"}]
+
+    def test_create_and_start_job_options(self, api, tmp_path):
+        with self._mock_kazoo_client() as zk, \
+                self._mock_utcnow() as un, \
+                mock.patch.object(GpsBatchJobs, '_get_job_output_dir') as get_job_output_dir:
+            get_job_output_dir.return_value = tmp_path
+
+            # Create job
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g"}
+            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+            job_id = res.headers['OpenEO-Identifier']
+            # Start job
+            with mock.patch('subprocess.run') as run:
+                stdout = api.read_file("spark-submit-stdout.txt")
+                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+                # Trigger job start
+                api.post(
+                    '/jobs/{j}/results'.format(j=job_id), json={}, headers=TEST_USER_AUTH_HEADER
+                ).assert_status_code(202)
+                run.assert_called_once()
+                batch_job_args = run.call_args[0][0]
+
+            # Check batch in/out files
+            job_input = (tmp_path / "in")
+            job_output = (tmp_path / "out")
+            job_log = (tmp_path / "log")
+            assert batch_job_args[2] == str(job_input)
+            assert batch_job_args[3] == str(job_output)
+            assert batch_job_args[4] == str(job_log)
+            assert batch_job_args[7] == api.api_version
+            assert batch_job_args[8:] == ['3g', '11g']
+            job_pg = load_json(job_input)
+            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk, \
