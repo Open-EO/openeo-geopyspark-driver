@@ -13,7 +13,7 @@ def kerberos():
     import geopyspark as gps
 
     if 'HADOOP_CONF_DIR' not in os.environ:
-        logger.warn('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
+        logger.warning('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
 
     sc = gps.get_spark_context()
     gateway = JavaGateway(gateway_parameters=sc._gateway.gateway_parameters)
@@ -21,7 +21,7 @@ def kerberos():
 
     hadoop_auth = jvm.org.apache.hadoop.conf.Configuration().get('hadoop.security.authentication')
     if hadoop_auth != 'kerberos':
-        logger.warn('Hadoop client does not have hadoop.security.authentication=kerberos.')
+        logger.warning('Hadoop client does not have hadoop.security.authentication=kerberos.')
 
     currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
     if currentUser.hasKerberosCredentials():

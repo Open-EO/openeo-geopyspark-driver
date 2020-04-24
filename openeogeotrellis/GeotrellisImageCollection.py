@@ -6,6 +6,8 @@ import pathlib
 import subprocess
 import tempfile
 import uuid
+import functools
+
 from datetime import datetime, date
 from typing import Dict, List, Union, Tuple, Iterable, Callable
 
@@ -238,9 +240,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=datetime.now()),
                   Tile(result_array.values, CellType.FLOAT64, tile_list[0][1].no_data_value))]
 
-
-
-
         def rdd_function(openeo_metadata: CollectionMetadata, rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
             grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
@@ -337,9 +336,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     @classmethod
     def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
         from shapely.ops import transform
-        from functools import partial
 
-        project = partial(
+        project = functools.partial(
             pyproj.transform,
             pyproj.Proj(srs),  # source coordinate system
             pyproj.Proj(dest_srs))  # destination coordinate system
@@ -802,7 +800,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         import rasterio as rstr
         from affine import Affine
         import rasterio._warp as rwarp
-        from math import log
 
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
 
@@ -820,7 +817,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         dtype = data.cells.dtype
         ex = Extent(xmin=upper_left_coords.left, ymin=lower_right_coords.bottom, xmax=lower_right_coords.right, ymax=upper_left_coords.top)
         cw, ch = (ex.xmax - ex.xmin) / w, (ex.ymax - ex.ymin) / h
-        overview_level = int(log(w) / log(2) - 8)
+        overview_level = int(math.log(w) / math.log(2) - 8)
 
         with rstr.io.MemoryFile() as memfile, open(filename, 'wb') as f:
             with memfile.open(driver='GTiff',
@@ -889,7 +886,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             pyramid = spatial_rdd.pyramid
             def render_rgb(tile):
-                import numpy as np
                 from PIL import Image
                 rgba = np.dstack([tile.cells[0] * (255.0 / 2000.0), tile.cells[1] * (255.0 / 2000.0),
                                   tile.cells[2] * (255.0 / 2000.0)]).astype('uint8')

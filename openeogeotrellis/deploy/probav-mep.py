@@ -1,6 +1,13 @@
-import logging
+"""
+Script to start a production server. This script can serve as the entry-point for doing spark-submit.
+"""
 
+
+import datetime
+import logging
 from logging.config import dictConfig
+import sys
+import threading
 
 dictConfig({
     'version': 1,
@@ -26,24 +33,16 @@ dictConfig({
 
 import gunicorn.app.base
 from gunicorn.six import iteritems
-import sys
 sys.path.insert(0,'py4j-0.10.7-src.zip')
 sys.path.insert(0,'pyspark.zip')
-import json
-import sys
-import datetime
-import threading
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.traefik import Traefik
 
 
-"""
-Script to start a production server. This script can serve as the entry-point for doing spark-submit.
-"""
-
 def number_of_workers():
     return 4#(multiprocessing.cpu_count() * 2) + 1
+
 
 def when_ready(server):
     print(server)
