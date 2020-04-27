@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+from pathlib import Path
 import sys
 from typing import Dict, List
 
@@ -10,6 +12,8 @@ from openeo_driver.save_result import ImageCollectionResult, JSONResult, Multipl
 from openeogeotrellis.utils import kerberos
 from pyspark import SparkContext
 
+LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
+
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
@@ -17,7 +21,7 @@ user_facing_logger = logging.getLogger('openeo-user-log')
 def _setup_app_logging() -> None:
     logger.setLevel(logging.DEBUG)
     console_handler = logging.StreamHandler(stream=sys.stdout)
-
+    console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     logger.addHandler(console_handler)
 
 
@@ -37,6 +41,7 @@ def _parse(job_specification_file: str) -> Dict:
 
 def main(argv: List[str]) -> None:
     logger.debug("argv: {a!r}".format(a=argv))
+    logger.debug("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
 
     if len(argv) < 4:
         print("usage: %s <job specification input file> <results output file> <user log file> [api version]" % argv[0],
@@ -47,6 +52,11 @@ def main(argv: List[str]) -> None:
     api_version = argv[4] if len(argv) == 5 else None
 
     _setup_user_logging(log_file)
+
+    # Override default temp dir (under CWD). Original default temp dir `/tmp` might be cleaned up unexpectedly.
+    temp_dir = Path(os.getcwd()) / "tmp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["TMPDIR"] = str(temp_dir)
 
     try:
         job_specification = _parse(job_specification_file)
