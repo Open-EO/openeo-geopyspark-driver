@@ -147,7 +147,7 @@ if __name__ == '__main__':
         #'keyfile': 'test.key'
     }
 
-    from openeo_driver.views import app
+    from openeo_driver.views import app, build_backend_deploy_metadata
     from flask_cors import CORS
     CORS(app)
     from openeogeotrellis import get_backend_version
@@ -160,7 +160,9 @@ if __name__ == '__main__':
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'Local GeoPySpark'
     app.config['OPENEO_DESCRIPTION'] = 'Local openEO API using GeoPySpark driver'
-    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = {'date': str(datetime.utcnow())}
+    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = build_backend_deploy_metadata(
+        packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+    )
     application = StandaloneApplication(app, options)
 
     application.run()

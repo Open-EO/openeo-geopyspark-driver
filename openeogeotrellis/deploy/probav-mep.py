@@ -122,7 +122,7 @@ def main():
         'errorlog': '-'
     }
     tcp.close()
-    from openeo_driver.views import app
+    from openeo_driver.views import app, build_backend_deploy_metadata
     from flask_cors import CORS
     CORS(app)
     from openeogeotrellis import get_backend_version
@@ -136,7 +136,9 @@ def main():
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'VITO Remote Sensing openEO API'
     app.config['OPENEO_DESCRIPTION'] = 'OpenEO API to the VITO Remote Sensing product catalog and processing services (using GeoPySpark driver).'
-    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = {'date': str(datetime.datetime.utcnow())}
+    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = build_backend_deploy_metadata(
+        packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+    )
 
     application = StandaloneApplication(app, options)
 
