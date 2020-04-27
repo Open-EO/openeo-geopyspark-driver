@@ -276,6 +276,7 @@ class GpsBatchJobs(backend.BatchJobs):
             args.append(executor_memory)
 
             try:
+                logger.info("Submitting job: {a!r}".format(a=args))
                 output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
             except CalledProcessError as e:
                 logger.exception(e)
