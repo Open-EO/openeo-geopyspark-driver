@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 import subprocess
 from unittest import mock
-import base64
 
 import pytest
 
@@ -193,15 +192,16 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_pg = json.loads(base64.b64decode(batch_job_args[2]).decode())
-            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
+            job_input = (tmp_path / "in")
             job_output = (tmp_path / "out")
             job_log = (tmp_path / "log")
+            assert batch_job_args[2] == str(job_input)
             assert batch_job_args[3] == str(job_output)
             assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == TEST_USER
-            assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['22G', '5G']
+            assert batch_job_args[7] == api.api_version
+            assert batch_job_args[8:] == ['22G', '5G']
+            job_pg = load_json(job_input)
+            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -279,15 +279,16 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_pg = json.loads(base64.b64decode(batch_job_args[2]).decode())
-            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
+            job_input = (tmp_path / "in")
             job_output = (tmp_path / "out")
             job_log = (tmp_path / "log")
+            assert batch_job_args[2] == str(job_input)
             assert batch_job_args[3] == str(job_output)
             assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == TEST_USER
-            assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['3g', '11g']
+            assert batch_job_args[7] == api.api_version
+            assert batch_job_args[8:] == ['3g', '11g']
+            job_pg = load_json(job_input)
+            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk, \
