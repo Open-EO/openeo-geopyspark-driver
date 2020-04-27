@@ -40,8 +40,8 @@ def _parse(job_specification_file: str) -> Dict:
 
 
 def main(argv: List[str]) -> None:
-    logger.debug("argv: {a!r}".format(a=argv))
-    logger.debug("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
+    logger.info("argv: {a!r}".format(a=argv))
+    logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
 
     if len(argv) < 4:
         print("usage: %s <job specification input file> <results output file> <user log file> [api version]" % argv[0],
@@ -56,6 +56,7 @@ def main(argv: List[str]) -> None:
     # Override default temp dir (under CWD). Original default temp dir `/tmp` might be cleaned up unexpectedly.
     temp_dir = Path(os.getcwd()) / "tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Using temp dir {t}".format(t=temp_dir))
     os.environ["TMPDIR"] = str(temp_dir)
 
     try:
