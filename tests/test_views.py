@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 from unittest import mock
+import os
 
 import pytest
 
@@ -172,9 +173,8 @@ class TestBatchJobs:
 
     def test_create_and_start_and_download(self, api, tmp_path):
         with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un, \
-                mock.patch.object(GpsBatchJobs, '_get_job_output_dir') as get_job_output_dir:
-            get_job_output_dir.return_value = tmp_path
+                self._mock_utcnow() as un:
+            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -182,6 +182,7 @@ class TestBatchJobs:
             job_id = res.headers['OpenEO-Identifier']
             # Start job
             with mock.patch('subprocess.run') as run:
+                os.mkdir(tmp_path / job_id)
                 stdout = api.read_file("spark-submit-stdout.txt")
                 run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
                 # Trigger job start
@@ -192,16 +193,14 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_input = (tmp_path / "in")
-            job_output = (tmp_path / "out")
-            job_log = (tmp_path / "log")
-            assert batch_job_args[2] == str(job_input)
+            job_output = (tmp_path / job_id / "out")
+            job_log = (tmp_path / job_id / "log")
+            assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_output)
             assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == api.api_version
-            assert batch_job_args[8:] == ['22G', '5G']
-            job_pg = load_json(job_input)
-            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
+            assert batch_job_args[7] == TEST_USER
+            assert batch_job_args[8] == api.api_version
+            assert batch_job_args[9:] == ['22G', '5G']
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -210,6 +209,7 @@ class TestBatchJobs:
             assert meta_data["user_id"] == TEST_USER
             assert meta_data["status"] == "created"
             assert meta_data["api_version"] == api.api_version
+            assert json.loads(meta_data["specification"]) == (data['process'] if api.api_version_compare.at_least("1.0.0") else data)
             assert meta_data["application_id"] == 'application_1587387643572_0842'
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -258,9 +258,8 @@ class TestBatchJobs:
 
     def test_create_and_start_job_options(self, api, tmp_path):
         with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un, \
-                mock.patch.object(GpsBatchJobs, '_get_job_output_dir') as get_job_output_dir:
-            get_job_output_dir.return_value = tmp_path
+                self._mock_utcnow() as un:
+            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -279,21 +278,18 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_input = (tmp_path / "in")
-            job_output = (tmp_path / "out")
-            job_log = (tmp_path / "log")
-            assert batch_job_args[2] == str(job_input)
+            job_output = (tmp_path / job_id / "out")
+            job_log = (tmp_path / job_id / "log")
+            assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_output)
             assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == api.api_version
-            assert batch_job_args[8:] == ['3g', '11g']
-            job_pg = load_json(job_input)
-            assert job_pg["process_graph"] == self.DUMMY_PROCESS_GRAPH
+            assert batch_job_args[7] == TEST_USER
+            assert batch_job_args[8] == api.api_version
+            assert batch_job_args[9:] == ['3g', '11g']
 
     def test_cancel_job(self, api, tmp_path):
-        with self._mock_kazoo_client() as zk, \
-                mock.patch.object(GpsBatchJobs, '_get_job_output_dir') as get_job_output_dir:
-            get_job_output_dir.return_value = tmp_path
+        with self._mock_kazoo_client() as zk:
+            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)

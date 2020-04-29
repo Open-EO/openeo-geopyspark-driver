@@ -5,8 +5,8 @@ if [ -z "${OPENEO_VENV_ZIP}" ]; then
     OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
 fi
 
-if [ "$#" -lt 6 ]; then
-    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> [api version]"
+if [ "$#" -lt 7 ]; then
+    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> <OpenEO user> [api version] [driver memory] [executor memory]"
     exit 1
 fi
 
@@ -27,9 +27,10 @@ outputFile=$3
 userLogFile=$4
 principal=$5
 keyTab=$6
-apiVersion=$7
-drivermemory=${8-22G}
-executormemory=${9-4G}
+openEoUser=$7
+apiVersion=$8
+drivermemory=${9-22G}
+executormemory=${10-4G}
 
 pysparkPython="venv/bin/python"
 
@@ -60,12 +61,18 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
 
+if ipa -v user-find --login "${openEoUser}"; then
+  run_as="--proxy-user ${openEoUser}"
+else
+  run_as="--principal ${principal} --keytab ${keyTab}"
+fi
+
 spark-submit \
  --master yarn --deploy-mode cluster \
- --principal ${principal} --keytab ${keyTab} \
+ ${run_as} \
  --conf spark.yarn.submit.waitAppCompletion=false \
- --driver-memory ${drivermemory} \
- --executor-memory ${executormemory} \
+ --driver-memory "${drivermemory}" \
+ --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryoserializer.buffer.max=512m \
@@ -95,4 +102,5 @@ spark-submit \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
- --name "${jobName}" "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${userLogFile}" "${apiVersion}"
+ --name "${jobName}" \
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${userLogFile}" "${apiVersion}"

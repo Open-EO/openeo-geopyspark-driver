@@ -4,9 +4,13 @@ import os
 from pathlib import Path
 import sys
 from typing import Dict, List
+from pathlib import Path
+import os
+import shutil
+import stat
 
 from openeo import ImageCollection
-from openeo.util import TimingLogger
+from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from openeogeotrellis.utils import kerberos
@@ -32,8 +36,16 @@ def _setup_user_logging(log_file: str) -> None:
     user_facing_logger.addHandler(file_handler)
 
 
+def _create_job_dir(job_dir: Path):
+    ensure_dir(job_dir)
+    shutil.chown(job_dir, user=None, group='eodata')
+
+    current_flags = os.stat(job_dir).st_mode
+    os.chmod(job_dir, current_flags | stat.S_ISGID)  # make children inherit this group
+
+
 def _parse(job_specification_file: str) -> Dict:
-    with open(job_specification_file, 'r') as f:
+    with open(job_specification_file, 'rt', encoding='utf-8') as f:
         job_specification = json.load(f)
 
     return job_specification
@@ -50,6 +62,8 @@ def main(argv: List[str]) -> None:
 
     job_specification_file, output_file, log_file = argv[1], argv[2], argv[3]
     api_version = argv[4] if len(argv) == 5 else None
+
+    _create_job_dir(Path(output_file).parent)
 
     _setup_user_logging(log_file)
 

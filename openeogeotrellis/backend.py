@@ -8,6 +8,7 @@ import sys
 import traceback
 from typing import List, Dict, Union
 import uuid
+import tempfile
 
 import geopyspark as gps
 from geopyspark import TiledRasterLayer, LayerType
@@ -17,7 +18,7 @@ from py4j.protocol import Py4JJavaError
 
 from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.util import ensure_dir, dict_no_none
+from openeo.util import dict_no_none
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata
 from openeo_driver.errors import JobNotFinishedException, JobNotStartedException
@@ -180,10 +181,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsBatchJobs(backend.BatchJobs):
-
-    def __init__(self):
-        super().__init__()
-        self._output_root_dir = Path("/data/projects/OpenEO/")
+    _OUTPUT_ROOT_DIR = Path("/data/projects/OpenEO/")
 
     def create_job(self, user_id: str, process: dict, api_version: str, job_options: dict = None) -> BatchJobMetadata:
         job_id = str(uuid.uuid4())
@@ -215,7 +213,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
 
     def _get_job_output_dir(self, job_id: str) -> Path:
-        return ensure_dir(self._output_root_dir / job_id)
+        return GpsBatchJobs._OUTPUT_ROOT_DIR / job_id
 
     def start_job(self, job_id: str, user_id: str):
         from pyspark import SparkContext
@@ -224,16 +222,16 @@ class GpsBatchJobs(backend.BatchJobs):
             job_info = registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
+            # restart logic
             current_status = job_info['status']
             if current_status in ['queued', 'running']:
                 return
             elif current_status != 'created':
-                # TODO: is this about restarting a job?
                 registry.mark_ongoing(job_id, user_id)
                 registry.set_application_id(job_id, user_id, None)
                 registry.set_status(job_id, user_id, 'created')
 
-            spec = json.loads(job_info.get('specification'))
+            spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
 
             driver_memory = extra_options.get("driver-memory", "22G")
@@ -242,46 +240,54 @@ class GpsBatchJobs(backend.BatchJobs):
             kerberos()
 
             output_dir = self._get_job_output_dir(job_id)
-            input_file = output_dir / "in"
             # TODO: how support multiple output files?
             output_file = output_dir / "out"
             log_file = output_dir / "log"
-
-            with input_file.open('w') as f:
-                f.write(job_info['specification'])
 
             conf = SparkContext.getOrCreate().getConf()
             principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
             script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
 
-            args = [script_location, "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
-                    str(input_file),
-                    str(output_file),
-                    str(log_file)]
+            with tempfile.NamedTemporaryFile(mode="wt",
+                                             encoding='utf-8',
+                                             dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
+                                             prefix="{j}_".format(j=job_id),
+                                             suffix=".in") as temp_input_file:
+                temp_input_file.write(job_info['specification'])
+                temp_input_file.flush()
 
-            if principal is not None and key_tab is not None:
-                args.append(principal)
-                args.append(key_tab)
-            else:
-                args.append("no_principal")
-                args.append("no_keytab")
-            if api_version:
-                args.append(api_version)
-            else:
-                args.append("0.4.0")
+                args = [script_location,
+                        "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
+                        temp_input_file.name,
+                        str(output_file),
+                        str(log_file)]
 
-            args.append(driver_memory)
-            args.append(executor_memory)
+                if principal is not None and key_tab is not None:
+                    args.append(principal)
+                    args.append(key_tab)
+                else:
+                    args.append("no_principal")
+                    args.append("no_keytab")
 
-            try:
-                logger.info("Submitting job: {a!r}".format(a=args))
-                output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-            except CalledProcessError as e:
-                logger.exception(e)
-                logger.error(e.stdout)
-                logger.error(e.stderr)
-                raise e
+                args.append(user_id)
+
+                if api_version:
+                    args.append(api_version)
+                else:
+                    args.append("0.4.0")
+
+                args.append(driver_memory)
+                args.append(executor_memory)
+
+                try:
+                    logger.info("Submitting job: {a!r}".format(a=args))
+                    output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                except CalledProcessError as e:
+                    logger.exception(e)
+                    logger.error(e.stdout)
+                    logger.error(e.stderr)
+                    raise e
 
             try:
                 # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
