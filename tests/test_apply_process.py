@@ -11,7 +11,7 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo.imagecollection import CollectionMetadata
+from openeo.metadata import CollectionMetadata
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -354,7 +354,11 @@ class TestCustomFunctions(TestCase):
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
         metadata = CollectionMetadata({
-            "properties": {
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["B04", "B08"]}
+            },
+            "summaries": {
                 "eo:bands": [
                     {"name": "B04", "common_name": "red"},
                     {"name": "B08", "common_name": "nir"},
@@ -378,7 +382,11 @@ class TestCustomFunctions(TestCase):
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
         metadata = CollectionMetadata({
-            "properties": {
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["B04", "B08"]}
+            },
+            "summaries": {
                 "eo:bands": [
                     {"name": "B04", "common_name": "red"},
                     {"name": "B08", "common_name": "nir"},
@@ -404,7 +412,11 @@ class TestCustomFunctions(TestCase):
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
 
         metadata = CollectionMetadata({
-            "properties": {
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["the_band"]}
+            },
+            "summaries": {
                 "eo:bands": [
                     {"name": "the_band"}
                 ]

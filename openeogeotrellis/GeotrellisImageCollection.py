@@ -34,7 +34,9 @@ from pandas import Series
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import xarray as xr
 
-from openeo.imagecollection import ImageCollection, CollectionMetadata
+from openeo.imagecollection import ImageCollection
+import openeo.metadata
+from openeo.metadata import CollectionMetadata
 from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import SecondaryService, AbstractServiceRegistry
@@ -180,7 +182,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     @classmethod
     def _tile_to_datacube(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
-                          bands_metadata: List[CollectionMetadata.Band], start_times=None):
+                          band_dimension: openeo.metadata.BandDimension, start_times=None):
         from openeo_udf.api.datacube import DataCube
         coords = {}
         dims = ('bands','x', 'y')
@@ -188,9 +190,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             #we have a temporal dimension
             coords = {'t':start_times}
             dims = ('t' ,'bands','x', 'y')
-        if bands_metadata is not None and len(bands_metadata) > 0:
-            band_names = [ m.name for m in bands_metadata]
-            coords['bands']=band_names
+        if band_dimension:
+            # TODO: also use the band dimension name (`band_dimension.name`) instead of hardcoded "bands"?
+            coords['bands'] = band_dimension.band_names
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return DataCube(the_array)
 
@@ -222,7 +224,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
                 multidim_array,
                 extent=extent,
-                bands_metadata=openeo_metadata.bands,
+                band_dimension=openeo_metadata.band_dimension,
                 start_times=pd.DatetimeIndex(dates)
             )
 
@@ -268,7 +270,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
                 geotrellis_tile[1].cells,
                 extent=extent,
-                bands_metadata=openeo_metadata.bands
+                band_dimension=openeo_metadata.band_dimension
             )
 
             data = UdfData({"EPSG": 900913}, [datacube])

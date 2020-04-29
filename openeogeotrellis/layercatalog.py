@@ -4,7 +4,7 @@ from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway
 
 from typing import List
-from openeo.imagecollection import CollectionMetadata
+from openeo.metadata import CollectionMetadata
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.utils import read_json
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection

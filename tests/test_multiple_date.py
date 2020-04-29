@@ -12,6 +12,7 @@ from numpy.testing import assert_array_almost_equal
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from openeo.metadata import CollectionMetadata
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.numpy_aggregators import max_composite
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -309,19 +310,27 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), {
-            "bands": [
-                {
-                    "band_id": "2",
-                    "name": "blue",
-                    "wavelength_nm": 496.6,
-                    "res_m": 10,
-                    "scale": 0.0001,
-                    "offset": 0,
-                    "type": "int16",
-                    "unit": "1"
-                }]
-        })
+        imagecollection = GeotrellisTimeSeriesImageCollection(
+            input, InMemoryServiceRegistry(),
+            metadata=CollectionMetadata({
+                "cube:dimensions": {
+                    # TODO: also specify other dimensions?
+                    "bands": {"type": "bands", "values": ["2"]}
+                },
+                "summaries": {"eo:bands": [
+                    {
+                        "name": "2",
+                        "common_name": "blue",
+                        "wavelength_nm": 496.6,
+                        "res_m": 10,
+                        "scale": 0.0001,
+                        "offset": 0,
+                        "type": "int16",
+                        "unit": "1"
+                    }
+                ]}
+            })
+        )
         import os, openeo_udf
         dir = os.path.dirname(openeo_udf.functions.__file__)
         file_name = os.path.join(dir, "datacube_reduce_time_sum.py")
@@ -339,20 +348,27 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), {
-            "bands": [
-                {
-                    "band_id": "2",
-                    "name": "blue",
-                    "wavelength_nm": 496.6,
-                    "res_m": 10,
-                    "scale": 0.0001,
-                    "offset": 0,
-                    "type": "int16",
-                    "unit": "1"
-                }]
-        })
-
+        imagecollection = GeotrellisTimeSeriesImageCollection(
+            input, InMemoryServiceRegistry(),
+            metadata=CollectionMetadata({
+                "cube:dimensions": {
+                    # TODO: also specify other dimensions?
+                    "bands": {"type": "bands", "values": ["2"]}
+                },
+                "summaries": {"eo:bands": [
+                    {
+                        "name": "2",
+                        "common_name": "blue",
+                        "wavelength_nm": 496.6,
+                        "res_m": 10,
+                        "scale": 0.0001,
+                        "offset": 0,
+                        "type": "int16",
+                        "unit": "1"
+                    }
+                ]}
+            })
+        )
 
         udf_code = """
 def rct_savitzky_golay(udf_data:UdfData):
