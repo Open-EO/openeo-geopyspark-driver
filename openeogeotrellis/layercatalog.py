@@ -1,17 +1,17 @@
 import logging
+from typing import List
 
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway
 
-from typing import List
 from openeo.metadata import CollectionMetadata
 from openeo_driver.backend import CollectionCatalog
+from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
-from openeo_driver.errors import ProcessGraphComplexityException
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +25,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._service_registry = service_registry
         self._geotiff_pyramid_factories = {}
 
-    def _strip_private_metadata(self, d: dict) -> dict:
-        """Strip fields starting with underscore from a dictionary."""
-        return {k: v for (k, v) in d.items() if not k.startswith('_')}
-
-    def get_all_metadata(self) -> List[dict]:
-        return [self._strip_private_metadata(d) for d in super().get_all_metadata()]
-
-    def get_collection_metadata(self, collection_id, strip_private=True) -> dict:
-        metadata = super().get_collection_metadata(collection_id)
-        if strip_private:
-            metadata = self._strip_private_metadata(metadata)
-        return metadata
-
     def load_collection(self, collection_id: str, viewing_parameters: dict) -> 'GeotrellisTimeSeriesImageCollection':
         logger.info("Creating layer for {c} with viewingParameters {v}".format(c=collection_id, v=viewing_parameters))
 
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()
 
-        metadata = CollectionMetadata(self.get_collection_metadata(collection_id, strip_private=False))
+        metadata = CollectionMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -213,10 +200,9 @@ def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPy
         metadata = {l["id"]: l for l in metadata}
         for path in catalog_files[1:]:
             logger.info("Updating layer catalog metadata from {f!r}".format(f=path))
-            updates = {l["id"]:l for l in read_json(path)}
+            updates = {l["id"]: l for l in read_json(path)}
             metadata = dict_merge_recursive(metadata, updates, overwrite=True)
         metadata = list(metadata.values())
-
 
     return GeoPySparkLayerCatalog(
         all_metadata=metadata,

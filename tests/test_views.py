@@ -2,6 +2,7 @@ import contextlib
 import datetime
 import json
 from pathlib import Path
+import re
 import subprocess
 from unittest import mock
 import os
@@ -53,6 +54,42 @@ def test_file_formats(api100):
 def test_health(api):
     resp = api.get('/health').assert_status_code(200)
     assert resp.json == {"health": 'Health check: 14'}
+
+
+class TestCollections:
+
+    def test_all_collections(self, api):
+        collections = api.get('/collections').assert_status_code(200).json["collections"]
+        assert len(collections) > 2
+        for collections in collections:
+            assert re.match(r'^[A-Za-z0-9_\-\.~\/]+$', collections['id'])
+            assert 'stac_version' in collections
+            assert 'description' in collections
+            assert 'license' in collections
+            assert 'extent' in collections
+            assert 'links' in collections
+
+    def test_collections_s2_radiometry(self, api):
+        resp = api.get('/collections/CGS_SENTINEL2_RADIOMETRY_V102_001').assert_status_code(200).json
+        assert resp['id'] == "CGS_SENTINEL2_RADIOMETRY_V102_001"
+        assert "Sentinel 2" in resp['description']
+        assert resp['extent']['spatial'] == [180, -56, -180, 83]
+        assert resp['extent']['temporal'] == ["2015-07-06", None]
+        eo_bands = [
+            {"name": "2", "common_name": "blue", "center_wavelength": 0.4966},
+            {"name": "3", "common_name": "green", "center_wavelength": 0.560},
+            {"name": "4", "common_name": "red", "center_wavelength": 0.6645},
+            {"name": "8", "common_name": "nir", "center_wavelength": 0.8351}
+        ]
+        cube_dims = {'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}}
+        if api.api_version_compare.at_least("1.0.0"):
+            assert resp['stac_version'] == "0.9.0"
+            assert resp['cube:dimensions'] == cube_dims
+            assert resp['summaries']["eo:bands"] == eo_bands
+        else:
+            assert resp['stac_version'] == "0.6.2"
+            assert resp["properties"]['cube:dimensions'] == cube_dims
+            assert resp['properties']["eo:bands"] == eo_bands
 
 
 class TestBatchJobs:
