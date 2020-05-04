@@ -12,7 +12,14 @@
       }
     },
     "license": "free",
-    "bands":["fapar"],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "fapar"
+        ]
+      }
+    },
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -43,7 +50,14 @@
       }
     },
     "license": "free",
-    "bands":["fapar"],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "fapar"
+        ]
+      }
+    },
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -74,7 +88,14 @@
       }
     },
     "license": "free",
-    "bands":["fapar"],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "fapar"
+        ]
+      }
+    },
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -105,7 +126,14 @@
       }
     },
     "license": "free",
-    "bands":["lai"],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "lai"
+        ]
+      }
+    },
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -136,7 +164,15 @@
       }
     },
     "license": "free",
-    "bands":["ndvi"],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "ndvi"
+        ]
+      }
+    },
+
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -167,7 +203,14 @@
       }
     },
     "license": "free",
-    "bands":["ba"],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "ba"
+        ]
+      }
+    },
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -207,17 +250,33 @@
         null
       ]
     },
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["VV", "VH", "angle"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "VV",
+          "VH",
+          "angle"
+        ]
+      }
+    },
+    "summaries": {
       "eo:bands": [
-        {"name": "VV"},
-        {"name": "VH"},
-        {"name": "angle"}
+        {
+          "name": "VV",
+          "type": "float",
+          "unit": "1"
+        },
+        {
+          "name": "VH",
+          "type": "float",
+          "unit": "1"
+        },
+        {
+          "name": "angle",
+          "type": "int16",
+          "unit": "1"
+        }
       ]
     },
     "links": [
@@ -225,26 +284,6 @@
         "rel": "alternate",
         "href": "https://terrascope.be/en/products",
         "title": "Product web page."
-      }
-    ],
-    "bands": [
-      {
-        "band_id": "VV",
-        "name": "VV",
-        "type": "float",
-        "unit": "1"
-      },
-      {
-        "band_id": "VH",
-        "name": "VH",
-        "type": "float",
-        "unit": "1"
-      },
-      {
-        "band_id": "angle",
-        "name": "angle",
-        "type": "int16",
-        "unit": "1"
       }
     ]
   },
@@ -270,44 +309,39 @@
         null
       ]
     },
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["VV", "VH", "angle"]
-        }
-      },
-      "eo:bands": [
-        {"name": "VV"},
-        {"name": "VH"},
-        {"name": "angle"}
-      ]
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "VV",
+          "VH",
+          "angle"
+        ]
+      }
     },
-    "links": [
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "VV",
+          "type": "float",
+          "unit": "1"
+        },
+        {
+          "name": "VH",
+          "type": "float",
+          "unit": "1"
+        },
+        {
+          "name": "angle",
+          "type": "int16",
+          "unit": "1"
+        }
+      ]
+    },    "links": [
       {
         "rel": "alternate",
         "href": "https://terrascope.be/en/products",
         "title": "Product web page."
-      }
-    ],
-    "bands": [
-      {
-        "band_id": "VV",
-        "name": "VV",
-        "type": "float",
-        "unit": "1"
-      },
-      {
-        "band_id": "VH",
-        "name": "VH",
-        "type": "float",
-        "unit": "1"
-      },
-      {
-        "band_id": "angle",
-        "name": "angle",
-        "type": "int16",
-        "unit": "1"
       }
     ]
   },
@@ -334,18 +368,58 @@
         null
       ]
     },
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["2", "3", "4", "8"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["2", "3", "4", "8"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
-        {"name": "2", "common_name":  "blue", "center_wavelength":  0.4966},
-        {"name": "3", "common_name": "green", "center_wavelength":  0.560},
-        {"name": "4", "common_name": "red", "center_wavelength":  0.6645},
-        {"name": "8", "common_name": "nir", "center_wavelength":  0.8351}
+        {
+          "name": "2",
+          "common_name": "blue",
+          "center_wavelength": 0.4966,
+          "wavelength_nm": 496.6,
+          "res_m": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "3",
+          "common_name": "green",
+          "center_wavelength": 0.560,
+          "wavelength_nm": 560,
+          "res_m": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "4",
+          "common_name": "red",
+          "center_wavelength": 0.6645,
+          "wavelength_nm": 664.5,
+          "res_m": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "8",
+          "common_name": "nir",
+          "center_wavelength": 0.8351,
+          "wavelength_nm": 835.1,
+          "res_m": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        }
       ]
     },
     "links": [
@@ -353,48 +427,6 @@
         "rel": "alternate",
         "href": "https://terrascope.be/en/products",
         "title": "Product web page."
-      }
-    ],
-    "bands": [
-      {
-        "band_id": "2",
-        "name": "blue",
-        "wavelength_nm": 496.6,
-        "res_m": 10,
-        "scale": 0.0001,
-        "offset": 0,
-        "type": "int16",
-        "unit": "1"
-      },
-      {
-        "band_id": "3",
-        "name": "green",
-        "wavelength_nm": 560,
-        "res_m": 10,
-        "scale": 0.0001,
-        "offset": 0,
-        "type": "int16",
-        "unit": "1"
-      },
-      {
-        "band_id": "4",
-        "name": "red",
-        "wavelength_nm": 664.5,
-        "res_m": 10,
-        "scale": 0.0001,
-        "offset": 0,
-        "type": "int16",
-        "unit": "1"
-      },
-      {
-        "band_id": "8",
-        "name": "nir",
-        "wavelength_nm": 835.1,
-        "res_m": 10,
-        "scale": 0.0001,
-        "offset": 0,
-        "type": "int16",
-        "unit": "1"
       }
     ]
   },
@@ -421,7 +453,14 @@
         null
       ]
     },
-    "bands":[],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "fapar"
+        ]
+      }
+    },
      "links": [
       {
         "rel": "alternate",
@@ -452,7 +491,14 @@
         null
       ]
     },
-    "bands":[],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "fcover"
+        ]
+      }
+    },
     "links":[]
   },
   {
@@ -497,7 +543,14 @@
         null
       ]
     },
-    "bands":[],
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "ndvi"
+        ]
+      }
+    },
     "links": [
       {
         "rel": "alternate",
@@ -541,13 +594,17 @@
         ]
       }
     },
-    "bands":[ {
-        "band_id": "classification",
-        "name": "classification",
-        "res_m": 20,
-        "type": "int8",
-        "unit": "1"
-      }],
+    "summaries": {
+      "eo:bands": [
+        {
+          "band_id": "classification",
+          "name": "classification",
+          "res_m": 20,
+          "type": "int8",
+          "unit": "1"
+        }
+      ]
+    },
     "links": [
       {
         "rel": "alternate",
@@ -559,9 +616,16 @@
   {
     "id": "S2_NDVI_S3",
     "name": "S2_NDVI_S3",
-    "bands":[],
     "title": "TerraScope test dataset on SoblooDias",
     "description": "NDVI",
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "ndvi"
+        ]
+      }
+    },
     "_vito": {
       "data_source": {
         "type": "S3",
@@ -576,13 +640,13 @@
   {
     "id": "TERRASCOPE_S2_FAPAR_V2",
     "name": "TERRASCOPE_S2_FAPAR_V2",
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["FAPAR_10M"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["FAPAR_10M"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "FAPAR_10M"}
       ]
@@ -598,13 +662,13 @@
   {
     "id": "TERRASCOPE_S2_NDVI_V2",
     "name": "TERRASCOPE_S2_NDVI_V2",
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["NDVI_10M"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["NDVI_10M"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "NDVI_10M"}
       ]
@@ -620,13 +684,13 @@
   {
     "id": "TERRASCOPE_S2_LAI_V2",
     "name": "TERRASCOPE_S2_LAI_V2",
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["LAI_10M"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["LAI_10M"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "LAI_10M"}
       ]
@@ -642,13 +706,13 @@
   {
     "id": "TERRASCOPE_S2_FCOVER_V2",
     "name": "TERRASCOPE_S2_FCOVER_V2",
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["FCOVER_10M"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["FCOVER_10M"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "FCOVER_10M"}
       ]
@@ -661,16 +725,16 @@
       }
     }
   },
- {
+  {
     "id": "TERRASCOPE_S2_TOC_V2",
     "name": "TERRASCOPE_S2_TOC_V2",
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M", "TOC-B05_20M", "SCENECLASSIFICATION_20M"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M", "TOC-B05_20M", "SCENECLASSIFICATION_20M"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "TOC-B02_10M"},
         {"name": "TOC-B03_10M"},
@@ -695,26 +759,13 @@
         "type": "file"
       }
     },
-    "bands": [
-      { "band_id": "1" },
-      { "band_id": "2" },
-      { "band_id": "3" },
-      { "band_id": "4" },
-      { "band_id": "5" },
-      { "band_id": "6" },
-      { "band_id": "7" },
-      { "band_id": "8" },
-      { "band_id": "11" },
-      { "band_id": "12" },
-      { "band_id": "8A" }
-    ],
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["1", "2", "3", "4", "5", "6", "7", "8", "11", "12", "8A"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["1", "2", "3", "4", "5", "6", "7", "8", "11", "12", "8A"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "1"},
         {"name": "2"},
@@ -750,13 +801,13 @@
         null
       ]
     },
-    "properties": {
-      "cube:dimensions": {
-        "bands": {
-          "type": "bands",
-          "values": ["VV", "VH", "VV_DB", "VH_DB"]
-        }
-      },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": ["VV", "VH", "VV_DB", "VH_DB"]
+      }
+    },
+    "summaries": {
       "eo:bands": [
         {"name": "VV"},
         {"name": "VH"},
@@ -764,12 +815,6 @@
         {"name": "VH_DB"}
       ]
     },
-    "bands": [
-      { "band_id": "VV" },
-      { "band_id": "VH" },
-      { "band_id": "VV_DB" },
-      { "band_id": "VH_DB" }
-    ],
      "links": [
       {
         "rel": "alternate",

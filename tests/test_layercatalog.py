@@ -1,5 +1,6 @@
 import unittest.mock as mock
 
+from openeo.util import deep_get
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
@@ -7,17 +8,16 @@ def test_issue77_band_metadata():
     # TODO: move to integration tests?
     catalog = get_layer_catalog()
     for layer in catalog.get_all_metadata():
-        # TODO: stop doing this non-standard band metadata ("bands" item in metadata root)
-        old_bands = [b if isinstance(b, str) else b["band_id"] for b in layer.get("bands", [])]
-        eo_bands = [b["name"] for b in layer.get("properties", {}).get('eo:bands', [])]
+        assert "bands" not in layer
+        assert deep_get(layer, "properties", "cube:dimensions", default=None) is None
+        assert deep_get(layer, "properties", "eo:bands", default=None) is None
+        eo_bands = [b["name"] for b in deep_get(layer, "summaries", 'eo:bands', default=[])]
         cube_dimension_bands = []
-        for cube_dim in layer.get("properties", {}).get("cube:dimensions", {}).values():
+        for cube_dim in layer.get("cube:dimensions", {}).values():
             if cube_dim["type"] == "bands":
                 cube_dimension_bands = cube_dim["values"]
-        if len(old_bands) > 1:
-            assert old_bands == eo_bands
-            assert old_bands == cube_dimension_bands
-        assert eo_bands == cube_dimension_bands
+        if eo_bands:
+            assert eo_bands == cube_dimension_bands
 
 
 def test_get_layer_catalog_with_updates():
