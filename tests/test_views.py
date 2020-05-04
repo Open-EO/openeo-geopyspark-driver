@@ -85,11 +85,13 @@ class TestCollections:
         if api.api_version_compare.at_least("1.0.0"):
             assert resp['stac_version'] == "0.9.0"
             assert resp['cube:dimensions'] == cube_dims
-            assert resp['summaries']["eo:bands"] == eo_bands
+            for f in eo_bands[0].keys():
+                assert [b[f] for b in resp['summaries']['eo:bands']] == [b[f] for b in eo_bands]
         else:
             assert resp['stac_version'] == "0.6.2"
             assert resp["properties"]['cube:dimensions'] == cube_dims
-            assert resp['properties']["eo:bands"] == eo_bands
+            for f in eo_bands[0].keys():
+                assert [b[f] for b in resp['properties']["eo:bands"]] == [b[f] for b in eo_bands]
 
 
 class TestBatchJobs:

@@ -172,7 +172,6 @@
         ]
       }
     },
-
     "extent": {
       "crs": "EPSG:4326",
       "spatial":[180,-56,-180,83],
@@ -232,7 +231,7 @@
     "id": "S1_GRD_SIGMA0_ASCENDING",
     "name": "S1_GRD_SIGMA0_ASCENDING",
     "product_id": "S1_GRD_SIGMA0_ASCENDING",
-    "title": "Sentinel 1 GRD Sigma0 product, VV, VH and angle.",
+    "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
     "_vito": {
       "data_source": {
         "type": "Accumulo",
@@ -254,8 +253,8 @@
       "bands": {
         "type": "bands",
         "values": [
-          "VV",
           "VH",
+          "VV",
           "angle"
         ]
       }
@@ -263,12 +262,12 @@
     "summaries": {
       "eo:bands": [
         {
-          "name": "VV",
+          "name": "VH",
           "type": "float",
           "unit": "1"
         },
         {
-          "name": "VH",
+          "name": "VV",
           "type": "float",
           "unit": "1"
         },
