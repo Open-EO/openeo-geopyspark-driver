@@ -533,6 +533,14 @@
         null
       ]
     },
+    "cube:dimensions": {
+      "bands": {
+        "type": "bands",
+        "values": [
+          "classification"
+        ]
+      }
+    },
     "bands":[ {
         "band_id": "classification",
         "name": "classification",
