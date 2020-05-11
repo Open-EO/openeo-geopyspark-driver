@@ -30,8 +30,8 @@ setup(
     tests_require=['pytest','mock'],
     install_requires=[
         'flask',
-        'openeo>=0.2.2a1.*',
-        'openeo_driver>=0.2.1a1.*',
+        'openeo>=0.3.0a1.*',
+        'openeo_driver>=0.2.2a1.*',
         'openeo_udf>=0.0.9.post0',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
