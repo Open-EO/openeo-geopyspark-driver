@@ -21,6 +21,7 @@ from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
 
 from openeo_driver.backend import ServiceMetadata
+from openeo_driver.errors import InternalException, FeatureUnsupportedException
 
 try:
     from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
@@ -123,9 +124,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self._apply_to_levels_geotrellis_rdd(lambda rdd,k: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
 
     def reduce(self, reducer: str, dimension: str) -> 'ImageCollection':
+        # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
         from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite
 
-        reducer = self._normalize_reducer(dimension, reducer)
+        reducer = self._normalize_temporal_reducer(dimension, reducer)
 
         if reducer == 'Variance':
             return self._aggregate_over_time_numpy(var_composite)
@@ -152,16 +154,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
         return result
 
-    def _normalize_reducer(self, dimension, reducer):
-        if dimension != 'temporal':
-            raise AttributeError('Reduce process only works on temporal dimension. Requested dimension: ' + str(dimension))
-        if (reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE"] or reducer.upper() == "SD"):
-            if reducer.upper() == "SD":
-                reducer = "StandardDeviation"
-            else:
-                reducer = reducer.lower().capitalize()
+    def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
+        if dimension != self.metadata.temporal_dimension.name:
+            raise FeatureUnsupportedException('Reduce on dimension {d!r} not supported'.format(d=dimension))
+        if reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE"]:
+            reducer = reducer.lower().capitalize()
+        elif reducer.upper() == "SD":
+            reducer = "StandardDeviation"
         else:
-            raise NotImplementedError("The reducer is not supported by the backend: " + reducer)
+            raise FeatureUnsupportedException('Reducer {r!r} not supported'.format(r=reducer))
         return reducer
 
     @classmethod
@@ -297,7 +298,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #reduce
         pass
 
-    def aggregate_temporal(self, intervals:List,labels:List, reducer, dimension:str = 'temporal') -> 'ImageCollection' :
+    def aggregate_temporal(self, intervals: List, labels: List, reducer, dimension: str = None) -> 'ImageCollection':
         """ Computes a temporal aggregation based on an array of date and/or time intervals.
 
             Calendar hierarchies such as year, month, week etc. must be transformed into specific intervals by the clients. For each interval, all data along the dimension will be passed through the reducer. The computed values will be projected to the labels, so the number of labels and the number of intervals need to be equal.
@@ -316,7 +317,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pysc = gps.get_spark_context()
         mapped_keys = self._apply_to_levels_geotrellis_rdd(
             lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
-        reducer = self._normalize_reducer(dimension, reducer)
+        reducer = self._normalize_temporal_reducer(dimension, reducer)
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
     def _aggregate_over_time_numpy(self, reducer: Callable[[Iterable[Tile]], Tile]) -> 'ImageCollection':
