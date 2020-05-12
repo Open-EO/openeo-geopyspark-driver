@@ -81,7 +81,12 @@ class TestCollections:
             {"name": "4", "common_name": "red", "center_wavelength": 0.6645},
             {"name": "8", "common_name": "nir", "center_wavelength": 0.8351}
         ]
-        cube_dims = {'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}}
+        cube_dims = {
+            'x': {'type': 'spatial', 'axis': 'x'},
+            'y': {'type': 'spatial', 'axis': 'y'},
+            't': {'type': 'temporal'},
+            'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
+        }
         if api.api_version_compare.at_least("1.0.0"):
             assert resp['stac_version'] == "0.9.0"
             assert resp['cube:dimensions'] == cube_dims
