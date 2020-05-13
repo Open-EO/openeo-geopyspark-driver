@@ -1,10 +1,15 @@
 import collections
+import grp
 import logging
 import os
-import pytz
-from dateutil.parser import parse
+from pathlib import Path
+import pwd
+import stat
+from typing import Union
 
+from dateutil.parser import parse
 from py4j.java_gateway import JavaGateway
+import pytz
 
 logger = logging.getLogger("openeo")
 
@@ -80,3 +85,23 @@ def normalize_date(date_string):
             date = date.replace(tzinfo=pytz.UTC)
         return date.isoformat()
     return None
+
+
+def describe_path(path: Union[Path, str]) -> dict:
+    path = Path(path)
+    if path.exists() or path.is_symlink():
+        st = os.stat(str(path))
+        return {
+            "path": str(path.absolute()),
+            "mode": stat.filemode(st.st_mode),
+            "uid": st.st_uid,
+            "user": pwd.getpwuid(st.st_uid).pw_name,
+            "gid": st.st_gid,
+            "group": grp.getgrgid(st.st_gid).gr_name,
+            "size": st.st_size
+        }
+    else:
+        return {
+            "path": str(path),
+            "status": "does not exist"
+        }

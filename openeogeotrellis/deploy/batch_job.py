@@ -2,19 +2,18 @@ import json
 import logging
 import os
 from pathlib import Path
-import sys
-from typing import Dict, List
-from pathlib import Path
-import os
 import shutil
 import stat
+import sys
+from typing import Dict, List
+
+from pyspark import SparkContext
 
 from openeo import ImageCollection
 from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
-from openeogeotrellis.utils import kerberos
-from pyspark import SparkContext
+from openeogeotrellis.utils import kerberos, describe_path
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -37,6 +36,7 @@ def _setup_user_logging(log_file: str) -> None:
 
 
 def _create_job_dir(job_dir: Path):
+    logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
     shutil.chown(job_dir, user=None, group='eodata')
 
