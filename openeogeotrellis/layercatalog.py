@@ -107,11 +107,46 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             filtered_link_titles = [oscars_link_titles[i] for i in band_indices] if band_indices else oscars_link_titles
 
+            def extract_literal_match(condition) -> (str, object):
+                # in reality, each of these conditions should be evaluated against elements (products) of this
+                # collection = evaluated with the product's "value" parameter in the environment, to true (include)
+                # or false (exclude)
+                # however, this would require evaluating in the Sentinel2FileLayerProvider, because this is the one
+                # that has access to this value (callers only get a MultibandTileLayerRDD[SpaceTimeKey])
+
+                from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+
+                class LiteralMatchExtractingGraphVisitor(ProcessGraphVisitor):
+                    def __init__(self):
+                        super().__init__()
+                        self.property_value = None
+
+                    def enterProcess(self, process_id: str, arguments: dict):
+                        if process_id != 'eq':
+                            raise NotImplementedError("process %s is not supported" % process_id)
+
+                    def enterArgument(self, argument_id: str, value):
+                        assert value['from_parameter'] == 'value'
+
+                    def constantArgument(self, argument_id: str, value):
+                        if argument_id in ['x', 'y']:
+                            self.property_value = value
+
+                predicate = condition['process_graph']
+                property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
+
+                return property_value
+
+            properties = viewing_parameters.get('properties', {})
+
+            metadata_properties = {property_name: extract_literal_match(condition)
+                               for property_name, condition in properties.items()}
+
             return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
                 oscars_collection_id,
                 filtered_link_titles,
                 root_path
-            ).pyramid_seq(extent, srs, from_date, to_date)
+            ).pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
