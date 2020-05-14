@@ -119,9 +119,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #TODO deprecated
         return self.apply_to_levels(lambda rdd: rdd.convert_data_type(CellType.FLOAT64).map_cells(bandfunction))
 
-    def apply(self, process:str, arguments = {}) -> 'ImageCollection':
-        pysc = gps.get_spark_context()
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd,k: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess( rdd,process))
+    def apply(self, process: str, arguments: dict={}) -> 'ImageCollection':
+        # TODO: support for `apply` with child process graph that has multiple nodes or binary operators EP-3404
+        if 'y' in arguments:
+            raise NotImplementedError("Apply only supports unary operators,"
+                                      " but got {p!r} with {a!r}".format(p=process, a=arguments))
+        applyProcess = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess
+        return self._apply_to_levels_geotrellis_rdd(lambda rdd, k: applyProcess(rdd, process))
 
     def reduce(self, reducer: str, dimension: str) -> 'ImageCollection':
         # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?

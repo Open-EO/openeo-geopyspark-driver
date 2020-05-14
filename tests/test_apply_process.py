@@ -153,6 +153,13 @@ class TestCustomFunctions(TestCase):
             self.assertEqual(math.cos(10),value[1][0])
             self.assertEqual(math.cos(5), value[1][1])
 
+    def test_apply_cos(self):
+        input = self.create_spacetime_layer()
+        cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        res = cube.apply("cos")
+        data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
+        np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(self.first[0]))
+        np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(self.second[0]))
 
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
