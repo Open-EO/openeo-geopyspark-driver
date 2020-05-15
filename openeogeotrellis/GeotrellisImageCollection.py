@@ -169,6 +169,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             raise FeatureUnsupportedException('Reducer {r!r} not supported'.format(r=reducer))
         return reducer
 
+    def add_dimension(self, name: str, label: str, type: str = None):
+        return GeotrellisTimeSeriesImageCollection(
+            pyramid=self.pyramid, service_registry=self._service_registry,
+            metadata=self.metadata.add_dimension(name=name, label=label, type=type)
+        )
+
     @classmethod
     def _mapTransform(cls, layoutDefinition, spatialKey):
         ex = layoutDefinition.extent
