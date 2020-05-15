@@ -406,7 +406,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         mask = Pyramid({0: mask_layer})
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
-        stitched = imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
+        stitched = imagecollection.mask(mask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
                                         replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])

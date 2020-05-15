@@ -12,7 +12,7 @@ pyproj<2.2.0
 geopandas==0.3.0
 numpy==1.17.0
 openeo>=0.3.0a1.*
-openeo_driver>=0.2.2a1.*
+openeo_driver>=0.2.4a1.*
 openeo_udf>=0.0.9.post0
 py4j
 python_dateutil

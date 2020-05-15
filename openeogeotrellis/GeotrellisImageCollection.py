@@ -365,24 +365,30 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(rdd, other.pyramid.levels[
                 level].srdd.rdd(), overlaps_resolver))
 
-    def mask(self, polygon: Union[Polygon, MultiPolygon]= None, srs="EPSG:4326",rastermask:'ImageCollection'=None,replacement=None) -> 'ImageCollection':
-        if polygon is not None:
-            max_level = self.pyramid.levels[self.pyramid.max_zoom]
-            layer_crs = max_level.layer_metadata.crs
-            reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon,"+init="+srs,layer_crs)
-            #TODO should we warn when masking generates an empty collection?
-            return self.apply_to_levels(lambda rdd: rdd.mask(
-                reprojected_polygon,
-                 partition_strategy=None,
-                 options=gps.RasterizerOptions()))
-        elif rastermask is not None:
-            pysc = gps.get_spark_context()
-            #mask needs to be the same layout as this layer
-            mask_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in rastermask.pyramid.levels.items()}
-            return self._apply_to_levels_geotrellis_rdd(
-                lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(),replacement))
-        else:
-            raise AttributeError("mask process: either a polygon or a rastermask should be provided.")
+    def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
+                     replacement=None, inside=False) -> 'GeotrellisTimeSeriesImageCollection':
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        layer_crs = max_level.layer_metadata.crs
+        reprojected_polygon = self.__reproject_polygon(mask, "+init=" + srs, layer_crs)
+        # TODO should we warn when masking generates an empty collection?
+        # TODO: use `replacement` and `inside`
+        return self.apply_to_levels(lambda rdd: rdd.mask(
+            reprojected_polygon,
+            partition_strategy=None,
+            options=gps.RasterizerOptions()
+        ))
+
+    def mask(self, mask: 'GeotrellisTimeSeriesImageCollection',
+             replacement=None) -> 'GeotrellisTimeSeriesImageCollection':
+        # mask needs to be the same layout as this layer
+        mask_pyramid_levels = {
+            k: l.tile_to_layout(layout=self.pyramid.levels[k])
+            for k, l in mask.pyramid.levels.items()
+        }
+        rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
+        return self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
+        )
 
     def apply_kernel(self,kernel,factor):
 

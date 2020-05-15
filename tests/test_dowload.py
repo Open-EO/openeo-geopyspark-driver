@@ -109,7 +109,7 @@ class TestDownload(TestCase):
         polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        imagecollection = imagecollection.mask(polygon)
+        imagecollection = imagecollection.mask_polygon(mask=polygon)
         geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.geotiff"))
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
@@ -131,7 +131,7 @@ class TestDownload(TestCase):
         reprojected = transform(project, polygon)
 
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        imagecollection = imagecollection.mask(reprojected,"EPSG:3857")
+        imagecollection = imagecollection.mask_polygon(mask=reprojected, srs="EPSG:3857")
         geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.3857"))
         print(geotiffs)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
