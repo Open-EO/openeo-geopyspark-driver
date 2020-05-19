@@ -15,6 +15,7 @@ from openeo_driver.views import app
 from openeogeotrellis.backend import GpsBatchJobs
 import openeogeotrellis.job_registry
 from openeogeotrellis.testing import KazooClientMock
+from .data import TEST_DATA_ROOT
 
 
 @pytest.fixture(params=["0.4.0", "1.0.0"])
@@ -30,7 +31,7 @@ def client():
 
 
 class ApiTester(openeo_driver.testing.ApiTester):
-    data_root = Path(__file__).parent / "data"
+    data_root = TEST_DATA_ROOT
 
 
 @pytest.fixture

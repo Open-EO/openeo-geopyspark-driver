@@ -14,6 +14,7 @@ from typing import Dict, List, Union, Tuple, Iterable, Callable
 import geopyspark as gps
 import numpy as np
 import pandas as pd
+from py4j.java_gateway import JVMView
 import pyproj
 import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
@@ -55,6 +56,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         self._band_index = 0
 
+    def _get_jvm(self) -> JVMView:
+        # TODO: cache this?
+        return gps.get_spark_context()._gateway.jvm
+
     def apply_to_levels(self, func):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is of type TiledRasterLayer
@@ -74,7 +79,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         """
 
         def create_tilelayer(contextrdd, layer_type, zoom_level):
-            jvm = gps.get_spark_context()._gateway.jvm
+            jvm = self._get_jvm()
             spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
             temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
 
@@ -531,119 +536,69 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return result
 
-    def zonal_statistics(self, regions, func) -> AggregatePolygonResult:
+    def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
+        # TODO: rename to aggregate_polygon?
         # TODO eliminate code duplication
+        _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
+
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
         from_vector_file = isinstance(regions, str)
         multiple_geometries = from_vector_file or isinstance(regions, GeometryCollection)
 
-        if func == 'histogram' or func == 'sd':
+        if func in ['histogram', 'sd', 'median']:
             highest_level = self.pyramid.levels[self.pyramid.max_zoom]
             layer_metadata = highest_level.layer_metadata
-
             scala_data_cube = highest_level.srdd.rdd()
-
-            polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
-            polygons_srs = 'EPSG:4326'
+            polygons = self._compute_stats_geotrellis_projected_polygons(regions)
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
+            # TODO also add dumping results first to temp json file like with "mean"
             if func == 'histogram':
-                if multiple_geometries:
-                    implementation = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube
-                    polygon_wkts = (str(ob) for ob in regions)
-                else:
-                    implementation = self._compute_stats_geotrellis().compute_histogram_time_series_from_datacube
-                    polygon_wkts = str(regions)
+                stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                )
             elif func == 'sd':
-                implementation = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube
+                stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                )
+            elif func == 'median':
+                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                )
             else:
                 raise ValueError(func)
 
-            stats = implementation(
-                scala_data_cube,
-                polygon_wkts,
-                polygons_srs,
-                from_date.isoformat(),
-                to_date.isoformat(),
-                self._band_index
-            )
-
             return AggregatePolygonResult(
                 timeseries=self._as_python(stats),
+                # TODO: regions can also be a string (path to vector file) instead of geometry object
                 regions=regions if multiple_geometries else GeometryCollection([regions]),
             )
-        elif func == 'median':
-            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-            layer_metadata = highest_level.layer_metadata
-
-            scala_data_cube = highest_level.srdd.rdd()
-
-            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-
-            if from_vector_file:
-                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                    scala_data_cube,
-                    regions,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                    self._band_index
-                )
-            else:
-                polygon_wkts = [str(ob) for ob in regions] if multiple_geometries else [str(regions)]
-                polygons_srs = 'EPSG:4326'
-
-                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                    scala_data_cube,
-                    polygon_wkts,
-                    polygons_srs,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                    self._band_index
-                )
-
-            return AggregatePolygonResult(
-                timeseries=self._as_python(stats),
-                regions=regions if multiple_geometries else GeometryCollection([regions]),
-            )
-        else:  # defaults to mean, historically
+        elif func == "mean":
             if multiple_geometries:
                 highest_level = self.pyramid.levels[self.pyramid.max_zoom]
                 layer_metadata = highest_level.layer_metadata
                 scala_data_cube = highest_level.srdd.rdd()
-                polygons_srs = 'EPSG:4326'
+                polygons = self._compute_stats_geotrellis_projected_polygons(regions)
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
                 with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                    if from_vector_file:
-                        self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                            scala_data_cube,
-                            regions,
-                            from_date.isoformat(),
-                            to_date.isoformat(),
-                            self._band_index,
-                            temp_file.name
-                        )
-
-                    else:
-                        self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                            scala_data_cube,
-                            [str(ob) for ob in regions],
-                            polygons_srs,
-                            from_date.isoformat(),
-                            to_date.isoformat(),
-                            self._band_index,
-                            temp_file.name
-                        )
-
+                    self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                        scala_data_cube,
+                        polygons,
+                        from_date.isoformat(),
+                        to_date.isoformat(),
+                        self._band_index,
+                        temp_file.name
+                    )
                     with open(temp_file.name, encoding='utf-8') as f:
                         timeseries = json.load(f)
                 return AggregatePolygonResult(
                     timeseries=timeseries,
+                    # TODO: regions can also be a string (path to vector file) instead of geometry object
                     regions=regions,
                 )
             else:
@@ -651,11 +606,31 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     timeseries=self.polygonal_mean_timeseries(regions),
                     regions=GeometryCollection([regions]),
                 )
+        else:
+            raise ValueError(func)
 
     def _compute_stats_geotrellis(self):
-        jvm = gps.get_spark_context()._gateway.jvm
         accumulo_instance_name = 'hdp-accumulo-instance'
-        return jvm.org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
+        return self._get_jvm().org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
+
+    def _compute_stats_geotrellis_projected_polygons(self, *args):
+        """Construct ProjectedPolygon instance"""
+        jvm = self._get_jvm()
+        if len(args) == 1 and isinstance(args[0], (str, pathlib.Path)):
+            # Vector file
+            return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
+        elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
+            # Multiple polygons
+            polygon_wkts = [str(x) for x in args[0]]
+            polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
+            return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+        elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
+            # Single polygon
+            polygon_wkts = [str(args[0])]
+            polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
+            return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+        else:
+            raise ValueError(args)
 
     def _zookeepers(self):
         return ','.join(ConfigParams().zookeepernodes)
@@ -805,7 +780,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
 
     def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
-        jvm = gps.get_spark_context()._gateway.jvm
+        jvm = self._get_jvm()
 
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(9)
 
