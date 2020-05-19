@@ -244,7 +244,7 @@ class TestBatchJobs:
             assert batch_job_args[4] == str(job_log)
             assert batch_job_args[7] == TEST_USER
             assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['22G', '5G', '2G', '14', '2']
+            assert batch_job_args[9:] == ['12G', '2G', '2G', '5', '2']
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -329,7 +329,7 @@ class TestBatchJobs:
             assert batch_job_args[4] == str(job_log)
             assert batch_job_args[7] == TEST_USER
             assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['3g', '11g', '2G', '14', '4']
+            assert batch_job_args[9:] == ['3g', '11g', '2G', '5', '4']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:
