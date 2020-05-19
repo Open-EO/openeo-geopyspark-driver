@@ -1,19 +1,18 @@
 import contextlib
 import datetime
 import json
-from pathlib import Path
+import os
 import re
 import subprocess
 from unittest import mock
-import os
-
-import pytest
 
 import openeo_driver.testing
-from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, read_file, load_json, TIFF_DUMMY_DATA
+import pytest
+from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
 from openeo_driver.views import app
-from openeogeotrellis.backend import GpsBatchJobs
+
 import openeogeotrellis.job_registry
+from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.testing import KazooClientMock
 from .data import TEST_DATA_ROOT
 
@@ -245,7 +244,7 @@ class TestBatchJobs:
             assert batch_job_args[4] == str(job_log)
             assert batch_job_args[7] == TEST_USER
             assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['22G', '5G']
+            assert batch_job_args[9:] == ['22G', '5G', '2G', '14', '2']
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -308,7 +307,7 @@ class TestBatchJobs:
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
-            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g"}
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4"}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -330,7 +329,7 @@ class TestBatchJobs:
             assert batch_job_args[4] == str(job_log)
             assert batch_job_args[7] == TEST_USER
             assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['3g', '11g']
+            assert batch_job_args[9:] == ['3g', '11g', '2G', '14', '4']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:
