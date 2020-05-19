@@ -31,6 +31,10 @@ openEoUser=$7
 apiVersion=$8
 drivermemory=${9-22G}
 executormemory=${10-4G}
+executormemoryoverhead=${11-2G}
+drivercores=${12-14}
+executorcores=${13-2}
+
 
 pysparkPython="venv/bin/python"
 
@@ -79,10 +83,11 @@ spark-submit \
  --conf spark.rpc.message.maxSize=200 \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
  --conf spark.rdd.compress=true \
- --conf spark.driver.cores=17 \
+ --conf spark.driver.cores=${drivercores} \
+ --conf spark.executor.cores=${executorcores} \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=8g \
- --conf spark.executor.memoryOverhead=2g \
+ --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  --conf spark.blacklist.enabled=true \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \

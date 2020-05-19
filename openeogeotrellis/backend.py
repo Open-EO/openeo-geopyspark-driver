@@ -1,21 +1,18 @@
 import json
 import logging
-from pathlib import Path
 import re
 import subprocess
-from subprocess import CalledProcessError
 import sys
-import traceback
-from typing import List, Dict, Union
-import uuid
 import tempfile
+import traceback
+import uuid
+from pathlib import Path
+from subprocess import CalledProcessError
+from typing import List, Dict, Union
 
 import geopyspark as gps
-from geopyspark import TiledRasterLayer, LayerType
 import pkg_resources
-from py4j.java_gateway import JavaGateway
-from py4j.protocol import Py4JJavaError
-
+from geopyspark import TiledRasterLayer, LayerType
 from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.util import dict_no_none
@@ -23,9 +20,12 @@ from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata
 from openeo_driver.errors import JobNotFinishedException, JobNotStartedException
 from openeo_driver.utils import parse_rfc3339
+from py4j.java_gateway import JavaGateway
+from py4j.protocol import Py4JJavaError
+
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry, AbstractServiceRegistry
@@ -236,6 +236,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
             driver_memory = extra_options.get("driver-memory", "22G")
             executor_memory = extra_options.get("executor-memory", "5G")
+            executor_memory_overhead = extra_options.get("executor-memoryOverhead", "2G")
+            driver_cores =extra_options.get("driver-cores", "14")
+            executor_cores =extra_options.get("executor-cores", "2")
 
             kerberos()
 
@@ -279,6 +282,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 args.append(driver_memory)
                 args.append(executor_memory)
+                args.append(executor_memory_overhead)
+                args.append(driver_cores)
+                args.append(executor_cores)
 
                 try:
                     logger.info("Submitting job: {a!r}".format(a=args))
