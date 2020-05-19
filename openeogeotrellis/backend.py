@@ -234,10 +234,10 @@ class GpsBatchJobs(backend.BatchJobs):
             spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
 
-            driver_memory = extra_options.get("driver-memory", "22G")
-            executor_memory = extra_options.get("executor-memory", "5G")
+            driver_memory = extra_options.get("driver-memory", "12G")
+            executor_memory = extra_options.get("executor-memory", "2G")
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "2G")
-            driver_cores =extra_options.get("driver-cores", "14")
+            driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
 
             kerberos()
