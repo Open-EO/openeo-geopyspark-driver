@@ -24,12 +24,8 @@
       }
     },
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "1999-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["1999-01-01", null]]}
     },
     "links": [
       {
@@ -65,12 +61,8 @@
       }
     },
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "1999-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["1999-01-01", null]]}
     },
     "links": [
       {
@@ -106,12 +98,8 @@
       }
     },
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "1999-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["1999-01-01", null]]}
     },
     "links": [
       {
@@ -147,12 +135,8 @@
       }
     },
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2014-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2014-01-01", null]]}
     },
     "links": [
       {
@@ -188,12 +172,8 @@
       }
     },
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2014-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2014-01-01", null]]}
     },
     "links": [
       {
@@ -229,12 +209,8 @@
       }
     },
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2014-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2014-01-01", null]]}
     },
     "links": [
       {
@@ -260,12 +236,8 @@
     "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -322,12 +294,8 @@
     "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -384,12 +352,8 @@
     "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -472,12 +436,8 @@
     "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -513,12 +473,8 @@
     "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -541,6 +497,10 @@
         "type": "Accumulo",
         "data_id": "S2_NDVI_PYRAMID_EARLY"
       }
+    },
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     }
   },
   {
@@ -551,6 +511,10 @@
         "type": "Accumulo",
         "data_id": "S2_LAI_PYRAMID_20190625"
       }
+    },
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     }
   },
 
@@ -568,12 +532,8 @@
     },
     "license": "free",
     "extent": {
-      "crs": "EPSG:4326",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2014-01-01",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2014-01-01", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -614,12 +574,8 @@
     "providers": [{"name": "Terrascope/VITO"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2015-07-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -676,11 +632,19 @@
       }
     },
     "product_id":"S2_NDVI_S3",
-    "license": "free"
+    "license": "free",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    }
   },
   {
     "id": "TERRASCOPE_S2_FAPAR_V2",
     "name": "TERRASCOPE_S2_FAPAR_V2",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
       "y": {"type": "spatial", "axis": "y"},
@@ -706,6 +670,10 @@
   {
     "id": "TERRASCOPE_S2_NDVI_V2",
     "name": "TERRASCOPE_S2_NDVI_V2",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
       "y": {"type": "spatial", "axis": "y"},
@@ -731,6 +699,10 @@
   {
     "id": "TERRASCOPE_S2_LAI_V2",
     "name": "TERRASCOPE_S2_LAI_V2",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
       "y": {"type": "spatial", "axis": "y"},
@@ -756,6 +728,10 @@
   {
     "id": "TERRASCOPE_S2_FCOVER_V2",
     "name": "TERRASCOPE_S2_FCOVER_V2",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
       "y": {"type": "spatial", "axis": "y"},
@@ -781,6 +757,10 @@
   {
     "id": "TERRASCOPE_S2_TOC_V2",
     "name": "TERRASCOPE_S2_TOC_V2",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
       "y": {"type": "spatial", "axis": "y"},
@@ -815,6 +795,11 @@
         "type": "file"
       }
     },
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
+
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
       "y": {"type": "spatial", "axis": "y"},
@@ -853,12 +838,8 @@
     "providers": [{"name": "SentinelHub"}],
     "license": "free",
     "extent": {
-      "crs": "EPSG:3857",
-      "spatial":[180,-56,-180,83],
-      "temporal": [
-        "2014-10-06",
-        null
-      ]
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2014-10-06", null]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},

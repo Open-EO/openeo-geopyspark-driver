@@ -73,8 +73,6 @@ class TestCollections:
         resp = api.get('/collections/CGS_SENTINEL2_RADIOMETRY_V102_001').assert_status_code(200).json
         assert resp['id'] == "CGS_SENTINEL2_RADIOMETRY_V102_001"
         assert "Sentinel 2" in resp['description']
-        assert resp['extent']['spatial'] == [180, -56, -180, 83]
-        assert resp['extent']['temporal'] == ["2015-07-06", None]
         eo_bands = [
             {"name": "2", "common_name": "blue", "center_wavelength": 0.4966},
             {"name": "3", "common_name": "green", "center_wavelength": 0.560},
@@ -89,11 +87,19 @@ class TestCollections:
         }
         if api.api_version_compare.at_least("1.0.0"):
             assert resp['stac_version'] == "0.9.0"
+            assert resp['extent'] == {
+                "spatial": {"bbox": [[-180, -56, 180, 83]]},
+                "temporal": {"interval": [["2015-07-06", None]]},
+            }
             assert resp['cube:dimensions'] == cube_dims
             for f in eo_bands[0].keys():
                 assert [b[f] for b in resp['summaries']['eo:bands']] == [b[f] for b in eo_bands]
         else:
             assert resp['stac_version'] == "0.6.2"
+            assert resp['extent'] == {
+                "spatial": [-180, -56, 180, 83],
+                "temporal": ["2015-07-06", None]
+            }
             assert resp["properties"]['cube:dimensions'] == cube_dims
             for f in eo_bands[0].keys():
                 assert [b[f] for b in resp['properties']["eo:bands"]] == [b[f] for b in eo_bands]
