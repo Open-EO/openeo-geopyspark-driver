@@ -5,6 +5,7 @@ from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway
 
 from openeo.metadata import CollectionMetadata
+from openeo.util import TimingLogger
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
@@ -25,6 +26,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._service_registry = service_registry
         self._geotiff_pyramid_factories = {}
 
+    @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, viewing_parameters: dict) -> 'GeotrellisTimeSeriesImageCollection':
         logger.info("Creating layer for {c} with viewingParameters {v}".format(c=collection_id, v=viewing_parameters))
 
