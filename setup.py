@@ -15,6 +15,12 @@ with open('openeogeotrellis/_version.py') as fp:
 
 version = __version__
 
+tests_require = [
+    'pytest',
+    'mock',
+    'schema',
+]
+
 setup(
     name='openeo-geopyspark',
     version=version,
@@ -27,7 +33,7 @@ setup(
         'scripts/batch_job_log4j.properties'
     ],
     setup_requires=['pytest-runner'],
-    tests_require=['pytest','mock'],
+    tests_require=tests_require,
     install_requires=[
         'flask',
         'openeo>=0.3.0a1.*',
@@ -44,4 +50,7 @@ setup(
         'flask-cors',
         'rasterio==1.1.1'
     ],
+    extras_require={
+        "dev": tests_require,
+    },
 )
