@@ -1,18 +1,18 @@
 import json
 import logging
 import os
-from pathlib import Path
 import shutil
 import stat
 import sys
+from pathlib import Path
 from typing import Dict, List
-
-from pyspark import SparkContext
 
 from openeo import ImageCollection
 from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
+from pyspark import SparkContext
+
 from openeogeotrellis.utils import kerberos, describe_path
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
@@ -75,7 +75,10 @@ def main(argv: List[str]) -> None:
 
     try:
         job_specification = _parse(job_specification_file)
-        viewing_parameters = {'version': api_version} if api_version else None
+        viewing_parameters = {'pyramid_levels': 'highest'}
+        if api_version:
+            viewing_parameters['version']= api_version
+
         process_graph = job_specification['process_graph']
 
         try:
