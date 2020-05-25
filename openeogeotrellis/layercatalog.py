@@ -2,15 +2,15 @@ import logging
 from typing import List
 
 from geopyspark import TiledRasterLayer, LayerType
-from py4j.java_gateway import JavaGateway
-
 from openeo.metadata import CollectionMetadata
 from openeo.util import TimingLogger
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
-from openeogeotrellis.configparams import ConfigParams
+from py4j.java_gateway import JavaGateway
+
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
 
@@ -168,12 +168,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
+        startIndex = 0 if viewing_parameters.get('pyramid_levels', 'all') else pyramid.size() - 1
         levels = {
             pyramid.apply(index)._1(): TiledRasterLayer(
                 LayerType.SPACETIME,
                 temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
             )
-            for index in range(0, pyramid.size())
+            for index in range(startIndex, pyramid.size())
         }
 
         image_collection = GeotrellisTimeSeriesImageCollection(
