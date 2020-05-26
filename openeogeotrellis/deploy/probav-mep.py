@@ -142,6 +142,7 @@ def main():
     app.config['OPENEO_DESCRIPTION'] = 'OpenEO API to the VITO Remote Sensing product catalog and processing services (using GeoPySpark driver).'
     app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = build_backend_deploy_metadata(
         packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+        # TODO: add version info about geotrellis-extensions jar?
     )
 
     application = StandaloneApplication(app, options)
