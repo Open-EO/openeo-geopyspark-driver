@@ -2,6 +2,8 @@
 Script to start a production server. This script can serve as the entry-point for doing spark-submit.
 """
 
+# TODO reduce code duplication: https://jira.vito.be/browse/EP-3382
+
 
 import datetime
 import logging
@@ -38,6 +40,9 @@ sys.path.insert(0,'pyspark.zip')
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.traefik import Traefik
+
+
+log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
 
 
 def number_of_workers():
@@ -81,14 +86,13 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 
 
 def update_zookeeper(host: str, port, env):
-    print("Registering with zookeeper.")
+    log.info("Registering with zookeeper: {h}:{p} for {e}".format(h=host, p=port, e=env))
     from kazoo.client import KazooClient
     from openeogeotrellis.configparams import ConfigParams
 
     cluster_id='openeo-' + env
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
-
     try:
         Traefik(zk).add_load_balanced_server(cluster_id=cluster_id, server_id="0", host=host, port=port, environment=env)
     finally:
