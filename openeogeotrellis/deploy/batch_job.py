@@ -13,6 +13,7 @@ from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from pyspark import SparkContext
 
+from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.utils import kerberos, describe_path
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
@@ -81,10 +82,7 @@ def main(argv: List[str]) -> None:
 
         process_graph = job_specification['process_graph']
 
-        try:
-            import custom_processes
-        except ImportError:
-            logger.info('No custom_processes.py found.')
+        load_custom_processes(logger)
 
         with SparkContext.getOrCreate():
             kerberos()

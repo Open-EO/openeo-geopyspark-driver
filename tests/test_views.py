@@ -17,11 +17,6 @@ from openeogeotrellis.testing import KazooClientMock
 from .data import TEST_DATA_ROOT
 
 
-@pytest.fixture(params=["0.4.0", "1.0.0"])
-def api_version(request):
-    return request.param
-
-
 @pytest.fixture
 def client():
     app.config['TESTING'] = True

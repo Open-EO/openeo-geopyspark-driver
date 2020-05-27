@@ -37,7 +37,7 @@ setup(
     install_requires=[
         'flask',
         'openeo>=0.3.0a1.*',
-        'openeo_driver>=0.2.4a1.*',
+        'openeo_driver>=0.2.5a1.*',
         'openeo_udf>=0.0.9.post0',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',

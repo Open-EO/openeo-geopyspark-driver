@@ -129,12 +129,8 @@ def main():
     from openeo_driver.views import app, build_backend_deploy_metadata
     from flask_cors import CORS
     CORS(app)
-    from openeogeotrellis import get_backend_version
-    try:
-        import custom_processes
-    except ImportError as e:
-        app.logger.info('No custom_processes.py found.')
-
+    from openeogeotrellis import get_backend_version, deploy
+    deploy.load_custom_processes(app.logger)
 
     app.logger.setLevel('DEBUG')
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
