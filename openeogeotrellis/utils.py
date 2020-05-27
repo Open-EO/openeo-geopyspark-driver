@@ -10,6 +10,7 @@ from typing import Union
 from dateutil.parser import parse
 from py4j.java_gateway import JavaGateway
 import pytz
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 logger = logging.getLogger("openeo")
 
@@ -105,3 +106,22 @@ def describe_path(path: Union[Path, str]) -> dict:
             "path": str(path),
             "status": "does not exist"
         }
+
+
+def to_projected_polygons(jvm, *args):
+    """Construct ProjectedPolygon instance"""
+    if len(args) == 1 and isinstance(args[0], (str, Path)):
+        # Vector file
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
+    elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
+        # Multiple polygons
+        polygon_wkts = [str(x) for x in args[0]]
+        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+    elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
+        # Single polygon
+        polygon_wkts = [str(args[0])]
+        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+    else:
+        raise ValueError(args)

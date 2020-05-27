@@ -7,12 +7,13 @@ from openeo.util import TimingLogger
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
+from openeo_driver.delayed_vector import DelayedVector
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
-from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date
+from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +73,20 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
-            if layer_source_info.get("split",False):
+            if layer_source_info.get("split", False):
                 pyramidFactory.setSplitRanges(True)
 
             accumulo_layer_name = layer_source_info['data_id']
             nonlocal still_needs_band_filter
             still_needs_band_filter = bool(band_indices)
-            return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
+
+            polygons = viewing_parameters.get('polygons')
+
+            if polygons:
+                projected_polygons = to_projected_polygons(jvm, polygons.path if isinstance(polygons, DelayedVector) else polygons)
+                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
+            else:
+                return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
         def s3_pyramid():
             endpoint = layer_source_info['endpoint']

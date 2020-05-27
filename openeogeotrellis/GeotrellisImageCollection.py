@@ -42,6 +42,8 @@ from openeo.metadata import CollectionMetadata
 from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import SecondaryService, AbstractServiceRegistry
+from openeogeotrellis.utils import to_projected_polygons
+
 
 _log = logging.getLogger(__name__)
 
@@ -551,7 +553,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             highest_level = self.pyramid.levels[self.pyramid.max_zoom]
             layer_metadata = highest_level.layer_metadata
             scala_data_cube = highest_level.srdd.rdd()
-            polygons = self._compute_stats_geotrellis_projected_polygons(regions)
+            polygons = to_projected_polygons(self._get_jvm(), regions)
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
@@ -581,7 +583,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 highest_level = self.pyramid.levels[self.pyramid.max_zoom]
                 layer_metadata = highest_level.layer_metadata
                 scala_data_cube = highest_level.srdd.rdd()
-                polygons = self._compute_stats_geotrellis_projected_polygons(regions)
+                polygons = to_projected_polygons(self._get_jvm(), regions)
                 from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
                 to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
@@ -612,25 +614,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'
         return self._get_jvm().org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
-
-    def _compute_stats_geotrellis_projected_polygons(self, *args):
-        """Construct ProjectedPolygon instance"""
-        jvm = self._get_jvm()
-        if len(args) == 1 and isinstance(args[0], (str, pathlib.Path)):
-            # Vector file
-            return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
-        elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
-            # Multiple polygons
-            polygon_wkts = [str(x) for x in args[0]]
-            polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
-            return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
-        elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
-            # Single polygon
-            polygon_wkts = [str(args[0])]
-            polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
-            return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
-        else:
-            raise ValueError(args)
 
     def _zookeepers(self):
         return ','.join(ConfigParams().zookeepernodes)
