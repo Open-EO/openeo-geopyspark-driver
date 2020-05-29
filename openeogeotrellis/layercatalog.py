@@ -7,7 +7,6 @@ from openeo.util import TimingLogger
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
-from openeo_driver.delayed_vector import DelayedVector
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
@@ -83,7 +82,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             polygons = viewing_parameters.get('polygons')
 
             if polygons:
-                projected_polygons = to_projected_polygons(jvm, polygons.path if isinstance(polygons, DelayedVector) else polygons)
+                projected_polygons = to_projected_polygons(jvm, polygons)
                 return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             else:
                 return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
