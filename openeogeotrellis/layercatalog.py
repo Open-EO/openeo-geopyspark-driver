@@ -47,6 +47,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         top = viewing_parameters.get("top", None)
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
+
+        if isinstance(srs, int):
+            srs = 'EPSG:%s'%srs
+        if srs == None:
+            srs='EPSG:4326'
+
         bands = viewing_parameters.get("bands", None)
         band_indices = [metadata.get_band_index(b) for b in bands] if bands else None
         logger.info("band_indices: {b!r}".format(b=band_indices))
