@@ -17,7 +17,7 @@ from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.util import dict_no_none
 from openeo_driver import backend
-from openeo_driver.backend import ServiceMetadata, BatchJobMetadata
+from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider
 from openeo_driver.errors import JobNotFinishedException, JobNotStartedException
 from openeo_driver.utils import parse_rfc3339
 from py4j.java_gateway import JavaGateway
@@ -90,6 +90,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         sc = SparkContext.getOrCreate()
         count = sc.parallelize([1, 2, 3]).map(lambda x: x * x).sum()
         return 'Health check: ' + str(count)
+
+    def oidc_providers(self) -> List[OidcProvider]:
+        return [
+            OidcProvider(
+                id="keycloak",
+                # TODO EP-3377: move this to config or bootstrap script (and start using production URL?)
+                issuer="https://sso-dev.vgt.vito.be/auth/realms/terrascope",
+                scopes=["openid"],
+                title="VITO Keycloak",
+            )
+        ]
 
     def file_formats(self) -> dict:
         return {
