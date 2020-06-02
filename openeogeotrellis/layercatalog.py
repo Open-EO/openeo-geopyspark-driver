@@ -122,8 +122,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             oscars_link_titles = metadata.band_names
             root_path = layer_source_info['root_path']
 
-            filtered_link_titles = [oscars_link_titles[i] for i in band_indices] if band_indices else oscars_link_titles
-
             def extract_literal_match(condition) -> (str, object):
                 # in reality, each of these conditions should be evaluated against elements (products) of this
                 # collection = evaluated with the product's "value" parameter in the environment, to true (include)
@@ -161,7 +159,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
                 oscars_collection_id,
-                filtered_link_titles,
+                oscars_link_titles,
                 root_path
             ).pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
 
