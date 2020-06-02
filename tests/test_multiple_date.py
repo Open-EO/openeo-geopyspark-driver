@@ -9,11 +9,11 @@ from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, Te
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
 from numpy.testing import assert_array_almost_equal
+from openeo.metadata import CollectionMetadata
+from openeo_driver.errors import FeatureUnsupportedException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo.metadata import CollectionMetadata
-from openeo_driver.errors import FeatureUnsupportedException
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.numpy_aggregators import max_composite
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -437,3 +437,11 @@ def rct_savitzky_golay(udf_data:UdfData):
         with rasterio.open(path) as ds:
             print(ds.profile)
             self.assertAlmostEqual(0.05, ds.res[0], 3)
+
+    def test_rename_dimension(self):
+        imagecollection = GeotrellisTimeSeriesImageCollection(Pyramid({0: self.tiled_raster_rdd}), InMemoryServiceRegistry(),
+                                                              metadata=self.collection_metadata)
+
+        dim_renamed = imagecollection.rename_dimension('t','myNewTimeDim')
+
+        dim_renamed.metadata.assert_valid_dimension('myNewTimeDim')
