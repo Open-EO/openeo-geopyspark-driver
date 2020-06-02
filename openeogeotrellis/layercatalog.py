@@ -54,7 +54,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             srs='EPSG:4326'
 
         bands = viewing_parameters.get("bands", None)
-        band_indices = [metadata.get_band_index(b) for b in bands] if bands else None
+        if bands:
+            band_indices = [metadata.get_band_index(b) for b in bands]
+            metadata = metadata.filter_bands(bands)
+        else:
+            band_indices = None
         logger.info("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
