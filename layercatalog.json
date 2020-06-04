@@ -757,9 +757,60 @@
   {
     "id": "TERRASCOPE_S2_TOC_V2",
     "name": "TERRASCOPE_S2_TOC_V2",
-    "extent": {
+    "title": "Sentinel-2 L2A V2",
+    "description": "Sentinel-2 Level 2A product, processed from L1C by Sen2Cor.",
+    "license": "proprietary",
+    "providers": [
+      {
+          "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+          "roles":
+          [
+              "producer",
+              "licensor"
+          ],
+          "url": "https://terrascope.be"
+      }
+      ],
+   "links": [
+      {
+        "rel": "license",
+        "href": "https://sentinel.esa.int/documents/247904/690755/Sentinel_Data_Legal_Notice"
+      },
+      {
+          "rel": "alternate",
+          "href": "https://services.terrascope.be/catalogue/description?collection=urn:eop:VITO:TERRASCOPE_S2_TOC_V2"
+      },
+      {
+          "rel": "alternate",
+          "href": "https://viewer.terrascope.be/?language=nl&bbox=0.9339867511378304,50.14520994379217,6.207424251137831,51.77292299745045&overlay=false&bgLayer=MapBox&date=2019-02-25T03:17:15.000Z&layer=CGS_S2_RADIOMETRY"
+      }],
+     "extent": {
       "spatial": {"bbox": [[-180, -56, 180, 83]]},
       "temporal": {"interval": [["2015-07-06", null]]}
+    },
+   "summaries": {
+      "constellation": ["Sentinel-2"],
+      "platform": [
+        "Sentinel-2A",
+        "Sentinel-2B"
+      ],
+      "instruments": ["MSI"],
+      "eo:gsd": [
+        10,
+        20,
+        60
+      ],
+      "eo:bands": [
+        {"name": "TOC-B02_10M"},
+        {"name": "TOC-B03_10M"},
+        {"name": "TOC-B04_10M"},
+        {"name": "TOC-B05_20M"},
+        {"name": "TOC-B08_10M"},
+        {"name": "SCENECLASSIFICATION_20M"},
+        {"name": "RAA_60M"},
+        {"name": "SZA_60M"},
+        {"name": "VZA_60M"}
+      ]
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x"},
@@ -767,17 +818,18 @@
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["TOC-B02_10M", "TOC-B03_10M", "TOC-B04_10M", "TOC-B05_20M", "SCENECLASSIFICATION_20M"]
+        "values": [
+          "TOC-B02_10M",
+          "TOC-B03_10M",
+          "TOC-B04_10M",
+          "TOC-B05_20M",
+          "TOC-B08_10M",
+          "SCENECLASSIFICATION_20M",
+          "RAA_60M",
+          "SZA_60M",
+          "VZA_60M"
+        ]
       }
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "TOC-B02_10M"},
-        {"name": "TOC-B03_10M"},
-        {"name": "TOC-B04_10M"},
-        {"name": "TOC-B05_20M"},
-        {"name": "SCENECLASSIFICATION_20M"}
-      ]
     },
     "_vito": {
       "data_source": {
