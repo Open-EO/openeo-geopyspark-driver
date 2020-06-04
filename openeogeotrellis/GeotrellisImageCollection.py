@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import math
@@ -6,30 +7,26 @@ import pathlib
 import subprocess
 import tempfile
 import uuid
-import functools
-
 from datetime import datetime, date
 from typing import Dict, List, Union, Tuple, Iterable, Callable
 
 import geopyspark as gps
 import numpy as np
 import pandas as pd
-from py4j.java_gateway import JVMView
 import pyproj
 import pytz
-from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
+from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
-
 from openeo_driver.backend import ServiceMetadata
-from openeo_driver.errors import InternalException, FeatureUnsupportedException
+from openeo_driver.errors import FeatureUnsupportedException
+from py4j.java_gateway import JVMView
 
 try:
-    from openeo_udf.api.base import UdfData, RasterCollectionTile, SpatialExtent
+    from openeo_udf.api.base import UdfData, SpatialExtent
 
 except ImportError as e:
     from openeo_udf.api.udf_data import UdfData
-    from openeo_udf.api.raster_collection_tile import  RasterCollectionTile
     from openeo_udf.api.spatial_extent import SpatialExtent
 
 from pandas import Series
