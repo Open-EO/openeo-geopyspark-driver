@@ -275,12 +275,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def reduce_dimension(self, dimension: str, reducer:ProcessGraphVisitor,binary=False, context=None) -> 'ImageCollection':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
+            udf = reducer.udf_args.get('udf',None)
+            if not isinstance(udf,str):
+                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
             if dimension == self.metadata.temporal_dimension.name:
-                udf = _get_udf(args)
                 #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
                 return self.apply_tiles_spatiotemporal(udf)
             elif dimension == self.metadata.band_dimension.name:
-                udf = _get_udf(args)
                 return self.apply_tiles(udf)
 
         if self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:

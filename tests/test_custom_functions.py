@@ -1,9 +1,8 @@
 import datetime
-from unittest import TestCase,skip
+from unittest import TestCase
 
 import geopyspark as gps
 import numpy as np
-import openeo_udf.functions
 import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
@@ -11,8 +10,11 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
+import openeo_udf.functions
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from .data import get_test_data_file
 
 
 class TestCustomFunctions(TestCase):
@@ -61,6 +63,10 @@ class TestCustomFunctions(TestCase):
     ]
 
     openeo_metadata = {
+        "cube:dimensions":{
+            "bands": {"type": "bands", "values": ["red", "nir"]},
+            "t": {"type": "temporal"}
+        },
         "bands": [
 
             {
@@ -166,19 +172,28 @@ class TestCustomFunctions(TestCase):
             value = result.popitem()
             self.assertEqual(3.0,value[1][0])
 
-    #the new ndvi definition requires two separate data cubes, don't agree with that: red and nir should simply be bands
-    @skip
     def test_point_series_apply_tile(self):
-        import os,openeo_udf
-        dir = os.path.dirname(openeo_udf.functions.__file__)
-        file_name = os.path.join(dir, "datacube_ndvi.py")
+        file_name = get_test_data_file( "datacube_ndvi.py")
         with open(file_name, "r")  as f:
             udf_code = f.read()
 
         input = self.create_spacetime_layer()
 
+        reducer = GeoPySparkBackendImplementation().visit_process_graph({
+                "udf_process": {
+                    "arguments": {
+                        "data": {
+                            "from_argument": "dimension_data"
+                        },
+                        "udf": udf_code
+                    },
+                    "process_id": "run_udf",
+                    "result": True
+                },
+            })
+
         imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry(), self.openeo_metadata)
-        transformed_collection = imagecollection.apply_tiles( udf_code)
+        transformed_collection = imagecollection.reduce_dimension(dimension="bands", reducer = reducer)
 
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)

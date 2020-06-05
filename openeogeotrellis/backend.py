@@ -74,11 +74,14 @@ class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
 
     def __init__(self):
         super().__init__()
+        self.udf_args = {}
 
 
     def enterArgument(self, argument_id: str, value):
-        print(argument_id)
+        self.udf_args[argument_id] = value
 
+    def constantArgument(self, argument_id: str, value):
+        self.udf_args[argument_id] = value
 
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
