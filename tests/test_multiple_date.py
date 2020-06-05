@@ -127,17 +127,30 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce("max", dimension="t").pyramid.levels[0].stitch()
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
+        def reducer(operation:str):
+            return GeoPySparkBackendImplementation().visit_process_graph({
+                "max1": {
+                    "arguments": {
+                        "data": {
+                            "from_argument": "dimension_data"
+                        }
+                    },
+                    "process_id": operation,
+                    "result": True
+                },
+            })
+        stitched = imagecollection.reduce_dimension(dimension="t", reducer=reducer("max")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(2.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("min", dimension="t").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("min")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(1.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("sum", dimension="t").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("sum")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(4.0, stitched.cells[0][0][1])

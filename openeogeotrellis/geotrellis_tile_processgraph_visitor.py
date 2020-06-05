@@ -1,4 +1,5 @@
 import numbers
+from collections import OrderedDict
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
@@ -10,9 +11,12 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         import geopyspark as gps
         jvm = gps.get_spark_context()._gateway.jvm
         self.builder = jvm.org.openeo.geotrellis.OpenEOProcessScriptBuilder()
+        #process list to keep track of processes, so this class has a double function
+        self.processes = OrderedDict()
 
     def enterProcess(self, process_id: str, arguments: dict):
         self.builder.expressionStart(process_id, arguments)
+        self.processes[process_id] = arguments
         return self
 
     def leaveProcess(self, process_id: str, arguments: dict):

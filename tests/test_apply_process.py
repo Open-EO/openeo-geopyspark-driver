@@ -8,10 +8,10 @@ import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from openeo.metadata import CollectionMetadata
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo.metadata import CollectionMetadata
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -164,8 +164,12 @@ class TestCustomFunctions(TestCase):
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
-
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        collection_metadata = CollectionMetadata({
+            "cube:dimensions": {
+                "my_bands": {"type": "bands", "values": ["B04", "B08"]},
+            }
+        })
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(),collection_metadata)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -200,7 +204,7 @@ class TestCustomFunctions(TestCase):
             }
         }
         visitor.accept_process_graph(graph)
-        stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        stitched = imagecollection.reduce_dimension('my_bands',visitor).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
 

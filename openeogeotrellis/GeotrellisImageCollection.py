@@ -18,6 +18,7 @@ import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
+from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.errors import FeatureUnsupportedException
 from py4j.java_gateway import JVMView
@@ -270,6 +271,24 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                                        rdd.layer_metadata)
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
+
+    def reduce_dimension(self, dimension: str, reducer:ProcessGraphVisitor,binary=False, context=None) -> 'ImageCollection':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor
+        if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
+            if dimension == self.metadata.temporal_dimension.name:
+                udf = _get_udf(args)
+                #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
+                return self.apply_tiles_spatiotemporal(udf)
+            elif dimension == self.metadata.band_dimension.name:
+                udf = _get_udf(args)
+                return self.apply_tiles(udf)
+
+        if self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
+            return self.reduce_bands(reducer)
+        elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
+            return self.reduce(reducer.processes.popitem()[0],dimension)
+        else:
+            raise ValueError("Unsupported combination of reducer %s and dimension %s."%(reducer,dimension))
 
 
     def apply_tiles(self, function) -> 'ImageCollection':
