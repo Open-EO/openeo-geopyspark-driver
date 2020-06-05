@@ -277,22 +277,26 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if isinstance(reducer,dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
 
+        result_collection = None
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             if not isinstance(udf,str):
                 raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
             if dimension == self.metadata.temporal_dimension.name:
                 #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
-                return self.apply_tiles_spatiotemporal(udf)
+                result_collection = self.apply_tiles_spatiotemporal(udf)
             elif dimension == self.metadata.band_dimension.name:
-                return self.apply_tiles(udf)
+                result_collection = self.apply_tiles(udf)
 
         if self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
-            return self.reduce_bands(reducer)
+            result_collection = self.reduce_bands(reducer)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
-            return self.reduce(reducer.processes.popitem()[0],dimension)
+            result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
         else:
             raise ValueError("Unsupported combination of reducer %s and dimension %s."%(reducer,dimension))
+        if result_collection is not None:
+            result_collection.metadata = result_collection.metadata.reduce_dimension(dimension)
+        return result_collection
 
 
     def apply_tiles(self, function) -> 'ImageCollection':
