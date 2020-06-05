@@ -272,8 +272,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
-    def reduce_dimension(self, dimension: str, reducer:ProcessGraphVisitor,binary=False, context=None) -> 'ImageCollection':
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor
+    def reduce_dimension(self, dimension: str, reducer:Union[ProcessGraphVisitor,Dict],binary=False, context=None) -> 'ImageCollection':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
+        if isinstance(reducer,dict):
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             if not isinstance(udf,str):
