@@ -13,6 +13,7 @@ _log = logging.getLogger(__name__)
 
 # TODO: make this job tracker logic an internal implementation detail of JobRegistry?
 
+
 class JobTracker:
     class _UnknownApplicationIdException(ValueError):
         pass
@@ -118,9 +119,18 @@ class JobTracker:
 
     def _refresh_kerberos_tgt(self):
         if self._keytab and self._principal:
-            subprocess.check_call(["kinit", "-kt", self._keytab, self._principal])
+            cmd = ["kinit", "-V", "-kt", self._keytab, self._principal]
+
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            for line in p.stdout:
+                _log.info(line.rstrip().decode())
+
+            p.wait()
+            if p.returncode:
+                _log.warning("{c} returned exit code {r}".format(c=" ".join(cmd), r=p.returncode))
         else:
-            _log.warn("No Kerberos principal/keytab: will not refresh TGT")
+            _log.warning("No Kerberos principal/keytab: will not refresh TGT")
 
 
 if __name__ == '__main__':
