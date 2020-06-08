@@ -3,6 +3,7 @@ from unittest import TestCase
 
 import geopyspark as gps
 import numpy as np
+import pytest
 import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
@@ -17,6 +18,7 @@ from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from .data import get_test_data_file
 
 
+@pytest.mark.usefixtures("imagecollection_with_two_bands_and_one_date")
 class TestCustomFunctions(TestCase):
 
     first = np.zeros((1, 4, 4))
@@ -62,78 +64,6 @@ class TestCustomFunctions(TestCase):
         (Point(-10.0, 15.0), None, None)
     ]
 
-    openeo_metadata = {
-        "cube:dimensions":{
-            "bands": {"type": "bands", "values": ["red", "nir"]},
-            "t": {"type": "temporal"}
-        },
-        "bands": [
-
-            {
-                "band_id": "red",
-                "name": "red",
-                "offset": 0,
-                "res_m": 10,
-                "scale": 0.0001,
-                "type": "int16",
-                "unit": "1",
-                "wavelength_nm": 664.5
-            },
-            {
-                "band_id": "nir",
-                "name": "nir",
-                "offset": 0,
-                "res_m": 10,
-                "scale": 0.0001,
-                "type": "int16",
-                "unit": "1",
-                "wavelength_nm": 835.1
-            }
-        ],
-        "_vito": {"accumulo_data_id": "CGS_SENTINEL2_RADIOMETRY_V101"},
-        "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
-        "extent": {
-            "bottom": 39,
-            "crs": "EPSG:4326",
-            "left": -34,
-            "right": 35,
-            "top": 71
-        },
-        "product_id": "CGS_SENTINEL2_RADIOMETRY_V101",
-        "time": {
-            "from": "2016-01-01",
-            "to": "2019-10-01"
-        }
-    }
-
-
-    def create_spacetime_layer(self):
-        cells = np.array([self.first, self.second], dtype='int')
-        tile = Tile.from_numpy_array(cells, -1)
-
-        layer = [(SpaceTimeKey(0, 0, self.now), tile),
-                 (SpaceTimeKey(1, 0, self.now), tile),
-                 (SpaceTimeKey(0, 1, self.now), tile),
-                 (SpaceTimeKey(1, 1, self.now), tile)]
-
-        rdd = SparkContext.getOrCreate().parallelize(layer)
-
-        metadata = {'cellType': 'int32ud-1',
-                    'extent': self.extent,
-                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
-                    'bounds': {
-                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
-                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
-                    },
-                    'layoutDefinition': {
-                        'extent': self.extent,
-                        'tileLayout': self.layout
-                    }
-                    }
-
-        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
-
-
 
 
     def test_apply_to_tile(self):
@@ -161,10 +91,7 @@ class TestCustomFunctions(TestCase):
         def custom_function(cells:np.ndarray,nd):
             return cells[0]+cells[1]
 
-        input = self.create_spacetime_layer()
-
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        transformed_collection = imagecollection.apply_pixel([0, 1], custom_function)
+        transformed_collection = self.imagecollection_with_two_bands_and_one_date.apply_pixel([0, 1], custom_function)
 
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)
@@ -176,8 +103,6 @@ class TestCustomFunctions(TestCase):
         file_name = get_test_data_file( "datacube_ndvi.py")
         with open(file_name, "r")  as f:
             udf_code = f.read()
-
-        input = self.create_spacetime_layer()
 
         reducer = GeoPySparkBackendImplementation().visit_process_graph({
                 "udf_process": {
@@ -192,8 +117,7 @@ class TestCustomFunctions(TestCase):
                 },
             })
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry(), self.openeo_metadata)
-        transformed_collection = imagecollection.reduce_dimension(dimension="bands", reducer = reducer)
+        transformed_collection = self.imagecollection_with_two_bands_and_one_date.reduce_dimension(dimension="bands", reducer = reducer)
 
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)
@@ -203,11 +127,9 @@ class TestCustomFunctions(TestCase):
             #self.assertEqual(3.0,value[1][0])
 
     def test_polygon_series(self):
-        input = self.create_spacetime_layer()
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry(), self.openeo_metadata)
 
-        means = imagecollection.polygonal_mean_timeseries(polygon)
+        means = self.imagecollection_with_two_bands_and_one_date.polygonal_mean_timeseries(polygon)
         assert means == {'2017-09-25T11:37:00': [[1.0, 2.0]]}
 
     def _create_spacetime_layer(self, no_data):

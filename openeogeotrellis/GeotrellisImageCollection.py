@@ -288,7 +288,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             elif dimension == self.metadata.band_dimension.name:
                 result_collection = self.apply_tiles(udf)
 
-        if self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
+        elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self.reduce_bands(reducer)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
             result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
