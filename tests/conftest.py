@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from _pytest.terminal import TerminalReporter
-
+from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date
 os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
 
 
