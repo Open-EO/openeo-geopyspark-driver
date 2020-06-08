@@ -296,7 +296,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             raise ValueError("Unsupported combination of reducer %s and dimension %s."%(reducer,dimension))
         if result_collection is not None:
             result_collection.metadata = result_collection.metadata.reduce_dimension(dimension)
-            if dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
+            if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
                 result_collection = result_collection.apply_to_levels(lambda rdd:  rdd.to_spatial_layer() if rdd.layer_type != gps.LayerType.SPATIAL else rdd)
         return result_collection
 
