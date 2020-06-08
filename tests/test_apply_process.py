@@ -8,10 +8,10 @@ import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from openeo.metadata import CollectionMetadata
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo.imagecollection import CollectionMetadata
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -153,12 +153,23 @@ class TestCustomFunctions(TestCase):
             self.assertEqual(math.cos(10),value[1][0])
             self.assertEqual(math.cos(5), value[1][1])
 
+    def test_apply_cos(self):
+        input = self.create_spacetime_layer()
+        cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        res = cube.apply("cos")
+        data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
+        np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(self.first[0]))
+        np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(self.second[0]))
 
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
-
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        collection_metadata = CollectionMetadata({
+            "cube:dimensions": {
+                "my_bands": {"type": "bands", "values": ["B04", "B08"]},
+            }
+        })
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(),collection_metadata)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -193,7 +204,7 @@ class TestCustomFunctions(TestCase):
             }
         }
         visitor.accept_process_graph(graph)
-        stitched = imagecollection.reduce_bands(visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        stitched = imagecollection.reduce_dimension('my_bands',visitor).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
 
@@ -354,7 +365,11 @@ class TestCustomFunctions(TestCase):
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
         metadata = CollectionMetadata({
-            "properties": {
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["B04", "B08"]}
+            },
+            "summaries": {
                 "eo:bands": [
                     {"name": "B04", "common_name": "red"},
                     {"name": "B08", "common_name": "nir"},
@@ -378,7 +393,11 @@ class TestCustomFunctions(TestCase):
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
         metadata = CollectionMetadata({
-            "properties": {
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["B04", "B08"]}
+            },
+            "summaries": {
                 "eo:bands": [
                     {"name": "B04", "common_name": "red"},
                     {"name": "B08", "common_name": "nir"},
@@ -404,7 +423,11 @@ class TestCustomFunctions(TestCase):
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
 
         metadata = CollectionMetadata({
-            "properties": {
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["the_band"]}
+            },
+            "summaries": {
                 "eo:bands": [
                     {"name": "the_band"}
                 ]

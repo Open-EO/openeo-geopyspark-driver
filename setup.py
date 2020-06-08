@@ -1,6 +1,4 @@
 from setuptools import setup,find_packages
-import os
-import datetime
 
 # Load the openeo version info.
 #
@@ -11,31 +9,36 @@ import datetime
 #   https://packaging.python.org/guides/single-sourcing-package-version
 
 __version__ = None
-date = datetime.datetime.today().strftime('%Y%m%d')
 
 with open('openeogeotrellis/_version.py') as fp:
     exec(fp.read())
 
-if os.environ.get('BUILD_NUMBER') and os.environ.get('BRANCH_NAME'):
-    if os.environ.get('BRANCH_NAME') == 'develop':
-        version = __version__ + '.' + date + '.' + os.environ['BUILD_NUMBER']
-    else:
-        version = __version__ + '.' + date + '.' + os.environ['BUILD_NUMBER'] + '+' + os.environ['BRANCH_NAME']
-else:
-    version = __version__
+version = __version__
+
+tests_require = [
+    'pytest',
+    'mock',
+    'schema',
+]
 
 setup(
     name='openeo-geopyspark',
     version=version,
     packages=find_packages(exclude=('tests', 'scripts')),
     include_package_data = True,
-    data_files=['layercatalog.json','scripts/log4j.properties'],
+    data_files=[
+        'layercatalog.json',
+        'log4j.properties',
+        'scripts/submit_batch_job_log4j.properties',
+        'scripts/batch_job_log4j.properties'
+    ],
     setup_requires=['pytest-runner'],
-    tests_require=['pytest','mock'],
+    tests_require=tests_require,
     install_requires=[
         'flask',
-        'openeo>=0.0.8',
-        'openeo_udf>=0.0.9',
+        'openeo>=0.3.0a1.*',
+        'openeo_driver>=0.2.6a1.*',
+        'openeo_udf>=0.0.9.post0',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
         'geopandas==0.3.0',
@@ -47,4 +50,7 @@ setup(
         'flask-cors',
         'rasterio==1.1.1'
     ],
+    extras_require={
+        "dev": tests_require,
+    },
 )

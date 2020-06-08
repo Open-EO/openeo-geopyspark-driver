@@ -3,7 +3,7 @@ import time
 from pyspark import SparkContext, SparkConf
 import openeo
 from openeo import ImageCollection
-from openeogeotrellis import kerberos
+from openeogeotrellis.utils import kerberos
 from openeo_driver import ProcessGraphDeserializer
 # from openeo_driver.utils import replace_nan_values
 from functools import reduce

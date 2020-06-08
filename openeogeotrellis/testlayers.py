@@ -1,5 +1,4 @@
 import datetime
-import os
 
 import numpy as np
 from geopyspark import geopyspark_conf

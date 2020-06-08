@@ -1,6 +1,9 @@
+import getpass
+from pathlib import Path
+
 import pytest
 
-from openeogeotrellis.utils import dict_merge_recursive
+from openeogeotrellis.utils import dict_merge_recursive, describe_path
 
 
 @pytest.mark.parametrize(["a", "b", "expected"], [
@@ -48,3 +51,21 @@ def test_merge_recursive_preserve_input():
     assert result == {1: {2: 3, 4: 5}}
     assert a == {1: {2: 3}}
     assert b == {1: {4: 5}}
+
+
+def test_describe_path(tmp_path):
+    tmp_path = Path(tmp_path)
+    a_dir = tmp_path / "dir"
+    a_dir.mkdir()
+    a_file = tmp_path / "file.txt"
+    a_file.touch()
+    a_symlink = tmp_path / "symlink.txt"
+    a_symlink.symlink_to(a_file)
+    paths = [a_dir, a_file, a_symlink]
+    paths.extend([str(p) for p in paths])
+    for path in paths:
+        d = describe_path(path)
+        assert "rw" in d["mode"]
+        assert d["user"] == getpass.getuser()
+
+    assert describe_path(tmp_path / "invalid")["status"] == "does not exist"

@@ -24,8 +24,6 @@ class JobTracker:
         self._track_interval = 60  # seconds
 
     def update_statuses(self) -> None:
-        print("tracking statuses...")
-
         try:
             i = 0
 
@@ -35,6 +33,8 @@ class JobTracker:
                         self._refresh_kerberos_tgt()
 
                     with self._job_registry() as registry:
+                        print("tracking statuses...")
+
                         jobs_to_track = registry.get_running_jobs()
 
                         for job in jobs_to_track:
@@ -63,6 +63,19 @@ class JobTracker:
                 i += 1
         except KeyboardInterrupt:
             pass
+
+    @staticmethod
+    def yarn_available() -> bool:
+        """Check if YARN tools are available."""
+        try:
+            _log.info("Checking if Hadoop 'yarn' tool is available")
+            output = subprocess.check_output(["yarn", "version"]).decode("ascii")
+            hadoop_yarn_available = "hadoop" in output.lower()
+            _log.info("Hadoop yarn available: {a}".format(a=hadoop_yarn_available))
+            return hadoop_yarn_available
+        except Exception as e:
+            _log.info("Failed to run 'yarn': {e!r}".format(e=e))
+            return False
 
     @staticmethod
     def _yarn_status(application_id: str) -> (str, str):

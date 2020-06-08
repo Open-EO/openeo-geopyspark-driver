@@ -4,11 +4,14 @@ from pathlib import Path
 
 import pytest
 from _pytest.terminal import TerminalReporter
+from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date
+os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config):
     """Pytest configuration hook"""
+    os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
     _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
@@ -26,6 +29,7 @@ def _ensure_geopyspark(out: TerminalReporter):
         out.write_line("Failed to import geopyspark automatically. "
                        "Will set up py4j path using Spark home: {h}".format(h=pyspark_home))
         py4j_zip = next((pyspark_home / 'python' / 'lib').glob('py4j-*-src.zip'))
+        out.write_line("py4j zip: {z!r}".format(z=py4j_zip))
         sys.path.append(str(py4j_zip))
 
 
@@ -51,7 +55,16 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     else:
         conf.set('spark.ui.enabled', True)
 
+    out.write_line("SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
+    out.write_line("JVM info: {d!r}".format(d={
+        f: context._jvm.System.getProperty(f)
+        for f in [
+            "java.version", "java.vendor", "java.home",
+            "java.class.version",
+            # "java.class.path",
+        ]
+    }))
 
     out.write_line("Validating the Spark context")
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
@@ -59,3 +72,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     out.write_line(repr((answer, dummy)))
 
     return context
+
+
+@pytest.fixture(params=["0.4.0", "1.0.0"])
+def api_version(request):
+    return request.param
+

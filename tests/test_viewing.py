@@ -10,12 +10,13 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
+
+PNG_SIGNATURE = b'\x89PNG\x0d\x0a\x1a\x0a'
 
 
 class TestViewing(TestCase):
-
     first = np.zeros((1, 4, 4))
     first.fill(1)
 
@@ -59,7 +60,6 @@ class TestViewing(TestCase):
         (Point(-10.0, 15.0), None, None)
     ]
 
-
     def create_spacetime_layer(self) -> TiledRasterLayer:
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
@@ -86,15 +86,19 @@ class TestViewing(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-
     def test_viewing(self):
         geotrellis_layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geotrellis_layer}), InMemoryServiceRegistry())
-        metadata = imagecollection.tiled_viewing_service(type="TMS", process_graph={})
+        imagecollection = GeotrellisTimeSeriesImageCollection(
+            pyramid=gps.Pyramid({0: geotrellis_layer}),
+            service_registry=InMemoryServiceRegistry()
+        )
+        metadata = imagecollection.tiled_viewing_service(service_type="TMS", process_graph={})
         print(metadata)
-        self.assertEqual('TMS',metadata['type'])
-        self.assertIsNotNone(metadata['bounds'])
-        tileresponse = requests.get(metadata['url'].format(x=0, y=0, z=0), timeout=2)
-        self.assertEqual(200,tileresponse.status_code)
-        tileresponse = requests.get(metadata['url'].format(x=1, y=1, z=0), timeout=2)
-        self.assertEqual(200,tileresponse.status_code)
+        assert metadata.type == "TMS"
+        assert isinstance(metadata.attributes["bounds"], dict)
+        tileresponse = requests.get(metadata.url.format(x=0, y=0, z=0), timeout=2)
+        assert tileresponse.status_code == 200
+        assert tileresponse.content.startswith(PNG_SIGNATURE)
+        tileresponse = requests.get(metadata.url.format(x=1, y=1, z=0), timeout=2)
+        assert tileresponse.status_code == 200
+        assert tileresponse.content.startswith(PNG_SIGNATURE)

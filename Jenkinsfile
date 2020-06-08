@@ -9,12 +9,15 @@
 @Library('lib')_
 
 pythonPipeline {
-  package_name = 'openeo_geopyspark'
+  package_name = 'openeo-geopyspark'
   wipeout_workspace = true
   hadoop = true
   pre_test_script = 'pre_test.sh'
   extra_env_variables = 'TRAVIS=1'
   python_version = ["3.6"]
-  downstream_job = 'openeo-geopyspark-integrationtests'
+  downstream_job = 'geo.OpenEO/openeo-geopyspark-integrationtests'
   wheel_repo = 'python-openeo'
+  wheel_repo_dev = 'python-openeo'
+  test_module_name = 'openeogeotrellis'
+  extras_require = 'dev'
 }

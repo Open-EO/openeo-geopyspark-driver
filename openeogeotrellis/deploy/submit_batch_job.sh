@@ -5,17 +5,17 @@ if [ -z "${OPENEO_VENV_ZIP}" ]; then
     OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
 fi
 
-if [ "$#" -lt 5 ]; then
-    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <principal> <key tab file> [api version]"
+if [ "$#" -lt 7 ]; then
+    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> <OpenEO user> [api version] [driver memory] [executor memory]"
     exit 1
 fi
 
-export LOG4J_CONFIGURATION_FILE="./log4j.properties"
+sparkSubmitLog4jConfigurationFile="venv/submit_batch_job_log4j.properties"
 
-if [ ! -f ${LOG4J_CONFIGURATION_FILE} ]; then
-    LOG4J_CONFIGURATION_FILE='scripts/log4j.properties'
-    if [ ! -f ${LOG4J_CONFIGURATION_FILE} ]; then
-        >&2 echo "${LOG4J_CONFIGURATION_FILE} is missing"
+if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
+    sparkSubmitLog4jConfigurationFile='scripts/submit_batch_job_log4j.properties'
+    if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
+        >&2 echo "${sparkSubmitLog4jConfigurationFile} is missing"
         exit 1
     fi
 
@@ -24,11 +24,17 @@ fi
 jobName=$1
 processGraphFile=$2
 outputFile=$3
-principal=$4
-keyTab=$5
-apiVersion=$6
-drivermemory=${7-22G}
-executormemory=${8-4G}
+userLogFile=$4
+principal=$5
+keyTab=$6
+openEoUser=$7
+apiVersion=$8
+drivermemory=${9-22G}
+executormemory=${10-4G}
+executormemoryoverhead=${11-2G}
+drivercores=${12-14}
+executorcores=${13-2}
+
 
 pysparkPython="venv/bin/python"
 
@@ -37,7 +43,7 @@ kinit -kt ${keyTab} ${principal} || true
 export HDP_VERSION=3.1.4.0-315
 export SPARK_HOME=/usr/hdp/$HDP_VERSION/spark2
 export PATH="$SPARK_HOME/bin:$PATH"
-export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${LOG4J_CONFIGURATION_FILE}"
+export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="venv/lib64"
 
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
@@ -55,24 +61,38 @@ fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
 
+sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
+ -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
+ -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
+
+if ipa -v user-find --login "${openEoUser}"; then
+  run_as="--proxy-user ${openEoUser}"
+else
+  run_as="--principal ${principal} --keytab ${keyTab}"
+fi
+
 spark-submit \
  --master yarn --deploy-mode cluster \
- --principal ${principal} --keytab ${keyTab} \
+ ${run_as} \
  --conf spark.yarn.submit.waitAppCompletion=false \
- --driver-memory ${drivermemory} \
- --executor-memory ${executormemory} \
- --driver-java-options "-Dscala.concurrent.context.maxThreads=1" \
+ --driver-memory "${drivermemory}" \
+ --executor-memory "${executormemory}" \
+ --driver-java-options "${sparkDriverJavaOptions}" \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
  --conf spark.rdd.compress=true \
- --conf spark.driver.cores=17 \
+ --conf spark.driver.cores=${drivercores} \
+ --conf spark.executor.cores=${executorcores} \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=8g \
- --conf spark.executor.memoryOverhead=2g \
- --conf spark.speculation=false \
- --conf spark.dynamicAllocation.minExecutors=20 \
+ --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
+ --conf spark.blacklist.enabled=true \
+ --conf spark.speculation=true \
+ --conf spark.speculation.interval=5000ms \
+ --conf spark.speculation.multiplier=4 \
+ --conf spark.dynamicAllocation.minExecutors=5 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
@@ -87,4 +107,5 @@ spark-submit \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
- --name "${jobName}" "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${apiVersion}"
+ --name "${jobName}" \
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${userLogFile}" "${apiVersion}"

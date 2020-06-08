@@ -1,10 +1,16 @@
 import collections
+import grp
 import logging
 import os
-import pytz
-from dateutil.parser import parse
+from pathlib import Path
+import pwd
+import stat
+from typing import Union
 
+from dateutil.parser import parse
 from py4j.java_gateway import JavaGateway
+import pytz
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 logger = logging.getLogger("openeo")
 
@@ -13,7 +19,7 @@ def kerberos():
     import geopyspark as gps
 
     if 'HADOOP_CONF_DIR' not in os.environ:
-        logger.warn('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
+        logger.warning('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
 
     sc = gps.get_spark_context()
     gateway = JavaGateway(gateway_parameters=sc._gateway.gateway_parameters)
@@ -21,7 +27,7 @@ def kerberos():
 
     hadoop_auth = jvm.org.apache.hadoop.conf.Configuration().get('hadoop.security.authentication')
     if hadoop_auth != 'kerberos':
-        logger.warn('Hadoop client does not have hadoop.security.authentication=kerberos.')
+        logger.warning('Hadoop client does not have hadoop.security.authentication=kerberos.')
 
     currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
     if currentUser.hasKerberosCredentials():
@@ -80,3 +86,42 @@ def normalize_date(date_string):
             date = date.replace(tzinfo=pytz.UTC)
         return date.isoformat()
     return None
+
+
+def describe_path(path: Union[Path, str]) -> dict:
+    path = Path(path)
+    if path.exists() or path.is_symlink():
+        st = os.stat(str(path))
+        return {
+            "path": str(path.absolute()),
+            "mode": stat.filemode(st.st_mode),
+            "uid": st.st_uid,
+            "user": pwd.getpwuid(st.st_uid).pw_name,
+            "gid": st.st_gid,
+            "group": grp.getgrgid(st.st_gid).gr_name,
+            "size": st.st_size
+        }
+    else:
+        return {
+            "path": str(path),
+            "status": "does not exist"
+        }
+
+
+def to_projected_polygons(jvm, *args):
+    """Construct ProjectedPolygon instance"""
+    if len(args) == 1 and isinstance(args[0], (str, Path)):
+        # Vector file
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
+    elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
+        # Multiple polygons
+        polygon_wkts = [str(x) for x in args[0]]
+        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+    elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
+        # Single polygon
+        polygon_wkts = [str(args[0])]
+        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+    else:
+        raise ValueError(args)

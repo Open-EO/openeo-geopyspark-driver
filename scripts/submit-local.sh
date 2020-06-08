@@ -51,4 +51,4 @@ spark-submit \
  --archives "${hdfsVenvZip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars ${extensions},${backend_assembly} \
- openeogeotrellis/deploy/probav-mep.py no-zookeeper
+ openeogeotrellis/deploy/probav-mep.py

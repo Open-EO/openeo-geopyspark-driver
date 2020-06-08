@@ -25,7 +25,7 @@ class Traefik:
         self._create_frontend_rule(frontend_id, backend_id, match_specific_service, priority=200)
         self._trigger_configuration_update()
 
-    def add_load_balanced_server(self, cluster_id, server_id, host, port) -> None:
+    def add_load_balanced_server(self, cluster_id, server_id, host, port, environment) -> None:
         """
         Adds a server to a particular load-balanced cluster.
 
@@ -38,10 +38,15 @@ class Traefik:
         """
 
         # FIXME: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional "test" node
-        match_openeo = "PathPrefix: /openeo,/.well-known/openeo"
+        if environment == 'dev':
+            match_openeo = "Host: openeo-dev.vgt.vito.be;PathPrefix: /openeo,/.well-known/openeo"
+            priority = 100
+        else:
+            match_openeo = "Host: openeo.vgt.vito.be,openeo.vito.be;PathPrefix: /openeo,/.well-known/openeo"
+            priority = 100
 
         self._create_backend_server(cluster_id, server_id, host, port)
-        self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority=100)
+        self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority)
         self._trigger_configuration_update()
 
     def remove(self, service_id):

@@ -1,6 +1,15 @@
-import logging
+"""
+Script to start a production server. This script can serve as the entry-point for doing spark-submit.
+"""
 
+# TODO reduce code duplication: https://jira.vito.be/browse/EP-3382
+
+
+import datetime
+import logging
 from logging.config import dictConfig
+import sys
+import threading
 
 dictConfig({
     'version': 1,
@@ -26,24 +35,19 @@ dictConfig({
 
 import gunicorn.app.base
 from gunicorn.six import iteritems
-import sys
 sys.path.insert(0,'py4j-0.10.7-src.zip')
 sys.path.insert(0,'pyspark.zip')
-import json
-import sys
-import datetime
-import threading
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.traefik import Traefik
 
 
-"""
-Script to start a production server. This script can serve as the entry-point for doing spark-submit.
-"""
+log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
+
 
 def number_of_workers():
     return 4#(multiprocessing.cpu_count() * 2) + 1
+
 
 def when_ready(server):
     print(server)
@@ -81,16 +85,16 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
         return self.application
 
 
-def update_zookeeper(host: str, port):
-    print("Registering with zookeeper.")
+def update_zookeeper(host: str, port, env):
+    log.info("Registering with zookeeper: {h}:{p} for {e}".format(h=host, p=port, e=env))
     from kazoo.client import KazooClient
     from openeogeotrellis.configparams import ConfigParams
 
+    cluster_id='openeo-' + env
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
-
     try:
-        Traefik(zk).add_load_balanced_server(cluster_id='openeo-test', server_id="0", host=host, port=port)
+        Traefik(zk).add_load_balanced_server(cluster_id=cluster_id, server_id="0", host=host, port=port, environment=env)
     finally:
         zk.stop()
         zk.close()
@@ -102,6 +106,7 @@ def main():
     pysc = SparkContext.getOrCreate()
     # Modification 3: pass Flask app instead of handler_app
     import socket
+    import argparse
     local_ip = socket.gethostbyname(socket.gethostname())
     tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp.bind(('', 0))
@@ -121,24 +126,36 @@ def main():
         'errorlog': '-'
     }
     tcp.close()
-    from openeo_driver.views import app
+    from openeo_driver.views import app, build_backend_deploy_metadata
     from flask_cors import CORS
     CORS(app)
-    from openeogeotrellis import get_backend_version
+    from openeogeotrellis import get_backend_version, deploy
+    deploy.load_custom_processes(app.logger)
 
     app.logger.setLevel('DEBUG')
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'VITO Remote Sensing openEO API'
     app.config['OPENEO_DESCRIPTION'] = 'OpenEO API to the VITO Remote Sensing product catalog and processing services (using GeoPySpark driver).'
+    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = build_backend_deploy_metadata(
+        packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+        # TODO: add version info about geotrellis-extensions jar?
+    )
+
     application = StandaloneApplication(app, options)
 
     app.logger.info('App info logging enabled!')
     app.logger.debug('App debug logging enabled!')
 
-    zookeeper = len(sys.argv) <= 1 or sys.argv[1] != "no-zookeeper"
+    parser = argparse.ArgumentParser(usage="OpenEO deployment")
+    parser.add_argument("--zookeeper", action="store_true", default=False, help='Register in Zookeeper')
+    parser.add_argument("--env", action="store", default='dev', help='Environment to deploy in')
+    args = parser.parse_args()
+
+    zookeeper = args.zookeeper
+    env = args.env
 
     if zookeeper:
-        update_zookeeper(local_ip, port)
+        update_zookeeper(local_ip, port, env)
 
     application.run()
     print(application)

@@ -1,35 +1,44 @@
-import re
+from typing import List, Tuple
 import unittest.mock as mock
-from unittest import skip
 
+import pytest
+import schema
+
+from openeo.util import deep_get
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
-def test_layercatalog_json():
+def _get_layers() -> List[Tuple[str, dict]]:
     catalog = get_layer_catalog()
-    for layer in catalog.get_all_metadata():
-        assert re.match(r'^[A-Za-z0-9_\-\.~\/]+$', layer['id'])
-        assert 'stac_version' in layer
-        assert 'description' in layer
-        assert 'license' in layer
-        assert 'extent' in layer
+    layers = catalog.get_all_metadata()
+    return [(layer["id"], layer) for layer in layers]
 
 
-def test_issue77_band_metadata():
-    catalog = get_layer_catalog()
-    for layer in catalog.get_all_metadata():
-        # print(layer['id'])
-        # TODO: stop doing this non-standard band metadata ("bands" item in metadata root)
-        old_bands = [b if isinstance(b, str) else b["band_id"] for b in layer.get("bands", [])]
-        eo_bands = [b["name"] for b in layer.get("properties", {}).get('eo:bands', [])]
-        cube_dimension_bands = []
-        for cube_dim in layer.get("properties", {}).get("cube:dimensions", {}).values():
-            if cube_dim["type"] == "bands":
-                cube_dimension_bands = cube_dim["values"]
-        if len(old_bands) > 1:
-            assert old_bands == eo_bands
-            assert old_bands == cube_dimension_bands
+@pytest.mark.parametrize(["id", "layer"], _get_layers())
+def test_layer_metadata(id, layer):
+    # TODO: move/copy to openeo-deploy project?
+    assert "bands" not in layer
+    assert deep_get(layer, "properties", "cube:dimensions", default=None) is None
+    assert deep_get(layer, "properties", "eo:bands", default=None) is None
+    eo_bands = [b["name"] for b in deep_get(layer, "summaries", 'eo:bands', default=[])]
+    cube_dimension_bands = []
+    for cube_dim in layer.get("cube:dimensions", {}).values():
+        if cube_dim["type"] == "bands":
+            cube_dimension_bands = cube_dim["values"]
+    if eo_bands:
         assert eo_bands == cube_dimension_bands
+
+    def valid_bbox(bbox):
+        return len(bbox) == 4 and bbox[0] <= bbox[2] and bbox[1] <= bbox[3]
+
+    assert schema.Schema({
+        "spatial": {
+            "bbox": [
+                schema.And([schema.Or(int, float)], valid_bbox)
+            ]
+        },
+        "temporal": {"interval": [[schema.Or(str, None)]]}
+    }).validate(layer["extent"])
 
 
 def test_get_layer_catalog_with_updates():
@@ -47,13 +56,13 @@ def test_get_layer_catalog_with_updates():
         assert bar["description"] == "The BAR layer"
         assert bar["links"] == ["example.com/bar"]
 
-#skip because test depends on external config
+
+# skip because test depends on external config
 def skip_sentinelhub_layer():
     catalog = get_layer_catalog()
     viewingParameters = {}
     viewingParameters["from"] = "2018-01-01"
     viewingParameters["to"] = "2018-01-02"
-
 
     viewingParameters["left"] = 4
     viewingParameters["right"] = 4.0001

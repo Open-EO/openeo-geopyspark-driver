@@ -9,6 +9,8 @@ from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, Te
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
 from numpy.testing import assert_array_almost_equal
+from openeo.metadata import CollectionMetadata
+from openeo_driver.errors import FeatureUnsupportedException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
@@ -16,6 +18,19 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from openeogeotrellis.numpy_aggregators import max_composite
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
+
+def reducer(operation: str):
+    return {
+        "%s1" % operation: {
+            "arguments": {
+                "data": {
+                    "from_argument": "dimension_data"
+                }
+            },
+            "process_id": operation,
+            "result": True
+        },
+    }
 
 class TestMultipleDates(TestCase):
     band1 = np.array([
@@ -65,6 +80,11 @@ class TestMultipleDates(TestCase):
                 'layoutDefinition': {
                     'extent': extent,
                     'tileLayout': {'tileCols': 5, 'tileRows': 5, 'layoutCols': 2, 'layoutRows': 2}}}
+    collection_metadata = CollectionMetadata({
+        "cube:dimensions": {
+            "t": {"type": "temporal"},
+        }
+    })
 
     tiled_raster_rdd = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
@@ -102,50 +122,53 @@ class TestMultipleDates(TestCase):
     def test_reproject_spatial(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3857",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
-        resampled.reduce('max', 'temporal').download(path, format="GTIFF", parameters={'tiled': True})
+        resampled.reduce('max', dimension="t").download(path, format="GTIFF", parameters={'tiled': True})
 
         import rasterio
         with rasterio.open(path) as ds:
             print(ds.profile)
 
+
+
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce("max", "temporal").pyramid.levels[0].stitch()
+
+        stitched = imagecollection.reduce_dimension(dimension="t", reducer=reducer("max")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(2.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("min", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("min")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(1.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("sum", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("sum")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(4.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("mean", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("mean")).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("variance", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("variance"), dimension="t").pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(0.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(0.2222222, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce("sd", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("sd"), dimension="t").pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(0.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(0.4714045, stitched.cells[0][0][1])
@@ -156,24 +179,24 @@ class TestMultipleDates(TestCase):
             datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
         })})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce("min", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("min"), dimension="t").pyramid.levels[0].stitch()
         self.assertEqual(1.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("max", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("max"), dimension="t").pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("sum", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("sum"), dimension="t").pyramid.levels[0].stitch()
         self.assertEqual(6.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("mean", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("mean"), dimension="t").pyramid.levels[0].stitch()
         self.assertAlmostEqual(3.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce("variance", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("variance"), dimension="t").pyramid.levels[0].stitch()
         self.assertAlmostEqual(4.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce("sd", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer=reducer("sd"), dimension="t").pyramid.levels[0].stitch()
         self.assertAlmostEqual(2.0, stitched.cells[0][0][0], delta=0.001)
 
     def test_reduce_some_nodata(self):
@@ -184,25 +207,25 @@ class TestMultipleDates(TestCase):
             datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
         }, no_data)})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce("min", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("min", dimension="t").pyramid.levels[0].stitch()
         #print(stitched)
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("max", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("max", dimension="t").pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("sum", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("sum", dimension="t").pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("mean", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("mean", dimension="t").pyramid.levels[0].stitch()
         self.assertAlmostEqual(5.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce("variance", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("variance", dimension="t").pyramid.levels[0].stitch()
         self.assertAlmostEqual(0.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce("sd", "temporal").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce("sd", dimension="t").pyramid.levels[0].stitch()
         self.assertAlmostEqual(0.0, stitched.cells[0][0][0], delta=0.001)
 
     def test_reduce_tiles(self):
@@ -255,16 +278,18 @@ class TestMultipleDates(TestCase):
     def test_reduce_nontemporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        with self.assertRaises(AttributeError) as context:
-            imagecollection.reduce("max","spectral").pyramid.levels[0].stitch()
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        with self.assertRaises(FeatureUnsupportedException) as context:
+            imagecollection.reduce("max", dimension="gender").pyramid.levels[0].stitch()
         print(context.exception)
 
     def test_aggregate_temporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
-
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        stitched = imagecollection.aggregate_temporal(["2017-01-01","2018-01-01"],["2017-01-03"],"max").pyramid.levels[0].to_spatial_layer().stitch()
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        stitched = (
+            imagecollection.aggregate_temporal(["2017-01-01", "2018-01-01"], ["2017-01-03"], "max", dimension="t")
+                .pyramid.levels[0].to_spatial_layer().stitch()
+        )
         print(stitched)
 
     def test_max_aggregator(self):
@@ -273,21 +298,19 @@ class TestMultipleDates(TestCase):
         self.assertEqual(2.0, composite.cells[0][0])
 
     def test_aggregate_max_time(self):
-
         input = Pyramid( {0:self.tiled_raster_rdd })
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-
-        stitched = imagecollection.reduce('max','temporal').pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce('max', dimension='t').pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
     def test_min_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        min_time = imagecollection.reduce('min','temporal')
-        max_time = imagecollection.reduce('max','temporal')
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        min_time = imagecollection.reduce_dimension(reducer=reducer('min'), dimension='t')
+        max_time = imagecollection.reduce_dimension(reducer=reducer('max'), dimension='t')
 
         stitched = min_time.pyramid.levels[0].stitch()
         print(stitched)
@@ -309,19 +332,27 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), {
-            "bands": [
-                {
-                    "band_id": "2",
-                    "name": "blue",
-                    "wavelength_nm": 496.6,
-                    "res_m": 10,
-                    "scale": 0.0001,
-                    "offset": 0,
-                    "type": "int16",
-                    "unit": "1"
-                }]
-        })
+        imagecollection = GeotrellisTimeSeriesImageCollection(
+            input, InMemoryServiceRegistry(),
+            metadata=CollectionMetadata({
+                "cube:dimensions": {
+                    # TODO: also specify other dimensions?
+                    "bands": {"type": "bands", "values": ["2"]}
+                },
+                "summaries": {"eo:bands": [
+                    {
+                        "name": "2",
+                        "common_name": "blue",
+                        "wavelength_nm": 496.6,
+                        "res_m": 10,
+                        "scale": 0.0001,
+                        "offset": 0,
+                        "type": "int16",
+                        "unit": "1"
+                    }
+                ]}
+            })
+        )
         import os, openeo_udf
         dir = os.path.dirname(openeo_udf.functions.__file__)
         file_name = os.path.join(dir, "datacube_reduce_time_sum.py")
@@ -339,20 +370,27 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), {
-            "bands": [
-                {
-                    "band_id": "2",
-                    "name": "blue",
-                    "wavelength_nm": 496.6,
-                    "res_m": 10,
-                    "scale": 0.0001,
-                    "offset": 0,
-                    "type": "int16",
-                    "unit": "1"
-                }]
-        })
-
+        imagecollection = GeotrellisTimeSeriesImageCollection(
+            input, InMemoryServiceRegistry(),
+            metadata=CollectionMetadata({
+                "cube:dimensions": {
+                    # TODO: also specify other dimensions?
+                    "bands": {"type": "bands", "values": ["2"]}
+                },
+                "summaries": {"eo:bands": [
+                    {
+                        "name": "2",
+                        "common_name": "blue",
+                        "wavelength_nm": 496.6,
+                        "res_m": 10,
+                        "scale": 0.0001,
+                        "offset": 0,
+                        "type": "int16",
+                        "unit": "1"
+                    }
+                ]}
+            })
+        )
 
         udf_code = """
 def rct_savitzky_golay(udf_data:UdfData):
@@ -383,9 +421,9 @@ def rct_savitzky_golay(udf_data:UdfData):
         mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
         mask = Pyramid({0: mask_layer})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        stitched = imagecollection.mask(rastermask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
-                                        replacement=10.0).reduce('max','temporal').pyramid.levels[0].stitch()
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        stitched = imagecollection.mask(mask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
+                                        replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
         print(stitched)
         self.assertEquals(2.0,stitched.cells[0][0][0])
         self.assertEquals(10.0, stitched.cells[0][0][1])
@@ -394,8 +432,8 @@ def rct_savitzky_golay(udf_data:UdfData):
         kernel = np.array([[0.0,1.0,0.0],[1.0,1.0,1.0],[0.0,1.0,0.0]])
 
         input = Pyramid({0: self.tiled_raster_rdd})
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
-        stitched = imagecollection.apply_kernel(kernel,2.0).reduce('max','temporal').pyramid.levels[0].stitch()
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        stitched = imagecollection.apply_kernel(kernel, 2.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
 
         self.assertEquals(12.0, stitched.cells[0][0][0])
         self.assertEquals(16.0, stitched.cells[0][0][1])
@@ -404,14 +442,22 @@ def rct_savitzky_golay(udf_data:UdfData):
     def test_resample_spatial(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
         resampled = imagecollection.resample_spatial(resolution=0.05)
 
         path = str(self.temp_folder / "resampled.tiff")
-        resampled.reduce('max', 'temporal').download(path, format="GTIFF", parameters={'tiled': True})
+        resampled.reduce('max', dimension="t").download(path, format="GTIFF", parameters={'tiled': True})
 
         import rasterio
         with rasterio.open(path) as ds:
             print(ds.profile)
             self.assertAlmostEqual(0.05, ds.res[0], 3)
+
+    def test_rename_dimension(self):
+        imagecollection = GeotrellisTimeSeriesImageCollection(Pyramid({0: self.tiled_raster_rdd}), InMemoryServiceRegistry(),
+                                                              metadata=self.collection_metadata)
+
+        dim_renamed = imagecollection.rename_dimension('t','myNewTimeDim')
+
+        dim_renamed.metadata.assert_valid_dimension('myNewTimeDim')

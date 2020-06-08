@@ -1,21 +1,21 @@
 import datetime
+import json
+from tempfile import NamedTemporaryFile
 from unittest import TestCase
 
-from tempfile import NamedTemporaryFile
-import json
-from shapely.geometry import mapping
 import geopyspark as gps
-import numpy as np
-import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+import numpy as np
 from pyspark import SparkContext
-from shapely.geometry import Point
-from shapely.geometry import Polygon, GeometryCollection, MultiPolygon
+import pytest
+import pytz
+from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
 
-from openeogeotrellis import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from .data import get_test_data_file
 
 
 class TestTimeSeries(TestCase):
@@ -261,3 +261,65 @@ class TestTimeSeries(TestCase):
                 "values": [220.0]
             }
         }
+
+
+def _build_cube():
+    # TODO: avoid instantiating TestTimeSeries? e.g. use pytest fixtures or simple builder functions.
+    layer = TestTimeSeries().create_spacetime_layer()
+    cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+    return cube
+
+
+@pytest.mark.parametrize(["func", "expected"], [
+    ("mean", {'2017-09-25T11:37:00': [[1.0, 2.0]]}),
+    ("median", {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}),
+    ("histogram", {'2017-09-25T11:37:00Z': [[{1.0: 4}, {2.0: 4}]]}),
+    ("sd", {'2017-09-25T11:37:00Z': [[0.0, 0.0]]})
+])
+def test_zonal_statistics_single_polygon(func, expected):
+    cube = _build_cube()
+    polygon = box(0.0, 0.0, 1.0, 1.0)
+    result = cube.zonal_statistics(polygon, func=func)
+    assert result.data == expected
+
+
+@pytest.mark.parametrize(["func", "expected"], [
+    ("mean", {'2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]}),
+    ("median", {'2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]}),
+    ("histogram", {'2017-09-25T11:37:00Z': [[{1.0: 4}, {2.0: 4}], [{1.0: 23}, {2.0: 23}]]}),
+    ("sd", {'2017-09-25T11:37:00Z': [[0.0, 0.0], [0.0, 0.0]]})
+])
+def test_zonal_statistics_geometry_collection(func, expected):
+    cube = _build_cube()
+    geometry = GeometryCollection([
+        box(0.5, 0.5, 1.5, 1.5),
+        MultiPolygon([box(2.0, 0.5, 4.0, 1.5), box(1.5, 2, 4.0, 3.5)])
+    ])
+    result = cube.zonal_statistics(geometry, func=func)
+    assert result.data == expected
+
+
+@pytest.mark.parametrize(["func", "expected"], [
+    ("mean", {'2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]}),
+    ("median", {'2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]}),
+    ("histogram", {'2017-09-25T11:37:00Z': [[{1.0: 4}, {2.0: 4}], [{1.0: 19}, {2.0: 19}]]}),
+    ("sd", {'2017-09-25T11:37:00Z': [[0.0, 0.0], [0.0, 0.0]]})
+])
+def test_zonal_statistics_shapefile(func, expected):
+    cube = _build_cube()
+    shapefile = str(get_test_data_file("geometries/polygons01.shp"))
+    result = cube.zonal_statistics(regions=shapefile, func=func)
+    assert result.data == expected
+
+
+@pytest.mark.parametrize(["func", "expected"], [
+    ("mean", {'2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]}),
+    ("median", {'2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]}),
+    ("histogram", {'2017-09-25T11:37:00Z': [[{1.0: 4}, {2.0: 4}], [{1.0: 19}, {2.0: 19}]]}),
+    ("sd", {'2017-09-25T11:37:00Z': [[0.0, 0.0], [0.0, 0.0]]})
+])
+def test_zonal_statistics_geojson(func, expected):
+    cube = _build_cube()
+    shapefile = str(get_test_data_file("geometries/polygons01.geojson"))
+    result = cube.zonal_statistics(regions=shapefile, func=func)
+    assert result.data == expected

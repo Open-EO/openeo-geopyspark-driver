@@ -3,12 +3,13 @@ Script to start a local server. This script can serve as the entry-point for doi
 """
 
 import logging
+from datetime import datetime
 from logging.config import dictConfig
 
 dictConfig({
     'version': 1,
     'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
+        'format': '[%(asctime)s] %(process)s %(levelname)s in %(name)s: %(message)s',
     }},
     'handlers': {'wsgi': {
         'class': 'logging.StreamHandler',
@@ -66,9 +67,14 @@ def setup_local_spark():
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable
 
-    _log.info('Creating Spark context with config: {c!r}'.format(c=conf.getAll()))
+    _log.info('Creating Spark context with config:')
+    for k, v in conf.getAll():
+        _log.info("Spark config: {k!r}: {v!r}".format(k=k, v=v))
     pysc = SparkContext.getOrCreate(conf)
     _log.info('Created Spark Context {s}'.format(s=pysc))
+    _log.info('Spark web UI: http://localhost:{p}/'.format(p=pysc.getConf().get('spark.ui.port') or 4040))
+
+    return pysc
 
 
 def number_of_workers():
@@ -83,21 +89,25 @@ def show_log_level(logger: logging.Logger):
 
 def when_ready(server):
     _log.info('When ready: {s}'.format(s=server))
-    from pyspark import SparkContext
-
-    sc = SparkContext.getOrCreate()
-
-    principal = sc.getConf().get("spark.yarn.principal")
-    keytab = sc.getConf().get("spark.yarn.keytab")
-    from openeogeotrellis.job_tracker import JobTracker
-    from openeogeotrellis.job_registry import JobRegistry
 
     show_log_level(logging.getLogger('gunicorn.error'))
     show_log_level(logging.getLogger('flask'))
     show_log_level(logging.getLogger('werkzeug'))
 
-    job_tracker = JobTracker(JobRegistry, principal, keytab)
-    threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+    from openeogeotrellis.job_tracker import JobTracker
+    if JobTracker.yarn_available():
+        _log.info("Launching thread to poll YARN job status")
+        from pyspark import SparkContext
+        from openeogeotrellis.job_registry import JobRegistry
+
+        sc = SparkContext.getOrCreate()
+        principal = sc.getConf().get("spark.yarn.principal")
+        keytab = sc.getConf().get("spark.yarn.keytab")
+        job_tracker = JobTracker(JobRegistry, principal, keytab)
+        threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+    else:
+        _log.info("Not launching thread to poll YARN job status")
+
 
 
 class StandaloneApplication(gunicorn.app.base.BaseApplication):
@@ -137,7 +147,7 @@ if __name__ == '__main__':
         #'keyfile': 'test.key'
     }
 
-    from openeo_driver.views import app
+    from openeo_driver.views import app, build_backend_deploy_metadata
     from flask_cors import CORS
     CORS(app)
     from openeogeotrellis import get_backend_version
@@ -150,6 +160,9 @@ if __name__ == '__main__':
     app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
     app.config['OPENEO_TITLE'] = 'Local GeoPySpark'
     app.config['OPENEO_DESCRIPTION'] = 'Local openEO API using GeoPySpark driver'
+    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = build_backend_deploy_metadata(
+        packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+    )
     application = StandaloneApplication(app, options)
 
     application.run()

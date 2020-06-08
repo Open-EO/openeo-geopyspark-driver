@@ -1,8 +1,12 @@
+from datetime import datetime
 from typing import List, Dict
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
 import json
 
+from openeo.util import date_to_rfc3339
+from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.utils import parse_rfc3339
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.errors import JobNotFoundException
 
@@ -16,19 +20,40 @@ class JobRegistry:
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 
-    def register(self, job_id: str, user_id: str, api_version: str, specification: Dict) -> None:
+    def register(self, job_id: str, user_id: str, api_version: str, specification: dict) -> dict:
         """Registers a to-be-run batch job."""
-
+        # TODO: use `BatchJobMetadata` instead of free form dict here?
         job_info = {
             'job_id': job_id,
             'user_id': user_id,
             'status': 'created',
+            # TODO: move api_Version into specification?
             'api_version': api_version,
+            # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
             'specification': json.dumps(specification),
             'application_id': None,
+            'created': date_to_rfc3339(datetime.utcnow()),
         }
-
         self._create(job_info)
+        return job_info
+
+    @staticmethod
+    def job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
+        """Convert job info dict to BatchJobMetadata"""
+        status = job_info.get("status")
+        if status == "submitted":
+            status = "created"
+        specification = job_info["specification"]
+        if isinstance(specification, str):
+            specification = json.loads(specification)
+        job_options = specification.pop("job_options", None)
+        return BatchJobMetadata(
+            id=job_info["job_id"],
+            process=specification,
+            status=status,
+            created=parse_rfc3339(job_info["created"]) if "created" in job_info else None,
+            job_options=job_options
+        )
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
@@ -57,6 +82,17 @@ class JobRegistry:
         self._create(job_info, done=True)
         self._zk.delete(source, version)
 
+    def mark_ongoing(self, job_id: str, user_id: str) -> None:
+        """Marks as job as ongoing (to be tracked)."""
+
+        # FIXME: can be done in a transaction
+        job_info, version = self._read(job_id, user_id, include_done=True)
+
+        source = self._done(user_id, job_id)
+
+        self._create(job_info, done=False)
+        self._zk.delete(source, version)
+
     def get_running_jobs(self) -> List[Dict]:
         """Returns a list of jobs that are currently not finished (should still be tracked)."""
 
@@ -72,7 +108,6 @@ class JobRegistry:
 
     def get_job(self, job_id: str, user_id: str) -> Dict:
         """Returns details of a job."""
-
         job_info, _ = self._read(job_id, user_id, include_done=True)
         return job_info
 
