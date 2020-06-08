@@ -18,6 +18,7 @@ import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
+from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.errors import FeatureUnsupportedException
 from py4j.java_gateway import JVMView
@@ -242,7 +243,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
                 multidim_array,
                 extent=extent,
-                band_dimension=openeo_metadata.band_dimension,
+                band_dimension=openeo_metadata.band_dimension if openeo_metadata.has_band_dimension() else None,
                 start_times=pd.DatetimeIndex(dates)
             )
 
@@ -270,6 +271,34 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                                        rdd.layer_metadata)
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
+
+    def reduce_dimension(self, dimension: str, reducer:Union[ProcessGraphVisitor,Dict],binary=False, context=None) -> 'ImageCollection':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
+        if isinstance(reducer,dict):
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+
+        result_collection = None
+        if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
+            udf = reducer.udf_args.get('udf',None)
+            if not isinstance(udf,str):
+                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
+            if dimension == self.metadata.temporal_dimension.name:
+                #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
+                result_collection = self.apply_tiles_spatiotemporal(udf)
+            elif dimension == self.metadata.band_dimension.name:
+                result_collection = self.apply_tiles(udf)
+
+        elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
+            result_collection = self.reduce_bands(reducer)
+        elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
+            result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
+        else:
+            raise ValueError("Unsupported combination of reducer %s and dimension %s."%(reducer,dimension))
+        if result_collection is not None:
+            result_collection.metadata = result_collection.metadata.reduce_dimension(dimension)
+            if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
+                result_collection = result_collection.apply_to_levels(lambda rdd:  rdd.to_spatial_layer() if rdd.layer_type != gps.LayerType.SPATIAL else rdd)
+        return result_collection
 
 
     def apply_tiles(self, function) -> 'ImageCollection':

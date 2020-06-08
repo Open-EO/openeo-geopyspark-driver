@@ -70,6 +70,20 @@ class GpsSecondaryServices(backend.SecondaryServices):
         self.service_registry.stop_service(service_id)
 
 
+class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
+
+    def __init__(self):
+        super().__init__()
+        self.udf_args = {}
+
+
+    def enterArgument(self, argument_id: str, value):
+        self.udf_args[argument_id] = value
+
+    def constantArgument(self, argument_id: str, value):
+        self.udf_args[argument_id] = value
+
+
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def __init__(self):
@@ -168,6 +182,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return image_collection.band_filter(band_indices) if band_indices else image_collection
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
+        return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
+
+    @classmethod
+    def accept_process_graph(cls, process_graph):
+        if len(process_graph) == 1 and next(iter(process_graph.values())).get('process_id') == 'run_udf':
+            return SingleNodeUDFProcessGraphVisitor().accept_process_graph(process_graph)
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
     def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
