@@ -243,7 +243,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
                 multidim_array,
                 extent=extent,
-                band_dimension=openeo_metadata.band_dimension,
+                band_dimension=openeo_metadata.band_dimension if openeo_metadata.has_band_dimension() else None,
                 start_times=pd.DatetimeIndex(dates)
             )
 
@@ -296,6 +296,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             raise ValueError("Unsupported combination of reducer %s and dimension %s."%(reducer,dimension))
         if result_collection is not None:
             result_collection.metadata = result_collection.metadata.reduce_dimension(dimension)
+            if dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
+                result_collection = result_collection.apply_to_levels(lambda rdd: rdd.to_spatial_layer())
         return result_collection
 
 

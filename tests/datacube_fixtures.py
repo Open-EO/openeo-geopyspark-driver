@@ -18,7 +18,8 @@ matrix_of_one.fill(1)
 matrix_of_two = np.zeros((1, 4, 4))
 matrix_of_two.fill(2)
 
-matrix_of_zero = np.zeros((1, 4, 4))
+matrix_of_nodata = np.zeros((1, 4, 4))
+matrix_of_nodata.fill(-1)
 
 extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
 layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
@@ -108,15 +109,29 @@ def imagecollection_with_two_bands_and_one_date(request):
 
 
 @pytest.fixture
-def imagecollection_with_two_bands_and_two_dates():
+def imagecollection_with_two_bands_and_three_dates(request):
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     first_tile = Tile.from_numpy_array(two_band_one_two, -1)
     second_tile = Tile.from_numpy_array(np.array([matrix_of_two, matrix_of_one], dtype='int'), -1)
+    nodata_tile = Tile.from_numpy_array(np.array([matrix_of_nodata,matrix_of_nodata], dtype='int'),-1)
 
-    layer = [(SpaceTimeKey(0, 0, now), first_tile),
-             (SpaceTimeKey(1, 0, now), first_tile),
-             (SpaceTimeKey(0, 1, now), first_tile),
-             (SpaceTimeKey(1, 1, now), first_tile)]
+    date1 = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+    date2 = datetime.datetime.strptime("2017-09-30T00:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+    date3 = datetime.datetime.strptime("2017-10-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+
+    layer = [(SpaceTimeKey(0, 0, date1), first_tile),
+             (SpaceTimeKey(1, 0, date1), first_tile),
+             (SpaceTimeKey(0, 1, date1), first_tile),
+             (SpaceTimeKey(1, 1, date1), first_tile),
+             (SpaceTimeKey(0, 0, date2), nodata_tile),
+             (SpaceTimeKey(1, 0, date2), nodata_tile),
+             (SpaceTimeKey(0, 1, date2), nodata_tile),
+             (SpaceTimeKey(1, 1, date2), nodata_tile),
+             (SpaceTimeKey(0, 0, date3), second_tile),
+             (SpaceTimeKey(1, 0, date3), second_tile),
+             (SpaceTimeKey(0, 1, date3), second_tile),
+             (SpaceTimeKey(1, 1, date3), second_tile)
+             ]
 
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
@@ -124,8 +139,8 @@ def imagecollection_with_two_bands_and_two_dates():
                 'extent': extent,
                 'crs': '+proj=longlat +datum=WGS84 +no_defs ',
                 'bounds': {
-                    'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(now)},
-                    'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(now)}
+                    'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(date1)},
+                    'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(date3)}
                 },
                 'layoutDefinition': {
                     'extent': extent,
@@ -135,6 +150,9 @@ def imagecollection_with_two_bands_and_two_dates():
 
     geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-    return GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geopyspark_layer}), InMemoryServiceRegistry(), openeo_metadata)
+    datacube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: geopyspark_layer}), InMemoryServiceRegistry(), openeo_metadata)
+    if request.instance:
+        request.instance.imagecollection_with_two_bands_and_three_dates = datacube
+    return datacube
 
 
