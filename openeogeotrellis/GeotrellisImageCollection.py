@@ -15,12 +15,12 @@ import numpy as np
 import pandas as pd
 import pyproj
 import pytz
-from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, Metadata
+from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
 from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
-from openeo_driver.errors import FeatureUnsupportedException
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from py4j.java_gateway import JVMView
 
 try:
@@ -36,7 +36,7 @@ import xarray as xr
 
 from openeo.imagecollection import ImageCollection
 import openeo.metadata
-from openeo.metadata import CollectionMetadata
+from openeo.metadata import CollectionMetadata, Band
 from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import SecondaryService, AbstractServiceRegistry
@@ -975,13 +975,96 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             return service_metadata
 
-    def ndvi(self, name: str = "ndvi") -> 'ImageCollection':
+    def ndvi(self, **kwargs) -> 'ImageCollection':
+        return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi(**kwargs)
+
+    def _ndvi(self, name: str = None) -> 'ImageCollection':
         try:
             red_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'red']
             nir_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'nir']
         except ValueError:
             raise ValueError("Failed to detect 'red' and 'nir' bands")
 
+        ndvi_collection = self._ndvi_collection(red_index, nir_index)
+
+        # a single band that defaults to 'ndvi'
+        ndvi_metadata = self.metadata \
+            .reduce_dimension("bands") \
+            .add_dimension(type="bands", name="bands", label=name or 'ndvi')
+
+        return GeotrellisTimeSeriesImageCollection(
+            ndvi_collection.pyramid,
+            self._service_registry,
+            ndvi_metadata
+        )
+
+    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'ImageCollection':
+        if not self.metadata.has_band_dimension():
+            raise OpenEOApiException(
+                status_code=400,
+                code="DimensionAmbiguous",
+                message="dimension of type `bands` is not available or is ambiguous.",
+            )
+
+        if target_band and target_band in self.metadata.band_names:
+            raise OpenEOApiException(
+                status_code=400,
+                code="BandExists",
+                message="A band with the specified target name exists.",
+            )
+
+        def first_index_if(coll, pred, *fallbacks):
+            try:
+                return next((i for i, elem in enumerate(coll) if pred(elem)))
+            except StopIteration:
+                if fallbacks:
+                    head, *tail = fallbacks
+                    return first_index_if(coll, head, *tail)
+                else:
+                    return None
+
+        if not red:
+            red_index = first_index_if(self.metadata.bands, lambda b: b.common_name == 'red')
+        else:
+            red_index = first_index_if(self.metadata.bands, lambda b: b.name == red, lambda b: b.common_name == red)
+
+        if not nir:
+            nir_index = first_index_if(self.metadata.bands, lambda b: b.common_name == 'nir')
+        else:
+            nir_index = first_index_if(self.metadata.bands, lambda b: b.name == nir, lambda b: b.common_name == nir)
+
+        if red_index is None:
+            raise OpenEOApiException(
+                status_code=400,
+                code="RedBandAmbiguous",
+                message="The red band can't be resolved, please specify a band name.",
+            )
+        if nir_index is None:
+            raise OpenEOApiException(
+                status_code=400,
+                code="NirBandAmbiguous",
+                message="The NIR band can't be resolved, please specify a band name.",
+            )
+
+        ndvi_collection = self._ndvi_collection(red_index, nir_index)
+
+        if target_band:  # append a new band named $target_band
+            result_collection = self \
+                .apply_to_levels(lambda layer: layer.convert_data_type("float32")) \
+                .merge(ndvi_collection)
+
+            result_metadata = self.metadata.append_band(Band(name=target_band, common_name=target_band, wavelength_um=None))
+        else:  # drop all bands
+            result_collection = ndvi_collection
+            result_metadata = self.metadata.reduce_dimension("bands")
+
+        return GeotrellisTimeSeriesImageCollection(
+            result_collection.pyramid,
+            self._service_registry,
+            result_metadata
+        )
+
+    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'ImageCollection':
         reduce_graph = {
             "red": {
                 "process_id": "array_element", "result": False,
@@ -1013,5 +1096,5 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
-        # TODO: how to set name (argument `name`) of newly created band?
+
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
