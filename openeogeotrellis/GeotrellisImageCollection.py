@@ -20,6 +20,7 @@ from geopyspark.geotrellis import Extent
 from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
+from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from py4j.java_gateway import JVMView
 
@@ -566,6 +567,18 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 print("unexpected value: "+str(v))
 
         return result
+
+    def raster_to_vector(self):
+        """
+        Outputs polygons, where polygons are formed from homogeneous zones of four-connected neighbors
+        @return:
+        """
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        with tempfile.NamedTemporaryFile(suffix=".json.tmp",delete=False) as temp_file:
+            gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(),temp_file.name)
+            #postpone turning into an actual collection upon usage
+            return DelayedVector(temp_file.name)
+
 
     def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
         # TODO: rename to aggregate_polygon?
