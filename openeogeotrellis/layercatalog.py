@@ -118,10 +118,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_s1_coherence_pyramid():
-            file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory)
+            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory)
 
         def file_s2_pyramid():
-            file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
+            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
 
         def file_pyramid(pyramid_factory):
             oscars_collection_id = layer_source_info['oscars_collection_id']
