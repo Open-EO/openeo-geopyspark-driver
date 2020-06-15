@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
@@ -12,6 +12,7 @@ from openeo_driver.errors import JobNotFoundException
 
 
 class JobRegistry:
+    # TODO: improve encapsulation
     def __init__(self, zookeeper_hosts: str=','.join(ConfigParams().zookeepernodes)):
         self._root = '/openeo/jobs'
         self._zk = KazooClient(hosts=zookeeper_hosts)
@@ -47,29 +48,39 @@ class JobRegistry:
         if isinstance(specification, str):
             specification = json.loads(specification)
         job_options = specification.pop("job_options", None)
+
+        def map_safe(prop: str, f):
+            value = job_info.get(prop)
+            return f(value) if value else None
+
         return BatchJobMetadata(
             id=job_info["job_id"],
             process=specification,
             status=status,
-            created=parse_rfc3339(job_info["created"]) if "created" in job_info else None,
-            job_options=job_options
+            created=map_safe("created", parse_rfc3339),
+            job_options=job_options,
+            started=map_safe("started", parse_rfc3339),
+            finished=map_safe("finished", parse_rfc3339),
+            memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
+            cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds))
         )
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
 
-        job_info, version = self._read(job_id, user_id)
-        job_info['application_id'] = application_id
-
-        self._update(job_info, version)
+        self.patch(job_id, user_id, application_id=application_id)
 
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
-        """Updates an registered batch job with its status."""
+        """Updates a registered batch job with its status."""
+
+        self.patch(job_id, user_id, status=status)
+
+    def patch(self, job_id: str, user_id: str, **kwargs) -> None:
+        """Partially updates a registered batch job."""
 
         job_info, version = self._read(job_id, user_id)
-        job_info['status'] = status
 
-        self._update(job_info, version)
+        self._update({**job_info, **kwargs}, version)
 
     def mark_done(self, job_id: str, user_id: str) -> None:
         """Marks a job as done (not to be tracked anymore)."""
