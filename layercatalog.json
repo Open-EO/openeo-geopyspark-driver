@@ -839,6 +839,95 @@
       }
     }
   },
+    {
+    "id": "TERRASCOPE_S1_GAMMA0_V1",
+    "name": "TERRASCOPE_S1_GAMMA0_V1",
+    "product_id": "TERRASCOPE_S1_GAMMA0_V1",
+    "title": "Sentinel 1 GRD Gamma0 product, VH and VV.",
+    "_vito": {
+      "data_source": {
+        "type": "Accumulo",
+        "data_id": "S1_GRD_GAMMA0_PYRAMID_V2",
+        "split":true
+      },
+      "postprocessing_bands": {
+                "multiply1": {
+                    "process_id": "multiply",
+                    "arguments": {
+                        "x": {
+                            "from_parameter": "data"
+                        },
+                        "y": 0.001
+                    }
+                },
+                "subtract1": {
+                    "process_id": "subtract",
+                    "arguments": {
+                        "x": {
+                            "from_node": "multiply1"
+                        },
+                        "y": 45
+                    }
+                },
+                "divide1": {
+                    "process_id": "divide",
+                    "arguments": {
+                        "x": {
+                            "from_node": "subtract1"
+                        },
+                        "y": 10
+                    }
+                },
+                "power1": {
+                    "process_id": "power",
+                    "arguments": {
+                        "base": 10,
+                        "p": {
+                            "from_node": "divide1"
+                        }
+                    },
+                    "result": true
+                }
+            }
+    },
+    "description": "Sentinel 1 GRD Gamma0 combined descending and ascending orbits. Provided by Terrascope.",
+    "providers": [{"name": "Terrascope/VITO"}],
+    "license": "free",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x"},
+      "y": {"type": "spatial", "axis": "y"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["VH", "VV"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "VH",
+          "type": "float",
+          "unit": "1"
+        },
+        {
+          "name": "VV",
+          "type": "float",
+          "unit": "1"
+        }
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://terrascope.be/en/products",
+        "title": "Product web page."
+      }
+    ]
+  },
   {
     "id": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
     "name": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
