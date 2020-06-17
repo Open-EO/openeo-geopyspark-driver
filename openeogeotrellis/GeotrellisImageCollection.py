@@ -22,6 +22,7 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
+from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from py4j.java_gateway import JVMView
 
 try:
@@ -155,7 +156,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             return self.apply_to_levels(lambda layer: layer.to_spatial_layer().aggregate_by_cell(reducer))
 
-    def reduce_bands(self,pgVisitor) -> 'ImageCollection':
+    def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeotrellisTimeSeriesImageCollection':
         """
         TODO Define in super class? API is not yet ready for client side...
         :param pgVisitor:
@@ -988,10 +989,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             return service_metadata
 
-    def ndvi(self, **kwargs) -> 'ImageCollection':
-        return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi(**kwargs)
+    def ndvi(self, **kwargs) -> 'GeotrellisTimeSeriesImageCollection':
+        return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi_v04(**kwargs)
 
-    def _ndvi(self, name: str = None) -> 'ImageCollection':
+    def _ndvi_v04(self, name: str = None) -> 'GeotrellisTimeSeriesImageCollection':
+        """0.4-style of ndvi process"""
         try:
             red_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'red']
             nir_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'nir']
@@ -1011,7 +1013,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             ndvi_metadata
         )
 
-    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'ImageCollection':
+    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'GeotrellisTimeSeriesImageCollection':
+        """1.0-style of ndvi process"""
         if not self.metadata.has_band_dimension():
             raise OpenEOApiException(
                 status_code=400,
@@ -1077,33 +1080,37 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_metadata
         )
 
-    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'ImageCollection':
+    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'GeotrellisTimeSeriesImageCollection':
         reduce_graph = {
             "red": {
-                "process_id": "array_element", "result": False,
-                "arguments": {"data": {"from_argument": "data"}, "index": red_index}
+                "process_id": "array_element",
+                "arguments": {"data": {"from_parameter": "data"}, "index": red_index}
             },
             "nir": {
-                "process_id": "array_element", "result": False,
-                "arguments": {"data": {"from_argument": "data"}, "index": nir_index}
+                "process_id": "array_element",
+                "arguments": {"data": {"from_parameter": "data"}, "index": nir_index}
             },
             "nirminusred": {
-                "process_id": "subtract", "result": False,
+                "process_id": "subtract",
                 "arguments": {
-                    "data": [{"from_node": "nir"}, {"from_node": "red"}]
+                    "x": {"from_node": "nir"},
+                    "y": {"from_node": "red"},
                 }
             },
             "nirplusred": {
-                "process_id": "sum", "result": False,
+                "process_id": "add",
                 "arguments": {
-                    "data": [{"from_node": "nir"}, {"from_node": "red"}]
+                    "x": {"from_node": "nir"},
+                    "y": {"from_node": "red"},
                 }
             },
             "ndvi": {
-                "process_id": "divide", "result": True,
+                "process_id": "divide",
                 "arguments": {
-                    "data": [{"from_node": "nirminusred"}, {"from_node": "nirplusred"}]
-                }
+                    "x": {"from_node": "nirminusred"},
+                    "y": {"from_node": "nirplusred"},
+                },
+                "result": True,
             },
         }
 
