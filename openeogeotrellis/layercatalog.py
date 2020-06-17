@@ -36,7 +36,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = CollectionMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-        postprocessing_band_graph = metadata.get("postprocessing_bands", default=None)
+        postprocessing_band_graph = metadata.get("_vito","postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
         import geopyspark as gps

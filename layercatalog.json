@@ -858,15 +858,16 @@
                             "from_parameter": "data"
                         },
                         "y": 0.001
-                    }
+                    },
+                  "result": false
                 },
                 "subtract1": {
-                    "process_id": "subtract",
+                    "process_id": "add",
                     "arguments": {
                         "x": {
                             "from_node": "multiply1"
                         },
-                        "y": 45
+                        "y": -45.0
                     }
                 },
                 "divide1": {
@@ -877,6 +878,7 @@
                         },
                         "y": 10
                     }
+
                 },
                 "power1": {
                     "process_id": "power",
