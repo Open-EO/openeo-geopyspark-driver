@@ -66,7 +66,7 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
 
-if ipa -v user-find --login "${openEoUser}"; then
+if PYTHONPATH= ipa -v user-find --login "${openEoUser}"; then
   run_as="--proxy-user ${openEoUser}"
 else
   run_as="--principal ${principal} --keytab ${keyTab}"
