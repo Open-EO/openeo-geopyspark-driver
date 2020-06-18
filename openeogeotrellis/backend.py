@@ -266,10 +266,12 @@ class GpsBatchJobs(backend.BatchJobs):
             extra_options = spec.get('job_options', {})
 
             driver_memory = extra_options.get("driver-memory", "12G")
+            driver_memory_overhead = extra_options.get("driver-memoryOverhead", "2G")
             executor_memory = extra_options.get("executor-memory", "2G")
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "2G")
             driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
+            queue = extra_options.get("queue", "default")
 
             kerberos()
 
@@ -316,6 +318,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(executor_memory_overhead)
                 args.append(driver_cores)
                 args.append(executor_cores)
+                args.append(driver_memory_overhead)
+                args.append(queue)
 
                 try:
                     logger.info("Submitting job: {a!r}".format(a=args))

@@ -34,7 +34,8 @@ executormemory=${10-4G}
 executormemoryoverhead=${11-2G}
 drivercores=${12-14}
 executorcores=${13-2}
-
+drivermemoryoverhead=${14-8G}
+queue=${15-default}
 
 pysparkPython="venv/bin/python"
 
@@ -75,6 +76,7 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  ${run_as} \
  --conf spark.yarn.submit.waitAppCompletion=false \
+ --queue "${queue}" \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
@@ -86,7 +88,7 @@ spark-submit \
  --conf spark.driver.cores=${drivercores} \
  --conf spark.executor.cores=${executorcores} \
  --conf spark.driver.maxResultSize=5g \
- --conf spark.driver.memoryOverhead=8g \
+ --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  --conf spark.blacklist.enabled=true \
  --conf spark.speculation=true \
