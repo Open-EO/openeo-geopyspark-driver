@@ -862,6 +862,7 @@
                   "result": false
                 },
                 "subtract1": {
+                   "comment" : "have to use add here instead of subtract: https://github.com/locationtech/geotrellis/issues/3257",
                     "process_id": "add",
                     "arguments": {
                         "x": {
@@ -871,12 +872,13 @@
                     }
                 },
                 "divide1": {
-                    "process_id": "divide",
+                  "comment" : "have to use multiply here: https://github.com/locationtech/geotrellis/issues/3257",
+                    "process_id": "multiply",
                     "arguments": {
                         "x": {
                             "from_node": "subtract1"
                         },
-                        "y": 10
+                        "y": 0.1
                     }
 
                 },
