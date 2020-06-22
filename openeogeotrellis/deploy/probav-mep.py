@@ -2,9 +2,6 @@
 Script to start a production server. This script can serve as the entry-point for doing spark-submit.
 """
 
-# TODO reduce code duplication: https://jira.vito.be/browse/EP-3382
-
-
 import logging
 from logging.config import dictConfig
 import sys
