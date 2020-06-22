@@ -55,8 +55,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
-        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        self._band_index = 0
 
     def _get_jvm(self) -> JVMView:
         # TODO: cache this?
@@ -70,7 +68,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
@@ -93,21 +91,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             return gps.TiledRasterLayer(layer_type, srdd)
 
         pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
-
-    def _with_band_index(self, band_index):
-        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        self._band_index = band_index
-        return self
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
     def band_filter(self, bands) -> 'ImageCollection':
-        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        # TODO also rename to filter_bands for better consistency
-        if isinstance(bands, int):
-            self._band_index = bands
-        elif isinstance(bands, list) and len(bands) == 1:
-            self._band_index = bands[0]
-
         return self if self._data_source_type().lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
     def _data_source_type(self):
@@ -525,7 +511,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             pyramid = Pyramid({0:resampled})
             return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
-                                                       metadata=self.metadata)._with_band_index(self._band_index)
+                                                       metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
@@ -603,15 +589,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             # TODO also add dumping results first to temp json file like with "mean"
             if func == 'histogram':
                 stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
             elif func == 'sd':
                 stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
             elif func == 'median':
                 stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
             else:
                 raise ValueError(func)
@@ -636,7 +622,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                         polygons,
                         from_date.isoformat(),
                         to_date.isoformat(),
-                        self._band_index,
+                        0,
                         temp_file.name
                     )
                     with open(temp_file.name, encoding='utf-8') as f:
