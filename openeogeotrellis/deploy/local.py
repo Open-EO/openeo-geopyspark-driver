@@ -2,8 +2,10 @@
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
 """
 
+from openeo_driver import server
+from openeo_driver.server import show_log_level
+
 import logging
-from datetime import datetime
 from logging.config import dictConfig
 
 dictConfig({
@@ -34,9 +36,6 @@ import os
 import sys
 import threading
 from glob import glob
-
-import gunicorn.app.base
-from gunicorn.six import iteritems
 
 _log = logging.getLogger('openeo-geotrellis-local')
 
@@ -77,19 +76,7 @@ def setup_local_spark():
     return pysc
 
 
-def number_of_workers():
-    return 3#(multiprocessing.cpu_count() * 2) + 1
-
-
-def show_log_level(logger: logging.Logger):
-    """Helper to show threshold log level of a logger."""
-    level = logger.getEffectiveLevel()
-    logger.log(level, 'Logger {n!r} level: {t}'.format(n=logger.name, t=logging.getLevelName(level)))
-
-
-def when_ready(server):
-    _log.info('When ready: {s}'.format(s=server))
-
+def on_started() -> None:
     show_log_level(logging.getLogger('gunicorn.error'))
     show_log_level(logging.getLogger('flask'))
     show_log_level(logging.getLogger('werkzeug'))
@@ -109,47 +96,12 @@ def when_ready(server):
         _log.info("Not launching thread to poll YARN job status")
 
 
-
-class StandaloneApplication(gunicorn.app.base.BaseApplication):
-
-    def __init__(self, app, options=None):
-        self.options = options or {}
-        self.application = app
-        super(StandaloneApplication, self).__init__()
-
-    def load_config(self):
-        config = dict([(key, value) for key, value in iteritems(self.options)
-                       if key in self.cfg.settings and value is not None])
-        config['when_ready'] = when_ready
-        for key, value in iteritems(config):
-            self.cfg.set(key.lower(), value)
-
-    def load(self):
-        return self.application
-
-
 if __name__ == '__main__':
     _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
     setup_local_spark()
 
-    # Modification 3: pass Flask app instead of handler_app
-    options = {
-        'bind': '%s:%s' % ("127.0.0.1", 8080),
-        'workers': 1,
-        'threads': 4,
-        'worker_class':'gthread',   #'gaiohttp',
-        'timeout':1000,
-        'loglevel': 'DEBUG',
-        'accesslog':'-',
-        'errorlog': '-'#,
-        #'certfile': 'test.pem',
-        #'keyfile': 'test.key'
-    }
-
     from openeo_driver.views import app, build_backend_deploy_metadata
-    from flask_cors import CORS
-    CORS(app)
     from openeogeotrellis import get_backend_version
 
     show_log_level(logging.getLogger('openeo'))
@@ -157,12 +109,15 @@ if __name__ == '__main__':
     show_log_level(logging.getLogger('openeogeotrellis'))
     show_log_level(app.logger)
 
-    app.config['OPENEO_BACKEND_VERSION'] = get_backend_version()
-    app.config['OPENEO_TITLE'] = 'Local GeoPySpark'
-    app.config['OPENEO_DESCRIPTION'] = 'Local openEO API using GeoPySpark driver'
-    app.config['OPENEO_BACKEND_DEPLOY_METADATA'] = build_backend_deploy_metadata(
-        packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+    server.run(
+        title="Local GeoPySpark",
+        description="Local openEO API using GeoPySpark driver",
+        deploy_metadata=build_backend_deploy_metadata(
+            packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
+        ),
+        backend_version=get_backend_version(),
+        threads=4,
+        host="127.0.0.1",
+        port=8080,
+        on_started=on_started
     )
-    application = StandaloneApplication(app, options)
-
-    application.run()
