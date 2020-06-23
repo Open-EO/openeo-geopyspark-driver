@@ -94,7 +94,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
     def band_filter(self, bands) -> 'ImageCollection':
-        return self if self._data_source_type().lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
+        return self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
