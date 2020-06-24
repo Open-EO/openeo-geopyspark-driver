@@ -517,7 +517,118 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     }
   },
-
+ {
+    "id": "TERRASCOPE_S2_NDVI_V2",
+    "name": "TERRASCOPE_S2_NDVI_V2",
+    "title": "Sentinel-2 NDVI L3 V2",
+    "description": "NDVI Level-3 product at 10m resolution. Covers selected areas globally. This NDVI is derived directly from ESA L2A products.",
+    "license": "proprietary",
+    "providers": [
+      {
+          "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+          "roles":
+          [
+              "producer",
+              "licensor"
+          ],
+          "url": "https://terrascope.be"
+      }
+      ],
+     "links": [
+      {
+        "rel": "license",
+        "href": "https://sentinel.esa.int/documents/247904/690755/Sentinel_Data_Legal_Notice"
+      },
+      {
+          "rel": "alternate",
+          "href": "https://services.terrascope.be/catalogue/description?collection=urn:eop:VITO:TERRASCOPE_S2_NDVI_V2"
+      },
+      {
+          "rel": "alternate",
+          "href": "https://viewer.terrascope.be/?language=nl&bbox=0.9339867511378304,50.14520994379217,6.207424251137831,51.77292299745045&overlay=false&bgLayer=MapBox&date=2019-02-25T03:17:15.000Z&layer=CGS_S2_NDVI"
+      }],
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x"},
+      "y": {"type": "spatial", "axis": "y"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["NDVI_10M"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "NDVI_10M"}
+      ]
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s2",
+        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"
+      }
+    }
+  },
+  {
+    "id": "TERRASCOPE_S2_LAI_V2",
+    "name": "TERRASCOPE_S2_LAI_V2",
+    "title": "Sentinel-2 LAI L3 V2",
+    "description": "Leaf area index Level-3 product at 10m resolution. Covers selected areas globally. This LAI is derived directly from ESA L2A products.",
+    "license": "proprietary",
+    "providers": [
+      {
+          "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+          "roles":
+          [
+              "producer",
+              "licensor"
+          ],
+          "url": "https://terrascope.be"
+      }
+      ],
+    "links": [
+      {
+        "rel": "license",
+        "href": "https://sentinel.esa.int/documents/247904/690755/Sentinel_Data_Legal_Notice"
+      },
+      {
+          "rel": "alternate",
+          "href": "https://services.terrascope.be/catalogue/description?collection=urn:eop:VITO:TERRASCOPE_S2_LAI_V2"
+      },
+      {
+          "rel": "alternate",
+          "href": "https://viewer.terrascope.be/?language=nl&bbox=0.9339867511378304,50.14520994379217,6.207424251137831,51.77292299745045&overlay=false&bgLayer=MapBox&date=2019-02-25T03:17:15.000Z&layer=CGS_S2_LAI"
+      }],
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2015-07-06", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x"},
+      "y": {"type": "spatial", "axis": "y"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["LAI_10M"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "LAI_10M"}
+      ]
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s2",
+        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/LAI_V2"
+      }
+    }
+  },
   {
     "id":"PROBAV_L3_S10_TOC_NDVI_333M",
     "name":"PROBAV_L3_S10_TOC_NDVI_333M",
