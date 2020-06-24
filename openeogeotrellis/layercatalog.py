@@ -150,13 +150,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             properties = viewing_parameters.get('properties', {})
 
             metadata_properties = {property_name: extract_literal_match(condition)
-                               for property_name, condition in properties.items()}
+                                   for property_name, condition in properties.items()}
 
-            return jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(
-                oscars_collection_id,
-                oscars_link_titles,
-                root_path
-            ).pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
+            polygons = viewing_parameters.get('polygons')
+
+            factory = jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(oscars_collection_id,
+                                                                             oscars_link_titles, root_path)
+            if polygons:
+                projected_polygons = to_projected_polygons(jvm, polygons)
+                return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date, metadata_properties)
+            else:
+                return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
