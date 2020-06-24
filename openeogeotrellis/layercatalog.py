@@ -61,7 +61,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         else:
             band_indices = None
         logger.info("band_indices: {b!r}".format(b=band_indices))
-
+        # TODO: avoid this `still_needs_band_filter` ugliness.
+        #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+        still_needs_band_filter = False
         pysc = gps.get_spark_context()
         extent = None
 
@@ -85,21 +87,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 pyramidFactory.setSplitRanges(True)
 
             accumulo_layer_name = layer_source_info['data_id']
+            nonlocal still_needs_band_filter
+            still_needs_band_filter = bool(band_indices)
 
             polygons = viewing_parameters.get('polygons')
 
             if polygons:
                 projected_polygons = to_projected_polygons(jvm, polygons)
-                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date).band_filter(band_indices)
+                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             else:
-                return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date).band_filter(band_indices)
+                return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
         def s3_pyramid():
             endpoint = layer_source_info['endpoint']
             region = layer_source_info['region']
             bucket_name = layer_source_info['bucket_name']
+            nonlocal still_needs_band_filter
+            still_needs_band_filter = bool(band_indices)
             return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
-                .pyramid_seq(extent, srs, from_date, to_date).band_filter(band_indices)
+                .pyramid_seq(extent, srs, from_date, to_date)
 
         def s3_jp2_pyramid():
             endpoint = layer_source_info['endpoint']
@@ -236,6 +242,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
             visitor = GeotrellisTileProcessGraphVisitor()
             image_collection = image_collection.reduce_bands(visitor.accept_process_graph(postprocessing_band_graph))
+
+        if still_needs_band_filter:
+            # TODO: avoid this `still_needs_band_filter` ugliness.
+            #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+            image_collection = image_collection.band_filter(band_indices)
 
         return image_collection
 
