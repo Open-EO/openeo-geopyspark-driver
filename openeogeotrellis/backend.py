@@ -29,6 +29,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry, AbstractServiceRegistry
+from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import kerberos
 from openeogeotrellis.utils import normalize_date
 
@@ -93,10 +94,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperServiceRegistry()
         )
 
+        user_defined_process_repository = (
+            # choosing between DBs can be done in said config
+            InMemoryUserDefinedProcessRepository() if ConfigParams().is_ci_context
+            else ZooKeeperUserDefinedProcessRepository()
+        )
+
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=get_layer_catalog(service_registry=self._service_registry),
             batch_jobs=GpsBatchJobs(),
+            user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )
 
     def health_check(self) -> str:
@@ -390,3 +398,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
 class _BatchJobError(Exception):
     pass
+
+
+class UserDefinedProcesses(backend.UserDefinedProcesses):
+    def __init__(self, user_defined_process_repository: UserDefinedProcessRepository):
+        self._repo = user_defined_process_repository
+
+    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
+        return self._repo.get(user_id, process_id)
+
+    def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
+        return self._repo.get_for_user(user_id)
+
+    def save(self, user_id: str, process_id: str, spec: dict) -> None:
+        spec['id'] = process_id
+        self._repo.save(user_id, spec)
