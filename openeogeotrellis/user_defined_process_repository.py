@@ -31,7 +31,9 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
-        return json.dumps(spec).encode()
+        return json.dumps({
+            'specification': spec
+        }).encode()
 
     @staticmethod
     def _deserialize(data: bytes) -> dict:
@@ -53,7 +55,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
             udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_graph_id)
             try:
                 data, _ = zk.get(udp_path)
-                return UserDefinedProcessMetadata.from_dict(self._deserialize(data))
+                return UserDefinedProcessMetadata.from_dict(self._deserialize(data)['specification'])
             except NoNodeError:
                 return None
 
