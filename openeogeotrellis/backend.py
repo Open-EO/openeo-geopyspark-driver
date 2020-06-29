@@ -413,3 +413,6 @@ class UserDefinedProcesses(backend.UserDefinedProcesses):
     def save(self, user_id: str, process_id: str, spec: dict) -> None:
         spec['id'] = process_id
         self._repo.save(user_id, spec)
+
+    def delete(self, user_id: str, process_id: str) -> None:
+        self._repo.delete(user_id, process_id)

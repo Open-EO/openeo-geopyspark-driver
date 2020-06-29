@@ -7,6 +7,7 @@ from kazoo.exceptions import NodeExistsError, NoNodeError
 import json
 from typing import Union
 from openeo_driver.backend import UserDefinedProcessMetadata
+from openeo_driver.errors import ProcessGraphNotFoundException
 
 
 class UserDefinedProcessRepository(ABC):
@@ -21,6 +22,10 @@ class UserDefinedProcessRepository(ABC):
 
     @abstractmethod
     def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
+        pass
+
+    @abstractmethod
+    def delete(self, user_id: str, process_graph_id) -> None:
         pass
 
 
@@ -70,6 +75,15 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
             except NoNodeError:
                 return []
 
+    def delete(self, user_id: str, process_graph_id) -> None:
+        with self._zk_client() as zk:
+            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_graph_id)
+
+            try:
+                zk.delete(udp_path)
+            except NoNodeError:
+                raise ProcessGraphNotFoundException(process_graph_id)
+
     @contextlib.contextmanager
     def _zk_client(self):
         zk = KazooClient(hosts=self._hosts)
@@ -99,6 +113,14 @@ class InMemoryUserDefinedProcessRepository(UserDefinedProcessRepository):
         user_udps = self._store.get(user_id, {})
         return [udp for _, udp in user_udps.items()]
 
+    def delete(self, user_id: str, process_graph_id) -> None:
+        user_udps = self._store.get(user_id, {})
+
+        try:
+            user_udps.pop(process_graph_id)
+        except KeyError:
+            raise ProcessGraphNotFoundException(process_graph_id)
+
 
 def main():
     repo = ZooKeeperUserDefinedProcessRepository()
@@ -123,6 +145,8 @@ def main():
 
     for udp in udps:
         print(udp)
+
+    repo.delete(user_id, process_graph_id)
 
     print(repo.get(user_id, process_graph_id))
 
