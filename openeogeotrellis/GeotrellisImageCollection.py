@@ -462,10 +462,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
         target_max_level = target.pyramid.levels[target.pyramid.max_zoom]
 
-        resampled_layer = gps.TiledRasterLayer(
-            max_level.layer_type, max_level.tile_to_layout(target_max_level.layer_metadata.layout_definition,
+        resampled_layer = max_level.tile_to_layout(target_max_level.layer_metadata.layout_definition,
                                                    target_crs=target_max_level.layer_metadata.crs,
-                                                   resample_method=resample_method), resample_method, None)
+                                                   resample_method=resample_method)
 
         pyramid = Pyramid({target.pyramid.max_zoom:resampled_layer})
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
