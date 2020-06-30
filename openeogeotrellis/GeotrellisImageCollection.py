@@ -443,6 +443,36 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
 
+    def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
+        """
+        Resamples the spatial dimensions (x,y) of this data cube to a target data cube and return the results as a new data cube.
+
+        https://processes.openeo.org/#resample_cube_spatial
+
+        :param target: An ImageCollection that specifies the target
+        :param method: The resampling method.
+        :return: A raster data cube with values warped onto the new projection.
+
+        """
+        resample_method = self._get_resample_method(method)
+        if len(self.pyramid.levels)!=1 or len(target.pyramid.levels)!=1:
+            raise FeatureUnsupportedException(message='This backend does not support resampling between full '
+                                                      'pyramids, for instance used by viewing services. Batch jobs '
+                                                      'should work.')
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        target_max_level = target.pyramid.levels[target.pyramid.max_zoom]
+
+        resampled_layer = gps.TiledRasterLayer(
+            max_level.layer_type, max_level.tile_to_layout(target_max_level.layer_metadata.layout_definition,
+                                                   target_crs=target_max_level.layer_metadata.crs,
+                                                   resample_method=resample_method), resample_method, None)
+
+        pyramid = Pyramid({target.pyramid.max_zoom:resampled_layer})
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
+
+
+
+
     def resample_spatial(
             self,
             resolution: Union[float, Tuple[float, float]],
@@ -461,17 +491,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         # TODO: use align
 
-        resample_method = {
-            'bilinear': gps.ResampleMethod.BILINEAR,
-            'average': gps.ResampleMethod.AVERAGE,
-            'cubic': gps.ResampleMethod.CUBIC_CONVOLUTION,
-            'cubicspline': gps.ResampleMethod.CUBIC_SPLINE,
-            'lanczos': gps.ResampleMethod.LANCZOS,
-            'mode': gps.ResampleMethod.MODE,
-            'max': gps.ResampleMethod.MAX,
-            'min': gps.ResampleMethod.MIN,
-            'med': gps.ResampleMethod.MEDIAN,
-        }.get(method, gps.ResampleMethod.NEAREST_NEIGHBOR)
+        resample_method = self._get_resample_method(method)
 
         #IF projection is defined, we need to warp
         if projection is not None:
@@ -514,6 +534,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                                        metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
+
+    def _get_resample_method(self, method):
+        resample_method = {
+            'bilinear': gps.ResampleMethod.BILINEAR,
+            'average': gps.ResampleMethod.AVERAGE,
+            'cubic': gps.ResampleMethod.CUBIC_CONVOLUTION,
+            'cubicspline': gps.ResampleMethod.CUBIC_SPLINE,
+            'lanczos': gps.ResampleMethod.LANCZOS,
+            'mode': gps.ResampleMethod.MODE,
+            'max': gps.ResampleMethod.MAX,
+            'min': gps.ResampleMethod.MIN,
+            'med': gps.ResampleMethod.MEDIAN,
+        }.get(method, gps.ResampleMethod.NEAREST_NEIGHBOR)
+        return resample_method
 
     def linear_scale_range(self, input_min, input_max, output_min, output_max) -> 'ImageCollection':
         """ Color stretching
