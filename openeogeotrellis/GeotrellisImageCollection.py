@@ -902,16 +902,18 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         from kazoo.client import KazooClient
         zk = KazooClient(hosts=self._zookeepers())
         zk.start()
-        zk.ensure_path("discovery/services/openeo-viewer-test")
-        # id = uuid.uuid4()
-        # print(id)
-        id = 0
-        zk.ensure_path("discovery/services/openeo-viewer-test/" + str(id))
-        zk.set("discovery/services/openeo-viewer-test/" + str(id), str.encode(json.dumps(
-            {"name": "openeo-viewer-test", "id": str(id), "address": host, "port": port, "sslPort": None,
-             "payload": None, "registrationTimeUTC": datetime.utcnow().strftime('%s'), "serviceType": "DYNAMIC"})))
-        zk.stop()
-        zk.close()
+        try:
+            zk.ensure_path("discovery/services/openeo-viewer-test")
+            # id = uuid.uuid4()
+            # print(id)
+            id = 0
+            zk.ensure_path("discovery/services/openeo-viewer-test/" + str(id))
+            zk.set("discovery/services/openeo-viewer-test/" + str(id), str.encode(json.dumps(
+                {"name": "openeo-viewer-test", "id": str(id), "address": host, "port": port, "sslPort": None,
+                 "payload": None, "registrationTimeUTC": datetime.utcnow().strftime('%s'), "serviceType": "DYNAMIC"})))
+        finally:
+            zk.stop()
+            zk.close()
 
     def tiled_viewing_service(self, service_type: str, process_graph: dict, post_data: dict = {}) -> ServiceMetadata:
         service_id = str(uuid.uuid4())

@@ -140,8 +140,12 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
     def _zk_client(self):
         zk = KazooClient(hosts=self._hosts)
         zk.start()
-        yield zk
-        zk.stop()
+
+        try:
+            yield zk
+        finally:
+            zk.stop()
+            zk.close()
 
     def stop_service(self, service_id: str):
         with self._zk_client() as zk:

@@ -147,6 +147,7 @@ class JobRegistry:
 
     def __exit__(self, *_):
         self._zk.stop()
+        self._zk.close()
 
     def _create(self, job_info: Dict, done: bool=False) -> None:
         job_id = job_info['job_id']

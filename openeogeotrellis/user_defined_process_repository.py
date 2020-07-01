@@ -93,6 +93,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
             yield zk
         finally:
             zk.stop()
+            zk.close()
 
 
 class InMemoryUserDefinedProcessRepository(UserDefinedProcessRepository):
