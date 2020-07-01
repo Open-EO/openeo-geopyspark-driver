@@ -61,6 +61,9 @@ class KazooClientMock:
     def stop(self):
         pass
 
+    def close(self):
+        pass
+
     @staticmethod
     def _parse_path(path: Union[str, Path]) -> Tuple[str]:
         path = Path(path)
