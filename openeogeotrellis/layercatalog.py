@@ -223,14 +223,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
-        startIndex = 0 if viewing_parameters.get('pyramid_levels', 'all') == 'all' else pyramid.size() - 1
+
         levels = {
             pyramid.apply(index)._1(): TiledRasterLayer(
                 LayerType.SPACETIME,
                 temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
             )
-            for index in range(startIndex, pyramid.size())
+            for index in range(0, pyramid.size())
         }
+        if viewing_parameters.get('pyramid_levels', 'all') != 'all':
+            max_zoom = max(levels.keys())
+            levels= {max_zoom:levels[max_zoom]}
 
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
