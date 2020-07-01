@@ -1,5 +1,5 @@
 """
-Script to start a production server. This script can serve as the entry-point for doing spark-submit.
+Script to start a production server on Kubernetes. This script can serve as the mainApplicationFile for the SparkApplication custom resource of the spark-operator
 """
 
 import logging
@@ -65,4 +65,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
