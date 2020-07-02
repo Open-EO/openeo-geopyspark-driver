@@ -84,21 +84,6 @@ class TestCustomFunctions(TestCase):
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
 
-
-
-    def test_point_series(self):
-
-        def custom_function(cells:np.ndarray,nd):
-            return cells[0]+cells[1]
-
-        transformed_collection = self.imagecollection_with_two_bands_and_one_date.apply_pixel([0, 1], custom_function)
-
-        for p in self.points[0:3]:
-            result = transformed_collection.timeseries(p.x, p.y)
-            print(result)
-            value = result.popitem()
-            self.assertEqual(3.0,value[1][0])
-
     def test_point_series_apply_tile(self):
         file_name = get_test_data_file( "datacube_ndvi.py")
         with open(file_name, "r")  as f:

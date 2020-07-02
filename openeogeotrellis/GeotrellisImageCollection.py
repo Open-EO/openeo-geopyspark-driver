@@ -108,12 +108,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def rename_dimension(self, source:str, target:str):
         return GeotrellisTimeSeriesImageCollection(self.pyramid,self._service_registry,self.metadata.rename_dimension(source,target))
 
-    def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
-        """Apply a function to the given set of bands in this image collection."""
-        #TODO apply .bands(bands)
-        #TODO deprecated
-        return self.apply_to_levels(lambda rdd: rdd.convert_data_type(CellType.FLOAT64).map_cells(bandfunction))
-
     def apply(self, process: str, arguments: dict={}) -> 'ImageCollection':
         # TODO: support for `apply` with child process graph that has multiple nodes or binary operators EP-3404
         if 'y' in arguments:
