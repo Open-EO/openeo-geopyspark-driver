@@ -16,7 +16,7 @@ import pandas as pd
 import pyproj
 import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
-from geopyspark.geotrellis import Extent
+from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
@@ -70,6 +70,18 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
+    def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
+        jvm = self._get_jvm()
+        spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
+        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+
+        if layer_type == gps.LayerType.SPATIAL:
+            srdd = spatial_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
+        else:
+            srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
+
+        return gps.TiledRasterLayer(layer_type, srdd)
+
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD.
@@ -77,20 +89,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :param func:
         :return:
         """
-
-        def create_tilelayer(contextrdd, layer_type, zoom_level):
-            jvm = self._get_jvm()
-            spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
-            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-
-            if layer_type == gps.LayerType.SPATIAL:
-                srdd = spatial_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
-            else:
-                srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
-
-            return gps.TiledRasterLayer(layer_type, srdd)
-
-        pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
+        pyramid = Pyramid({k:self._create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
     def band_filter(self, bands) -> 'ImageCollection':
@@ -454,19 +453,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return: A raster data cube with values warped onto the new projection.
 
         """
-        resample_method = self._get_resample_method(method)
+        resample_method = ResampleMethod(self._get_resample_method(method))
         if len(self.pyramid.levels)!=1 or len(target.pyramid.levels)!=1:
             raise FeatureUnsupportedException(message='This backend does not support resampling between full '
                                                       'pyramids, for instance used by viewing services. Batch jobs '
                                                       'should work.')
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
-        target_max_level = target.pyramid.levels[target.pyramid.max_zoom]
+        max_level:TiledRasterLayer = self.pyramid.levels[self.pyramid.max_zoom]
+        target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
+        level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
 
-        resampled_layer = max_level.tile_to_layout(target_max_level.layer_metadata.layout_definition,
-                                                   target_crs=target_max_level.layer_metadata.crs,
-                                                   resample_method=resample_method)
-
-        pyramid = Pyramid({target.pyramid.max_zoom:resampled_layer})
+        layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
+        pyramid = Pyramid({target.pyramid.max_zoom:layer})
         return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
 
