@@ -413,11 +413,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
 
-    def apply_kernel(self,kernel,factor):
+    def apply_kernel(self, kernel: np.ndarray, factor=1):
 
         pysc = gps.get_spark_context()
 
         #converting a numpy array into a geotrellis tile seems non-trivial :-)
+        kernel = factor * kernel.astype(np.float64)
         kernel_tile = Tile.from_numpy_array(kernel, no_data_value=None)
         rdd = pysc.parallelize([(gps.SpatialKey(0,0), kernel_tile)])
         metadata = {'cellType': str(kernel.dtype),
@@ -438,8 +439,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             result_collection = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
-        if(factor != 1.0):
-            result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
 
     def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
