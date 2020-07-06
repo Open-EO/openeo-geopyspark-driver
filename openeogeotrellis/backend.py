@@ -15,12 +15,11 @@ import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.util import dict_no_none
+from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider
 from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
                                   OpenEOApiException)
-from openeo_driver.utils import parse_rfc3339
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
@@ -237,7 +236,7 @@ class GpsBatchJobs(backend.BatchJobs):
             )
         return BatchJobMetadata(
             id=job_id, process=process, status=job_info["status"],
-            created=parse_rfc3339(job_info["created"]), job_options=job_options
+            created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options
         )
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:

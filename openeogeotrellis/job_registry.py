@@ -1,12 +1,12 @@
+import json
 from datetime import datetime, timedelta
 from typing import List, Dict
+
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
-import json
 
-from openeo.util import date_to_rfc3339
+from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
-from openeo_driver.utils import parse_rfc3339
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.errors import JobNotFoundException
 
@@ -33,7 +33,7 @@ class JobRegistry:
             # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
             'specification': json.dumps(specification),
             'application_id': None,
-            'created': date_to_rfc3339(datetime.utcnow()),
+            'created': rfc3339.datetime(datetime.utcnow()),
         }
         self._create(job_info)
         return job_info
@@ -57,10 +57,10 @@ class JobRegistry:
             id=job_info["job_id"],
             process=specification,
             status=status,
-            created=map_safe("created", parse_rfc3339),
+            created=map_safe("created", rfc3339.parse_datetime),
             job_options=job_options,
-            started=map_safe("started", parse_rfc3339),
-            finished=map_safe("finished", parse_rfc3339),
+            started=map_safe("started", rfc3339.parse_datetime),
+            finished=map_safe("finished", rfc3339.parse_datetime),
             memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
             cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds))
         )
