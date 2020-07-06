@@ -84,7 +84,7 @@ class TestCollections:
             assert resp['stac_version'] == "0.9.0"
             assert resp['extent'] == {
                 "spatial": {"bbox": [[-180, -56, 180, 83]]},
-                "temporal": {"interval": [["2015-07-06", None]]},
+                "temporal": {"interval": [["2015-07-06T00:00:00Z", None]]},
             }
             assert resp['cube:dimensions'] == cube_dims
             for f in eo_bands[0].keys():
