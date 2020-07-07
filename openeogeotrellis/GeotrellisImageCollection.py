@@ -21,7 +21,7 @@ from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, ProcessGraphComplexityException
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from py4j.java_gateway import JVMView
 
@@ -788,22 +788,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return {timestamp.isoformat(): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
     def download(self,outputfile:str, **format_options) -> str:
-        """Extracts a geotiff from this image collection."""
+        """
+        Extracts into various formats from this image collection.
+        
+        Supported formats:
+        * GeoTIFF: raster with the limitation that it only export bands at a single (random) date 
+        * NetCDF: raster, currently using h5NetCDF
+        * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
+        """
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
+        format=format_options.get("format", "GTiff").upper()
+        
         filename = outputfile
         if outputfile is None:
             _, filename = tempfile.mkstemp(suffix='.oeo-gps-dl')
         else:
             filename = outputfile
+
+        # get the data at highest resolution
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
-        if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
-            spatial_rdd = spatial_rdd.to_spatial_layer()
 
-        tiled = format_options.get("format", "GTiff").upper() == "GTIFF" and format_options.get("tiled", False)
-
-        catalog = (format_options.get("format", "GTiff").upper() == "GTIFF" and
-                 format_options.get("parameters", {}).get("catalog", False))
-
+        # spatial bounds        
         xmin, ymin, xmax, ymax = format_options.get('left'), format_options.get('bottom'),\
                                  format_options.get('right'), format_options.get('top')
 
@@ -816,14 +821,208 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             crop_bounds = None
 
-        if catalog:
-            self._save_on_executors(spatial_rdd, filename)
-        elif tiled:
-            self._save_stitched_tiled(spatial_rdd, filename)
+        # date bounds        
+        datefrom,dateto= format_options.get('from'), format_options.get('to')
+        if datefrom and dateto:
+            crop_dates=(pd.Timestamp(datefrom), pd.Timestamp(dateto))
         else:
-            self._save_stitched(spatial_rdd, filename, crop_bounds)
+            crop_dates=None
+
+        # saving to geotiff
+        if format == "GTIFF":
+
+            if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
+                spatial_rdd = spatial_rdd.to_spatial_layer()
+
+            tiled = format_options.get("tiled", False)          
+            catalog = format_options.get("parameters", {}).get("catalog", False)
+        
+            if catalog:
+                self._save_on_executors(spatial_rdd, filename)
+            elif tiled:
+                self._save_stitched_tiled(spatial_rdd, filename)
+            else:
+                self._save_stitched(spatial_rdd, filename, crop_bounds)
+
+        # saving to netcdf
+        if format == "NETCDF":
+            result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+            # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
+            l=list(result.dims[:-2])
+            result=result.transpose(*(l+['y','x']))
+            # replacing band names by their index because it is not recognised
+            # TODO: look into why strings can't be band names in netcdf
+            if 'bands' in result.dims:
+                result=result.assign_coords(bands=np.arange(result.bands.shape[0]))
+            #result=result.assign_coords(y=result.y[::-1])
+            # TODO: NETCDF4 is broken. look into
+            result.to_netcdf(filename, engine='h5netcdf') # engine='scipy')
+
+        # saving to json, this is potentially big in memory
+        if format == "JSON":
+            # get result as xarray
+            result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+            jsonresult=result.to_dict()
+            # add attributes that needed for re-creating xarray from json
+            jsonresult['attrs']['dtype']=str(result.values.dtype)
+            jsonresult['attrs']['shape']=list(result.values.shape)
+            for i in result.coords.values():
+                jsonresult['coords'][i.name]['attrs']['dtype']=str(i.dtype)
+                jsonresult['coords'][i.name]['attrs']['shape']=list(i.shape)
+            result=None
+            # custom print so resulting json is easy to read humanly
+            with open(filename,'w') as f:
+                def custom_print(data_structure, indent=1):
+                    f.write("{\n")
+                    needs_comma=False
+                    for key, value in data_structure.items():
+                        if needs_comma: 
+                            f.write(',\n')
+                        needs_comma=True
+                        f.write('  '*indent+json.dumps(key)+':')
+                        if isinstance(value, dict): 
+                            custom_print(value, indent+1)
+                        else: 
+                            json.dump(value,f,default=str,separators=(',',':'))
+                    f.write('\n'+'  '*(indent-1)+"}")
+                    
+                custom_print(jsonresult)
 
         return filename
+
+    def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
+            
+        # windows/dims are tuples of (xmin/mincol,ymin/minrow,width/cols,height/rows)
+        layout_pix=rdd.layer_metadata.layout_definition.tileLayout
+        layout_win=(0, 0, layout_pix.layoutCols*layout_pix.tileCols, layout_pix.layoutRows*layout_pix.tileRows)
+        layout_extent=rdd.layer_metadata.layout_definition.extent
+        layout_dim=(layout_extent.xmin, layout_extent.ymin, layout_extent.xmax-layout_extent.xmin, layout_extent.ymax-layout_extent.ymin)
+        xres=layout_dim[2]/layout_win[2]
+        yres=layout_dim[3]/layout_win[3]
+        if crop_bounds:
+            xmin=math.floor((crop_bounds.xmin-layout_extent.xmin)/xres)
+            ymin=math.floor((crop_bounds.ymin-layout_extent.ymin)/yres)
+            xmax= math.ceil((crop_bounds.xmax-layout_extent.xmin)/xres)
+            ymax= math.ceil((crop_bounds.ymax-layout_extent.ymin)/yres)
+            crop_win=(xmin, ymin, xmax-xmin, ymax-ymin)
+            crop_dim=(layout_dim[0]+crop_win[0]*xres, layout_dim[1]+crop_win[1]*yres, crop_win[2]*xres, crop_win[3]*yres)
+        else:
+            crop_dim=layout_dim
+            crop_win=layout_win
+
+        # build metadata for the xarrays
+        # coordinates are in the order of t,bands,x,y
+        dims=[]
+        coords={}
+        has_time=self.metadata.has_temporal_dimension()
+        if has_time:
+            dims.append('t')
+        has_bands=self.metadata.has_band_dimension()
+        if has_bands:
+            dims.append('bands')
+            coords['bands']=self.metadata.band_names
+        dims.append('x')
+        coords['x']=np.linspace(crop_dim[0]+0.5*xres, crop_dim[0]+crop_dim[2]-0.5*xres, crop_win[2])
+        dims.append('y')
+        coords['y']=np.linspace(crop_dim[1]+0.5*yres, crop_dim[1]+crop_dim[3]-0.5*yres, crop_win[3])
+        
+        def stitch_at_time(crop_win, layout_win, items):
+            
+            # value expected to be another tuple with the original spacetime key and the array
+            subarrs=list(items[1])
+                        
+            # get block sizes
+            bw,bh=subarrs[0][1].cells.shape[-2:]
+            bbands=sum(subarrs[0][1].cells.shape[:-2]) if len(subarrs[0][1].cells.shape)>2 else 1
+            wbind=np.arange(0,bbands)
+            dtype=subarrs[0][1].cells.dtype
+            nodata=subarrs[0][1].no_data_value
+            
+            # allocate collector ndarray
+            if nodata:
+                window=np.full((bbands,crop_win[2],crop_win[3]), nodata, dtype)
+            else:
+                window=np.empty((bbands,crop_win[2],crop_win[3]), dtype)
+            wxind=np.arange(crop_win[0],crop_win[0]+crop_win[2])
+            wyind=np.arange(crop_win[1],crop_win[1]+crop_win[3])
+
+            # override classic bottom-left corner coord system to top-left
+            # note that possible key types are SpatialKey and SpaceTimeKey, but since at this level only col/row is used, casting down to SpatialKey
+            switch_topleft=True
+            tp=(0,1,2)
+            if switch_topleft:
+                nyblk=int(layout_win[3]/bh)-1
+                subarrs=list(map(
+                    lambda t: ( SpatialKey(t[0].col,nyblk-t[0].row), t[1] ),
+                    subarrs
+                ))
+                tp=(0,2,1)
+            
+            # loop over blocks and merge into
+            for iblk in subarrs:
+                iwin=(iblk[0].col*bw, iblk[0].row*bh, bw, bh)
+                iarr=iblk[1].cells
+                iarr=iarr.reshape((-1,bh,bw)).transpose(tp)
+                ixind=np.arange(iwin[0],iwin[0]+iwin[2])
+                iyind=np.arange(iwin[1],iwin[1]+iwin[3])
+                if switch_topleft:
+                    iyind=iyind[::-1]
+                xoverlap= np.intersect1d(wxind,ixind,True,True)
+                yoverlap= np.intersect1d(wyind,iyind,True,True)
+                if len(xoverlap[1])>0 and len(yoverlap[1]>0):
+                    window[np.ix_(wbind,xoverlap[1],yoverlap[1])]=iarr[np.ix_(wbind,xoverlap[2],yoverlap[2])]
+                    
+            # return date (or None) - window tuple
+            return (items[0],window)
+                
+        # at every date stitch together the layer, still on the workers   
+        #mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
+        from functools import partial
+        collection=rdd\
+            .to_numpy_rdd()\
+            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
+            .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
+            .groupByKey()\
+            .map(partial(stitch_at_time, crop_win, layout_win))\
+            .collect()
+#         collection=rdd\
+#             .to_numpy_rdd()\
+#             .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
+#             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
+#             .groupByKey()\
+#             .collect()
+#         collection=list(map(partial(stitch_at_time, crop_win, layout_win),collection))
+        
+        
+        if len(collection)==0:
+            return
+        
+        if len(collection)>1:
+            collection.sort(key= lambda i: i[0])
+        
+        if not has_bands:
+            collection=list(map(lambda i: (i[0],i[1].reshape(i[1].shape[-2:])), collection))
+
+        # collect to an xarray
+        if has_time:
+            collection=list(zip(*collection))
+            coords['t']=list(map(lambda i: np.datetime64(i),collection[0]))
+            result=xr.DataArray(np.stack(collection[1]),dims=dims,coords=coords)
+        else:
+            # TODO error if len > 1
+            result=xr.DataArray(collection[1][0],dims=dims,coords=coords)
+        
+        # add some metadata
+        result=result.assign_attrs(dict(
+            # TODO: layer_metadata is always 255, regardless of dtype, only correct inside the rdd-s
+            nodata=rdd.layer_metadata.no_data_value,
+            # TODO: crs seems to be recognized when saving to netcdf and loading with gdalinfo/qgis, but yet projection is incorrect https://github.com/pydata/xarray/issues/2288
+            crs=rdd.layer_metadata.crs
+        ))
+        
+        return result
+
+        
 
     def _reproject_extent(self, src_crs, dst_crs, xmin, ymin, xmax, ymax):
         src_proj = pyproj.Proj(src_crs)
