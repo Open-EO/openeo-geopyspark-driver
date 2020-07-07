@@ -21,7 +21,7 @@ from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, ProcessGraphComplexityException
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from py4j.java_gateway import JVMView
 
@@ -253,6 +253,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
+
+
     def reduce_dimension(self, dimension: str, reducer:Union[ProcessGraphVisitor,Dict],binary=False, context=None) -> 'ImageCollection':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
         if isinstance(reducer,dict):
@@ -434,6 +436,57 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_collection = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
+
+    def apply_neighborhood(self, process:Dict, size:List,overlap:List) -> 'ImageCollection':
+
+        spatial_dims = self.metadata.spatial_dimensions
+        if len(spatial_dims)!=2:
+            raise  ProcessGraphComplexityException(message="Unexpected spatial dimensions  in apply_neighborhood, expecting exactly 2 spatial dimensions: %s"%str(spatial_dims) )
+        x = spatial_dims[0]
+        y = spatial_dims[1]
+        size_dict = {e['dimension']:e for e in size}
+        overlap_dict = {e['dimension']: e for e in overlap}
+        if size_dict.get(x.name,{}).get('unit',None) != 'px' or size_dict.get(y.name,{}).get('unit',None) != 'px':
+            raise ProcessGraphComplexityException(message="apply_neighborhood: window sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(size) )
+        sizeX = int(size_dict[x.name]['value'])
+        sizeY = int(size_dict[y.name]['value'])
+        if sizeX <32 or sizeY <32:
+            raise ProcessGraphComplexityException(
+                message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
+        overlap_x = overlap_dict.get(x,{'value': 0, 'unit': 'px'})
+        overlap_y = overlap_dict.get(y,{'value': 0, 'unit': 'px'})
+        if overlap_x.get('unit',None) != 'px' or overlap_y.get('unit',None) != 'px':
+            raise ProcessGraphComplexityException(message="apply_neighborhood: overlap sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(overlap) )
+        jvm = self._get_jvm()
+        retiled_collection = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd,sizeX,sizeY,int(overlap_x['value']),int(overlap_y['value'])))
+
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+
+        process = GeoPySparkBackendImplementation.accept_process_graph(process)
+        temporal_size = temporal_overlap = None
+        if self.metadata.has_temporal_dimension():
+            temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
+            temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
+
+        result_collection = None
+        if isinstance(process, SingleNodeUDFProcessGraphVisitor):
+            udf = process.udf_args.get('udf', None)
+            if not isinstance(udf, str):
+                raise ValueError(
+                    "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            if temporal_size == None or temporal_size.get('value',None) == None:
+                #full time dimension has to be provided
+                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf)
+            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap == None:
+                result_collection = retiled_collection.apply_tiles(udf)
+            else:
+                raise ProcessGraphComplexityException(message="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
+
+            return result_collection
+        else:
+            raise ProcessGraphComplexityException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
+
 
     def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
         """
