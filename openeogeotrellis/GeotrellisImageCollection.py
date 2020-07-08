@@ -453,8 +453,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         if sizeX <32 or sizeY <32:
             raise ProcessGraphComplexityException(
                 message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
-        overlap_x = overlap_dict.get(x,{'value': 0, 'unit': 'px'})
-        overlap_y = overlap_dict.get(y,{'value': 0, 'unit': 'px'})
+        overlap_x = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
+        overlap_y = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
         if overlap_x.get('unit',None) != 'px' or overlap_y.get('unit',None) != 'px':
             raise ProcessGraphComplexityException(message="apply_neighborhood: overlap sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(overlap) )
         jvm = self._get_jvm()
@@ -483,6 +483,16 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             else:
                 raise ProcessGraphComplexityException(message="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
 
+            return result_collection
+        elif isinstance(process, GeotrellisTileProcessGraphVisitor):
+            if temporal_size == None or temporal_size.get('value',None) == None:
+                raise ProcessGraphComplexityException(
+                    message="apply_neighborhood: only supporting complex callbacks on bands")
+            elif temporal_size.get('value', None) == 'P1D' and temporal_overlap == None:
+                result_collection = self.reduce_bands(process)
+            else:
+                raise ProcessGraphComplexityException(
+                    message="apply_neighborhood: only supporting complex callbacks on bands")
             return result_collection
         else:
             raise ProcessGraphComplexityException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
