@@ -1,12 +1,12 @@
 """
-Script to start a production server. This script can serve as the entry-point for doing spark-submit.
+Script to start a production server on Kubernetes. This script can serve as the mainApplicationFile for the SparkApplication custom resource of the spark-operator
 """
 
 import logging
 from logging.config import dictConfig
 import sys
 import threading
-
+import os
 
 dictConfig({
     'version': 1,
@@ -30,15 +30,9 @@ dictConfig({
 })
 
 
-sys.path.insert(0, 'py4j-0.10.7-src.zip')
-sys.path.insert(0, 'pyspark.zip')
 from openeo_driver import server
-from openeogeotrellis.job_tracker import JobTracker
-from openeogeotrellis.job_registry import JobRegistry
 
-
-log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
-
+log = logging.getLogger("openeo-geopyspark-driver.kubernetes")
 
 def main():
     from pyspark import SparkContext
@@ -48,29 +42,16 @@ def main():
     from openeogeotrellis import get_backend_version, deploy
     from openeo_driver.views import build_backend_deploy_metadata
 
-    host, port = deploy.get_socket()
-
-    def setup_batch_jobs() -> None:
-        principal = sc.getConf().get("spark.yarn.principal")
-        keytab = sc.getConf().get("spark.yarn.keytab")
-
-        with JobRegistry() as job_registry:
-            job_registry.ensure_paths()
-
-        job_tracker = JobTracker(JobRegistry, principal, keytab)
-        threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+    host, _ = deploy.get_socket()
+    port = 50001 if not 'KUBE_OPENEO_API_PORT' in os.environ else os.environ['KUBE_OPENEO_API_PORT']
 
     def on_started() -> None:
         from openeo_driver.views import app
 
         app.logger.setLevel('DEBUG')
-        deploy.load_custom_processes(app.logger)
 
-        setup_batch_jobs()
-
-    server.run(title="VITO Remote Sensing openEO API",
-               description="OpenEO API to the VITO Remote Sensing product catalog and processing services (using "
-                           "GeoPySpark driver).",
+    server.run(title="OpenEO API",
+               description="OpenEO API (using GeoPySpark driver).",
                deploy_metadata=build_backend_deploy_metadata(
                    packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
                     # TODO: add version info about geotrellis-extensions jar?

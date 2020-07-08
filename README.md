@@ -55,3 +55,12 @@ PYTHONPATH=. python openeogeotrellis/server.py
 The web application can be deployed by running:
 sh scripts/submit.sh
 This will package the application and it's dependencies from source, and submit it on the cluster. The application will register itself with an NginX reverse proxy using Zookeeper.
+
+
+### Running the unit tests
+
+The unit tests expect that environment variable `SPARK_HOME` is set,
+which can easily be done from within you development virtual environment as follows:
+
+    export SPARK_HOME=$(find_spark_home.py)
+    pytest

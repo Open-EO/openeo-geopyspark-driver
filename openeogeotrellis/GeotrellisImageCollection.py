@@ -16,12 +16,13 @@ import pandas as pd
 import pyproj
 import pytz
 from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
-from geopyspark.geotrellis import Extent
+from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, ProcessGraphComplexityException
+from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from py4j.java_gateway import JVMView
 
 try:
@@ -54,8 +55,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
-        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        self._band_index = 0
 
     def _get_jvm(self) -> JVMView:
         # TODO: cache this?
@@ -69,7 +68,19 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
+
+    def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
+        jvm = self._get_jvm()
+        spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
+        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+
+        if layer_type == gps.LayerType.SPATIAL:
+            srdd = spatial_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
+        else:
+            srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
+
+        return gps.TiledRasterLayer(layer_type, srdd)
 
     def _apply_to_levels_geotrellis_rdd(self, func):
         """
@@ -78,36 +89,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :param func:
         :return:
         """
-
-        def create_tilelayer(contextrdd, layer_type, zoom_level):
-            jvm = self._get_jvm()
-            spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
-            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-
-            if layer_type == gps.LayerType.SPATIAL:
-                srdd = spatial_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
-            else:
-                srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom_level),contextrdd)
-
-            return gps.TiledRasterLayer(layer_type, srdd)
-
-        pyramid = Pyramid({k:create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)._with_band_index(self._band_index)
-
-    def _with_band_index(self, band_index):
-        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        self._band_index = band_index
-        return self
+        pyramid = Pyramid({k:self._create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
 
     def band_filter(self, bands) -> 'ImageCollection':
-        # TODO get rid of this _band_index stuff. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        # TODO also rename to filter_bands for better consistency
-        if isinstance(bands, int):
-            self._band_index = bands
-        elif isinstance(bands, list) and len(bands) == 1:
-            self._band_index = bands[0]
-
-        return self if self._data_source_type().lower() == 'file' else self.apply_to_levels(lambda rdd: rdd.bands(bands))
+        return self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
@@ -121,12 +107,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
     def rename_dimension(self, source:str, target:str):
         return GeotrellisTimeSeriesImageCollection(self.pyramid,self._service_registry,self.metadata.rename_dimension(source,target))
-
-    def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
-        """Apply a function to the given set of bands in this image collection."""
-        #TODO apply .bands(bands)
-        #TODO deprecated
-        return self.apply_to_levels(lambda rdd: rdd.convert_data_type(CellType.FLOAT64).map_cells(bandfunction))
 
     def apply(self, process: str, arguments: dict={}) -> 'ImageCollection':
         # TODO: support for `apply` with child process graph that has multiple nodes or binary operators EP-3404
@@ -155,7 +135,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             return self.apply_to_levels(lambda layer: layer.to_spatial_layer().aggregate_by_cell(reducer))
 
-    def reduce_bands(self,pgVisitor) -> 'ImageCollection':
+    def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeotrellisTimeSeriesImageCollection':
         """
         TODO Define in super class? API is not yet ready for client side...
         :param pgVisitor:
@@ -272,6 +252,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                                        rdd.layer_metadata)
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
+
+
 
     def reduce_dimension(self, dimension: str, reducer:Union[ProcessGraphVisitor,Dict],binary=False, context=None) -> 'ImageCollection':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
@@ -427,11 +409,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
 
-    def apply_kernel(self,kernel,factor):
+    def apply_kernel(self, kernel: np.ndarray, factor=1):
 
         pysc = gps.get_spark_context()
 
         #converting a numpy array into a geotrellis tile seems non-trivial :-)
+        kernel = factor * kernel.astype(np.float64)
         kernel_tile = Tile.from_numpy_array(kernel, no_data_value=None)
         rdd = pysc.parallelize([(gps.SpatialKey(0,0), kernel_tile)])
         metadata = {'cellType': str(kernel.dtype),
@@ -452,9 +435,85 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             result_collection = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
-        if(factor != 1.0):
-            result_collection.pyramid = result_collection.pyramid * factor
         return result_collection
+
+    def apply_neighborhood(self, process:Dict, size:List,overlap:List) -> 'ImageCollection':
+
+        spatial_dims = self.metadata.spatial_dimensions
+        if len(spatial_dims)!=2:
+            raise  ProcessGraphComplexityException(message="Unexpected spatial dimensions  in apply_neighborhood, expecting exactly 2 spatial dimensions: %s"%str(spatial_dims) )
+        x = spatial_dims[0]
+        y = spatial_dims[1]
+        size_dict = {e['dimension']:e for e in size}
+        overlap_dict = {e['dimension']: e for e in overlap}
+        if size_dict.get(x.name,{}).get('unit',None) != 'px' or size_dict.get(y.name,{}).get('unit',None) != 'px':
+            raise ProcessGraphComplexityException(message="apply_neighborhood: window sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(size) )
+        sizeX = int(size_dict[x.name]['value'])
+        sizeY = int(size_dict[y.name]['value'])
+        if sizeX <32 or sizeY <32:
+            raise ProcessGraphComplexityException(
+                message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
+        overlap_x = overlap_dict.get(x,{'value': 0, 'unit': 'px'})
+        overlap_y = overlap_dict.get(y,{'value': 0, 'unit': 'px'})
+        if overlap_x.get('unit',None) != 'px' or overlap_y.get('unit',None) != 'px':
+            raise ProcessGraphComplexityException(message="apply_neighborhood: overlap sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(overlap) )
+        jvm = self._get_jvm()
+        retiled_collection = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd,sizeX,sizeY,int(overlap_x['value']),int(overlap_y['value'])))
+
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+
+        process = GeoPySparkBackendImplementation.accept_process_graph(process)
+        temporal_size = temporal_overlap = None
+        if self.metadata.has_temporal_dimension():
+            temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
+            temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
+
+        result_collection = None
+        if isinstance(process, SingleNodeUDFProcessGraphVisitor):
+            udf = process.udf_args.get('udf', None)
+            if not isinstance(udf, str):
+                raise ValueError(
+                    "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            if temporal_size == None or temporal_size.get('value',None) == None:
+                #full time dimension has to be provided
+                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf)
+            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap == None:
+                result_collection = retiled_collection.apply_tiles(udf)
+            else:
+                raise ProcessGraphComplexityException(message="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
+
+            return result_collection
+        else:
+            raise ProcessGraphComplexityException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
+
+
+    def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
+        """
+        Resamples the spatial dimensions (x,y) of this data cube to a target data cube and return the results as a new data cube.
+
+        https://processes.openeo.org/#resample_cube_spatial
+
+        :param target: An ImageCollection that specifies the target
+        :param method: The resampling method.
+        :return: A raster data cube with values warped onto the new projection.
+
+        """
+        resample_method = ResampleMethod(self._get_resample_method(method))
+        if len(self.pyramid.levels)!=1 or len(target.pyramid.levels)!=1:
+            raise FeatureUnsupportedException(message='This backend does not support resampling between full '
+                                                      'pyramids, for instance used by viewing services. Batch jobs '
+                                                      'should work.')
+        max_level:TiledRasterLayer = self.pyramid.levels[self.pyramid.max_zoom]
+        target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
+        level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
+
+        layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
+        pyramid = Pyramid({target.pyramid.max_zoom:layer})
+        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
+
+
+
 
     def resample_spatial(
             self,
@@ -474,17 +533,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         # TODO: use align
 
-        resample_method = {
-            'bilinear': gps.ResampleMethod.BILINEAR,
-            'average': gps.ResampleMethod.AVERAGE,
-            'cubic': gps.ResampleMethod.CUBIC_CONVOLUTION,
-            'cubicspline': gps.ResampleMethod.CUBIC_SPLINE,
-            'lanczos': gps.ResampleMethod.LANCZOS,
-            'mode': gps.ResampleMethod.MODE,
-            'max': gps.ResampleMethod.MAX,
-            'min': gps.ResampleMethod.MIN,
-            'med': gps.ResampleMethod.MEDIAN,
-        }.get(method, gps.ResampleMethod.NEAREST_NEIGHBOR)
+        resample_method = self._get_resample_method(method)
 
         #IF projection is defined, we need to warp
         if projection is not None:
@@ -524,9 +573,23 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             pyramid = Pyramid({0:resampled})
             return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
-                                                       metadata=self.metadata)._with_band_index(self._band_index)
+                                                       metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
+
+    def _get_resample_method(self, method):
+        resample_method = {
+            'bilinear': gps.ResampleMethod.BILINEAR,
+            'average': gps.ResampleMethod.AVERAGE,
+            'cubic': gps.ResampleMethod.CUBIC_CONVOLUTION,
+            'cubicspline': gps.ResampleMethod.CUBIC_SPLINE,
+            'lanczos': gps.ResampleMethod.LANCZOS,
+            'mode': gps.ResampleMethod.MODE,
+            'max': gps.ResampleMethod.MAX,
+            'min': gps.ResampleMethod.MIN,
+            'med': gps.ResampleMethod.MEDIAN,
+        }.get(method, gps.ResampleMethod.NEAREST_NEIGHBOR)
+        return resample_method
 
     def linear_scale_range(self, input_min, input_max, output_min, output_max) -> 'ImageCollection':
         """ Color stretching
@@ -602,15 +665,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             # TODO also add dumping results first to temp json file like with "mean"
             if func == 'histogram':
                 stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
             elif func == 'sd':
                 stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
             elif func == 'median':
                 stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), self._band_index
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
             else:
                 raise ValueError(func)
@@ -635,7 +698,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                         polygons,
                         from_date.isoformat(),
                         to_date.isoformat(),
-                        self._band_index,
+                        0,
                         temp_file.name
                     )
                     with open(temp_file.name, encoding='utf-8') as f:
@@ -882,16 +945,18 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         from kazoo.client import KazooClient
         zk = KazooClient(hosts=self._zookeepers())
         zk.start()
-        zk.ensure_path("discovery/services/openeo-viewer-test")
-        # id = uuid.uuid4()
-        # print(id)
-        id = 0
-        zk.ensure_path("discovery/services/openeo-viewer-test/" + str(id))
-        zk.set("discovery/services/openeo-viewer-test/" + str(id), str.encode(json.dumps(
-            {"name": "openeo-viewer-test", "id": str(id), "address": host, "port": port, "sslPort": None,
-             "payload": None, "registrationTimeUTC": datetime.utcnow().strftime('%s'), "serviceType": "DYNAMIC"})))
-        zk.stop()
-        zk.close()
+        try:
+            zk.ensure_path("discovery/services/openeo-viewer-test")
+            # id = uuid.uuid4()
+            # print(id)
+            id = 0
+            zk.ensure_path("discovery/services/openeo-viewer-test/" + str(id))
+            zk.set("discovery/services/openeo-viewer-test/" + str(id), str.encode(json.dumps(
+                {"name": "openeo-viewer-test", "id": str(id), "address": host, "port": port, "sslPort": None,
+                 "payload": None, "registrationTimeUTC": datetime.utcnow().strftime('%s'), "serviceType": "DYNAMIC"})))
+        finally:
+            zk.stop()
+            zk.close()
 
     def tiled_viewing_service(self, service_type: str, process_graph: dict, post_data: dict = {}) -> ServiceMetadata:
         service_id = str(uuid.uuid4())
@@ -988,10 +1053,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             return service_metadata
 
-    def ndvi(self, **kwargs) -> 'ImageCollection':
-        return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi(**kwargs)
+    def ndvi(self, **kwargs) -> 'GeotrellisTimeSeriesImageCollection':
+        return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi_v04(**kwargs)
 
-    def _ndvi(self, name: str = None) -> 'ImageCollection':
+    def _ndvi_v04(self, name: str = None) -> 'GeotrellisTimeSeriesImageCollection':
+        """0.4-style of ndvi process"""
         try:
             red_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'red']
             nir_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'nir']
@@ -1011,7 +1077,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             ndvi_metadata
         )
 
-    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'ImageCollection':
+    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'GeotrellisTimeSeriesImageCollection':
+        """1.0-style of ndvi process"""
         if not self.metadata.has_band_dimension():
             raise OpenEOApiException(
                 status_code=400,
@@ -1077,33 +1144,37 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_metadata
         )
 
-    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'ImageCollection':
+    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'GeotrellisTimeSeriesImageCollection':
         reduce_graph = {
             "red": {
-                "process_id": "array_element", "result": False,
-                "arguments": {"data": {"from_argument": "data"}, "index": red_index}
+                "process_id": "array_element",
+                "arguments": {"data": {"from_parameter": "data"}, "index": red_index}
             },
             "nir": {
-                "process_id": "array_element", "result": False,
-                "arguments": {"data": {"from_argument": "data"}, "index": nir_index}
+                "process_id": "array_element",
+                "arguments": {"data": {"from_parameter": "data"}, "index": nir_index}
             },
             "nirminusred": {
-                "process_id": "subtract", "result": False,
+                "process_id": "subtract",
                 "arguments": {
-                    "data": [{"from_node": "nir"}, {"from_node": "red"}]
+                    "x": {"from_node": "nir"},
+                    "y": {"from_node": "red"},
                 }
             },
             "nirplusred": {
-                "process_id": "sum", "result": False,
+                "process_id": "add",
                 "arguments": {
-                    "data": [{"from_node": "nir"}, {"from_node": "red"}]
+                    "x": {"from_node": "nir"},
+                    "y": {"from_node": "red"},
                 }
             },
             "ndvi": {
-                "process_id": "divide", "result": True,
+                "process_id": "divide",
                 "arguments": {
-                    "data": [{"from_node": "nirminusred"}, {"from_node": "nirplusred"}]
-                }
+                    "x": {"from_node": "nirminusred"},
+                    "y": {"from_node": "nirplusred"},
+                },
+                "result": True,
             },
         }
 

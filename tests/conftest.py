@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pytest
 from _pytest.terminal import TerminalReporter
-from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date
+from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
+from openeogeotrellis.user_defined_process_repository import (UserDefinedProcessRepository,
+                                                              InMemoryUserDefinedProcessRepository)
+from openeogeotrellis.backend import UserDefinedProcesses
 os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
 
 
@@ -38,7 +41,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     out.write_line("Setting up local Spark")
 
     travis_mode = 'TRAVIS' in os.environ
-    master_str = "local[2]" if travis_mode else "local[*]"
+    master_str = "local[2]" if travis_mode else "local[2]"
 
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
@@ -78,3 +81,12 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 def api_version(request):
     return request.param
 
+
+@pytest.fixture
+def udp_repository() -> UserDefinedProcessRepository:
+    return InMemoryUserDefinedProcessRepository()
+
+
+@pytest.fixture
+def udps(udp_repository) -> UserDefinedProcesses:
+    return UserDefinedProcesses(udp_repository)

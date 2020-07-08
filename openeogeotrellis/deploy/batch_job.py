@@ -10,6 +10,7 @@ from typing import Dict, List
 from openeo import ImageCollection
 from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
+from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from pyspark import SparkContext
 
@@ -88,6 +89,11 @@ def main(argv: List[str]) -> None:
             kerberos()
             result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
             logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
+
+            if isinstance(result, DelayedVector):
+                from shapely.geometry import mapping
+                geojsons = (mapping(geometry) for geometry in result.geometries)
+                result = JSONResult(geojsons)
 
             if isinstance(result, ImageCollection):
                 format_options = job_specification.get('output', {})

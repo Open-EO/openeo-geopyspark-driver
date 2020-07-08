@@ -36,6 +36,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = CollectionMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
+        postprocessing_band_graph = metadata.get("_vito","postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
         import geopyspark as gps
@@ -161,13 +162,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             properties = viewing_parameters.get('properties', {})
 
             metadata_properties = {property_name: extract_literal_match(condition)
-                               for property_name, condition in properties.items()}
+                                   for property_name, condition in properties.items()}
 
-            return pyramid_factory(
-                oscars_collection_id,
-                oscars_link_titles,
-                root_path
-            ).pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
+            polygons = viewing_parameters.get('polygons')
+
+            factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
+            if polygons:
+                projected_polygons = to_projected_polygons(jvm, polygons)
+                return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date, metadata_properties)
+            else:
+                return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
@@ -220,20 +224,28 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
-        startIndex = 0 if viewing_parameters.get('pyramid_levels', 'all') else pyramid.size() - 1
+
         levels = {
             pyramid.apply(index)._1(): TiledRasterLayer(
                 LayerType.SPACETIME,
                 temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
             )
-            for index in range(startIndex, pyramid.size())
+            for index in range(0, pyramid.size())
         }
+        if viewing_parameters.get('pyramid_levels', 'all') != 'all':
+            max_zoom = max(levels.keys())
+            levels= {max_zoom:levels[max_zoom]}
 
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
             service_registry=self._service_registry,
             metadata=metadata
         )
+
+        if(postprocessing_band_graph!=None):
+            from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+            visitor = GeotrellisTileProcessGraphVisitor()
+            image_collection = image_collection.reduce_bands(visitor.accept_process_graph(postprocessing_band_graph))
 
         if still_needs_band_filter:
             # TODO: avoid this `still_needs_band_filter` ugliness.

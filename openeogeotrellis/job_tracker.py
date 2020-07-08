@@ -2,10 +2,14 @@ import logging
 import subprocess
 from subprocess import CalledProcessError
 import re
-from typing import Callable
+from typing import Callable, Union
 import traceback
 import sys
 import time
+from collections import namedtuple
+from datetime import datetime
+from openeo.util import date_to_rfc3339
+import re
 
 from openeogeotrellis.job_registry import JobRegistry
 
@@ -17,6 +21,9 @@ _log = logging.getLogger(__name__)
 class JobTracker:
     class _UnknownApplicationIdException(ValueError):
         pass
+
+    _YarnStatus = namedtuple('YarnStatus', ['state', 'final_state', 'start_time', 'finish_time',
+                                            'aggregate_resource_allocation'])
 
     def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
         self._job_registry = job_registry
@@ -44,11 +51,22 @@ class JobTracker:
 
                             if application_id:
                                 try:
-                                    state, final_state = JobTracker._yarn_status(application_id)
+                                    state, final_state, start_time, finish_time, aggregate_resource_allocation =\
+                                        JobTracker._yarn_status(application_id)
+
+                                    memory_time_megabyte_seconds, cpu_time_seconds =\
+                                        JobTracker._parse_resource_allocation(aggregate_resource_allocation)
+
                                     new_status = JobTracker._to_openeo_status(state, final_state)
 
+                                    registry.patch(job_id, user_id,
+                                                   status=new_status,
+                                                   started=JobTracker._to_serializable_datetime(start_time),
+                                                   finished=JobTracker._to_serializable_datetime(finish_time),
+                                                   memory_time_megabyte_seconds=memory_time_megabyte_seconds,
+                                                   cpu_time_seconds=cpu_time_seconds)
+
                                     if current_status != new_status:
-                                        registry.set_status(job_id, user_id, new_status)
                                         print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
                                     if final_state != "UNDEFINED":
@@ -79,7 +97,7 @@ class JobTracker:
             return False
 
     @staticmethod
-    def _yarn_status(application_id: str) -> (str, str):
+    def _yarn_status(application_id: str) -> '_YarnStatus':
         """Returns (State, Final-State) of a job as reported by YARN."""
 
         try:
@@ -88,10 +106,16 @@ class JobTracker:
 
             props = re.findall(r"\t(.+) : (.+)", application_report)
 
-            state = next(value for key, value in props if key == 'State')
-            final_state = next(value for key, value in props if key == 'Final-State')
+            def prop_value(name: str) -> str:
+                return next(value for key, value in props if key == name)
 
-            return state, final_state
+            return JobTracker._YarnStatus(
+                prop_value("State"),
+                prop_value("Final-State"),
+                prop_value("Start-Time"),
+                prop_value("Finish-Time"),
+                prop_value("Aggregate Resource Allocation")
+            )
         except CalledProcessError as e:
             stdout = e.stdout.decode()
             if "doesn't exist in RM or Timeline Server" in stdout:
@@ -100,7 +124,14 @@ class JobTracker:
                 raise
 
     @staticmethod
+    def _parse_resource_allocation(aggregate_resource_allocation) -> (int, int):
+        match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", aggregate_resource_allocation)
+
+        return int(match.group(1)), int(match.group(2)) if match else (None, None)
+
+    @staticmethod
     def _to_openeo_status(state: str, final_state: str) -> str:
+        # TODO: encapsulate status
         if state == 'ACCEPTED':
             new_status = 'queued'
         elif state == 'RUNNING':
@@ -116,6 +147,14 @@ class JobTracker:
             new_status = 'error'
 
         return new_status
+
+    @staticmethod
+    def _to_serializable_datetime(epoch_millis: str) -> Union[str, None]:
+        if epoch_millis == "0":
+            return None
+
+        utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
+        return date_to_rfc3339(utc_datetime)
 
     def _refresh_kerberos_tgt(self):
         if self._keytab and self._principal:

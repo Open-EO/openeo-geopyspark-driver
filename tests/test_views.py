@@ -84,7 +84,7 @@ class TestCollections:
             assert resp['stac_version'] == "0.9.0"
             assert resp['extent'] == {
                 "spatial": {"bbox": [[-180, -56, 180, 83]]},
-                "temporal": {"interval": [["2015-07-06", None]]},
+                "temporal": {"interval": [["2015-07-06T00:00:00Z", None]]},
             }
             assert resp['cube:dimensions'] == cube_dims
             for f in eo_bands[0].keys():
@@ -93,7 +93,7 @@ class TestCollections:
             assert resp['stac_version'] == "0.6.2"
             assert resp['extent'] == {
                 "spatial": [-180, -56, 180, 83],
-                "temporal": ["2015-07-06", None]
+                "temporal": ["2015-07-06T00:00:00Z", None]
             }
             assert resp["properties"]['cube:dimensions'] == cube_dims
             for f in eo_bands[0].keys():
@@ -245,7 +245,7 @@ class TestBatchJobs:
             assert batch_job_args[4] == str(job_log)
             assert batch_job_args[7] == TEST_USER
             assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['12G', '2G', '2G', '5', '2']
+            assert batch_job_args[9:] == ['12G', '2G', '2G', '5', '2','2G', 'default']
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -308,7 +308,7 @@ class TestBatchJobs:
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
-            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4"}
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10000G"}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -330,7 +330,7 @@ class TestBatchJobs:
             assert batch_job_args[4] == str(job_log)
             assert batch_job_args[7] == TEST_USER
             assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['3g', '11g', '2G', '5', '4']
+            assert batch_job_args[9:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:

@@ -32,13 +32,6 @@ class GeotrellisCatalogImageCollection(ImageCollection):
 
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
-
-    def apply_pixel(self, bands:List, bandfunction) -> 'ImageCollection':
-        """Apply a function to the given set of bands in this image collection."""
-        #TODO apply .bands(bands)
-        self.transform_tile.append(bandfunction)
-        return self
-
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
         #reduce
@@ -66,14 +59,16 @@ class GeotrellisCatalogImageCollection(ImageCollection):
             from kazoo.client import KazooClient
             zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
             zk.start()
-            zk.ensure_path("discovery/services/openeo-viewer-test")
-            #id = uuid.uuid4()
-            #print(id)
-            id = 0
-            zk.ensure_path("discovery/services/openeo-viewer-test/"+str(id))
-            zk.set("discovery/services/openeo-viewer-test/"+str(id),str.encode(json.dumps({"name":"openeo-viewer-test","id":str(id),"address":tms.host,"port":tms.port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
-            zk.stop()
-            zk.close()
+            try:
+                zk.ensure_path("discovery/services/openeo-viewer-test")
+                #id = uuid.uuid4()
+                #print(id)
+                id = 0
+                zk.ensure_path("discovery/services/openeo-viewer-test/"+str(id))
+                zk.set("discovery/services/openeo-viewer-test/"+str(id),str.encode(json.dumps({"name":"openeo-viewer-test","id":str(id),"address":tms.host,"port":tms.port,"sslPort":None,"payload":None,"registrationTimeUTC":datetime.utcnow().strftime('%s'),"serviceType":"DYNAMIC"})))
+            finally:
+                zk.stop()
+                zk.close()
             url = "http://openeo.vgt.vito.be/tile/{z}/{x}/{y}.png"
             return url
 

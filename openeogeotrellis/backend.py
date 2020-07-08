@@ -15,11 +15,11 @@ import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.util import dict_no_none
+from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider
-from openeo_driver.errors import JobNotFinishedException, JobNotStartedException
-from openeo_driver.utils import parse_rfc3339
+from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
+                                  OpenEOApiException)
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
@@ -29,6 +29,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry, AbstractServiceRegistry
+from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import kerberos
 from openeogeotrellis.utils import normalize_date
 
@@ -93,10 +94,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperServiceRegistry()
         )
 
+        user_defined_process_repository = (
+            # choosing between DBs can be done in said config
+            InMemoryUserDefinedProcessRepository() if ConfigParams().is_ci_context
+            else ZooKeeperUserDefinedProcessRepository()
+        )
+
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=get_layer_catalog(service_registry=self._service_registry),
             batch_jobs=GpsBatchJobs(),
+            user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )
 
     def health_check(self) -> str:
@@ -228,7 +236,7 @@ class GpsBatchJobs(backend.BatchJobs):
             )
         return BatchJobMetadata(
             id=job_id, process=process, status=job_info["status"],
-            created=parse_rfc3339(job_info["created"]), job_options=job_options
+            created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options
         )
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
@@ -266,10 +274,12 @@ class GpsBatchJobs(backend.BatchJobs):
             extra_options = spec.get('job_options', {})
 
             driver_memory = extra_options.get("driver-memory", "12G")
+            driver_memory_overhead = extra_options.get("driver-memoryOverhead", "2G")
             executor_memory = extra_options.get("executor-memory", "2G")
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "2G")
             driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
+            queue = extra_options.get("queue", "default")
 
             kerberos()
 
@@ -316,6 +326,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(executor_memory_overhead)
                 args.append(driver_cores)
                 args.append(executor_cores)
+                args.append(driver_memory_overhead)
+                args.append(queue)
 
                 try:
                     logger.info("Submitting job: {a!r}".format(a=args))
@@ -386,3 +398,35 @@ class GpsBatchJobs(backend.BatchJobs):
 
 class _BatchJobError(Exception):
     pass
+
+
+class UserDefinedProcesses(backend.UserDefinedProcesses):
+    _valid_process_graph_id = re.compile(r"^\w+$")
+
+    def __init__(self, user_defined_process_repository: UserDefinedProcessRepository):
+        self._repo = user_defined_process_repository
+
+    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
+        return self._repo.get(user_id, process_id)
+
+    def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
+        return self._repo.get_for_user(user_id)
+
+    def save(self, user_id: str, process_id: str, spec: dict) -> None:
+        self._validate(spec, process_id)
+        self._repo.save(user_id, spec)
+
+    def delete(self, user_id: str, process_id: str) -> None:
+        self._repo.delete(user_id, process_id)
+
+    def _validate(self, spec: dict, process_id: str) -> None:
+        if 'process_graph' not in spec:
+            raise ProcessGraphMissingException
+
+        if not self._valid_process_graph_id.match(process_id):
+            raise OpenEOApiException(
+                status_code=400,
+                message="Invalid process_graph_id {i}, must match {p}".format(i=process_id,
+                                                                              p=self._valid_process_graph_id.pattern))
+
+        spec['id'] = process_id

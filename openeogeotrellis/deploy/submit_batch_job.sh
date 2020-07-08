@@ -34,7 +34,8 @@ executormemory=${10-4G}
 executormemoryoverhead=${11-2G}
 drivercores=${12-14}
 executorcores=${13-2}
-
+drivermemoryoverhead=${14-8G}
+queue=${15-default}
 
 pysparkPython="venv/bin/python"
 
@@ -65,7 +66,7 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
 
-if ipa -v user-find --login "${openEoUser}"; then
+if PYTHONPATH= ipa -v user-find --login "${openEoUser}"; then
   run_as="--proxy-user ${openEoUser}"
 else
   run_as="--principal ${principal} --keytab ${keyTab}"
@@ -75,6 +76,7 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  ${run_as} \
  --conf spark.yarn.submit.waitAppCompletion=false \
+ --queue "${queue}" \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
@@ -86,7 +88,7 @@ spark-submit \
  --conf spark.driver.cores=${drivercores} \
  --conf spark.executor.cores=${executorcores} \
  --conf spark.driver.maxResultSize=5g \
- --conf spark.driver.memoryOverhead=8g \
+ --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  --conf spark.blacklist.enabled=true \
  --conf spark.speculation=true \
