@@ -1001,7 +1001,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             collection.sort(key= lambda i: i[0])
         
         if not has_bands:
-            collection=list(map(lambda i: (i[0],i[1].reshape(i[1].shape[-2:])), collection))
+            collection=list(map(lambda i: (i[0],i[1].reshape([-1]+list(i[1].shape[-2:]))), collection))
 
         # collect to an xarray
         if has_time:
@@ -1010,7 +1010,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result=xr.DataArray(np.stack(collection[1]),dims=dims,coords=coords)
         else:
             # TODO error if len > 1
-            result=xr.DataArray(collection[1][0],dims=dims,coords=coords)
+            result=xr.DataArray(collection[0][1],dims=dims,coords=coords)
         
         # add some metadata
         result=result.assign_attrs(dict(
