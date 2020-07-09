@@ -140,7 +140,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
                 },
                 "NetCDF": {
-                    "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+                    "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
                 },
             },
         }
