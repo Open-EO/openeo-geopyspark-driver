@@ -819,6 +819,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         if xmin and ymin and xmax and ymax:
             srs = format_options.get('srs', 'EPSG:4326')
+            if srs == None:
+                srs='EPSG:4326'
 
             src_crs = "+init=" + srs
             dst_crs = spatial_rdd.layer_metadata.crs
