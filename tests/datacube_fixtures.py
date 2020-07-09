@@ -29,6 +29,8 @@ layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
 
 openeo_metadata = {
     "cube:dimensions": {
+        "x": {"type": "spatial", "axis": "x"},
+        "y": {"type": "spatial", "axis": "y"},
         "bands": {"type": "bands", "values": ["red", "nir"]},
         "t": {"type": "temporal"}
     },

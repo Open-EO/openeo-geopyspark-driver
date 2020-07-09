@@ -118,7 +118,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
+        def file_s1_coherence_pyramid():
+            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory)
+
         def file_s2_pyramid():
+            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
+
+        def file_pyramid(pyramid_factory):
             oscars_collection_id = layer_source_info['oscars_collection_id']
             oscars_link_titles = metadata.band_names
             root_path = layer_source_info['root_path']
@@ -160,8 +166,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             polygons = viewing_parameters.get('polygons')
 
-            factory = jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(oscars_collection_id,
-                                                                             oscars_link_titles, root_path)
+            factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
             if polygons:
                 projected_polygons = to_projected_polygons(jvm, polygons)
                 return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date, metadata_properties)
@@ -176,10 +181,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             return self._geotiff_pyramid_factories.setdefault(collection_id, new_pyramid_factory) \
                 .pyramid_seq(extent, srs, from_date, to_date)
-
-        def file_s1_coherence_pyramid():
-            return jvm.org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory() \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def sentinel_hub_s1_pyramid():
             return jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory(layer_source_info.get('uuid')) \
