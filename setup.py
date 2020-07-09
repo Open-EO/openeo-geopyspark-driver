@@ -41,7 +41,7 @@ setup(
         'openeo_udf>=0.0.9.post0',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
-        'geopandas==0.6.2',
+        'geopandas==0.7.0',
         'geopyspark==0.4.5+openeo',
         'protobuf==3.6.0',
         'cChardet',
