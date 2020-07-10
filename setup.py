@@ -45,7 +45,7 @@ setup(
         'geopyspark==0.4.5+openeo',
         'protobuf==3.6.0',
         'cChardet',
-        'gunicorn==19.9.0',
+        'gunicorn',
         'kazoo==2.4.0',
         'flask-cors',
         'rasterio==1.1.1',
