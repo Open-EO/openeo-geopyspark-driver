@@ -45,7 +45,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def service_types(self) -> dict:
         return {
             "WMTS": {
-                "configuration": {
+                "parameters": {
                     "version": {
                         "type": "string",
                         "description": "The WMTS version to use.",
@@ -53,11 +53,14 @@ class GpsSecondaryServices(backend.SecondaryServices):
                         "enum": [
                             "1.0.0"
                         ]
+                    },
+                    "colormap": {
+                        "type": "a colormap to apply to single band layers",
+                        "description": "The colormap to use.",
+                        "default": "YlGn"
                     }
                 },
-                # TODO?
-                "process_parameters": [],
-                "links": [],
+                "attributes": {}
             }
         }
 

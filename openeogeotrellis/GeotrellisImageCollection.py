@@ -1222,17 +1222,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             # TODO: instead of storing in self, keep in a registry to allow cleaning up (wmts.stop)
             wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
-            _log.info('Created WMTSServer: {w!s} ({u!s}, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
+            _log.info('Created WMTSServer: {w!s} ({u!s}/service/wmts, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
 
             # TODO: configuration should come from post_data["configuration"] (see API spec)
-            if "style" in post_data:
+            if "parameters" in post_data:
                 max_zoom = self.pyramid.max_zoom
                 min_zoom = min(self.pyramid.levels.keys())
                 reduced_resolution = max(min_zoom,max_zoom-4)
                 if reduced_resolution not in self.pyramid.levels:
                     reduced_resolution = min_zoom
                 histogram = self.pyramid.levels[reduced_resolution].get_histogram()
-                matplotlib_name = post_data.get("style").get("colormap","YlGn")
+                matplotlib_name = post_data.get("parameters").get("colormap","YlGn")
 
                 #color_map = gps.ColorMap.from_colors(breaks=[x for x in range(0,250)], color_list=gps.get_colors_from_matplotlib("YlGn"))
                 color_map = gps.ColorMap.build(histogram, matplotlib_name)
