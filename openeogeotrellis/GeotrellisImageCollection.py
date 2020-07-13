@@ -840,9 +840,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             crop_dates=None
 
-        # saving to geotiff
         if format == "GTIFF":
-
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
@@ -856,8 +854,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             else:
                 self._save_stitched(spatial_rdd, filename, crop_bounds)
 
-        # saving to netcdf
-        if format == "NETCDF":
+        elif format == "NETCDF":
             result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
             l=list(result.dims[:-2])
@@ -870,8 +867,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             # TODO: NETCDF4 is broken. look into
             result.to_netcdf(filename, engine='h5netcdf') # engine='scipy')
 
-        # saving to json, this is potentially big in memory
-        if format == "JSON":
+        elif format == "JSON":
+            # saving to json, this is potentially big in memory
             # get result as xarray
             result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             jsonresult=result.to_dict()
@@ -900,6 +897,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     
                 custom_print(jsonresult)
 
+        else:
+            raise OpenEOApiException(
+                message="Format {f!r} is not supported".format(f=format),
+                code="FormatUnsupported", status_code=400
+            )
         return filename
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
