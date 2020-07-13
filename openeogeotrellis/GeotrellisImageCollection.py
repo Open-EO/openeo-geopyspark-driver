@@ -440,23 +440,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def apply_neighborhood(self, process:Dict, size:List,overlap:List) -> 'ImageCollection':
 
         spatial_dims = self.metadata.spatial_dimensions
-        if len(spatial_dims)!=2:
-            raise  ProcessGraphComplexityException(message="Unexpected spatial dimensions  in apply_neighborhood, expecting exactly 2 spatial dimensions: %s"%str(spatial_dims) )
+        if len(spatial_dims) != 2:
+            raise OpenEOApiException(message="Unexpected spatial dimensions in apply_neighborhood,"
+                                             " expecting exactly 2 spatial dimensions: %s" % str(spatial_dims))
         x = spatial_dims[0]
         y = spatial_dims[1]
         size_dict = {e['dimension']:e for e in size}
         overlap_dict = {e['dimension']: e for e in overlap}
-        if size_dict.get(x.name,{}).get('unit',None) != 'px' or size_dict.get(y.name,{}).get('unit',None) != 'px':
-            raise ProcessGraphComplexityException(message="apply_neighborhood: window sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(size) )
+        if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
+            raise OpenEOApiException(message="apply_neighborhood: window sizes for the spatial dimensions"
+                                             " of this datacube should be specified in pixels."
+                                             " This was provided: %s" % str(size))
         sizeX = int(size_dict[x.name]['value'])
         sizeY = int(size_dict[y.name]['value'])
-        if sizeX <32 or sizeY <32:
-            raise ProcessGraphComplexityException(
-                message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
+        if sizeX < 32 or sizeY < 32:
+            raise OpenEOApiException(message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
         overlap_x = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
         overlap_y = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
-        if overlap_x.get('unit',None) != 'px' or overlap_y.get('unit',None) != 'px':
-            raise ProcessGraphComplexityException(message="apply_neighborhood: overlap sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(overlap) )
+        if overlap_x.get('unit', None) != 'px' or overlap_y.get('unit', None) != 'px':
+            raise OpenEOApiException(message="apply_neighborhood: overlap sizes for the spatial dimensions"
+                                             " of this datacube should be specified, in pixels."
+                                             " This was provided: %s" % str(overlap))
         jvm = self._get_jvm()
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd,sizeX,sizeY,int(overlap_x['value']),int(overlap_y['value'])))
@@ -475,27 +479,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             if not isinstance(udf, str):
                 raise ValueError(
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
-            if temporal_size == None or temporal_size.get('value',None) == None:
+            if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf)
-            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap == None:
+            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
                 result_collection = retiled_collection.apply_tiles(udf)
             else:
-                raise ProcessGraphComplexityException(message="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
+                raise OpenEOApiException(
+                    message="apply_neighborhood: for temporal dimension,"
+                            " either process all values, or only single date is supported for now!")
 
             return result_collection
         elif isinstance(process, GeotrellisTileProcessGraphVisitor):
-            if temporal_size == None or temporal_size.get('value',None) == None:
-                raise ProcessGraphComplexityException(
-                    message="apply_neighborhood: only supporting complex callbacks on bands")
-            elif temporal_size.get('value', None) == 'P1D' and temporal_overlap == None:
+            if temporal_size is None or temporal_size.get('value', None) is None:
+                raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
+            elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
                 result_collection = self.reduce_bands(process)
             else:
-                raise ProcessGraphComplexityException(
-                    message="apply_neighborhood: only supporting complex callbacks on bands")
+                raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
             return result_collection
         else:
-            raise ProcessGraphComplexityException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
+            raise OpenEOApiException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
 
 
     def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
@@ -824,8 +828,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         if xmin and ymin and xmax and ymax:
             srs = format_options.get('srs', 'EPSG:4326')
-            if srs == None:
-                srs='EPSG:4326'
+            if srs is None:
+                srs = 'EPSG:4326'
 
             src_crs = "+init=" + srs
             dst_crs = spatial_rdd.layer_metadata.crs
