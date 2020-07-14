@@ -374,7 +374,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in ['created', 'queued']:
-            raise JobNotStartedException
+            return []
 
         log_file = self._get_job_output_dir(job_id) / "log"
         with log_file.open('r') as f:
