@@ -417,7 +417,7 @@ class TestCustomFunctions(TestCase):
         expected[0][0]=255.0
         np.testing.assert_array_almost_equal(cells, expected.astype(np.uint8))
 
-    def test_merge_cubes(self):
+    def test_merge_cubes_into_single_band(self):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
@@ -440,3 +440,40 @@ class TestCustomFunctions(TestCase):
         stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
 
         np.testing.assert_array_equal(red_ramp + nir_ramp, stitched.cells[0, 0:4, 0:4])
+        
+    def test_merge_cubes_into_separate_bands(self):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
+        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
+
+        metadata1 = CollectionMetadata({
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["the_band_1"]}
+            },
+            "summaries": {
+                "eo:bands": [
+                    {"name": "the_band_1"}
+                ]
+            }
+        })
+        metadata2 = CollectionMetadata({
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["the_band_2"]}
+            },
+            "summaries": {
+                "eo:bands": [
+                    {"name": "the_band_2"}
+                ]
+            }
+        })
+
+        cube1 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata1)
+        cube2 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata2)
+        sum = cube1.merge(cube2)
+        stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
+
+        np.testing.assert_array_equal(red_ramp, stitched.cells[0, 0:4, 0:4])        
+        np.testing.assert_array_equal(nir_ramp, stitched.cells[1, 0:4, 0:4])        
+        

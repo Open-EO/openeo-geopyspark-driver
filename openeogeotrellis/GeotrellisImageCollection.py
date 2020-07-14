@@ -398,7 +398,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         if self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
             for iband in other.metadata.bands:
-                merged_data.metadata=merged_data.metadata.append_band(iband)
+                if iband.name not in merged_data.metadata.band_names:
+                    merged_data.metadata=merged_data.metadata.append_band(iband)
         
         return merged_data
 
