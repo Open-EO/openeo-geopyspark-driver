@@ -21,7 +21,7 @@ from geopyspark.geotrellis.constants import CellType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from py4j.java_gateway import JVMView
 
@@ -380,9 +380,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         #we may need to align datacubes automatically?
         #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
         pysc = gps.get_spark_context()
-        return self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(rdd, other.pyramid.levels[
-                level].srdd.rdd(), overlaps_resolver))
+        
+        if self.metadata.has_band_dimension() != other.metadata.has_band_dimension():
+            InternalException(message="one cube has band dimension, while the other doesn't: self=%s, other=%s"%(
+                str(self.metadata.has_band_dimension()),
+                str(other.metadata.has_band_dimension())
+            ))
+        
+        merged_data=self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: 
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(
+                    rdd, 
+                    other.pyramid.levels[level].srdd.rdd(), 
+                    overlaps_resolver
+                )
+        )
+
+        if self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
+            for iband in other.metadata.bands:
+                merged_data.metadata=merged_data.metadata.append_band(iband)
+        
+        return merged_data
 
     def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
                      replacement=None, inside=False) -> 'GeotrellisTimeSeriesImageCollection':
