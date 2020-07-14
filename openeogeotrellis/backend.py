@@ -45,7 +45,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def service_types(self) -> dict:
         return {
             "WMTS": {
-                "parameters": {
+                "configuration": {
                     "version": {
                         "type": "string",
                         "description": "The WMTS version to use.",
@@ -55,12 +55,15 @@ class GpsSecondaryServices(backend.SecondaryServices):
                         ]
                     },
                     "colormap": {
-                        "type": "a colormap to apply to single band layers",
-                        "description": "The colormap to use.",
+                        "type": "string",
+                        "description": "The colormap to apply to single band layers",
                         "default": "YlGn"
                     }
                 },
-                "attributes": {}
+                "process_parameters": [
+                    # TODO: we should at least have bbox and time range parameters here
+                ],
+                "links": [],
             }
         }
 
