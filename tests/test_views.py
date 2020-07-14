@@ -260,6 +260,12 @@ class TestBatchJobs:
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
 
+            # Get logs
+            res = api.get(
+                '/jobs/{j}/logs'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(200).json
+            assert res["logs"] == []
+
             # Fake update from job tracker
             with openeogeotrellis.job_registry.JobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status="running")
