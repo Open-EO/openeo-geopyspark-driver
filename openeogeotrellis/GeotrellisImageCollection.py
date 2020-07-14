@@ -458,23 +458,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def apply_neighborhood(self, process:Dict, size:List,overlap:List) -> 'ImageCollection':
 
         spatial_dims = self.metadata.spatial_dimensions
-        if len(spatial_dims)!=2:
-            raise  ProcessGraphComplexityException(message="Unexpected spatial dimensions  in apply_neighborhood, expecting exactly 2 spatial dimensions: %s"%str(spatial_dims) )
+        if len(spatial_dims) != 2:
+            raise OpenEOApiException(message="Unexpected spatial dimensions in apply_neighborhood,"
+                                             " expecting exactly 2 spatial dimensions: %s" % str(spatial_dims))
         x = spatial_dims[0]
         y = spatial_dims[1]
         size_dict = {e['dimension']:e for e in size}
         overlap_dict = {e['dimension']: e for e in overlap}
-        if size_dict.get(x.name,{}).get('unit',None) != 'px' or size_dict.get(y.name,{}).get('unit',None) != 'px':
-            raise ProcessGraphComplexityException(message="apply_neighborhood: window sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(size) )
+        if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
+            raise OpenEOApiException(message="apply_neighborhood: window sizes for the spatial dimensions"
+                                             " of this datacube should be specified in pixels."
+                                             " This was provided: %s" % str(size))
         sizeX = int(size_dict[x.name]['value'])
         sizeY = int(size_dict[y.name]['value'])
-        if sizeX <32 or sizeY <32:
-            raise ProcessGraphComplexityException(
-                message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
+        if sizeX < 32 or sizeY < 32:
+            raise OpenEOApiException(message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
         overlap_x = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
         overlap_y = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
-        if overlap_x.get('unit',None) != 'px' or overlap_y.get('unit',None) != 'px':
-            raise ProcessGraphComplexityException(message="apply_neighborhood: overlap sizes for the spatial dimensions of this datacube should be specified, in pixels. This was provided: %s"%str(overlap) )
+        if overlap_x.get('unit', None) != 'px' or overlap_y.get('unit', None) != 'px':
+            raise OpenEOApiException(message="apply_neighborhood: overlap sizes for the spatial dimensions"
+                                             " of this datacube should be specified, in pixels."
+                                             " This was provided: %s" % str(overlap))
         jvm = self._get_jvm()
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd,sizeX,sizeY,int(overlap_x['value']),int(overlap_y['value'])))
@@ -493,27 +497,27 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             if not isinstance(udf, str):
                 raise ValueError(
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
-            if temporal_size == None or temporal_size.get('value',None) == None:
+            if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf)
-            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap == None:
+            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
                 result_collection = retiled_collection.apply_tiles(udf)
             else:
-                raise ProcessGraphComplexityException(message="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
+                raise OpenEOApiException(
+                    message="apply_neighborhood: for temporal dimension,"
+                            " either process all values, or only single date is supported for now!")
 
             return result_collection
         elif isinstance(process, GeotrellisTileProcessGraphVisitor):
-            if temporal_size == None or temporal_size.get('value',None) == None:
-                raise ProcessGraphComplexityException(
-                    message="apply_neighborhood: only supporting complex callbacks on bands")
-            elif temporal_size.get('value', None) == 'P1D' and temporal_overlap == None:
+            if temporal_size is None or temporal_size.get('value', None) is None:
+                raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
+            elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
                 result_collection = self.reduce_bands(process)
             else:
-                raise ProcessGraphComplexityException(
-                    message="apply_neighborhood: only supporting complex callbacks on bands")
+                raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
             return result_collection
         else:
-            raise ProcessGraphComplexityException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
+            raise OpenEOApiException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
 
 
     def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
@@ -842,8 +846,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         if xmin and ymin and xmax and ymax:
             srs = format_options.get('srs', 'EPSG:4326')
-            if srs == None:
-                srs='EPSG:4326'
+            if srs is None:
+                srs = 'EPSG:4326'
 
             src_crs = "+init=" + srs
             dst_crs = spatial_rdd.layer_metadata.crs
@@ -858,9 +862,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             crop_dates=None
 
-        # saving to geotiff
         if format == "GTIFF":
-
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
@@ -874,8 +876,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             else:
                 self._save_stitched(spatial_rdd, filename, crop_bounds)
 
-        # saving to netcdf
-        if format == "NETCDF":
+        elif format == "NETCDF":
             result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
             l=list(result.dims[:-2])
@@ -888,8 +889,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             # TODO: NETCDF4 is broken. look into
             result.to_netcdf(filename, engine='h5netcdf') # engine='scipy')
 
-        # saving to json, this is potentially big in memory
-        if format == "JSON":
+        elif format == "JSON":
+            # saving to json, this is potentially big in memory
             # get result as xarray
             result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             jsonresult=result.to_dict()
@@ -918,6 +919,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     
                 custom_print(jsonresult)
 
+        else:
+            raise OpenEOApiException(
+                message="Format {f!r} is not supported".format(f=format),
+                code="FormatUnsupported", status_code=400
+            )
         return filename
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
@@ -1234,17 +1240,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             # TODO: instead of storing in self, keep in a registry to allow cleaning up (wmts.stop)
             wmts = pysc._jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
-            _log.info('Created WMTSServer: {w!s} ({u!s}, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
+            _log.info('Created WMTSServer: {w!s} ({u!s}/service/wmts, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
 
             # TODO: configuration should come from post_data["configuration"] (see API spec)
-            if "style" in post_data:
+            if "parameters" in post_data:
                 max_zoom = self.pyramid.max_zoom
                 min_zoom = min(self.pyramid.levels.keys())
                 reduced_resolution = max(min_zoom,max_zoom-4)
                 if reduced_resolution not in self.pyramid.levels:
                     reduced_resolution = min_zoom
                 histogram = self.pyramid.levels[reduced_resolution].get_histogram()
-                matplotlib_name = post_data.get("style").get("colormap","YlGn")
+                matplotlib_name = post_data.get("parameters").get("colormap","YlGn")
 
                 #color_map = gps.ColorMap.from_colors(breaks=[x for x in range(0,250)], color_list=gps.get_colors_from_matplotlib("YlGn"))
                 color_map = gps.ColorMap.build(histogram, matplotlib_name)

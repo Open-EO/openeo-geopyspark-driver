@@ -19,7 +19,7 @@ from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider
 from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
-                                  OpenEOApiException)
+                                  OpenEOApiException, InternalException)
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
@@ -45,7 +45,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def service_types(self) -> dict:
         return {
             "WMTS": {
-                "configuration": {
+                "parameters": {
                     "version": {
                         "type": "string",
                         "description": "The WMTS version to use.",
@@ -53,11 +53,14 @@ class GpsSecondaryServices(backend.SecondaryServices):
                         "enum": [
                             "1.0.0"
                         ]
+                    },
+                    "colormap": {
+                        "type": "a colormap to apply to single band layers",
+                        "description": "The colormap to use.",
+                        "default": "YlGn"
                     }
                 },
-                # TODO?
-                "process_parameters": [],
-                "links": [],
+                "attributes": {}
             }
         }
 
@@ -388,12 +391,15 @@ class GpsBatchJobs(backend.BatchJobs):
     def cancel_job(self, job_id: str, user_id: str):
         with JobRegistry() as registry:
             application_id = registry.get_job(job_id, user_id)['application_id']
-        # TODO: better logging of this kill.
-        subprocess.run(
-            ["yarn", "application", "-kill", application_id],
-            timeout=20,
-            check=True,
-        )
+        if application_id:
+            # TODO: better logging of this kill.
+            subprocess.run(
+                ["yarn", "application", "-kill", application_id],
+                timeout=20,
+                check=True,
+            )
+        else:
+            raise InternalException("Application ID unknown for job {j}".format(j=job_id))
 
 
 class _BatchJobError(Exception):
