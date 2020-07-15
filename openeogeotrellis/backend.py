@@ -140,15 +140,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             "output": {
                 "GTiff": {
                     "title": "GeoTiff",
-                    "gis_data_types": ["raster"],
+                    "gis_data_types": ["raster"]
                 },
                 "CovJSON": {
-                    "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+                    "gis_data_types": ["other"]  # TODO: also "raster", "vector", "table"?
                 },
                 "NetCDF": {
-                    "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
+                    "gis_data_types": ["other","raster"]  # TODO: also "raster", "vector", "table"?
                 },
-            },
+                "JSON": {
+                    "gis_data_types": ["raster"]
+                }
+            }
         }
 
     def load_disk_data(self, format: str, glob_pattern: str, options: dict, viewing_parameters: dict) -> object:
