@@ -494,10 +494,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf = process.udf_args.get('udf', None)
+            udf = process.udf_args.get('code', None)
             if not isinstance(udf, str):
                 raise ValueError(
-                    "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+                    "The 'run_udf' process requires at least a 'code' string argument, but got: '%s'." % udf)
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf)
