@@ -30,7 +30,11 @@ def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_
 
 def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three_dates, udf_noop):
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch().cells
-    result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(process=udf_noop,size=[{'dimension':'x','unit':'px','value':32},{'dimension':'y','unit':'px','value':32}],overlap=[{'dimension':'y','unit':'px','value':2}])
+    result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(process=udf_noop,size=[{'dimension':'x','unit':'px','value':32},{'dimension':'y','unit':'px','value':32}],overlap=[{'dimension':'x','unit':'px','value':8},{'dimension':'y','unit':'px','value':8}])
+    result_xarray = result._to_xarray()
+    first_band = result_xarray.sel(bands='red', t=datetime.datetime(2017, 9, 25, 11, 37))
+    #assert_array_almost_equal(input[0],first_band[ :input.shape[1], :input.shape[2]])
+    print(first_band)
     result_array = result.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch().cells
 
     subresult = result_array[:input.shape[0], :input.shape[1], :input.shape[2]]

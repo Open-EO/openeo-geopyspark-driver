@@ -481,8 +481,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                              " of this datacube should be specified, in pixels."
                                              " This was provided: %s" % str(overlap))
         jvm = self._get_jvm()
+        overlap_x_value = int(overlap_x['value'])
+        overlap_y_value = int(overlap_y['value'])
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd,sizeX,sizeY,int(overlap_x['value']),int(overlap_y['value'])))
+            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x_value, overlap_y_value))
 
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
 
@@ -508,7 +510,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     message="apply_neighborhood: for temporal dimension,"
                             " either process all values, or only single date is supported for now!")
 
-            return result_collection
         elif isinstance(process, GeotrellisTileProcessGraphVisitor):
             if temporal_size is None or temporal_size.get('value', None) is None:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
@@ -516,9 +517,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 result_collection = self.reduce_bands(process)
             else:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
-            return result_collection
         else:
             raise OpenEOApiException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
+
+        if overlap_x_value > 0 or overlap_y_value > 0:
+
+            result_collection = result_collection._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().remove_overlap(rdd, sizeX, sizeY,
+                                                                                      overlap_x_value,
+                                                                                      overlap_y_value))
+
+        return result_collection
 
 
     def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
@@ -820,6 +829,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         collected = polygon_mean_by_timestamp.collect()
         return {timestamp.isoformat(): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
+    def _to_xarray(self):
+        spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
+        return self._collect_as_xarray(spatial_rdd)
+
     def download(self,outputfile:str, **format_options) -> str:
         """
         Extracts into various formats from this image collection.
@@ -877,7 +890,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             else:
                 self._save_stitched(spatial_rdd, filename, crop_bounds)
 
-        elif format == "NETCDF":
+        elif format== "NETCDF":
             result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
             l=list(result.dims[:-2])
@@ -1011,13 +1024,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     
             # return date (or None) - window tuple
             return (items[0],window)
-                
+
         # at every date stitch together the layer, still on the workers   
         #mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
         from functools import partial
         collection=rdd\
             .to_numpy_rdd()\
-            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
+            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time and crop_dates != None else True)\
             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
             .groupByKey()\
             .map(partial(stitch_at_time, crop_win, layout_win))\
