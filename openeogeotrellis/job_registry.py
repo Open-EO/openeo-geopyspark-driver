@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from kazoo.client import KazooClient
-from kazoo.exceptions import NoNodeError
+from kazoo.exceptions import NoNodeError, NodeExistsError
 
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
@@ -90,7 +90,11 @@ class JobRegistry:
 
         source = self._ongoing(user_id, job_id)
 
-        self._create(job_info, done=True)
+        try:
+            self._create(job_info, done=True)
+        except NodeExistsError:
+            pass
+
         self._zk.delete(source, version)
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
@@ -101,7 +105,11 @@ class JobRegistry:
 
         source = self._done(user_id, job_id)
 
-        self._create(job_info, done=False)
+        try:
+            self._create(job_info, done=False)
+        except NodeExistsError:
+            pass
+
         self._zk.delete(source, version)
 
     def get_running_jobs(self) -> List[Dict]:
