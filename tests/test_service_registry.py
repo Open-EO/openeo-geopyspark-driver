@@ -12,6 +12,7 @@ from openeogeotrellis.service_registry import InMemoryServiceRegistry, Secondary
 dummy_process_graph = {"foo": {"process_id": "foo", "arguments": {}}}
 dummy_service_metadata = ServiceMetadata(
     id='s1234', process={"process_graph": dummy_process_graph},
+    configuration={"version": "0.1.5"},
     url="http://oeo.net/s/1234", type="WMTS", enabled=True, attributes={}
 )
 

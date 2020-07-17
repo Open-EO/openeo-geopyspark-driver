@@ -1243,6 +1243,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 url=url,
                 type="TMS",
                 enabled=True,
+                configuration=configuration,
                 attributes={"bounds": level_bounds},
                 created=datetime.utcnow(),
             )
@@ -1289,6 +1290,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 url=wmts_base_url + "/service/wmts",
                 type="WMTS",
                 enabled=True,
+                configuration=configuration,
                 # TODO: fill in attributes?
                 attributes={},
                 created=datetime.utcnow(),
