@@ -13,11 +13,10 @@ from typing import List, Dict, Union
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
-from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
-from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider
+from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
 from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException)
 from py4j.java_gateway import JavaGateway
