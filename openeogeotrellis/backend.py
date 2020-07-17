@@ -45,6 +45,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def service_types(self) -> dict:
         return {
             "WMTS": {
+                "title": "Web Map Tile Service",
                 "configuration": {
                     "version": {
                         "type": "string",
@@ -145,10 +146,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "parameters": {},
                 },
                 "CovJSON": {
+                    "title": "CoverageJSON",
                     "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
                     "parameters": {},
                 },
                 "NetCDF": {
+                    "title": "Network Common Data Form",
                     "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
                     "parameters": {},
                 },
