@@ -135,26 +135,26 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             "input": {
                 "GeoJSON": {
                     "gis_data_types": ["vector"],
-                    "parameters": [],
+                    "parameters": {},
                 }
             },
             "output": {
                 "GTiff": {
                     "title": "GeoTiff",
                     "gis_data_types": ["raster"],
-                    "parameters": [],
+                    "parameters": {},
                 },
                 "CovJSON": {
                     "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
-                    "parameters": [],
+                    "parameters": {},
                 },
                 "NetCDF": {
                     "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
-                    "parameters": [],
+                    "parameters": {},
                 },
                 "JSON": {
                     "gis_data_types": ["raster"],
-                    "parameters": [],
+                    "parameters": {},
                 }
             }
         }
