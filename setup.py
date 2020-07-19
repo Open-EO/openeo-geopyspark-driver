@@ -38,7 +38,7 @@ setup(
         'flask',
         'openeo>=0.4.3a1.*',
         'openeo_driver>=0.3.1a1.*',
-        'openeo_udf>=0.0.9.post0',
+        'openeo_udf>=1.0.0rc1',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
         'geopandas==0.7.0',
