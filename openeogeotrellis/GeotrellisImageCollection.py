@@ -481,8 +481,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                                              " of this datacube should be specified, in pixels."
                                              " This was provided: %s" % str(overlap))
         jvm = self._get_jvm()
+        overlap_x_value = int(overlap_x['value'])
+        overlap_y_value = int(overlap_y['value'])
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd,sizeX,sizeY,int(overlap_x['value']),int(overlap_y['value'])))
+            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x_value, overlap_y_value))
 
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
 
@@ -508,7 +510,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     message="apply_neighborhood: for temporal dimension,"
                             " either process all values, or only single date is supported for now!")
 
-            return result_collection
         elif isinstance(process, GeotrellisTileProcessGraphVisitor):
             if temporal_size is None or temporal_size.get('value', None) is None:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
@@ -516,9 +517,17 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 result_collection = self.reduce_bands(process)
             else:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
-            return result_collection
         else:
             raise OpenEOApiException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
+
+        if overlap_x_value > 0 or overlap_y_value > 0:
+
+            result_collection = result_collection._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().remove_overlap(rdd, sizeX, sizeY,
+                                                                                      overlap_x_value,
+                                                                                      overlap_y_value))
+
+        return result_collection
 
 
     def resample_cube_spatial(self, target:'ImageCollection', method:str='near')-> 'ImageCollection':
@@ -820,6 +829,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         collected = polygon_mean_by_timestamp.collect()
         return {timestamp.isoformat(): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
+    def _to_xarray(self):
+        spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
+        return self._collect_as_xarray(spatial_rdd)
+
     def download(self,outputfile:str, **format_options) -> str:
         """
         Extracts into various formats from this image collection.
@@ -870,7 +883,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
-        
             if catalog:
                 self._save_on_executors(spatial_rdd, filename)
             elif tiled:
@@ -1022,7 +1034,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                     
             # return date (or None) - window tuple
             return (items[0],window)
-                
+
         # at every date stitch together the layer, still on the workers   
         #mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
         from functools import partial
@@ -1108,8 +1120,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         tiffs = [str(path.absolute()) for path in basedir.glob('*.tiff')]
 
         _log.info("Merging results {t!r}".format(t=tiffs))
-        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE"]
-        merge_args += tiffs
+        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE", "*.tiff"]
+        #merge_args += tiffs
         _log.info("Executing: {a!r}".format(a=merge_args))
         subprocess.check_call(merge_args, shell=False, env={"GDAL_CACHEMAX": "1024"})
 
@@ -1241,6 +1253,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 url=url,
                 type="TMS",
                 enabled=True,
+                configuration=configuration,
                 attributes={"bounds": level_bounds},
                 created=datetime.utcnow(),
             )
@@ -1287,6 +1300,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 url=wmts_base_url + "/service/wmts",
                 type="WMTS",
                 enabled=True,
+                configuration=configuration,
                 # TODO: fill in attributes?
                 attributes={},
                 created=datetime.utcnow(),
