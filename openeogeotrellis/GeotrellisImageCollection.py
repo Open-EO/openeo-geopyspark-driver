@@ -1017,7 +1017,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         from functools import partial
         collection=rdd\
             .to_numpy_rdd()\
-            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
+            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if (crop_dates and has_time) else True)\
             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
             .groupByKey()\
             .map(partial(stitch_at_time, crop_win, layout_win))\
@@ -1032,7 +1032,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         
         
         if len(collection)==0:
-            return
+            return xr.DataArray(np.full([0]*len(dims),0),dims=dims,coords=dict(map(lambda k: (k[0],[]),coords.items())))
         
         if len(collection)>1:
             collection.sort(key= lambda i: i[0])
