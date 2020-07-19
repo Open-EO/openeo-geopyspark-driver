@@ -863,12 +863,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             crop_dates=None
 
+        tiled = format_options.get("tiled", False)          
+        catalog = format_options.get("parameters", {}).get("catalog", False)
+
         if format == "GTIFF":
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
-            tiled = format_options.get("tiled", False)          
-            catalog = format_options.get("parameters", {}).get("catalog", False)
         
             if catalog:
                 self._save_on_executors(spatial_rdd, filename)
@@ -878,7 +879,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 self._save_stitched(spatial_rdd, filename, crop_bounds)
 
         elif format == "NETCDF":
-            result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+            if not tiled:
+                result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+            else:
+                result=self._collect_as_xarray(spatial_rdd)
             # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
             l=list(result.dims[:-2])
             result=result.transpose(*(l+['y','x']))
@@ -893,7 +897,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         elif format == "JSON":
             # saving to json, this is potentially big in memory
             # get result as xarray
-            result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+            if not tiled:
+                result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+            else:
+                result=self._collect_as_xarray(spatial_rdd)
             jsonresult=result.to_dict()
             # add attributes that needed for re-creating xarray from json
             jsonresult['attrs']['dtype']=str(result.values.dtype)
@@ -942,10 +949,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             xmax= math.ceil((crop_bounds.xmax-layout_extent.xmin)/xres)
             ymax= math.ceil((crop_bounds.ymax-layout_extent.ymin)/yres)
             crop_win=(xmin, ymin, xmax-xmin, ymax-ymin)
-            crop_dim=(layout_dim[0]+crop_win[0]*xres, layout_dim[1]+crop_win[1]*yres, crop_win[2]*xres, crop_win[3]*yres)
         else:
-            crop_dim=layout_dim
-            crop_win=layout_win
+            xmin=rdd.layer_metadata.bounds.minKey.col
+            xmax=rdd.layer_metadata.bounds.maxKey.col+1
+            ymin=rdd.layer_metadata.bounds.minKey.row
+            ymax=rdd.layer_metadata.bounds.maxKey.row+1
+            crop_win=(xmin*layout_pix.tileCols, ymin*layout_pix.tileRows, (xmax-xmin)*layout_pix.tileCols, (ymax-ymin)*layout_pix.tileRows)
+        crop_dim=(layout_dim[0]+crop_win[0]*xres, layout_dim[1]+crop_win[1]*yres, crop_win[2]*xres, crop_win[3]*yres)
+            
 
         # build metadata for the xarrays
         # coordinates are in the order of t,bands,x,y
