@@ -49,6 +49,7 @@ setup(
         'kazoo==2.4.0',
         'flask-cors',
         'rasterio==1.1.1',
+        'pydantic',
         'h5netcdf'
     ],
     extras_require={
