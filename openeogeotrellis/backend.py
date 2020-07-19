@@ -13,11 +13,10 @@ from typing import List, Dict, Union
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
-from openeo.error_summary import ErrorSummary
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
-from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider
+from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
 from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException)
 from py4j.java_gateway import JavaGateway
@@ -45,6 +44,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def service_types(self) -> dict:
         return {
             "WMTS": {
+                "title": "Web Map Tile Service",
                 "configuration": {
                     "version": {
                         "type": "string",
@@ -134,22 +134,29 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return {
             "input": {
                 "GeoJSON": {
-                    "gis_data_types": ["vector"]
+                    "gis_data_types": ["vector"],
+                    "parameters": {},
                 }
             },
             "output": {
                 "GTiff": {
                     "title": "GeoTiff",
-                    "gis_data_types": ["raster"]
+                    "gis_data_types": ["raster"],
+                    "parameters": {},
                 },
                 "CovJSON": {
-                    "gis_data_types": ["other"]  # TODO: also "raster", "vector", "table"?
+                    "title": "CoverageJSON",
+                    "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
+                    "parameters": {},
                 },
                 "NetCDF": {
-                    "gis_data_types": ["other","raster"]  # TODO: also "raster", "vector", "table"?
+                    "title": "Network Common Data Form",
+                    "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
+                    "parameters": {},
                 },
                 "JSON": {
-                    "gis_data_types": ["raster"]
+                    "gis_data_types": ["raster"],
+                    "parameters": {},
                 }
             }
         }

@@ -74,19 +74,18 @@ class TestCollections:
             {"name": "4", "common_name": "red", "center_wavelength": 0.6645},
             {"name": "8", "common_name": "nir", "center_wavelength": 0.8351}
         ]
-        cube_dims = {
-            'x': {'type': 'spatial', 'axis': 'x'},
-            'y': {'type': 'spatial', 'axis': 'y'},
-            't': {'type': 'temporal'},
-            'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
-        }
         if api.api_version_compare.at_least("1.0.0"):
             assert resp['stac_version'] == "0.9.0"
             assert resp['extent'] == {
                 "spatial": {"bbox": [[-180, -56, 180, 83]]},
                 "temporal": {"interval": [["2015-07-06T00:00:00Z", None]]},
             }
-            assert resp['cube:dimensions'] == cube_dims
+            assert resp['cube:dimensions'] == {
+                'x': {'type': 'spatial', 'axis': 'x', 'extent': [-180, 180]},
+                'y': {'type': 'spatial', 'axis': 'y', 'extent': [-56, 83]},
+                't': {'type': 'temporal', 'extent': ["2015-07-06T00:00:00Z", None]},
+                'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
+            }
             for f in eo_bands[0].keys():
                 assert [b[f] for b in resp['summaries']['eo:bands']] == [b[f] for b in eo_bands]
         else:
@@ -95,7 +94,13 @@ class TestCollections:
                 "spatial": [-180, -56, 180, 83],
                 "temporal": ["2015-07-06T00:00:00Z", None]
             }
-            assert resp["properties"]['cube:dimensions'] == cube_dims
+            assert resp["properties"]['cube:dimensions'] == {
+                'x': {'type': 'spatial', 'axis': 'x'},
+                'y': {'type': 'spatial', 'axis': 'y'},
+                't': {'type': 'temporal'},
+                'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
+            }
+
             for f in eo_bands[0].keys():
                 assert [b[f] for b in resp['properties']["eo:bands"]] == [b[f] for b in eo_bands]
 

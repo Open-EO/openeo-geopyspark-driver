@@ -1028,7 +1028,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         from functools import partial
         collection=rdd\
             .to_numpy_rdd()\
-            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if (crop_dates and has_time) else True)\
+            .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time and crop_dates != None else True)\
             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
             .groupByKey()\
             .map(partial(stitch_at_time, crop_win, layout_win))\

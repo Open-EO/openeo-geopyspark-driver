@@ -126,6 +126,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
                 id=service_id,
                 process={"process_graph": data["specification"]["process_graph"]},
                 type=data["specification"]["type"],
+                configuration={},
                 url="n/a", enabled=True, attributes={}
             )
         else:
