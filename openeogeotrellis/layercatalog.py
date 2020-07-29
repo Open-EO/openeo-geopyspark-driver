@@ -11,6 +11,7 @@ from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.creocatalog import CreoCatalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
@@ -198,6 +199,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory(layer_source_info.get('uuid')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
+        def creo_pyramid():
+            mission = layer_source_info['mission']
+            level = layer_source_info['level']
+            catalog = CreoCatalog(mission, level)
+            product_paths = catalog.query_product_paths(from_date, to_date,
+                                                        ulx=extent.xmin, uly=extent.ymax,
+                                                        brx=extent.xmax, bry=extent.ymin)
+            return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
+                .pyramid_seq(extent, srs, from_date, to_date)
+
         logger.info("loading pyramid {s}".format(s=layer_source_type))
         if layer_source_type == 's3':
             pyramid = s3_pyramid()
@@ -219,6 +230,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel_hub_s2_l2a_pyramid()
         elif layer_source_type == 'sentinel-hub-l8':
             pyramid = sentinel_hub_l8_pyramid()
+        elif layer_source_type == 'creo':
+            pyramid = creo_pyramid()
         else:
             pyramid = accumulo_pyramid()
 
