@@ -157,6 +157,18 @@ class JobRegistry:
         self._zk.stop()
         self._zk.close()
 
+    def delete(self, job_id: str, user_id: str) -> None:
+        try:
+            path = self._ongoing(user_id, job_id)
+            self._zk.delete(path)
+        except NoNodeError:
+            path = self._done(user_id, job_id)
+
+            try:
+                self._zk.delete(path)
+            except NoNodeError:
+                raise JobNotFoundException(job_id)
+
     def _create(self, job_info: Dict, done: bool=False) -> None:
         job_id = job_info['job_id']
         user_id = job_info['user_id']

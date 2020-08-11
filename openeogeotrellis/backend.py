@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import List, Dict, Union
+import shutil
 
 import geopyspark as gps
 import pkg_resources
@@ -413,6 +414,18 @@ class GpsBatchJobs(backend.BatchJobs):
             )
         else:
             raise InternalException("Application ID unknown for job {j}".format(j=job_id))
+
+    def delete_job(self, job_id: str, user_id: str):
+        try:
+            self.cancel_job(job_id, user_id)
+
+            job_dir = self._get_job_output_dir(job_id)
+            shutil.rmtree(job_dir, ignore_errors=True)
+        except InternalException:  # job never started
+            pass
+
+        with JobRegistry() as registry:
+            registry.delete(job_id, user_id)
 
 
 class _BatchJobError(Exception):
