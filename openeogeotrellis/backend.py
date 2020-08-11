@@ -411,6 +411,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 ["yarn", "application", "-kill", application_id],
                 timeout=20,
                 check=True,
+                universal_newlines=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
             )
         else:
             raise InternalException("Application ID unknown for job {j}".format(j=job_id))
@@ -420,9 +422,16 @@ class GpsBatchJobs(backend.BatchJobs):
             self.cancel_job(job_id, user_id)
 
             job_dir = self._get_job_output_dir(job_id)
-            shutil.rmtree(job_dir, ignore_errors=True)
+
+            shutil.rmtree(
+                job_dir,
+                onerror=lambda func, path, exc_info: logger.warning("Could not {f} {p}".format(f=func.__name__, p=path),
+                                                                    exc_info=exc_info)
+            )
         except InternalException:  # job never started
             pass
+        except CalledProcessError as e:
+            logger.warning("Unable to kill corresponding Spark job: {a!r}\n{o}".format(a=e.cmd, o=e.stdout))
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
