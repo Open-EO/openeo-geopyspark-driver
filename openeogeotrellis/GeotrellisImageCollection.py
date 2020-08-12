@@ -898,10 +898,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
             l=list(result.dims[:-2])
             result=result.transpose(*(l+['y','x']))
-            # replacing band names by their index because it is not recognised
-            # TODO: look into why strings can't be band names in netcdf
-            if 'bands' in result.dims:
-                result=result.assign_coords(bands=np.arange(result.bands.shape[0]))
+            # turn it into a dataset where each band becomes a variable
+            if not 'bands' in result.dims:
+                result=result.expand_dims(dim={'bands':['band_0']})
+            result=result.to_dataset('bands')
             #result=result.assign_coords(y=result.y[::-1])
             # TODO: NETCDF4 is broken. look into
             result.to_netcdf(filename, engine='h5netcdf') # engine='scipy')
