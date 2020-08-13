@@ -58,6 +58,7 @@ class JobRegistry:
             process=specification,
             status=status,
             created=map_safe("created", rfc3339.parse_datetime),
+            updated=map_safe("updated", rfc3339.parse_datetime),
             job_options=job_options,
             started=map_safe("started", rfc3339.parse_datetime),
             finished=map_safe("finished", rfc3339.parse_datetime),
@@ -71,9 +72,9 @@ class JobRegistry:
         self.patch(job_id, user_id, application_id=application_id)
 
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
-        """Updates a registered batch job with its status."""
+        """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
 
-        self.patch(job_id, user_id, status=status)
+        self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
 
     def patch(self, job_id: str, user_id: str, **kwargs) -> None:
         """Partially updates a registered batch job."""
