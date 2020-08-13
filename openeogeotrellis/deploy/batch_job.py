@@ -48,6 +48,7 @@ def _create_job_dir(job_dir: Path):
 
 
 def _add_permissions(path, mode: int):
+    # TODO: maybe umask is a better/cleaner option
     current_permission_bits = os.stat(path).st_mode
     os.chmod(path, current_permission_bits | mode)
 

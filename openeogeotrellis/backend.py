@@ -406,14 +406,15 @@ class GpsBatchJobs(backend.BatchJobs):
         with JobRegistry() as registry:
             application_id = registry.get_job(job_id, user_id)['application_id']
         if application_id:
-            # TODO: better logging of this kill.
-            subprocess.run(
+            kill_spark_job = subprocess.run(
                 ["yarn", "application", "-kill", application_id],
                 timeout=20,
                 check=True,
                 universal_newlines=True,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
             )
+
+            logger.debug("Killed corresponding Spark job for job {j}: {a!r}".format(j=job_id, a=kill_spark_job.args))
         else:
             raise InternalException("Application ID unknown for job {j}".format(j=job_id))
 
@@ -428,13 +429,18 @@ class GpsBatchJobs(backend.BatchJobs):
                 onerror=lambda func, path, exc_info: logger.warning("Could not {f} {p}".format(f=func.__name__, p=path),
                                                                     exc_info=exc_info)
             )
+
+            logger.debug("Deleted job directory {d}".format(d=job_dir))
         except InternalException:  # job never started
             pass
         except CalledProcessError as e:
-            logger.warning("Unable to kill corresponding Spark job: {a!r}\n{o}".format(a=e.cmd, o=e.stdout))
+            logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
+                                                                                                   o=e.stdout))
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
+
+        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id))
 
 
 class _BatchJobError(Exception):
