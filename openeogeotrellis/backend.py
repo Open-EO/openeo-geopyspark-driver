@@ -10,6 +10,7 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import List, Dict, Union
 import shutil
+from datetime import datetime
 
 import geopyspark as gps
 import pkg_resources
@@ -421,26 +422,31 @@ class GpsBatchJobs(backend.BatchJobs):
     def delete_job(self, job_id: str, user_id: str):
         try:
             self.cancel_job(job_id, user_id)
-
-            job_dir = self._get_job_output_dir(job_id)
-
-            shutil.rmtree(
-                job_dir,
-                onerror=lambda func, path, exc_info: logger.warning("Could not {f} {p}".format(f=func.__name__, p=path),
-                                                                    exc_info=exc_info)
-            )
-
-            logger.debug("Deleted job directory {d}".format(d=job_dir))
         except InternalException:  # job never started
             pass
         except CalledProcessError as e:
             logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
                                                                                                    o=e.stdout))
 
+        job_dir = self._get_job_output_dir(job_id)
+
+        shutil.rmtree(
+            job_dir,
+            onerror=lambda func, path, exc_info: logger.warning("Could not {f} {p}".format(f=func.__name__, p=path),
+                                                                exc_info=exc_info)
+        )
+
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id))
+
+    def delete_jobs_before(self, upper: datetime) -> None:
+        with JobRegistry() as registry:
+            jobs_before = registry.get_all_jobs_before(upper)
+
+        for job_info in jobs_before:
+            self.delete_job(job_id=job_info['job_id'], user_id=job_info['user_id'])
 
 
 class _BatchJobError(Exception):

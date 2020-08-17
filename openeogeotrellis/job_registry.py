@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Callable, Union
+import logging
 
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
@@ -9,6 +10,9 @@ from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.errors import JobNotFoundException
+
+
+_log = logging.getLogger(__name__)
 
 
 class JobRegistry:
@@ -169,6 +173,32 @@ class JobRegistry:
                 self._zk.delete(path)
             except NoNodeError:
                 raise JobNotFoundException(job_id)
+
+    def get_all_jobs_before(self, upper: datetime) -> List[Dict]:
+        def get_jobs_in(get_path: Callable[[Union[str, None], Union[str, None]], str]) -> List[Dict]:
+            user_ids = self._zk.get_children(get_path(None, None))
+
+            jobs_before = []
+
+            for user_id in user_ids:
+                user_job_ids = self._zk.get_children(get_path(user_id, None))
+
+                for job_id in user_job_ids:
+                    path = get_path(user_id, job_id)
+                    data, stat = self._zk.get(path)
+                    job_info = json.loads(data.decode())
+                    job_metadata = JobRegistry.job_info_to_metadata(job_info)
+
+                    job_date = job_metadata.updated or datetime.utcfromtimestamp(stat.last_modified)
+
+                    if job_date < upper:
+                        _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
+                        jobs_before.append(job_info)
+
+            return jobs_before
+
+        # note: consider ongoing as well because that's where abandoned (never started) jobs are
+        return get_jobs_in(self._ongoing) + get_jobs_in(self._done)
 
     def _create(self, job_info: Dict, done: bool=False) -> None:
         job_id = job_info['job_id']
