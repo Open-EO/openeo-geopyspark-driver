@@ -36,6 +36,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         'flask',
+        'pyspark>=2.3.1,<2.4.0',
         'openeo>=0.4.3a1.*',
         'openeo_driver>=0.3.1a1.*',
         'openeo_udf>=1.0.0rc2',
