@@ -187,9 +187,9 @@ class JobRegistry:
                     path = get_path(user_id, job_id)
                     data, stat = self._zk.get(path)
                     job_info = json.loads(data.decode())
-                    job_metadata = JobRegistry.job_info_to_metadata(job_info)
 
-                    job_date = job_metadata.updated or datetime.utcfromtimestamp(stat.last_modified)
+                    updated = job_info.get('updated')
+                    job_date = rfc3339.parse_datetime(updated) if updated else datetime.utcfromtimestamp(stat.last_modified)
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
