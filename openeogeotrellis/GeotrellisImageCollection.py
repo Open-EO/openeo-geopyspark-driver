@@ -883,12 +883,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
+            zlevel = format_options.get("ZLEVEL",6)
             if catalog:
                 self._save_on_executors(spatial_rdd, filename)
             elif tiled:
                 self._save_stitched_tiled(spatial_rdd, filename)
             else:
-                self._save_stitched(spatial_rdd, filename, crop_bounds)
+                self._save_stitched(spatial_rdd, filename, crop_bounds,zlevel=zlevel)
 
         elif format == "NETCDF":
             if not tiled:
@@ -1105,7 +1106,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
         return crop_bounds
 
-    def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path):
+    def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path,zlevel=6):
         geotiff_rdd = spatial_rdd.to_geotiff_rdd(
             storage_method=gps.StorageMethod.TILED,
             compression=gps.Compression.DEFLATE_COMPRESSION
@@ -1124,16 +1125,16 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         tiffs = [str(path.absolute()) for path in basedir.glob('*.tiff')]
 
         _log.info("Merging results {t!r}".format(t=tiffs))
-        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE", "*.tiff"]
+        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE","-co","ZLEVEL=%s"%zlevel, "*.tiff"]
         #merge_args += tiffs
         _log.info("Executing: {a!r}".format(a=merge_args))
         subprocess.check_call(merge_args, shell=False, env={"GDAL_CACHEMAX": "1024"})
 
 
-    def _save_stitched(self, spatial_rdd, path, crop_bounds=None):
+    def _save_stitched(self, spatial_rdd, path, crop_bounds=None,zlevel=6):
         jvm = self._get_jvm()
 
-        max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(9)
+        max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
         if crop_bounds:
             jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
