@@ -2,7 +2,8 @@ import abc
 import contextlib
 import json
 import logging
-from typing import Dict
+from typing import Dict, List
+from datetime import datetime, timedelta
 
 from kazoo.client import KazooClient, NoNodeError
 
@@ -45,7 +46,12 @@ class AbstractServiceRegistry(metaclass=abc.ABCMeta):
     def get_metadata(self, service_id: str) -> ServiceMetadata:
         pass
 
-    def get_metadata_all(self) -> Dict[str, ServiceMetadata]:
+    @abc.abstractmethod
+    def get_metadata_all(self) -> Dict[str, ServiceMetadata]:  # TODO: what's the purpose of the service_id key?
+        pass
+
+    @abc.abstractmethod
+    def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
         pass
 
     @abc.abstractmethod
@@ -73,6 +79,9 @@ class InMemoryServiceRegistry(AbstractServiceRegistry):
 
     def get_metadata_all(self) -> Dict[str, ServiceMetadata]:
         return {sid: self.get_metadata(sid) for sid in self._services.keys()}
+
+    def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
+        return [m for m in self.get_metadata_all().values() if not m.created or m.created < upper]
 
     def stop_service(self, service_id: str):
         if service_id not in self._services:
@@ -114,7 +123,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
 
     def _load_metadata(self, zk: KazooClient, service_id: str) -> ServiceMetadata:
         try:
-            raw, _ = zk.get(self._path(service_id))
+            raw, stat = zk.get(self._path(service_id))
         except NoNodeError:
             raise ServiceNotFoundException(service_id)
         data = json.loads(raw.decode('utf-8'))
@@ -127,7 +136,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
                 process={"process_graph": data["specification"]["process_graph"]},
                 type=data["specification"]["type"],
                 configuration={},
-                url="n/a", enabled=True, attributes={}
+                url="n/a", enabled=True, attributes={}, created=datetime.utcfromtimestamp(stat.created)
             )
         else:
             raise ValueError("Failed to load metadata (keys: {k!r})".format(k=data.keys()))
@@ -136,6 +145,22 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
         with self._zk_client() as zk:
             service_ids = zk.get_children(self._root)
             return {service_id: self._load_metadata(zk, service_id) for service_id in service_ids}
+
+    def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
+        services_before = []
+
+        with self._zk_client() as zk:
+            service_ids = zk.get_children(self._root)
+
+            for service_id in service_ids:
+                service_metadata = self._load_metadata(zk, service_id)
+                service_date = service_metadata.created
+
+                if not service_date or service_date < upper:
+                    _log.debug("service {s}'s service_date {d} is before {u}".format(s=service_id, d=service_date, u=upper))
+                    services_before.append(service_metadata)
+
+        return services_before
 
     @contextlib.contextmanager
     def _zk_client(self):
@@ -152,5 +177,8 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
         with self._zk_client() as zk:
             zk.delete(self._path(service_id))
             Traefik(zk).remove(service_id)
+            _log.info("Deleted secondary service {s}".format(s=service_id))
         if service_id in self._services:
-            self._services.pop(service_id).stop()
+            service = self._services.pop(service_id)
+            _log.info('Stopping service {s}'.format(s=service))
+            service.stop()

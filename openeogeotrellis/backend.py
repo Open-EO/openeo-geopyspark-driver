@@ -78,6 +78,12 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def remove_service(self, service_id: str) -> None:
         self.service_registry.stop_service(service_id)
 
+    def remove_services_before(self, upper: datetime) -> None:
+        services = self.service_registry.get_metadata_all_before(upper)
+
+        for service in services:
+            self.service_registry.stop_service(service.id)
+
 
 class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
 

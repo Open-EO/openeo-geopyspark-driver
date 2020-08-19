@@ -1,12 +1,30 @@
 from datetime import datetime, timedelta
 import logging
 
-from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
+from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
 
 logging.basicConfig(level=logging.INFO)
+
+_log = logging.getLogger(__name__)
+
+
+def remove_batch_jobs_before(upper: datetime) -> None:
+    _log.info("removing batch jobs before {d}...".format(d=upper))
+
+    batch_jobs = GpsBatchJobs()
+    batch_jobs.delete_jobs_before(upper)
+
+
+def remove_secondary_services_before(upper: datetime) -> None:
+    _log.info("removing secondary services before {d}...".format(d=upper))
+
+    secondary_services = GpsSecondaryServices(ZooKeeperServiceRegistry())
+    secondary_services.remove_services_before(upper)
+
 
 if __name__ == '__main__':
     max_date = datetime.today() - timedelta(days=60)
 
-    batch_jobs = GpsBatchJobs()
-    batch_jobs.delete_jobs_before(max_date)
+    remove_batch_jobs_before(max_date)
+    remove_secondary_services_before(max_date)
