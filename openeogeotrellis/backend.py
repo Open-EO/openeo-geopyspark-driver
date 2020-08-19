@@ -426,21 +426,34 @@ class GpsBatchJobs(backend.BatchJobs):
             raise InternalException("Application ID unknown for job {j}".format(j=job_id))
 
     def delete_job(self, job_id: str, user_id: str):
+        self._delete_job(job_id, user_id, propagate_errors=False)
+
+    def _delete_job(self, job_id: str, user_id: str, propagate_errors: bool):
         try:
             self.cancel_job(job_id, user_id)
-        except InternalException:  # job never started
+        except InternalException:  # job never started, not an error
             pass
         except CalledProcessError as e:
-            logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
-                                                                                                   o=e.stdout))
+            if e.returncode == 255 and "doesn't exist in RM" in e.stdout:  # already finished and gone, not an error
+                pass
+            elif propagate_errors:
+                raise
+            else:
+                logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
+                                                                                                       o=e.stdout),
+                               exc_info=e)
 
         job_dir = self._get_job_output_dir(job_id)
 
-        shutil.rmtree(
-            job_dir,
-            onerror=lambda func, path, exc_info: logger.warning("Could not {f} {p}".format(f=func.__name__, p=path),
-                                                                exc_info=exc_info)
-        )
+        try:
+            shutil.rmtree(job_dir)
+        except FileNotFoundError as e:  # nothing to delete, not an error
+            pass
+        except Exception as e:
+            if propagate_errors:
+                raise
+            else:
+                logger.warning("Could not delete {p}".format(p=job_dir), exc_info=e)
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
@@ -452,7 +465,7 @@ class GpsBatchJobs(backend.BatchJobs):
             jobs_before = registry.get_all_jobs_before(upper)
 
         for job_info in jobs_before:
-            self.delete_job(job_id=job_info['job_id'], user_id=job_info['user_id'])
+            self._delete_job(job_id=job_info['job_id'], user_id=job_info['user_id'], propagate_errors=True)
 
 
 class _BatchJobError(Exception):
