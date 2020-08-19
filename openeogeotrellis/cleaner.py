@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 import logging
+import kazoo.client
 
 from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
 from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
 
 logging.basicConfig(level=logging.INFO)
+kazoo.client.log.setLevel(logging.WARNING)
 
 _log = logging.getLogger(__name__)
 
