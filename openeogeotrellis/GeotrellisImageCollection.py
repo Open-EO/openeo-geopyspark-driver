@@ -887,7 +887,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             if catalog:
                 self._save_on_executors(spatial_rdd, filename)
             elif tiled:
-                self._save_stitched_tiled(spatial_rdd, filename)
+                band_count = 1
+                if self.metadata.has_band_dimension():
+                    band_count = len(self.metadata.band_dimension.band_names)
+                self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd,band_count,filename,zlevel)
             else:
                 self._save_stitched(spatial_rdd, filename, crop_bounds,zlevel=zlevel)
 
