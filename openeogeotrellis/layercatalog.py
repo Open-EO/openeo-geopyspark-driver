@@ -163,10 +163,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 return property_value
 
-            properties = viewing_parameters.get('properties', {})
+            layer_properties = metadata.get("_vito", "properties", default={})
+            custom_properties = viewing_parameters.get('properties', {})
 
             metadata_properties = {property_name: extract_literal_match(condition)
-                                   for property_name, condition in properties.items()}
+                                   for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
             polygons = viewing_parameters.get('polygons')
 
