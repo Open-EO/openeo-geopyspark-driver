@@ -217,7 +217,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
-            from openeo_udf.api.run_code import run_user_code
+            from .run_udf import run_user_code
             from openeo_udf.api.datacube import DataCube
             #new UDF API available
 
@@ -294,7 +294,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             key = geotrellis_tile[0]
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
 
-            from openeo_udf.api.run_code import run_user_code
+            from .run_udf import run_user_code
             from openeo_udf.api.datacube import DataCube
 
             datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
