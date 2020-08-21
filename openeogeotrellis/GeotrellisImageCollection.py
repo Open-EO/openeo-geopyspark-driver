@@ -237,13 +237,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_array:xr.DataArray = cubes[0].array
             if 't' in result_array.dims:
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=pd.Timestamp(timestamp)),
-                  Tile(array_slice.values, CellType.FLOAT64, tile_list[0][1].no_data_value)) for timestamp, array_slice in result_array.groupby('t')]
+                  Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value)) for timestamp, array_slice in result_array.groupby('t')]
             else:
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=datetime.now()),
-                  Tile(result_array.values, CellType.FLOAT64, tile_list[0][1].no_data_value))]
+                  Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
         def rdd_function(openeo_metadata: CollectionMetadata, rdd):
-            floatrdd = rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd()
+            floatrdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
             grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
 
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME,
@@ -316,7 +316,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         def rdd_function(openeo_metadata: CollectionMetadata, rdd):
             return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
-                                                rdd.convert_data_type(CellType.FLOAT64).to_numpy_rdd().map(
+                                                rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
                                                     partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
                                                 rdd.layer_metadata)
         from functools import partial
