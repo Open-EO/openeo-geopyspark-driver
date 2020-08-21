@@ -1128,8 +1128,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         tiffs = [str(path.absolute()) for path in basedir.glob('*.tiff')]
 
         _log.info("Merging results {t!r}".format(t=tiffs))
-        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE","-co","ZLEVEL=%s"%zlevel, "*.tiff"]
-        #merge_args += tiffs
+        merge_args = ["gdal_merge.py", "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE","-co","ZLEVEL=%s"%zlevel]
+        merge_args += tiffs
         _log.info("Executing: {a!r}".format(a=merge_args))
         subprocess.check_call(merge_args, shell=False, env={"GDAL_CACHEMAX": "1024"})
 
