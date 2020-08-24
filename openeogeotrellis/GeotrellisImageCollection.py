@@ -61,6 +61,9 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         # TODO: cache this?
         return gps.get_spark_context()._gateway.jvm
 
+    def _is_spatial(self):
+        return self.pyramid.levels[self.pyramid.max_zoom].layer_type == gps.LayerType.SPATIAL
+
     def apply_to_levels(self, func):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is of type TiledRasterLayer
@@ -381,19 +384,42 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         pysc = gps.get_spark_context()
         
         if self.metadata.has_band_dimension() != other.metadata.has_band_dimension():
-            InternalException(message="one cube has band dimension, while the other doesn't: self=%s, other=%s"%(
+            raise InternalException(message="one cube has band dimension, while the other doesn't: self=%s, other=%s"%(
                 str(self.metadata.has_band_dimension()),
                 str(other.metadata.has_band_dimension())
             ))
-        
-        merged_data=self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: 
-                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(
-                    rdd, 
-                    other.pyramid.levels[level].srdd.rdd(), 
-                    overlaps_resolver
+
+        if self._is_spatial() and other._is_spatial():
+            raise FeatureUnsupportedException('Merging two cubes without time dimension is unsupported.')
+        elif self._is_spatial():
+            merged_data = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level:
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes_SpaceTime_Spatial(
+                    other.pyramid.levels[level].srdd.rdd(),
+                    rdd,
+                    overlaps_resolver,
+                    True
                 )
-        )
+            )
+        elif other._is_spatial():
+            merged_data = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level:
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes_SpaceTime_Spatial(
+                    rdd,
+                    other.pyramid.levels[level].srdd.rdd(),
+                    overlaps_resolver,
+                    False
+                )
+            )
+        else:
+            merged_data=self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level:
+                    pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(
+                        rdd,
+                        other.pyramid.levels[level].srdd.rdd(),
+                        overlaps_resolver
+                    )
+            )
 
         if self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
             for iband in other.metadata.bands:
