@@ -23,6 +23,7 @@ from openeo_driver.backend import ServiceMetadata
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.run_udf import run_user_code
 from py4j.java_gateway import JVMView
 
 try:
@@ -217,7 +218,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
 
-            from .run_udf import run_user_code
             from openeo_udf.api.datacube import DataCube
             #new UDF API available
 
@@ -294,7 +294,6 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             key = geotrellis_tile[0]
             extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
 
-            from .run_udf import run_user_code
             from openeo_udf.api.datacube import DataCube
 
             datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
