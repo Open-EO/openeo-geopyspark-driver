@@ -453,7 +453,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
 
-    def apply_kernel(self, kernel: np.ndarray, factor=1):
+    def apply_kernel(self, kernel: np.ndarray, factor=1, border = 0, replace_invalid=0):
 
         pysc = gps.get_spark_context()
 
