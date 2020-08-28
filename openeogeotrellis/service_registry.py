@@ -17,7 +17,8 @@ _log = logging.getLogger(__name__)
 
 class SecondaryService:
     """Container with information about running secondary service."""
-    def __init__(self, service_metadata: ServiceMetadata, host: str, port: int, server):
+    def __init__(self, user_id: str, service_metadata: ServiceMetadata, host: str, port: int, server):
+        self.user_id = user_id
         self.service_metadata = service_metadata
         self.host = host
         self.port = port
@@ -43,11 +44,11 @@ class AbstractServiceRegistry(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_metadata(self, service_id: str) -> ServiceMetadata:
+    def get_metadata(self, user_id: str, service_id: str) -> ServiceMetadata:
         pass
 
     @abc.abstractmethod
-    def get_metadata_all(self) -> Dict[str, ServiceMetadata]:  # TODO: what's the purpose of the service_id key?
+    def get_metadata_all(self, user_id: str) -> Dict[str, ServiceMetadata]:  # TODO: what's the purpose of the service_id key?
         pass
 
     @abc.abstractmethod
@@ -55,7 +56,7 @@ class AbstractServiceRegistry(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def stop_service(self, service_id: str):
+    def stop_service(self, user_id: str, service_id: str):
         pass
 
 
@@ -72,20 +73,26 @@ class InMemoryServiceRegistry(AbstractServiceRegistry):
         _log.info('Registering service {s}'.format(s=service))
         self._services[service.service_id] = service
 
-    def get_metadata(self, service_id: str) -> ServiceMetadata:
-        if service_id not in self._services:
-            raise ServiceNotFoundException(service_id)
-        return self._services[service_id].service_metadata
+    def get_metadata(self, user_id: str, service_id: str) -> ServiceMetadata:
+        service = self._services.get(service_id)
 
-    def get_metadata_all(self) -> Dict[str, ServiceMetadata]:
-        return {sid: self.get_metadata(sid) for sid in self._services.keys()}
+        if not service or service.user_id != user_id:
+            raise ServiceNotFoundException(service_id)
+
+        return service.service_metadata
+
+    def get_metadata_all(self, user_id: str) -> Dict[str, ServiceMetadata]:
+        return {sid: service.service_metadata for sid, service in self._services.items() if service.user_id == user_id}
 
     def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
-        return [m for m in self.get_metadata_all().values() if not m.created or m.created < upper]
+        return [s.service_metadata for s in self._services.values() if not s.service_metadata.created or s.service_metadata.created < upper]
 
-    def stop_service(self, service_id: str):
-        if service_id not in self._services:
+    def stop_service(self, user_id: str, service_id: str):
+        service = self._services.get(service_id)
+
+        if not service or service.user_id != user_id:
             raise ServiceNotFoundException(service_id)
+
         service = self._services.pop(service_id)
         _log.info('Stopping service {s}'.format(s=service))
         service.stop()
@@ -106,26 +113,29 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
     def register(self, service: SecondaryService):
         with self._zk_client() as zk:
             self._services[service.service_id] = service
-            self._persist_metadata(zk, service.service_metadata),
+            self._persist_metadata(zk, service.user_id, service.service_metadata),
             Traefik(zk).proxy_service(service.service_id, service.host, service.port)
 
-    def _path(self, service_id):
-        return self._root + "/" + service_id
+    def _path(self, user_id: str, service_id: str = None):
+        return self._root + "/" + user_id + "/" + service_id if service_id else self._root + "/" + user_id
 
-    def get_metadata(self, service_id: str) -> ServiceMetadata:
+    def get_metadata(self, user_id: str, service_id: str) -> ServiceMetadata:
         with self._zk_client() as zk:
-            return self._load_metadata(zk, service_id)
+            try:
+                return self._load_metadata(zk, user_id=user_id, service_id=service_id)
+            except NoNodeError:
+                try:
+                    return self._load_metadata(zk, user_id='_anonymous', service_id=service_id)
+                except NoNodeError:
+                    raise ServiceNotFoundException(service_id)
 
-    def _persist_metadata(self, zk: KazooClient, metadata: ServiceMetadata):
+    def _persist_metadata(self, zk: KazooClient, user_id: str, metadata: ServiceMetadata):
         data = {"metadata": metadata.prepare_for_json()}
         raw = json.dumps(data).encode("utf-8")
-        zk.create(self._path(service_id=metadata.id), raw)
+        zk.create(self._path(user_id=user_id, service_id=metadata.id), raw, makepath=True)
 
-    def _load_metadata(self, zk: KazooClient, service_id: str) -> ServiceMetadata:
-        try:
-            raw, stat = zk.get(self._path(service_id))
-        except NoNodeError:
-            raise ServiceNotFoundException(service_id)
+    def _load_metadata(self, zk: KazooClient, user_id: str, service_id: str) -> ServiceMetadata:
+        raw, stat = zk.get(self._path(user_id=user_id, service_id=service_id))
         data = json.loads(raw.decode('utf-8'))
         if "metadata" in data:
             return ServiceMetadata.from_dict(data["metadata"])
@@ -141,24 +151,29 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
         else:
             raise ValueError("Failed to load metadata (keys: {k!r})".format(k=data.keys()))
 
-    def get_metadata_all(self) -> Dict[str, ServiceMetadata]:
+    def get_metadata_all(self, user_id: str) -> Dict[str, ServiceMetadata]:
         with self._zk_client() as zk:
-            service_ids = zk.get_children(self._root)
-            return {service_id: self._load_metadata(zk, service_id) for service_id in service_ids}
+            def get(user_id: str) -> Dict[str, ServiceMetadata]:
+                try:
+                    service_ids = zk.get_children(self._path(user_id=user_id))
+                    return {service_id: self._load_metadata(zk, user_id=user_id, service_id=service_id) for service_id in service_ids}
+                except NoNodeError:  # no services for this user yet
+                    return {}
+
+            return {**get(user_id), **get('_anonymous')}
 
     def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
         services_before = []
 
         with self._zk_client() as zk:
-            service_ids = zk.get_children(self._root)
+            for user_id in zk.get_children(self._root):
+                for service_id in zk.get_children(self._path(user_id=user_id)):
+                    service_metadata = self._load_metadata(zk, user_id=user_id, service_id=service_id)
+                    service_date = service_metadata.created
 
-            for service_id in service_ids:
-                service_metadata = self._load_metadata(zk, service_id)
-                service_date = service_metadata.created
-
-                if not service_date or service_date < upper:
-                    _log.debug("service {s}'s service_date {d} is before {u}".format(s=service_id, d=service_date, u=upper))
-                    services_before.append(service_metadata)
+                    if not service_date or service_date < upper:
+                        _log.debug("service {s}'s service_date {d} is before {u}".format(s=service_id, d=service_date, u=upper))
+                        services_before.append(service_metadata)
 
         return services_before
 
@@ -173,11 +188,14 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
             zk.stop()
             zk.close()
 
-    def stop_service(self, service_id: str):
+    def stop_service(self, user_id: str, service_id: str):
         with self._zk_client() as zk:
-            zk.delete(self._path(service_id))
-            Traefik(zk).remove(service_id)
-            _log.info("Deleted secondary service {s}".format(s=service_id))
+            try:
+                zk.delete(self._path(user_id=user_id, service_id=service_id))
+                Traefik(zk).remove(service_id)
+                _log.info("Deleted secondary service {u}/{s}".format(u=user_id, s=service_id))
+            except NoNodeError:
+                raise ServiceNotFoundException(service_id)
         if service_id in self._services:
             service = self._services.pop(service_id)
             _log.info('Stopping service {s}'.format(s=service))

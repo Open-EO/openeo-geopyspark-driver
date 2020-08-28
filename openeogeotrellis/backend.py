@@ -69,14 +69,14 @@ class GpsSecondaryServices(backend.SecondaryServices):
             }
         }
 
-    def list_services(self) -> List[ServiceMetadata]:
-        return list(self.service_registry.get_metadata_all().values())
+    def list_services(self, user_id: str) -> List[ServiceMetadata]:
+        return list(self.service_registry.get_metadata_all(user_id).values())
 
-    def service_info(self, service_id: str) -> ServiceMetadata:
-        return self.service_registry.get_metadata(service_id)
+    def service_info(self, user_id: str, service_id: str) -> ServiceMetadata:
+        return self.service_registry.get_metadata(user_id=user_id, service_id=service_id)
 
-    def remove_service(self, service_id: str) -> None:
-        self.service_registry.stop_service(service_id)
+    def remove_service(self, user_id: str, service_id: str) -> None:
+        self.service_registry.stop_service(user_id=user_id, service_id=service_id)
 
     def remove_services_before(self, upper: datetime) -> None:
         services = self.service_registry.get_metadata_all_before(upper)

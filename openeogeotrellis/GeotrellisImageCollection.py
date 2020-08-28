@@ -1255,7 +1255,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             zk.stop()
             zk.close()
 
-    def tiled_viewing_service(self, service_type: str, process_graph: dict, post_data: dict = {}) -> ServiceMetadata:
+    def tiled_viewing_service(self, user_id: str, service_type: str, process_graph: dict, post_data: dict = {}) -> ServiceMetadata:
         service_id = str(uuid.uuid4())
         configuration = post_data.get("configuration", {})
 
@@ -1346,7 +1346,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             )
 
             self._service_registry.register(SecondaryService(
-                service_metadata=service_metadata,
+                user_id=user_id, service_metadata=service_metadata,
                 host=host, port=wmts.getPort(), server=wmts
             ))
 

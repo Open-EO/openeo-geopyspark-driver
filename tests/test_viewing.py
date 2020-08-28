@@ -92,7 +92,7 @@ class TestViewing(TestCase):
             pyramid=gps.Pyramid({0: geotrellis_layer}),
             service_registry=InMemoryServiceRegistry()
         )
-        metadata = imagecollection.tiled_viewing_service(service_type="TMS", process_graph={})
+        metadata = imagecollection.tiled_viewing_service(user_id='u9876', service_type="TMS", process_graph={})
         print(metadata)
         assert metadata.type == "TMS"
         assert isinstance(metadata.attributes["bounds"], dict)
