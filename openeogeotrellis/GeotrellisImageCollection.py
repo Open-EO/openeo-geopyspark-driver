@@ -201,7 +201,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return DataCube(the_array)
 
 
-    def apply_tiles_spatiotemporal(self,function) -> ImageCollection:
+    def apply_tiles_spatiotemporal(self,function,context={}) -> ImageCollection:
         """
         Apply a function to a group of tiles with the same spatial key.
         :param function:
@@ -232,6 +232,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             )
 
             data = UdfData({"EPSG": 900913}, [datacube])
+            data.user_context = context
 
             result_data = run_user_code(function,data)
             cubes = result_data.get_datacube_list()
@@ -266,13 +267,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         result_collection = None
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
+            context = reducer.udf_args.get('context', {})
             if not isinstance(udf,str):
                 raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
             if dimension == self.metadata.temporal_dimension.name:
                 #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
-                result_collection = self.apply_tiles_spatiotemporal(udf)
+                result_collection = self.apply_tiles_spatiotemporal(udf,context)
             elif dimension == self.metadata.band_dimension.name:
-                result_collection = self.apply_tiles(udf)
+                result_collection = self.apply_tiles(udf,context)
 
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self.reduce_bands(reducer)
@@ -287,7 +289,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return result_collection
 
 
-    def apply_tiles(self, function) -> 'ImageCollection':
+    def apply_tiles(self, function,context={}) -> 'ImageCollection':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
 
@@ -306,6 +308,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             )
 
             data = UdfData({"EPSG": 900913}, [datacube])
+            data.user_context = context
 
             result_data = run_user_code(function,data)
             cubes = result_data.get_datacube_list()
@@ -522,14 +525,15 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf = process.udf_args.get('udf', None)
+            context = process.udf_args.get('context', {})
             if not isinstance(udf, str):
                 raise ValueError(
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
-                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf)
+                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf,context=context)
             elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
-                result_collection = retiled_collection.apply_tiles(udf)
+                result_collection = retiled_collection.apply_tiles(udf,context=context)
             else:
                 raise OpenEOApiException(
                     message="apply_neighborhood: for temporal dimension,"

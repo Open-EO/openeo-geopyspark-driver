@@ -90,7 +90,7 @@ def run_user_code(code:str, data:UdfData) -> UdfData:
             #found a datacube mapping function
             if len(data.get_datacube_list()) != 1:
                 raise ValueError("The provided UDF expects exactly one datacube, but only: %s were provided." % len(data.get_datacube_list()))
-            result_cube = func[1](data.get_datacube_list()[0], {})
+            result_cube = func[1](data.get_datacube_list()[0], data.user_context)
             if not isinstance(result_cube,DataCube):
                 raise ValueError("The provided UDF did not return a DataCube, but got: %s" %result_cube)
             data.set_datacube_list([result_cube])
