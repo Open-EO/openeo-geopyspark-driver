@@ -62,7 +62,13 @@ class TestZooKeeperServiceRegistry:
         assert metadata["id"] == "s1234"
         assert metadata["process"] == {"process_graph": dummy_process_graph}
         assert metadata["url"] == dummy_service_metadata.url
-        # TODO: check zookeeper operations for Traefic
+
+        client.set.assert_any_call('/traefik/backends/backends1234/servers/server1/url', b'http://oeo.net:5678')
+        client.set.assert_any_call('/traefik/frontends/frontends1234/backend', b'backends1234')
+        client.set.assert_any_call('/traefik/frontends/frontends1234/entrypoints', b'web')
+        client.set.assert_any_call('/traefik/frontends/frontends1234/priority', b'200')
+        client.set.assert_any_call('/traefik/frontends/frontends1234/routes/test/rule',
+                                   b'PathPrefixStripRegex: /openeo/services/s1234,/openeo/{version}/services/s1234')
 
     def test_get_metadata(self):
         with mock.patch.object(openeogeotrellis.service_registry, 'KazooClient') as KazooClient:
@@ -124,6 +130,8 @@ class TestZooKeeperServiceRegistry:
 
         client = KazooClient.return_value
         # print(client.mock_calls)
-        client.delete.assert_called_with('/openeo/services/u9876/s1234')
+        client.delete.assert_any_call('/openeo/services/u9876/s1234')
+        client.delete.assert_any_call('/traefik/backends/backends1234', recursive=True)
+        client.delete.assert_any_call('/traefik/frontends/frontends1234', recursive=True)
         server.stop.assert_called_once()
-        # TODO: check zookeeper operations for Traefic
+
