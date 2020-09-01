@@ -192,7 +192,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
         with self._zk_client() as zk:
             try:
                 zk.delete(self._path(user_id=user_id, service_id=service_id))
-                Traefik(zk).remove(service_id)
+                Traefik(zk).unproxy_service(service_id)
                 _log.info("Deleted secondary service {u}/{s}".format(u=user_id, s=service_id))
             except NoNodeError:
                 raise ServiceNotFoundException(service_id)
