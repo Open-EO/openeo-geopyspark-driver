@@ -2,8 +2,8 @@ import abc
 import contextlib
 import json
 import logging
-from typing import Dict, List
-from datetime import datetime, timedelta
+from typing import Dict, List, Tuple
+from datetime import datetime
 
 from kazoo.client import KazooClient, NoNodeError
 
@@ -52,7 +52,7 @@ class AbstractServiceRegistry(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
+    def get_metadata_all_before(self, upper: datetime) -> List[Tuple[str, ServiceMetadata]]:  # (user_id, metadata)
         pass
 
     @abc.abstractmethod
@@ -84,8 +84,9 @@ class InMemoryServiceRegistry(AbstractServiceRegistry):
     def get_metadata_all(self, user_id: str) -> Dict[str, ServiceMetadata]:
         return {sid: service.service_metadata for sid, service in self._services.items() if service.user_id == user_id}
 
-    def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
-        return [s.service_metadata for s in self._services.values() if not s.service_metadata.created or s.service_metadata.created < upper]
+    def get_metadata_all_before(self, upper: datetime) -> List[Tuple[str, ServiceMetadata]]:
+        return [(s.user_id, s.service_metadata) for s in self._services.values()
+                if not s.service_metadata.created or s.service_metadata.created < upper]
 
     def stop_service(self, user_id: str, service_id: str):
         service = self._services.get(service_id)
@@ -162,7 +163,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
 
             return {**get(user_id), **get('_anonymous')}
 
-    def get_metadata_all_before(self, upper: datetime) -> List[ServiceMetadata]:
+    def get_metadata_all_before(self, upper: datetime) -> List[Tuple[str, ServiceMetadata]]:
         services_before = []
 
         with self._zk_client() as zk:
@@ -173,7 +174,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):
 
                     if not service_date or service_date < upper:
                         _log.debug("service {s}'s service_date {d} is before {u}".format(s=service_id, d=service_date, u=upper))
-                        services_before.append(service_metadata)
+                        services_before.append((user_id, service_metadata))
 
         return services_before
 

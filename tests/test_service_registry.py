@@ -3,6 +3,7 @@ from unittest import mock
 
 from kazoo.exceptions import NoNodeError
 import pytest
+from datetime import datetime
 
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.errors import ServiceNotFoundException
@@ -135,3 +136,34 @@ class TestZooKeeperServiceRegistry:
         client.delete.assert_any_call('/traefik/frontends/frontends1234', recursive=True)
         server.stop.assert_called_once()
 
+    def test_get_metadata_all_before(self):
+        with mock.patch.object(openeogeotrellis.service_registry, 'KazooClient') as KazooClient:
+            reg = ZooKeeperServiceRegistry()
+
+            older_metadata = dummy_service_metadata._replace(created=datetime(1976, 7, 19, 0, 0, 0))
+            newer_metadata = dummy_service_metadata._replace(id='s1235', created=datetime(1987, 7, 11, 0, 0, 0))
+
+            reg.register(
+                SecondaryService(
+                    user_id='u9876',
+                    service_metadata=older_metadata, host='oeo.net', port=5678, server=mock.Mock)
+            )
+
+            reg.register(
+                SecondaryService(
+                    user_id='u9876',
+                    service_metadata=newer_metadata, host='oeo.net', port=5678, server=mock.Mock)
+            )
+
+            # Extract "created" data
+            client = KazooClient.return_value
+            assert client.create.call_count == 2
+
+            storage = {call[0][0]: call[0][1] for call in client.create.call_args_list}
+
+            client.get_children.side_effect = lambda p: [older_metadata.id, newer_metadata.id] if p.endswith("/u9876") else ['u9876']
+            client.get.side_effect = lambda p: (storage[p], "dummy")
+
+            expired_services = reg.get_metadata_all_before(upper=datetime(1981, 4, 24, 3, 0, 0))
+
+        assert expired_services == [('u9876', older_metadata)]
