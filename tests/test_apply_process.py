@@ -161,6 +161,36 @@ class TestCustomFunctions(TestCase):
         np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(self.first[0]))
         np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(self.second[0]))
 
+    def test_apply_complex_graph(self):
+        graph = {
+            "sin": {
+                "arguments": {
+                    "x": {
+                        "from_argument": "data"
+                    }
+                },
+                "process_id": "sin",
+                "result": False
+            },
+            "multiply": {
+                "arguments": {
+                    "x": {
+                        "from_node": "sin"
+                    },
+                    "y": 5.0
+                },
+                "process_id": "multiply",
+                "result": True
+            }
+        }
+
+        input = self.create_spacetime_layer()
+        cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        res = cube.apply(graph)
+        data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
+        np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0*np.sin(self.first[0]))
+        np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], 5.0*np.sin(self.second[0]))
+
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
