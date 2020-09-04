@@ -113,12 +113,28 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return GeotrellisTimeSeriesImageCollection(self.pyramid,self._service_registry,self.metadata.rename_dimension(source,target))
 
     def apply(self, process: str, arguments: dict={}) -> 'ImageCollection':
-        # TODO: support for `apply` with child process graph that has multiple nodes or binary operators EP-3404
-        if 'y' in arguments:
-            raise NotImplementedError("Apply only supports unary operators,"
-                                      " but got {p!r} with {a!r}".format(p=process, a=arguments))
-        applyProcess = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd, k: applyProcess(rdd, process))
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(process, dict):
+            apply_callback = GeoPySparkBackendImplementation.accept_process_graph(process)
+            #apply should leave metadata intact, so can do a simple call?
+            return self.reduce_bands(apply_callback)
+
+        result_collection = None
+        if isinstance(process, SingleNodeUDFProcessGraphVisitor):
+            udf = process.udf_args.get('udf', None)
+            context = process.udf_args.get('context', {})
+            if not isinstance(udf, str):
+                raise ValueError(
+                    "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            self.apply_tiles(udf,context)
+
+        if isinstance(process,str):
+            #old 04x code path
+            if 'y' in arguments:
+                raise NotImplementedError("Apply only supports unary operators,"
+                                          " but got {p!r} with {a!r}".format(p=process, a=arguments))
+            applyProcess = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess
+            return self._apply_to_levels_geotrellis_rdd(lambda rdd, k: applyProcess(rdd, process))
 
     def reduce(self, reducer: str, dimension: str) -> 'ImageCollection':
         # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
