@@ -14,6 +14,20 @@ from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 logger = logging.getLogger("openeo")
 
+def log_memory(function):
+    def memory_logging_wrapper(x):
+        try:
+            from spark_memlogger import memlogger
+        except ImportError:
+            return function(x)
+        ml = memlogger.MemLogger(5)
+        try:
+            ml.start()
+            return function(x)
+        finally:
+            ml.stop()
+
+    return memory_logging_wrapper
 
 def kerberos():
     import geopyspark as gps

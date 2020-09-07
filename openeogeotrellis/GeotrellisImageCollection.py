@@ -43,7 +43,7 @@ from openeo.metadata import CollectionMetadata, Band
 from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import SecondaryService, AbstractServiceRegistry
-from openeogeotrellis.utils import to_projected_polygons
+from openeogeotrellis.utils import to_projected_polygons,log_memory
 
 
 _log = logging.getLogger(__name__)
@@ -268,7 +268,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME,
                                                        grouped_by_spatial_key.flatMap(
-                                                    partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
+                                                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
                                                        rdd.layer_metadata)
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
@@ -338,7 +338,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         def rdd_function(openeo_metadata: CollectionMetadata, rdd):
             return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
                                                 rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
-                                                    partial(tilefunction, rdd.layer_metadata, openeo_metadata)),
+                                                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
                                                 rdd.layer_metadata)
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
