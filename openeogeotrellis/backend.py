@@ -11,6 +11,7 @@ from subprocess import CalledProcessError
 from typing import List, Dict, Union
 import shutil
 from datetime import datetime
+import os
 
 import geopyspark as gps
 import pkg_resources
@@ -20,7 +21,7 @@ from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
 from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
-                                  OpenEOApiException, InternalException)
+                                  OpenEOApiException, InternalException, ServiceUnsupportedException)
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
@@ -29,10 +30,11 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, ZooKeeperServiceRegistry, AbstractServiceRegistry
+from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
+                                               AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.user_defined_process_repository import *
-from openeogeotrellis.utils import kerberos
-from openeogeotrellis.utils import normalize_date
+from openeogeotrellis.utils import normalize_date, kerberos, zk_client
+from openeogeotrellis.traefik import Traefik
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +79,123 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
     def remove_service(self, user_id: str, service_id: str) -> None:
         self.service_registry.stop_service(user_id=user_id, service_id=service_id)
+        self._unproxy_service(service_id)
 
     def remove_services_before(self, upper: datetime) -> None:
         user_services = self.service_registry.get_metadata_all_before(upper)
 
         for user_id, service in user_services:
             self.service_registry.stop_service(user_id=user_id, service_id=service.id)
+            self._unproxy_service(service.id)
+
+    def _create_service(self, user_id: str, process_graph: dict, service_type: str, api_version: str,
+                       configuration: dict) -> str:
+        # TODO: reduce code duplication between this and start_service()
+        from openeo_driver.ProcessGraphDeserializer import evaluate
+
+        if service_type.lower() != 'wmts':
+            raise ServiceUnsupportedException(service_type)
+
+        service_id = str(uuid.uuid4())
+
+        image_collection: GeotrellisTimeSeriesImageCollection = evaluate(
+            process_graph,
+            viewingParameters={'version': api_version, 'pyramid_levels': 'all'}
+        )
+
+        wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
+
+        self.service_registry.persist(user_id, ServiceMetadata(
+            id=service_id,
+            process={"process_graph": process_graph},
+            url=wmts_base_url + "/service/wmts",
+            type=service_type,
+            enabled=True,
+            attributes={},
+            configuration=configuration,
+            created=datetime.utcnow()), api_version)
+
+        secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
+
+        self.service_registry.register(service_id, secondary_service)
+        self._proxy_service(service_id, secondary_service.host, secondary_service.port)
+
+        return service_id
+
+    def start_service(self, user_id: str, service_id: str) -> None:
+        from openeo_driver.ProcessGraphDeserializer import evaluate
+
+        service: ServiceEntity = self.service_registry.get(user_id=user_id, service_id=service_id)
+        service_metadata: ServiceMetadata = service.metadata
+
+        service_type = service_metadata.type
+        process_graph = service_metadata.process["process_graph"]
+        api_version = service.api_version
+        configuration = service_metadata.configuration
+
+        if service_type.lower() != 'wmts':
+            raise ServiceUnsupportedException(service_type)
+
+        image_collection: GeotrellisTimeSeriesImageCollection = evaluate(
+            process_graph,
+            viewingParameters={'version': api_version, 'pyramid_levels': 'all'}
+        )
+
+        wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
+
+        secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
+
+        self.service_registry.register(service_id, secondary_service)
+        self._proxy_service(service_id, secondary_service.host, secondary_service.port)
+
+    def _wmts_service(self, image_collection, configuration: dict, wmts_base_url: str) -> SecondaryService:
+        random_port = 0
+
+        jvm = gps.get_spark_context()._gateway.jvm
+        wmts = jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
+        logger.info('Created WMTSServer: {w!s} ({u!s}/service/wmts, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
+
+        if "colormap" in configuration:
+            max_zoom = image_collection.pyramid.max_zoom
+            min_zoom = min(image_collection.pyramid.levels.keys())
+            reduced_resolution = max(min_zoom,max_zoom-4)
+            if reduced_resolution not in image_collection.pyramid.levels:
+                reduced_resolution = min_zoom
+            histogram = image_collection.pyramid.levels[reduced_resolution].get_histogram()
+            matplotlib_name = configuration.get("colormap", "YlGn")
+
+            #color_map = gps.ColorMap.from_colors(breaks=[x for x in range(0,250)], color_list=gps.get_colors_from_matplotlib("YlGn"))
+            color_map = gps.ColorMap.build(histogram, matplotlib_name)
+            srdd_dict = {k: v.srdd.rdd() for k, v in image_collection.pyramid.levels.items()}
+            wmts.addPyramidLayer("RDD", srdd_dict,color_map.cmap)
+        else:
+            srdd_dict = {k: v.srdd.rdd() for k, v in image_collection.pyramid.levels.items()}
+            wmts.addPyramidLayer("RDD", srdd_dict)
+
+        import socket
+        # TODO what is this host logic about?
+        host = [l for l in
+                          ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1],
+                           [[(s.connect(('8.8.8.8', 53)), s.getsockname()[0], s.close()) for s in
+                             [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]])
+                          if l][0][0]
+
+        return SecondaryService(host=host, port=wmts.getPort(), server=wmts)
+
+    def restore_services(self):
+        for user_id, service_metadata in self.service_registry.get_metadata_all_before(upper=datetime.max):
+            if service_metadata.enabled:
+                self.start_service(user_id=user_id, service_id=service_metadata.id)
+
+    def _proxy_service(self, service_id, host, port):
+        if not ConfigParams().is_ci_context:
+            with zk_client() as zk:
+                Traefik(zk).proxy_service(service_id, host, port)
+
+    def _unproxy_service(self, service_id):
+        if not ConfigParams().is_ci_context:
+            with zk_client() as zk:
+                Traefik(zk).unproxy_service(service_id)
 
 
 class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
