@@ -36,7 +36,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = CollectionMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-        postprocessing_band_graph = metadata.get("_vito","postprocessing_bands", default=None)
+        postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
         import geopyspark as gps
@@ -50,9 +50,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         srs = viewing_parameters.get("srs", None)
 
         if isinstance(srs, int):
-            srs = 'EPSG:%s'%srs
+            srs = 'EPSG:%s' % srs
         if srs == None:
-            srs='EPSG:4326'
+            srs = 'EPSG:4326'
 
         bands = viewing_parameters.get("bands", None)
         if bands:
@@ -94,7 +94,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             if polygons:
                 projected_polygons = to_projected_polygons(jvm, polygons)
-                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
+                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(),
+                                                  projected_polygons.crs(), from_date, to_date)
             else:
                 return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
@@ -158,10 +159,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         if argument_id in ['x', 'y']:
                             self.property_value = value
 
-                predicate = condition['process_graph']
-                property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
-
-                return property_value
+                if isinstance(condition, dict) and 'process_graph' in condition:
+                    predicate = condition['process_graph']
+                    property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
+                    return property_value
+                else:
+                    return condition
 
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = viewing_parameters.get('properties', {})
@@ -169,14 +172,23 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
+            # feature flag for EP-3556
+            native_utm = custom_properties.get('native_utm', False)
+
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
-            if polygons:
+            if native_utm and polygons:
                 projected_polygons = to_projected_polygons(jvm, polygons)
-                return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date, metadata_properties)
+                return factory.datacube(projected_polygons.polygons(),projected_polygons.crs(), from_date, to_date,
+                                        metadata_properties)
             else:
-                return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
+                if polygons:
+                    projected_polygons = to_projected_polygons(jvm, polygons)
+                    return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
+                                               to_date, metadata_properties)
+                else:
+                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
@@ -241,7 +253,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         }
         if viewing_parameters.get('pyramid_levels', 'all') != 'all':
             max_zoom = max(levels.keys())
-            levels= {max_zoom:levels[max_zoom]}
+            levels = {max_zoom: levels[max_zoom]}
 
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
@@ -249,7 +261,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata=metadata
         )
 
-        if(postprocessing_band_graph!=None):
+        if (postprocessing_band_graph != None):
             from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
             visitor = GeotrellisTileProcessGraphVisitor()
             image_collection = image_collection.reduce_bands(visitor.accept_process_graph(postprocessing_band_graph))
