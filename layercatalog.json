@@ -912,15 +912,134 @@
         60
       ],
       "eo:bands": [
-        {"name": "TOC-B02_10M"},
-        {"name": "TOC-B03_10M"},
-        {"name": "TOC-B04_10M"},
-        {"name": "TOC-B05_20M"},
-        {"name": "TOC-B08_10M"},
-        {"name": "SCENECLASSIFICATION_20M"},
-        {"name": "RAA_60M"},
-        {"name": "SZA_60M"},
-        {"name": "VZA_60M"}
+
+        {
+          "name": "TOC-B01_60M",
+          "common_name": "coastal aerosol",
+          "wavelength_nm": 442.7,
+          "gsd": 60,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B02_10M",
+          "common_name": "blue",
+          "center_wavelength": 0.4966,
+          "wavelength_nm": 496.6,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B03_10M",
+          "common_name": "green",
+          "center_wavelength": 0.560,
+          "wavelength_nm": 560,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B04_10M",
+          "common_name": "red",
+          "center_wavelength": 0.6645,
+          "wavelength_nm": 664.5,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B05_20M",
+          "common_name": "nir",
+          "wavelength_nm": 704.1,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B06_20M",
+          "wavelength_nm": 740.5,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B07_20M",
+          "wavelength_nm": 782.8,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B08_10M",
+          "common_name": "nir",
+          "center_wavelength": 0.8351,
+          "wavelength_nm": 835.1,
+          "gsd": 10,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B8A_20M",
+          "wavelength_nm": 864.7,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B11_20M",
+          "common_name": "swir",
+          "wavelength_nm": 1613.7,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "TOC-B12_20M",
+          "common_name": "swir",
+          "wavelength_nm": 2202.4,
+          "gsd": 20,
+          "scale": 0.0001,
+          "offset": 0,
+          "type": "int16",
+          "unit": "1"
+        },
+        {
+          "name": "SCENECLASSIFICATION_20M",
+          "gsd": 20
+        },
+        {
+          "name": "RAA_60M",
+          "gsd": 60
+        },
+        {
+          "name": "SZA_60M",
+          "gsd": 60
+        },
+        {
+          "name": "VZA_60M",
+          "gsd": 60
+        }
       ]
     },
     "cube:dimensions": {
@@ -930,11 +1049,17 @@
       "bands": {
         "type": "bands",
         "values": [
+          "TOC-B01_60M",
           "TOC-B02_10M",
           "TOC-B03_10M",
           "TOC-B04_10M",
           "TOC-B05_20M",
+          "TOC-B06_20M",
+          "TOC-B07_20M",
           "TOC-B08_10M",
+          "TOC-B8A_20M",
+          "TOC-B11_20M",
+          "TOC-B12_20M",
           "SCENECLASSIFICATION_20M",
           "RAA_60M",
           "SZA_60M",

@@ -178,10 +178,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
-            if native_utm and polygons:
-                projected_polygons = to_projected_polygons(jvm, polygons)
-                return factory.datacube(projected_polygons.polygons(),projected_polygons.crs(), from_date, to_date,
-                                        metadata_properties)
+            if native_utm:
+                if not polygons:
+                    projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent,srs)
+                else:
+                    projected_polygons = to_projected_polygons(jvm, polygons)
+                    #TODO EP-3556/EP-3561 determine correct epsg code
+                projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,32631)
+                return factory.datacube(projected_polygons, from_date, to_date, metadata_properties)
             else:
                 if polygons:
                     projected_polygons = to_projected_polygons(jvm, polygons)
@@ -244,13 +248,22 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
 
-        levels = {
-            pyramid.apply(index)._1(): TiledRasterLayer(
-                LayerType.SPACETIME,
-                temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
-            )
-            for index in range(0, pyramid.size())
-        }
+        # feature flag for EP-3556
+        native_utm = viewing_parameters.get('properties', {}).get('native_utm', False)
+
+        if native_utm:
+            levels = {0:TiledRasterLayer(
+                    LayerType.SPACETIME,
+                    temporal_tiled_raster_layer(option.apply(0), pyramid)
+                )}
+        else:
+            levels = {
+                pyramid.apply(index)._1(): TiledRasterLayer(
+                    LayerType.SPACETIME,
+                    temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
+                )
+                for index in range(0, pyramid.size())
+            }
         if viewing_parameters.get('pyramid_levels', 'all') != 'all':
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
