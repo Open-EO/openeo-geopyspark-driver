@@ -17,6 +17,7 @@ import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+from openeo.metadata import CollectionMetadata, TemporalDimension
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
@@ -318,10 +319,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
+        metadata = CollectionMetadata(metadata={},dimensions=[TemporalDimension(name='t',extent=[])])
+
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
             service_registry=self._service_registry,
-            metadata={}
+            metadata=metadata
         )
 
         return image_collection.band_filter(band_indices) if band_indices else image_collection
