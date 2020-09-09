@@ -1,5 +1,6 @@
 import logging
 from typing import List
+from shapely.geometry import box
 
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.metadata import CollectionMetadata
@@ -13,6 +14,7 @@ from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImage
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
+from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 
 logger = logging.getLogger(__name__)
 
@@ -179,12 +181,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
             if native_utm:
+                target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
                 if not polygons:
                     projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent,srs)
                 else:
                     projected_polygons = to_projected_polygons(jvm, polygons)
-                    #TODO EP-3556/EP-3561 determine correct epsg code
-                projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,32631)
+                projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,target_epsg_code)
                 return factory.datacube(projected_polygons, from_date, to_date, metadata_properties)
             else:
                 if polygons:
