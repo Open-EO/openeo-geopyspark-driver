@@ -74,7 +74,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
-        elif ConfigParams().require_bounds:
+        elif viewing_parameters.get('require_bounds', False):
             raise ProcessGraphComplexityException
         else:
             srs = "EPSG:4326"
