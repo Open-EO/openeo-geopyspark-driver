@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, time
 from pathlib import Path
 
 import requests
@@ -184,9 +184,7 @@ class CatalogClient(CatalogClientBase):
         return result
 
     def query_product_paths(self, start_date, end_date, ulx, uly, brx, bry):
-        start = datetime.fromisoformat(start_date)
-        end = datetime.fromisoformat(end_date) + timedelta(days=1)
-        products = self.query(start, end, ulx=ulx, uly=uly, brx=brx, bry=bry)
+        products = self.query(start_date, datetime.combine(end_date, time.max), ulx=ulx, uly=uly, brx=brx, bry=bry)
         return [str(Path("/", p.getS3Bucket().lower(), p.getS3Key())) for p in products]
 
     def order(self, entries):

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import List
 
 from geopyspark import TiledRasterLayer, LayerType
@@ -203,7 +204,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             mission = layer_source_info['mission']
             level = layer_source_info['level']
             catalog = CatalogClient(mission, level)
-            product_paths = catalog.query_product_paths(from_date, to_date,
+            product_paths = catalog.query_product_paths(datetime.strptime(from_date, "%Y-%m-%d"),
+                                                        datetime.strptime(to_date, "%Y-%m-%d"),
                                                         ulx=extent.xmin, uly=extent.ymax,
                                                         brx=extent.xmax, bry=extent.ymin)
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
