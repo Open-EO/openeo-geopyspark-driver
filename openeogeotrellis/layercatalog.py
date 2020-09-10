@@ -10,8 +10,8 @@ from openeo_driver.utils import read_json
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.creocatalog import CreoCatalog
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
@@ -202,7 +202,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def creo_pyramid():
             mission = layer_source_info['mission']
             level = layer_source_info['level']
-            catalog = CreoCatalog(mission, level)
+            catalog = CatalogClient(mission, level)
             product_paths = catalog.query_product_paths(from_date, to_date,
                                                         ulx=extent.xmin, uly=extent.ymax,
                                                         brx=extent.xmax, bry=extent.ymin)
