@@ -10,7 +10,7 @@ class TestCreo(unittest.TestCase):
         self.l2a_catalog = CatalogClient("Sentinel2", "LEVEL2A")
 
     def test_creo_catalog(self):
-        date = datetime.date(2019, 8, 1)
+        date = datetime.date(2018, 4, 1)
 
         results = self.l2a_catalog.query_product_paths(date, date, ulx=5, uly=51.1, brx=5.1, bry=51)
 
