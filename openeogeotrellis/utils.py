@@ -6,14 +6,31 @@ from pathlib import Path
 import pwd
 import stat
 from typing import Union
+import contextlib
 
 from dateutil.parser import parse
 from py4j.java_gateway import JavaGateway
 import pytz
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from kazoo.client import KazooClient
+from .configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
 
+def log_memory(function):
+    def memory_logging_wrapper(x):
+        try:
+            from spark_memlogger import memlogger
+        except ImportError:
+            return function(x)
+        ml = memlogger.MemLogger(5)
+        try:
+            ml.start()
+            return function(x)
+        finally:
+            ml.stop()
+
+    return memory_logging_wrapper
 
 def kerberos():
     import geopyspark as gps
@@ -125,3 +142,15 @@ def to_projected_polygons(jvm, *args):
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     else:
         raise ValueError(args)
+
+
+@contextlib.contextmanager
+def zk_client(hosts: str = ','.join(ConfigParams().zookeepernodes)):
+    zk = KazooClient(hosts)
+    zk.start()
+
+    try:
+        yield zk
+    finally:
+        zk.stop()
+        zk.close()
