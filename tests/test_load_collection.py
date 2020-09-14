@@ -6,13 +6,16 @@ from openeo_driver.errors import ProcessGraphComplexityException
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
-def test_load_collection_bands_no_extent():
+def test_load_collection_bands_missing_required_extent():
     catalog = get_layer_catalog()
     with pytest.raises(ProcessGraphComplexityException):
-        catalog.load_collection('TERRASCOPE_S2_TOC_V2',{'bands':['TOC-B03_10M']})
+        catalog.load_collection('TERRASCOPE_S2_TOC_V2', {
+            'bands': ['TOC-B03_10M'],
+            'require_bounds': True
+        })
 
 @mock.patch('openeogeotrellis.layercatalog.JavaGateway', autospec=True)
-def test_load_collection_bands_with_extent(javagateway):
+def test_load_collection_bands_with_required_extent(javagateway):
     catalog = get_layer_catalog()
 
     jvm_mock = MagicMock()
@@ -29,7 +32,17 @@ def test_load_collection_bands_with_extent(javagateway):
                                               '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
                                               '}' \
                                               '}'
-    collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2',{'from':'2019-01-01','to':'2019-01-01','bands':['TOC-B03_10M'],'left':4,'right':4.001,'top':52,'bottom':51.9999,'srs':4326})
+    collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', {
+        'from': '2019-01-01',
+        'to': '2019-01-01',
+        'bands': ['TOC-B03_10M'],
+        'left': 4,
+        'right': 4.001,
+        'top': 52,
+        'bottom': 51.9999,
+        'srs': 4326,
+        'require_bounds': True
+    })
 
     print(collection.metadata)
     assert len(collection.metadata.bands)==1

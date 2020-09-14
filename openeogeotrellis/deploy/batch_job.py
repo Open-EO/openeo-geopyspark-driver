@@ -36,14 +36,21 @@ def _setup_user_logging(log_file: str) -> None:
 
     user_facing_logger.addHandler(file_handler)
 
+    _add_permissions(log_file, stat.S_IWGRP)
+
 
 def _create_job_dir(job_dir: Path):
     logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
     shutil.chown(job_dir, user=None, group='eodata')
 
-    current_flags = os.stat(job_dir).st_mode
-    os.chmod(job_dir, current_flags | stat.S_ISGID)  # make children inherit this group
+    _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
+
+
+def _add_permissions(path, mode: int):
+    # TODO: maybe umask is a better/cleaner option
+    current_permission_bits = os.stat(path).st_mode
+    os.chmod(path, current_permission_bits | mode)
 
 
 def _parse(job_specification_file: str) -> Dict:
@@ -98,20 +105,25 @@ def main(argv: List[str]) -> None:
             if isinstance(result, ImageCollection):
                 format_options = job_specification.get('output', {})
                 result.download(output_file, bbox="", time="", **format_options)
+                _add_permissions(output_file, stat.S_IWGRP)
                 logger.info("wrote image collection to %s" % output_file)
             elif isinstance(result, ImageCollectionResult):
                 result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
+                _add_permissions(output_file, stat.S_IWGRP)
                 logger.info("wrote image collection to %s" % output_file)
             elif isinstance(result, JSONResult):
                 with open(output_file, 'w') as f:
                     json.dump(result.prepare_for_json(), f)
+                _add_permissions(output_file, stat.S_IWGRP)
                 logger.info("wrote JSON result to %s" % output_file)
             elif isinstance(result, MultipleFilesResult):
                 result.reduce(output_file, delete_originals=True)
+                _add_permissions(output_file, stat.S_IWGRP)
                 logger.info("reduced %d files to %s" % (len(result.files), output_file))
             else:
                 with open(output_file, 'w') as f:
                     json.dump(result, f)
+                _add_permissions(output_file, stat.S_IWGRP)
                 logger.info("wrote JSON result to %s" % output_file)
     except Exception as e:
         logger.exception("error processing batch job")

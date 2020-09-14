@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from typing import List
+from shapely.geometry import box
 
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.metadata import CollectionMetadata
@@ -15,6 +16,7 @@ from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
+from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = CollectionMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-        postprocessing_band_graph = metadata.get("_vito","postprocessing_bands", default=None)
+        postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
         import geopyspark as gps
@@ -52,9 +54,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         srs = viewing_parameters.get("srs", None)
 
         if isinstance(srs, int):
-            srs = 'EPSG:%s'%srs
+            srs = 'EPSG:%s' % srs
         if srs == None:
-            srs='EPSG:4326'
+            srs = 'EPSG:4326'
 
         bands = viewing_parameters.get("bands", None)
         if bands:
@@ -76,7 +78,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
-        elif ConfigParams().require_bounds:
+        elif viewing_parameters.get('require_bounds', False):
             raise ProcessGraphComplexityException
         else:
             srs = "EPSG:4326"
@@ -96,7 +98,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             if polygons:
                 projected_polygons = to_projected_polygons(jvm, polygons)
-                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
+                return pyramidFactory.pyramid_seq(accumulo_layer_name, projected_polygons.polygons(),
+                                                  projected_polygons.crs(), from_date, to_date)
             else:
                 return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
@@ -125,6 +128,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_s2_pyramid():
             return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
+
+        def file_probav_pyramid():
+            return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(layer_source_info.get('root_path')) \
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_pyramid(pyramid_factory):
             oscars_collection_id = layer_source_info['oscars_collection_id']
@@ -156,24 +163,40 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         if argument_id in ['x', 'y']:
                             self.property_value = value
 
-                predicate = condition['process_graph']
-                property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
+                if isinstance(condition, dict) and 'process_graph' in condition:
+                    predicate = condition['process_graph']
+                    property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
+                    return property_value
+                else:
+                    return condition
 
-                return property_value
-
-            properties = viewing_parameters.get('properties', {})
+            layer_properties = metadata.get("_vito", "properties", default={})
+            custom_properties = viewing_parameters.get('properties', {})
 
             metadata_properties = {property_name: extract_literal_match(condition)
-                                   for property_name, condition in properties.items()}
+                                   for property_name, condition in {**layer_properties, **custom_properties}.items()}
+
+            # feature flag for EP-3556
+            native_utm = custom_properties.get('native_utm', False)
 
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
-            if polygons:
-                projected_polygons = to_projected_polygons(jvm, polygons)
-                return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date, metadata_properties)
+            if native_utm:
+                target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
+                if not polygons:
+                    projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent,srs)
+                else:
+                    projected_polygons = to_projected_polygons(jvm, polygons)
+                projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,target_epsg_code)
+                return factory.datacube(projected_polygons, from_date, to_date, metadata_properties)
             else:
-                return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
+                if polygons:
+                    projected_polygons = to_projected_polygons(jvm, polygons)
+                    return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
+                                               to_date, metadata_properties)
+                else:
+                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
@@ -220,6 +243,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_s2_radiometry_pyramid()
         elif layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
+        elif layer_source_type == 'file-probav':
+            pyramid = file_probav_pyramid()
         elif layer_source_type == 'geotiff':
             pyramid = geotiff_pyramid()
         elif layer_source_type == 'file-s1-coherence':
@@ -240,16 +265,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
 
-        levels = {
-            pyramid.apply(index)._1(): TiledRasterLayer(
-                LayerType.SPACETIME,
-                temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
-            )
-            for index in range(0, pyramid.size())
-        }
+        # feature flag for EP-3556
+        native_utm = viewing_parameters.get('properties', {}).get('native_utm', False)
+
+        if native_utm:
+            levels = {0:TiledRasterLayer(
+                    LayerType.SPACETIME,
+                    temporal_tiled_raster_layer(option.apply(0), pyramid)
+                )}
+        else:
+            levels = {
+                pyramid.apply(index)._1(): TiledRasterLayer(
+                    LayerType.SPACETIME,
+                    temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
+                )
+                for index in range(0, pyramid.size())
+            }
         if viewing_parameters.get('pyramid_levels', 'all') != 'all':
             max_zoom = max(levels.keys())
-            levels= {max_zoom:levels[max_zoom]}
+            levels = {max_zoom: levels[max_zoom]}
 
         image_collection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid(levels),
@@ -257,7 +291,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata=metadata
         )
 
-        if(postprocessing_band_graph!=None):
+        if (postprocessing_band_graph != None):
             from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
             visitor = GeotrellisTileProcessGraphVisitor()
             image_collection = image_collection.reduce_bands(visitor.accept_process_graph(postprocessing_band_graph))

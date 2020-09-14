@@ -1,5 +1,5 @@
 import datetime
-from unittest import TestCase
+from unittest import TestCase, skip
 
 import geopyspark as gps
 import numpy as np
@@ -86,13 +86,15 @@ class TestViewing(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
+    @skip("currently unused")
     def test_viewing(self):
         geotrellis_layer = self.create_spacetime_layer()
         imagecollection = GeotrellisTimeSeriesImageCollection(
             pyramid=gps.Pyramid({0: geotrellis_layer}),
             service_registry=InMemoryServiceRegistry()
         )
-        metadata = imagecollection.tiled_viewing_service(service_type="TMS", process_graph={})
+        metadata = imagecollection.tiled_viewing_service(user_id='u9876', service_id='s1234', service_type="TMS",
+                                                         api_version='0.4.0', process_graph={}).service_metadata
         print(metadata)
         assert metadata.type == "TMS"
         assert isinstance(metadata.attributes["bounds"], dict)
