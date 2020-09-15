@@ -130,7 +130,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
 
         def file_probav_pyramid():
-            return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(layer_source_info.get('root_path')) \
+            return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
+                layer_source_info.get('oscars_collection_id'), layer_source_info.get('root_path')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_pyramid(pyramid_factory):
