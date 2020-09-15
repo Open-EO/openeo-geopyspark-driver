@@ -51,6 +51,7 @@ _log = logging.getLogger(__name__)
 
 class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
+    # TODO: no longer dependent on ServiceRegistry so it can be removed
     def __init__(self, pyramid: Pyramid, service_registry: AbstractServiceRegistry, metadata: CollectionMetadata = None):
         super().__init__(metadata=metadata)
         self.pyramid = pyramid
