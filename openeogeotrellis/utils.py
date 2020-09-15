@@ -15,6 +15,8 @@ from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 from kazoo.client import KazooClient
 from .configparams import ConfigParams
 
+from openeo_driver.delayed_vector import DelayedVector
+
 logger = logging.getLogger("openeo")
 
 def log_memory(function):
@@ -130,6 +132,8 @@ def to_projected_polygons(jvm, *args):
     if len(args) == 1 and isinstance(args[0], (str, Path)):
         # Vector file
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
+    elif len(args) == 1 and isinstance(args[0], DelayedVector):
+        return to_projected_polygons(jvm, args[0].path)
     elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
         # Multiple polygons
         polygon_wkts = [str(x) for x in args[0]]

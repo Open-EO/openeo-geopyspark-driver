@@ -6,6 +6,7 @@ import stat
 import sys
 from pathlib import Path
 from typing import Dict, List
+from openeo.util import Rfc3339
 
 from openeo import ImageCollection
 from openeo.util import TimingLogger, ensure_dir
@@ -30,7 +31,7 @@ def _setup_app_logging() -> None:
     logger.addHandler(console_handler)
 
 
-def _setup_user_logging(log_file: str) -> None:
+def _setup_user_logging(log_file: Path) -> None:
     file_handler = logging.FileHandler(log_file, mode='w')
     file_handler.setLevel(logging.ERROR)
 
@@ -48,7 +49,7 @@ def _create_job_dir(job_dir: Path):
 
 
 def _add_permissions(path, mode: int):
-    # TODO: maybe umask is a better/cleaner option
+    # FIXME: maybe umask is a better/cleaner option
     current_permission_bits = os.stat(path).st_mode
     os.chmod(path, current_permission_bits | mode)
 
@@ -60,19 +61,64 @@ def _parse(job_specification_file: str) -> Dict:
     return job_specification
 
 
+def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> None:
+    from openeo_driver.delayed_vector import DelayedVector
+    from shapely.geometry import mapping
+    from shapely.geometry.base import BaseGeometry
+    from shapely.geometry.polygon import Polygon
+
+    rfc3339 = Rfc3339(propagate_none=True)
+
+    polygons = viewing_parameters.get('polygons')
+
+    if isinstance(polygons, BaseGeometry):
+        bbox = polygons.bounds
+        geometry = polygons
+    elif isinstance(polygons, DelayedVector):  # intentionally don't return the complete vector file
+        bbox = polygons.bounds
+        geometry = Polygon.from_bounds(*bbox)
+    else:
+        left, bottom, right, top = (viewing_parameters.get('left'), viewing_parameters.get('bottom'), viewing_parameters.get('right'),
+                viewing_parameters.get('top'))
+
+        bbox = (left, bottom, right, top) if left and bottom and right and top else None
+        geometry = Polygon.from_bounds(*bbox) if bbox else None
+
+    start_date = viewing_parameters.get('from')
+    end_date = viewing_parameters.get('to')
+
+    metadata = {  # FIXME: dedicated type?
+        'geometry': mapping(geometry),
+        'bbox': bbox,
+        'start_datetime': rfc3339.datetime(start_date),
+        'end_datetime': rfc3339.datetime(end_date)
+    }
+
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f)
+
+    _add_permissions(metadata_file, stat.S_IWGRP)
+
+
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
 
-    if len(argv) < 4:
-        print("usage: %s <job specification input file> <results output file> <user log file> [api version]" % argv[0],
+    if len(argv) < 6:
+        print("usage: %s "
+              "<job specification input file> <job directory> <results output file name> <user log file name> "
+              "<metadata file name> [api version]" % argv[0],
               file=sys.stderr)
         exit(1)
 
-    job_specification_file, output_file, log_file = argv[1], argv[2], argv[3]
-    api_version = argv[4] if len(argv) == 5 else None
+    job_specification_file = argv[1]
+    job_dir = Path(argv[2])
+    output_file = str(job_dir / argv[3])
+    log_file = job_dir / argv[4]
+    metadata_file = job_dir / argv[5]
+    api_version = argv[6] if len(argv) == 7 else None
 
-    _create_job_dir(Path(output_file).parent)
+    _create_job_dir(job_dir)
 
     _setup_user_logging(log_file)
 
@@ -96,6 +142,8 @@ def main(argv: List[str]) -> None:
             kerberos()
             result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
             logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
+
+            _export_result_metadata(viewing_parameters, metadata_file)
 
             if isinstance(result, DelayedVector):
                 from shapely.geometry import mapping

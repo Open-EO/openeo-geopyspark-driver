@@ -67,7 +67,11 @@ class JobRegistry:
             started=map_safe("started", rfc3339.parse_datetime),
             finished=map_safe("finished", rfc3339.parse_datetime),
             memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
-            cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds))
+            cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
+            geometry=job_info.get("geometry"),
+            bbox=job_info.get("bbox"),
+            start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
+            end_datetime=map_safe("end_datetime", rfc3339.parse_datetime)
         )
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:

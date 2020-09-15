@@ -1,7 +1,7 @@
 import logging
 import subprocess
 from subprocess import CalledProcessError
-import re
+import json
 from typing import Callable, Union
 import traceback
 import sys
@@ -12,6 +12,7 @@ from openeo.util import date_to_rfc3339
 import re
 
 from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.backend import GpsBatchJobs
 
 _log = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class JobTracker:
         self._principal = principal
         self._keytab = keytab
         self._track_interval = 60  # seconds
+        self._batch_jobs = GpsBatchJobs()
 
     def update_statuses(self) -> None:
         try:
@@ -70,6 +72,9 @@ class JobTracker:
                                         print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
                                     if final_state != "UNDEFINED":
+                                        result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                        registry.patch(job_id, user_id, **result_metadata)
+
                                         registry.mark_done(job_id, user_id)
                                         print("marked %s as done" % job_id)
                                 except JobTracker._UnknownApplicationIdException:

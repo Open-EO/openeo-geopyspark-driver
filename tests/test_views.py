@@ -243,14 +243,18 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_output = (tmp_path / job_id / "out")
-            job_log = (tmp_path / job_id / "log")
+            job_dir = (tmp_path / job_id)
+            job_output = (job_dir / "out")
+            job_log = (job_dir / "log")
+            job_metadata = (job_dir / "metadata")
             assert batch_job_args[2].endswith(".in")
-            assert batch_job_args[3] == str(job_output)
-            assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == TEST_USER
-            assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['12G', '2G', '2G', '5', '2','2G', 'default']
+            assert batch_job_args[3] == str(job_dir)
+            assert batch_job_args[4] == job_output.name
+            assert batch_job_args[5] == job_log.name
+            assert batch_job_args[6] == job_metadata.name
+            assert batch_job_args[9] == TEST_USER
+            assert batch_job_args[10] == api.api_version
+            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2','2G', 'default']
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -334,14 +338,18 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_output = (tmp_path / job_id / "out")
-            job_log = (tmp_path / job_id / "log")
+            job_dir = (tmp_path / job_id)
+            job_output = (job_dir / "out")
+            job_log = (job_dir / "log")
+            job_metadata = (job_dir / "metadata")
             assert batch_job_args[2].endswith(".in")
-            assert batch_job_args[3] == str(job_output)
-            assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == TEST_USER
-            assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue']
+            assert batch_job_args[3] == str(job_dir)
+            assert batch_job_args[4] == job_output.name
+            assert batch_job_args[5] == job_log.name
+            assert batch_job_args[6] == job_metadata.name
+            assert batch_job_args[9] == TEST_USER
+            assert batch_job_args[10] == api.api_version
+            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:

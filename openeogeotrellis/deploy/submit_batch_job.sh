@@ -23,19 +23,21 @@ fi
 
 jobName=$1
 processGraphFile=$2
-outputFile=$3
-userLogFile=$4
-principal=$5
-keyTab=$6
-openEoUser=$7
-apiVersion=$8
-drivermemory=${9-22G}
-executormemory=${10-4G}
-executormemoryoverhead=${11-2G}
-drivercores=${12-14}
-executorcores=${13-2}
-drivermemoryoverhead=${14-8G}
-queue=${15-default}
+outputDir=$3
+outputFileName=$4
+userLogFileName=$5
+metadataFileName=$6
+principal=$7
+keyTab=$8
+openEoUser=$9
+apiVersion=${10}
+drivermemory=${11-22G}
+executormemory=${12-4G}
+executormemoryoverhead=${13-2G}
+drivercores=${14-14}
+executorcores=${15-2}
+drivermemoryoverhead=${16-8G}
+queue=${17-default}
 
 pysparkPython="venv/bin/python"
 
@@ -109,4 +111,4 @@ spark-submit \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${userLogFile}" "${apiVersion}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}"

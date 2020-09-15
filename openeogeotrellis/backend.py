@@ -423,11 +423,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
             kerberos()
 
-            output_dir = self._get_job_output_dir(job_id)
-            # TODO: how support multiple output files?
-            output_file = output_dir / "out"
-            log_file = output_dir / "log"
-
             conf = SparkContext.getOrCreate().getConf()
             principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
@@ -444,8 +439,10 @@ class GpsBatchJobs(backend.BatchJobs):
                 args = [script_location,
                         "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
                         temp_input_file.name,
-                        str(output_file),
-                        str(log_file)]
+                        str(self._get_job_output_dir(job_id)),
+                        "out",  # TODO: how support multiple output files?
+                        "log",
+                        "metadata"]
 
                 if principal is not None and key_tab is not None:
                     args.append(principal)
@@ -506,6 +503,17 @@ class GpsBatchJobs(backend.BatchJobs):
         return {
             "out": str(self._get_job_output_dir(job_id=job_id))
         }
+
+    def get_results_metadata(self, job_id: str, user_id: str) -> dict:
+        metadata_file = self._get_job_output_dir(job_id) / "metadata"
+
+        try:
+            with open(metadata_file) as f:
+                return json.load(f)
+        except FileNotFoundError:
+            logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True)
+
+        return {}
 
     def get_log_entries(self, job_id: str, user_id: str, offset: str) -> List[dict]:
         # will throw if job doesn't match user
