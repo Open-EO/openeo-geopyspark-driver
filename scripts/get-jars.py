@@ -42,7 +42,7 @@ def main():
 
     download_jar(
         jar_dir,
-        "https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.3.0-SNAPSHOT/geotrellis-extensions-1.3.0-SNAPSHOT.jar"
+        "https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.4.0-SNAPSHOT/geotrellis-extensions-1.4.0-SNAPSHOT.jar"
     )
     download_jar(
         jar_dir,
