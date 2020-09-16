@@ -51,7 +51,8 @@ setup(
         'flask-cors',
         'rasterio==1.1.1',
         'pydantic',
-        'h5netcdf'
+        'h5netcdf',
+        'requests==2.24'
     ],
     extras_require={
         "dev": tests_require,

@@ -17,6 +17,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
+from openeogeotrellis.oscars import Oscars
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +306,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return image_collection
 
 
-def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
@@ -324,24 +325,28 @@ def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPy
 
         local_metadata = list(metadata_by_layer_id.values())
 
-    oscars_collection_ids = \
-        {layer_id: collection_id for layer_id, collection_id in
-         {l["id"]: l.get("_vito", {}).get("data_source", {}).get("oscars_collection_id") for l in local_metadata}.items()
-         if collection_id}
+    if oscars:
+        oscars_collection_ids = \
+            {layer_id: collection_id for layer_id, collection_id in
+             {l["id"]: l.get("_vito", {}).get("data_source", {}).get("oscars_collection_id") for l in local_metadata}.items()
+             if collection_id}
 
-    def derive_from_oscars_collection_metadata(collection_id: str) -> dict:
-        return {
-            "title": "FIXME {id}".format(id=collection_id),
-            "description": "???",
-            "license": "???",
-            "extent": {
-                "spatial": "???"
-            },
-            "links": "???"
-        }
+        oscars_collections = oscars.get_collections()
 
-    oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
-                                   for layer_id, collection_id in oscars_collection_ids.items()}
+        def derive_from_oscars_collection_metadata(collection_id: str) -> dict:
+            collection = next((c for c in oscars_collections if c["id"] == collection_id), None)
+
+            if not collection:
+                raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
+
+            return {
+                "title": collection["properties"]["title"]
+            }
+
+        oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
+                                       for layer_id, collection_id in oscars_collection_ids.items()}
+    else:
+        oscars_metadata_by_layer_id = {}
 
     local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
 
@@ -352,5 +357,5 @@ def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPy
     return GeoPySparkLayerCatalog(
         all_metadata=
         list(dict_merge_recursive(oscars_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
-        service_registry=service_registry or InMemoryServiceRegistry()
+        service_registry=None
     )

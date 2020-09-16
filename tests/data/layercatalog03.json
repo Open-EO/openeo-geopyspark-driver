@@ -1,7 +1,7 @@
 [
   {
     "id": "XIP",
-    "title": "title",
+    "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
     "_vito": {
       "data_source": {
         "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"

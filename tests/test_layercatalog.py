@@ -6,6 +6,7 @@ import schema
 
 from openeo.util import deep_get
 from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.oscars import Oscars
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -80,23 +81,27 @@ def test_get_layer_catalog_from_oscars():
             "tests/data/layercatalog03.json"
         ]
 
-        all_metadata = get_layer_catalog().get_all_metadata()
+        oscars = mock.MagicMock()
+        oscars.get_collections.return_value = [
+            {
+                "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                "properties": {
+                    "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products"
+                }
+            }
+        ]
+
+        all_metadata = get_layer_catalog(oscars).get_all_metadata()
 
     assert all_metadata == [
         {
             "id": "XIP",
-            "title": "title",
+            "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
             "_vito": {
                 "data_source": {
                     "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
                 }
-            },
-            "description": "???",
-            "license": "???",
-            "extent": {
-                "spatial": "???"
-            },
-            "links": "???"
+            }
         },
         {
             "id": "FOO",
