@@ -341,7 +341,12 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
 
             return {
                 "title": collection["properties"]["title"],
-                "description": collection["properties"]["abstract"]
+                "description": collection["properties"]["abstract"],
+                "extent": {
+                    "spatial": {
+                        "bbox": [collection["bbox"]]
+                    }
+                }
             }
 
         oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)

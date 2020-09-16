@@ -85,6 +85,7 @@ def test_get_layer_catalog_from_oscars():
         oscars.get_collections.return_value = [
             {
                 "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                "bbox": [-1.05893, 47.66031, 11.6781, 53.67487],
                 "properties": {
                     "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
                     "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by "
@@ -105,7 +106,12 @@ def test_get_layer_catalog_from_oscars():
             },
             "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
             "description": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 "
-                           "is reflected back to the sensor..."
+                           "is reflected back to the sensor...",
+            "extent": {
+                "spatial": {
+                    "bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]
+                },
+            }
         },
         {
             "id": "FOO",
