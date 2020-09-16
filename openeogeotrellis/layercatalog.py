@@ -340,7 +340,8 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                 raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
 
             return {
-                "title": collection["properties"]["title"]
+                "title": collection["properties"]["title"],
+                "description": collection["properties"]["abstract"]
             }
 
         oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)

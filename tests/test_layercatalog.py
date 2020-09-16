@@ -86,7 +86,9 @@ def test_get_layer_catalog_from_oscars():
             {
                 "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
                 "properties": {
-                    "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products"
+                    "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
+                    "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by "
+                                "Sentinel-1 is reflected back to the sensor..."
                 }
             }
         ]
@@ -96,12 +98,14 @@ def test_get_layer_catalog_from_oscars():
     assert all_metadata == [
         {
             "id": "XIP",
-            "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
             "_vito": {
                 "data_source": {
                     "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
                 }
-            }
+            },
+            "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
+            "description": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 "
+                           "is reflected back to the sensor..."
         },
         {
             "id": "FOO",
