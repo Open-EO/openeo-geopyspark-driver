@@ -70,3 +70,52 @@ def skip_sentinelhub_layer():
     viewingParameters["bottom"] = 50.0
     viewingParameters["srs"] = "EPSG:4326"
     datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
+
+
+def test_get_layer_catalog_from_oscars():
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "tests/data/layercatalog01.json",
+            "tests/data/layercatalog02.json",
+            "tests/data/layercatalog03.json"
+        ]
+
+        all_metadata = get_layer_catalog().get_all_metadata()
+
+    assert all_metadata == [
+        {
+            "id": "XIP",
+            "title": "title",
+            "_vito": {
+                "data_source": {
+                    "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+                }
+            },
+            "description": "???",
+            "license": "???",
+            "extent": {
+                "spatial": "???"
+            },
+            "links": "???"
+        },
+        {
+            "id": "FOO",
+            "license": "apache",
+            "links": [
+                "example.com/foo"
+            ]
+        },
+        {
+            "id": "BAR",
+            "description": "The BAR layer",
+            "links": [
+                "example.com/bar"
+            ]
+        },
+        {
+            "id": "BZZ"
+        },
+        {
+            "id": "QUU"
+        }
+    ]

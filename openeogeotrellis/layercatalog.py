@@ -311,17 +311,46 @@ def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPy
     """
     catalog_files = ConfigParams().layer_catalog_metadata_files
     logger.info("Reading layer catalog metadata from {f!r}".format(f=catalog_files[0]))
-    metadata = read_json(catalog_files[0])
+    local_metadata = read_json(catalog_files[0])
+
     if len(catalog_files) > 1:
-        # Merge metadata recursively
-        metadata = {l["id"]: l for l in metadata}
+        # Merge local metadata recursively
+        metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
+
         for path in catalog_files[1:]:
             logger.info("Updating layer catalog metadata from {f!r}".format(f=path))
-            updates = {l["id"]: l for l in read_json(path)}
-            metadata = dict_merge_recursive(metadata, updates, overwrite=True)
-        metadata = list(metadata.values())
+            updates_by_layer_id = {layer["id"]: layer for layer in read_json(path)}
+            metadata_by_layer_id = dict_merge_recursive(metadata_by_layer_id, updates_by_layer_id, overwrite=True)
+
+        local_metadata = list(metadata_by_layer_id.values())
+
+    oscars_collection_ids = \
+        {layer_id: collection_id for layer_id, collection_id in
+         {l["id"]: l.get("_vito", {}).get("data_source", {}).get("oscars_collection_id") for l in local_metadata}.items()
+         if collection_id}
+
+    def derive_from_oscars_collection_metadata(collection_id: str) -> dict:
+        return {
+            "title": "FIXME {id}".format(id=collection_id),
+            "description": "???",
+            "license": "???",
+            "extent": {
+                "spatial": "???"
+            },
+            "links": "???"
+        }
+
+    oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
+                                   for layer_id, collection_id in oscars_collection_ids.items()}
+
+    local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
+
+    # extract OSCARS collection ids from local_metadata
+    # fetch corresponding collections from OSCARS and transform their metadata to something that looks like local_metadata
+    # override OSCARS metadata with local metadata
 
     return GeoPySparkLayerCatalog(
-        all_metadata=metadata,
+        all_metadata=
+        list(dict_merge_recursive(oscars_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
         service_registry=service_registry or InMemoryServiceRegistry()
     )

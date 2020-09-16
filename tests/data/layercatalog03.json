@@ -1,0 +1,11 @@
+[
+  {
+    "id": "XIP",
+    "title": "title",
+    "_vito": {
+      "data_source": {
+        "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+      }
+    }
+  }
+]
