@@ -229,11 +229,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository()
         )
 
-        oscars = OscarsClient(ConfigParams().oscars_endpoint)
+        oscars_endpoint = ConfigParams().oscars_endpoint
 
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
-            catalog=get_layer_catalog(oscars),
+            catalog=get_layer_catalog(oscars=OscarsClient(oscars_endpoint) if oscars_endpoint else None),
             batch_jobs=GpsBatchJobs(),
             user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )
