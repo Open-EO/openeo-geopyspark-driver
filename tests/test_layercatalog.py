@@ -89,7 +89,16 @@ def test_get_layer_catalog_from_oscars():
                 "properties": {
                     "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
                     "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by "
-                                "Sentinel-1 is reflected back to the sensor..."
+                                "Sentinel-1 is reflected back to the sensor...",
+                    "links": {
+                        "describedby": [
+                            {
+                                "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
+                                "type": "text/html",
+                                "title": "Online User Documentation"
+                            }
+                        ]
+                    }
                 }
             }
         ]
@@ -111,7 +120,14 @@ def test_get_layer_catalog_from_oscars():
                 "spatial": {
                     "bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]
                 },
-            }
+            },
+            "links": [
+                {
+                    "rel": "alternate",
+                    "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
+                    "title": "Online User Documentation"
+                }
+            ]
         },
         {
             "id": "FOO",

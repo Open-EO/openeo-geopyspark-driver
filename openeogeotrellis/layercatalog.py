@@ -339,6 +339,13 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
             if not collection:
                 raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
 
+            def transform_link(oscars_link: dict) -> dict:
+                return {
+                    "rel": "alternate",
+                    "href": oscars_link["href"],
+                    "title": oscars_link["title"]
+                }
+
             return {
                 "title": collection["properties"]["title"],
                 "description": collection["properties"]["abstract"],
@@ -346,7 +353,8 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                     "spatial": {
                         "bbox": [collection["bbox"]]
                     }
-                }
+                },
+                "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]]
             }
 
         oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
