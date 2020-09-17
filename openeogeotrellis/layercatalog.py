@@ -346,6 +346,24 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                     "title": oscars_link["title"]
                 }
 
+            def search_link(oscars_link: dict) -> dict:
+                from urllib.parse import urlparse, urlunparse
+
+                def replace_endpoint(url: str) -> str:
+                    components = urlparse(url)
+
+                    return urlunparse(components._replace(
+                        scheme="https",
+                        netloc="services.terrascope.be",
+                        path="/catalogue" + components.path
+                    ))
+
+                return {
+                    "rel": "alternate",
+                    "href": replace_endpoint(oscars_link["href"]),
+                    "title": oscars_link["title"]
+                }
+
             return {
                 "title": collection["properties"]["title"],
                 "description": collection["properties"]["abstract"],
@@ -354,7 +372,8 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                         "bbox": [collection["bbox"]]
                     }
                 },
-                "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]]
+                "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]] +
+                         [search_link(l) for l in collection["properties"]["links"]["search"]]
             }
 
         oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
@@ -363,10 +382,6 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
         oscars_metadata_by_layer_id = {}
 
     local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
-
-    # extract OSCARS collection ids from local_metadata
-    # fetch corresponding collections from OSCARS and transform their metadata to something that looks like local_metadata
-    # override OSCARS metadata with local metadata
 
     return GeoPySparkLayerCatalog(
         all_metadata=

@@ -97,6 +97,13 @@ def test_get_layer_catalog_from_oscars():
                                 "type": "text/html",
                                 "title": "Online User Documentation"
                             }
+                        ],
+                        "search": [
+                            {
+                                "href": "http://oscars-01.vgt.vito.be:8080/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                                "type": "application/geo+json",
+                                "title": "OpenSearch entry point"
+                            }
                         ]
                     }
                 }
@@ -126,6 +133,11 @@ def test_get_layer_catalog_from_oscars():
                     "rel": "alternate",
                     "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
                     "title": "Online User Documentation"
+                },
+                {
+                    "rel": "alternate",
+                    "href": "https://services.terrascope.be/catalogue/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                    "title": "OpenSearch entry point"
                 }
             ]
         },
