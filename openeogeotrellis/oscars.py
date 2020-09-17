@@ -17,6 +17,12 @@ class OscarsClient(Oscars):
         resp = requests.get(url=self.endpoint + "/collections")
         return resp.json()["features"]
 
+    def __repr__(self):
+        return "%s(%r)" % (self.__class__.__name__, self.endpoint)
+
+    def __str__(self):
+        return self.endpoint
+
 
 if __name__ == '__main__':
     oscars = OscarsClient("http://oscars-dev.vgt.vito.be")

@@ -326,6 +326,8 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
         local_metadata = list(metadata_by_layer_id.values())
 
     if oscars:
+        logger.info("Updating layer catalog metadata from {o!r}".format(o=oscars))
+
         oscars_collection_ids = \
             {layer_id: collection_id for layer_id, collection_id in
              {l["id"]: l.get("_vito", {}).get("data_source", {}).get("oscars_collection_id") for l in local_metadata}.items()
