@@ -6,7 +6,6 @@ import schema
 
 from openeo.util import deep_get
 from openeogeotrellis.layercatalog import get_layer_catalog
-from openeogeotrellis.oscars import Oscars
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -109,7 +108,15 @@ def test_get_layer_catalog_from_oscars():
                                 "title": "OpenSearch entry point"
                             }
                         ]
-                    }
+                    },
+                    "acquisitionInformation": [
+                        {
+                            "acquisitionParameters": {"beginningDateTime": "2014-10-23T00:00:00Z"}
+                        },
+                        {
+                            "acquisitionParameters": {"beginningDateTime": "2014-10-24T00:00:00Z"}
+                        }
+                    ]
                 }
             }
         ]
@@ -129,7 +136,7 @@ def test_get_layer_catalog_from_oscars():
                            "is reflected back to the sensor...",
             "extent": {
                 "spatial": {"bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]},
-                "temporal": {"interval": [["2015-07-06", None]]}
+                "temporal": {"interval": [["2014-10-23", None]]}
             },
             "links": [
                 {

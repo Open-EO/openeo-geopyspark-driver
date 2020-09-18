@@ -6,9 +6,6 @@
       "data_source": {
         "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
       }
-    },
-    "extent": {
-      "temporal": {"interval": [["2015-07-06", null]]}
     }
   }
 ]
