@@ -128,9 +128,8 @@ def test_get_layer_catalog_from_oscars():
             "description": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 "
                            "is reflected back to the sensor...",
             "extent": {
-                "spatial": {
-                    "bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]
-                },
+                "spatial": {"bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]},
+                "temporal": {"interval": [["2015-07-06", None]]}
             },
             "links": [
                 {
