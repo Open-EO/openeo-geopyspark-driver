@@ -387,6 +387,8 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
 
             earliest_start_date, latest_end_date = date_bounds()
 
+            bands = collection["properties"]["bands"]
+
             return {
                 "title": collection["properties"]["title"],
                 "description": collection["properties"]["abstract"],
@@ -397,7 +399,16 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                     ]}
                 },
                 "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]] +
-                         [search_link(l) for l in collection["properties"]["links"]["search"]]
+                         [search_link(l) for l in collection["properties"]["links"]["search"]],
+                "cube:dimensions": {
+                    "bands": {
+                        "type": "bands",
+                        "values": [band["title"] for band in bands]
+                    }
+                },
+                "summaries": {
+                    "eo:bands": bands
+                }
             }
 
         oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)

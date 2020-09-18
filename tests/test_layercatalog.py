@@ -116,6 +116,15 @@ def test_get_layer_catalog_from_oscars():
                         {
                             "acquisitionParameters": {"beginningDateTime": "2014-10-24T00:00:00Z"}
                         }
+                    ],
+                    "bands": [
+                        {
+                            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+                            "type": "VH",
+                            "title": "VH",
+                            "resolution": 10,
+                            "bitPerValue": 32
+                        }
                     ]
                 }
             }
@@ -153,7 +162,27 @@ def test_get_layer_catalog_from_oscars():
                     "href": "https://services.terrascope.be/catalogue/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
                     "title": "OpenSearch entry point"
                 }
-            ]
+            ],
+            "cube:dimensions": {
+              "x": {"type": "spatial", "axis": "x"},
+              "y": {"type": "spatial", "axis": "y"},
+              "t": {"type": "temporal"},
+              "bands": {
+                "type": "bands",
+                "values": ["VH"]
+              }
+            },
+            "summaries": {
+                "eo:bands": [
+                    {
+                        "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+                        "type": "VH",
+                        "title": "VH",
+                        "resolution": 10,
+                        "bitPerValue": 32
+                    }
+                ]
+            }
         },
         {
             "id": "FOO",
