@@ -387,7 +387,7 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
 
             earliest_start_date, latest_end_date = date_bounds()
 
-            bands = collection["properties"]["bands"]
+            bands = collection["properties"].get("bands")
 
             return {
                 "title": collection["properties"]["title"],
@@ -403,7 +403,7 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                 "cube:dimensions": {
                     "bands": {
                         "type": "bands",
-                        "values": [band["title"] for band in bands]
+                        "values": [band["title"] for band in bands] if bands else None
                     }
                 },
                 "summaries": {
