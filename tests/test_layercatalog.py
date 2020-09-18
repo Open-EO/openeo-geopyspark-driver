@@ -96,6 +96,10 @@ def test_get_layer_catalog_from_oscars():
                                 "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
                                 "type": "text/html",
                                 "title": "Online User Documentation"
+                            },
+                            {
+                                "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                                "type": "text/html"
                             }
                         ],
                         "search": [
@@ -133,6 +137,10 @@ def test_get_layer_catalog_from_oscars():
                     "rel": "alternate",
                     "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
                     "title": "Online User Documentation"
+                },
+                {
+                    "rel": "alternate",
+                    "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
                 },
                 {
                     "rel": "alternate",
