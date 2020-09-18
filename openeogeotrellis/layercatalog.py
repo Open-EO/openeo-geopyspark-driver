@@ -5,7 +5,7 @@ from shapely.geometry import box
 
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.metadata import CollectionMetadata
-from openeo.util import TimingLogger
+from openeo.util import TimingLogger, dict_no_none
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
@@ -325,6 +325,7 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
 
         local_metadata = list(metadata_by_layer_id.values())
 
+    # TODO: extract this into its own function
     if oscars:
         logger.info("Updating layer catalog metadata from {o!r}".format(o=oscars))
 
@@ -342,11 +343,11 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                 raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
 
             def transform_link(oscars_link: dict) -> dict:
-                return {
-                    "rel": "alternate",
-                    "href": oscars_link["href"],
-                    "title": oscars_link["title"]
-                }
+                return dict_no_none(
+                    rel="alternate",
+                    href=oscars_link["href"],
+                    title=oscars_link.get("title")
+                )
 
             def search_link(oscars_link: dict) -> dict:
                 from urllib.parse import urlparse, urlunparse
@@ -360,11 +361,11 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                         path="/catalogue" + components.path
                     ))
 
-                return {
-                    "rel": "alternate",
-                    "href": replace_endpoint(oscars_link["href"]),
-                    "title": oscars_link["title"]
-                }
+                return dict_no_none(
+                    rel="alternate",
+                    href=replace_endpoint(oscars_link["href"]),
+                    title=oscars_link.get("title")
+                )
 
             return {
                 "title": collection["properties"]["title"],
