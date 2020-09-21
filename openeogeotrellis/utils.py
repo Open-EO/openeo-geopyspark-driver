@@ -20,15 +20,15 @@ from openeo_driver.delayed_vector import DelayedVector
 logger = logging.getLogger("openeo")
 
 def log_memory(function):
-    def memory_logging_wrapper(x):
+    def memory_logging_wrapper(*args, **kwargs):
         try:
             from spark_memlogger import memlogger
         except ImportError:
-            return function(x)
+            return function(*args, **kwargs)
         ml = memlogger.MemLogger(5)
         try:
             ml.start()
-            return function(x)
+            return function(*args, **kwargs)
         finally:
             ml.stop()
 
