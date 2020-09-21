@@ -70,3 +70,139 @@ def skip_sentinelhub_layer():
     viewingParameters["bottom"] = 50.0
     viewingParameters["srs"] = "EPSG:4326"
     datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
+
+
+def test_get_layer_catalog_from_oscars():
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "tests/data/layercatalog01.json",
+            "tests/data/layercatalog02.json",
+            "tests/data/layercatalog03.json"
+        ]
+
+        oscars = mock.MagicMock()
+        oscars.get_collections.return_value = [
+            {
+                "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                "bbox": [-1.05893, 47.66031, 11.6781, 53.67487],
+                "properties": {
+                    "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
+                    "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by "
+                                "Sentinel-1 is reflected back to the sensor...",
+                    "links": {
+                        "describedby": [
+                            {
+                                "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
+                                "type": "text/html",
+                                "title": "Online User Documentation"
+                            },
+                            {
+                                "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                                "type": "text/html"
+                            }
+                        ],
+                        "search": [
+                            {
+                                "href": "http://oscars-01.vgt.vito.be:8080/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                                "type": "application/geo+json",
+                                "title": "OpenSearch entry point"
+                            }
+                        ]
+                    },
+                    "acquisitionInformation": [
+                        {
+                            "acquisitionParameters": {"beginningDateTime": "2014-10-23T00:00:00Z"}
+                        },
+                        {
+                            "acquisitionParameters": {"beginningDateTime": "2014-10-24T00:00:00Z"}
+                        }
+                    ],
+                    "bands": [
+                        {
+                            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+                            "type": "VH",
+                            "title": "VH",
+                            "resolution": 10,
+                            "bitPerValue": 32
+                        }
+                    ]
+                }
+            }
+        ]
+
+        all_metadata = get_layer_catalog(oscars).get_all_metadata()
+
+    assert all_metadata == [
+        {
+            "id": "XIP",
+            "_vito": {
+                "data_source": {
+                    "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+                }
+            },
+            "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
+            "description": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 "
+                           "is reflected back to the sensor...",
+            "extent": {
+                "spatial": {"bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]},
+                "temporal": {"interval": [["2014-10-23", None]]}
+            },
+            "links": [
+                {
+                    "rel": "alternate",
+                    "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
+                    "title": "Online User Documentation"
+                },
+                {
+                    "rel": "alternate",
+                    "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+                },
+                {
+                    "rel": "alternate",
+                    "href": "https://services.terrascope.be/catalogue/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                    "title": "OpenSearch entry point"
+                }
+            ],
+            "cube:dimensions": {
+              "x": {"type": "spatial", "axis": "x"},
+              "y": {"type": "spatial", "axis": "y"},
+              "t": {"type": "temporal"},
+              "bands": {
+                "type": "bands",
+                "values": ["VH"]
+              }
+            },
+            "summaries": {
+                "eo:bands": [
+                    {
+                        "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+                        "type": "VH",
+                        "title": "VH",
+                        "resolution": 10,
+                        "bitPerValue": 32,
+                        "name": "VH"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "FOO",
+            "license": "apache",
+            "links": [
+                "example.com/foo"
+            ]
+        },
+        {
+            "id": "BAR",
+            "description": "The BAR layer",
+            "links": [
+                "example.com/bar"
+            ]
+        },
+        {
+            "id": "BZZ"
+        },
+        {
+            "id": "QUU"
+        }
+    ]
