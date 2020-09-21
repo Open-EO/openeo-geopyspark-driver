@@ -187,7 +187,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 else:
                     projected_polygons = to_projected_polygons(jvm, polygons)
                 projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,target_epsg_code)
-                return factory.datacube(projected_polygons, from_date, to_date, metadata_properties)
+                return factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties)
             else:
                 if polygons:
                     projected_polygons = to_projected_polygons(jvm, polygons)
@@ -263,22 +263,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
 
-        # feature flag for EP-3556
-        native_utm = viewing_parameters.get('properties', {}).get('native_utm', False)
+        levels = {
+            pyramid.apply(index)._1(): TiledRasterLayer(
+                LayerType.SPACETIME,
+                temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
+            )
+            for index in range(0, pyramid.size())
+        }
 
-        if native_utm:
-            levels = {0:TiledRasterLayer(
-                    LayerType.SPACETIME,
-                    temporal_tiled_raster_layer(option.apply(0), pyramid)
-                )}
-        else:
-            levels = {
-                pyramid.apply(index)._1(): TiledRasterLayer(
-                    LayerType.SPACETIME,
-                    temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
-                )
-                for index in range(0, pyramid.size())
-            }
         if viewing_parameters.get('pyramid_levels', 'all') != 'all':
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
