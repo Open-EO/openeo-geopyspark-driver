@@ -16,7 +16,7 @@ from openeo_driver.save_result import ImageCollectionResult, JSONResult, Multipl
 from pyspark import SparkContext
 
 from openeogeotrellis.deploy import load_custom_processes
-from openeogeotrellis.utils import kerberos, describe_path
+from openeogeotrellis.utils import kerberos, describe_path, log_memory
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -99,7 +99,6 @@ def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> No
 
     _add_permissions(metadata_file, stat.S_IWGRP)
 
-
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
@@ -130,53 +129,52 @@ def main(argv: List[str]) -> None:
 
     try:
         job_specification = _parse(job_specification_file)
-        viewing_parameters = {'pyramid_levels': 'highest'}
-        if api_version:
-            viewing_parameters['version']= api_version
-
-        process_graph = job_specification['process_graph']
-
         load_custom_processes(logger)
 
         with SparkContext.getOrCreate():
             kerberos()
-            result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
-            logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
-
-            _export_result_metadata(viewing_parameters, metadata_file)
-
-            if isinstance(result, DelayedVector):
-                from shapely.geometry import mapping
-                geojsons = (mapping(geometry) for geometry in result.geometries)
-                result = JSONResult(geojsons)
-
-            if isinstance(result, ImageCollection):
-                format_options = job_specification.get('output', {})
-                result.download(output_file, bbox="", time="", **format_options)
-                _add_permissions(output_file, stat.S_IWGRP)
-                logger.info("wrote image collection to %s" % output_file)
-            elif isinstance(result, ImageCollectionResult):
-                result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
-                _add_permissions(output_file, stat.S_IWGRP)
-                logger.info("wrote image collection to %s" % output_file)
-            elif isinstance(result, JSONResult):
-                with open(output_file, 'w') as f:
-                    json.dump(result.prepare_for_json(), f)
-                _add_permissions(output_file, stat.S_IWGRP)
-                logger.info("wrote JSON result to %s" % output_file)
-            elif isinstance(result, MultipleFilesResult):
-                result.reduce(output_file, delete_originals=True)
-                _add_permissions(output_file, stat.S_IWGRP)
-                logger.info("reduced %d files to %s" % (len(result.files), output_file))
-            else:
-                with open(output_file, 'w') as f:
-                    json.dump(result, f)
-                _add_permissions(output_file, stat.S_IWGRP)
-                logger.info("wrote JSON result to %s" % output_file)
+            run_job(job_specification, output_file, metadata_file, api_version)
     except Exception as e:
         logger.exception("error processing batch job")
         user_facing_logger.exception("error processing batch job")
         raise e
+
+@log_memory
+def run_job(job_specification, output_file, metadata_file, api_version):
+    viewing_parameters = {'pyramid_levels': 'highest'}
+    if api_version:
+        viewing_parameters['version'] = api_version
+    process_graph = job_specification['process_graph']
+    result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
+    logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
+    _export_result_metadata(viewing_parameters, metadata_file)
+    if isinstance(result, DelayedVector):
+        from shapely.geometry import mapping
+        geojsons = (mapping(geometry) for geometry in result.geometries)
+        result = JSONResult(geojsons)
+    if isinstance(result, ImageCollection):
+        format_options = job_specification.get('output', {})
+        result.download(output_file, bbox="", time="", **format_options)
+        _add_permissions(output_file, stat.S_IWGRP)
+        logger.info("wrote image collection to %s" % output_file)
+    elif isinstance(result, ImageCollectionResult):
+        result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
+        _add_permissions(output_file, stat.S_IWGRP)
+        logger.info("wrote image collection to %s" % output_file)
+    elif isinstance(result, JSONResult):
+        with open(output_file, 'w') as f:
+            json.dump(result.prepare_for_json(), f)
+        _add_permissions(output_file, stat.S_IWGRP)
+        logger.info("wrote JSON result to %s" % output_file)
+    elif isinstance(result, MultipleFilesResult):
+        result.reduce(output_file, delete_originals=True)
+        _add_permissions(output_file, stat.S_IWGRP)
+        logger.info("reduced %d files to %s" % (len(result.files), output_file))
+    else:
+        with open(output_file, 'w') as f:
+            json.dump(result, f)
+        _add_permissions(output_file, stat.S_IWGRP)
+        logger.info("wrote JSON result to %s" % output_file)
 
 
 if __name__ == '__main__':
