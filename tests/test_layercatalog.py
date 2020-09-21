@@ -179,7 +179,8 @@ def test_get_layer_catalog_from_oscars():
                         "type": "VH",
                         "title": "VH",
                         "resolution": 10,
-                        "bitPerValue": 32
+                        "bitPerValue": 32,
+                        "name": "VH"
                     }
                 ]
             }

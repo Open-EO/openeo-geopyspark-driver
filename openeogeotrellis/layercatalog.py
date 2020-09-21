@@ -407,7 +407,7 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                     }
                 },
                 "summaries": {
-                    "eo:bands": bands
+                    "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None
                 }
             }
 
