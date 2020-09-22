@@ -174,13 +174,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
-            # feature flag for EP-3556
-            native_utm = custom_properties.get('native_utm', False)
-
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
-            if native_utm:
+            if viewing_parameters.get('pyramid_levels', 'all') != 'all':
                 target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
                 if not polygons:
                     projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent,srs)
