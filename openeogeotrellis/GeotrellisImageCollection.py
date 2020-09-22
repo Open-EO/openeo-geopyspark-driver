@@ -410,7 +410,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             ))
 
         if self._is_spatial() and other._is_spatial():
-            raise FeatureUnsupportedException('Merging two cubes without time dimension is unsupported.')
+            merged_data = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level:
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeSpatialCubes(
+                    other.pyramid.levels[level].srdd.rdd(),
+                    rdd,
+                    overlaps_resolver
+                )
+            )
         elif self._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level:
