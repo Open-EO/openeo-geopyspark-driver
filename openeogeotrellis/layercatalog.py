@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime
-from typing import List
+from datetime import datetime, date
+from typing import List, Optional
 from shapely.geometry import box
 
 from geopyspark import TiledRasterLayer, LayerType
 from openeo.metadata import CollectionMetadata
-from openeo.util import TimingLogger
+from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
@@ -17,6 +17,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
+from openeogeotrellis.oscars import Oscars
 
 logger = logging.getLogger(__name__)
 
@@ -291,23 +292,120 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return image_collection
 
 
-def get_layer_catalog(service_registry: AbstractServiceRegistry = None) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
     catalog_files = ConfigParams().layer_catalog_metadata_files
     logger.info("Reading layer catalog metadata from {f!r}".format(f=catalog_files[0]))
-    metadata = read_json(catalog_files[0])
+    local_metadata = read_json(catalog_files[0])
+
     if len(catalog_files) > 1:
-        # Merge metadata recursively
-        metadata = {l["id"]: l for l in metadata}
+        # Merge local metadata recursively
+        metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
+
         for path in catalog_files[1:]:
             logger.info("Updating layer catalog metadata from {f!r}".format(f=path))
-            updates = {l["id"]: l for l in read_json(path)}
-            metadata = dict_merge_recursive(metadata, updates, overwrite=True)
-        metadata = list(metadata.values())
+            updates_by_layer_id = {layer["id"]: layer for layer in read_json(path)}
+            metadata_by_layer_id = dict_merge_recursive(metadata_by_layer_id, updates_by_layer_id, overwrite=True)
+
+        local_metadata = list(metadata_by_layer_id.values())
+
+    # TODO: extract this into its own function
+    if oscars:
+        logger.info("Updating layer catalog metadata from {o!r}".format(o=oscars))
+
+        oscars_collection_ids = \
+            {layer_id: collection_id for layer_id, collection_id in
+             {l["id"]: l.get("_vito", {}).get("data_source", {}).get("oscars_collection_id") for l in local_metadata}.items()
+             if collection_id}
+
+        oscars_collections = oscars.get_collections()
+
+        def derive_from_oscars_collection_metadata(collection_id: str) -> dict:
+            collection = next((c for c in oscars_collections if c["id"] == collection_id), None)
+            rfc3339 = Rfc3339(propagate_none=True)
+
+            if not collection:
+                raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
+
+            def transform_link(oscars_link: dict) -> dict:
+                return dict_no_none(
+                    rel="alternate",
+                    href=oscars_link["href"],
+                    title=oscars_link.get("title")
+                )
+
+            def search_link(oscars_link: dict) -> dict:
+                from urllib.parse import urlparse, urlunparse
+
+                def replace_endpoint(url: str) -> str:
+                    components = urlparse(url)
+
+                    return urlunparse(components._replace(
+                        scheme="https",
+                        netloc="services.terrascope.be",
+                        path="/catalogue" + components.path
+                    ))
+
+                return dict_no_none(
+                    rel="alternate",
+                    href=replace_endpoint(oscars_link["href"]),
+                    title=oscars_link.get("title")
+                )
+
+            def date_bounds() -> (date, Optional[date]):
+                acquisition_information = collection["properties"]["acquisitionInformation"]
+                earliest_start_date = None
+                latest_end_date = None
+
+                for info in acquisition_information:
+                    start_datetime = rfc3339.parse_datetime(info["acquisitionParameters"]["beginningDateTime"])
+                    end_datetime = rfc3339.parse_datetime(info["acquisitionParameters"].get("endingDateTime"))
+
+                    if not earliest_start_date or start_datetime.date() < earliest_start_date:
+                        earliest_start_date = start_datetime.date()
+
+                    if end_datetime and (not latest_end_date or end_datetime.date() > latest_end_date):
+                        latest_end_date = end_datetime.date()
+
+                return earliest_start_date, latest_end_date
+
+            earliest_start_date, latest_end_date = date_bounds()
+
+            bands = collection["properties"].get("bands")
+
+            return {
+                "title": collection["properties"]["title"],
+                "description": collection["properties"]["abstract"],
+                "extent": {
+                    "spatial": {"bbox": [collection["bbox"]]},
+                    "temporal": {"interval": [
+                        [earliest_start_date.isoformat(), latest_end_date.isoformat() if latest_end_date else None]
+                    ]}
+                },
+                "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]] +
+                         [search_link(l) for l in collection["properties"]["links"]["search"]],
+                "cube:dimensions": {
+                    "bands": {
+                        "type": "bands",
+                        "values": [band["title"] for band in bands] if bands else None
+                    }
+                },
+                "summaries": {
+                    "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None
+                }
+            }
+
+        oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
+                                       for layer_id, collection_id in oscars_collection_ids.items()}
+    else:
+        oscars_metadata_by_layer_id = {}
+
+    local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
 
     return GeoPySparkLayerCatalog(
-        all_metadata=metadata,
-        service_registry=service_registry or InMemoryServiceRegistry()
+        all_metadata=
+        list(dict_merge_recursive(oscars_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
+        service_registry=None
     )

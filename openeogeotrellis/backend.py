@@ -36,6 +36,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import normalize_date, kerberos, zk_client
 from openeogeotrellis.traefik import Traefik
+from openeogeotrellis.oscars import OscarsClient
 
 logger = logging.getLogger(__name__)
 
@@ -228,9 +229,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository()
         )
 
+        oscars_endpoint = ConfigParams().oscars_endpoint
+
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
-            catalog=get_layer_catalog(service_registry=self._service_registry),
+            catalog=get_layer_catalog(oscars=OscarsClient(oscars_endpoint) if oscars_endpoint else None),
             batch_jobs=GpsBatchJobs(),
             user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )
