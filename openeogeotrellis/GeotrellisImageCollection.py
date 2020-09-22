@@ -1401,3 +1401,14 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         visitor = GeotrellisTileProcessGraphVisitor()
 
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
+
+    def apply_atmospheric_correction(self) -> 'ImageCollection':
+        gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().printapply()
+        atmo_corrected = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
+                gps.get_spark_context()._jsc,
+                rdd,
+                "lut"
+            )
+        )
+        return atmo_corrected
