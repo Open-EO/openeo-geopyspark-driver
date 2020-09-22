@@ -185,6 +185,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
 
+    def rename_labels(self, dimension: str, target: list, source: list=None) -> 'ImageCollection':
+        """ Renames the labels of the specified dimension in the data cube from source to target.
+
+            :param dimension: Dimension name
+            :param target: The new names for the labels.
+            :param source: The names of the labels as they are currently in the data cube.
+
+            :return: An ImageCollection instance
+        """
+        return GeotrellisTimeSeriesImageCollection(
+            pyramid=self.pyramid, service_registry=self._service_registry,
+            metadata=self.metadata.rename_labels(dimension,target,source)
+        )
+
     @classmethod
     def _mapTransform(cls, layoutDefinition, spatialKey):
         ex = layoutDefinition.extent
