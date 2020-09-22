@@ -179,6 +179,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
             if viewing_parameters.get('pyramid_levels', 'all') != 'all':
+                #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
                 if not polygons:
                     projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent,srs)
