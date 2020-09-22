@@ -207,7 +207,8 @@ class TestCustomFunctions(TestCase):
                 "arguments": {
                     "data": {
                         "from_argument": "dimension_data"
-                    }
+                    },
+                    "ignore_nodata":True
                 },
                 "process_id": "sum"
             },
