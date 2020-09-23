@@ -175,10 +175,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
+            # feature flag for EP-3556
+            native_utm = custom_properties.get('native_utm', False)
+
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
-            if viewing_parameters.get('pyramid_levels', 'all') != 'all':
+            if native_utm and viewing_parameters.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
                 if not polygons:
