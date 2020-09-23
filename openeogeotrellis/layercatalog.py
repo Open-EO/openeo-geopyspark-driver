@@ -226,8 +226,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             catalog = CatalogClient(mission, level)
             product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
                                                         datetime.strptime(to_date[:10], "%Y-%m-%d"),
-                                                        ulx=extent.xmin, uly=extent.ymax,
-                                                        brx=extent.xmax, bry=extent.ymin)
+                                                        ulx=left, uly=top,
+                                                        brx=right, bry=bottom)
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .pyramid_seq(extent, srs, from_date, to_date)
 
