@@ -88,7 +88,7 @@ def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> No
     end_date = viewing_parameters.get('to')
 
     metadata = {  # FIXME: dedicated type?
-        'geometry': mapping(geometry),
+        'geometry': mapping(geometry) if geometry else None,
         'bbox': bbox,
         'start_datetime': rfc3339.datetime(start_date),
         'end_datetime': rfc3339.datetime(end_date)
