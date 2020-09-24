@@ -957,8 +957,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 band_count = 1
                 if self.metadata.has_band_dimension():
                     band_count = len(self.metadata.band_dimension.band_names)
-                crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
-                cropped_cube = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().crop_spatial(spatial_rdd.srdd.rdd(),crop_extent)
+                if crop_bounds:
+                    crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
+                    cropped_cube = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().crop_spatial(spatial_rdd.srdd.rdd(),crop_extent)
+                else:
+                    crop_extent = None
+                    cropped_cube = spatial_rdd.srdd.rdd()
                 self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(cropped_cube,band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
             else:
                 self._save_stitched(spatial_rdd, filename, crop_bounds,zlevel=zlevel)
