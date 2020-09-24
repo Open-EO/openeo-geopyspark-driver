@@ -248,11 +248,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return [
             OidcProvider(
                 id="keycloak",
-                # TODO EP-3377: move this to config or bootstrap script (and start using production URL?)
-                issuer="https://sso-dev.vgt.vito.be/auth/realms/terrascope",
+                # TODO EP-3377: move this to config or bootstrap script?
+                issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
                 scopes=["openid"],
                 title="VITO Keycloak",
-            )
+            ),
+            # TODO EP-3577 remove dev keycloak
+            OidcProvider(
+                id="keycloak-dev",
+                # TODO EP-3377: move this to config or bootstrap script?
+                issuer="https://sso-dev.vgt.vito.be/auth/realms/terrascope",
+                scopes=["openid"],
+                title="VITO Keycloak (dev)",
+            ),
         ]
 
     def file_formats(self) -> dict:
