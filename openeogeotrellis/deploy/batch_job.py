@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 from openeo.util import Rfc3339
+import uuid
 
 from openeo import ImageCollection
 from openeo.util import TimingLogger, ensure_dir
@@ -141,13 +142,19 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file, metadata_file, api_version):
-    viewing_parameters = {'pyramid_levels': 'highest'}
+    correlation_id = str(uuid.uuid4())
+
+    logger.info("Correlation ID is {cid}".format(cid=correlation_id))
+
+    viewing_parameters = {'pyramid_levels': 'highest', 'correlation_id': correlation_id}
     if api_version:
         viewing_parameters['version'] = api_version
     process_graph = job_specification['process_graph']
+
     result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
     logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
     _export_result_metadata(viewing_parameters, metadata_file)
+
     if isinstance(result, DelayedVector):
         from shapely.geometry import mapping
         geojsons = (mapping(geometry) for geometry in result.geometries)

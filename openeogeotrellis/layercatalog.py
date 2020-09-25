@@ -54,6 +54,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
 
+        correlation_id = viewing_parameters.get("correlation_id", "")
+
         if isinstance(srs, int):
             srs = 'EPSG:%s' % srs
         if srs == None:
@@ -130,7 +132,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def file_probav_pyramid():
             return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
                 layer_source_info.get('oscars_collection_id'), layer_source_info.get('root_path')) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
         def file_pyramid(pyramid_factory):
             oscars_collection_id = layer_source_info['oscars_collection_id']
@@ -189,14 +191,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 else:
                     projected_polygons = to_projected_polygons(jvm, polygons)
                 projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,target_epsg_code)
-                return factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties)
+                return factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties, correlation_id)
             else:
                 if polygons:
                     projected_polygons = to_projected_polygons(jvm, polygons)
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
-                                               to_date, metadata_properties)
+                                               to_date, metadata_properties, correlation_id)
                 else:
-                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
+                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties, correlation_id)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
