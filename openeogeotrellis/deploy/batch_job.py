@@ -100,6 +100,9 @@ def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> No
 
     _add_permissions(metadata_file, stat.S_IWGRP)
 
+    logger.info("wrote metadata to %s" % metadata_file)
+
+
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
@@ -153,7 +156,6 @@ def run_job(job_specification, output_file, metadata_file, api_version):
 
     result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
     logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
-    _export_result_metadata(viewing_parameters, metadata_file)
 
     if isinstance(result, DelayedVector):
         from shapely.geometry import mapping
@@ -182,6 +184,8 @@ def run_job(job_specification, output_file, metadata_file, api_version):
             json.dump(result, f)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote JSON result to %s" % output_file)
+
+    _export_result_metadata(viewing_parameters, metadata_file)
 
 
 if __name__ == '__main__':
