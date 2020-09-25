@@ -54,7 +54,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
 
-        correlation_id = viewing_parameters.get("correlation_id", "")
+        correlation_id = viewing_parameters.get("correlation_id", '')
+        logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         if isinstance(srs, int):
             srs = 'EPSG:%s' % srs

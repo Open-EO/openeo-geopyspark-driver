@@ -145,11 +145,7 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file, metadata_file, api_version):
-    correlation_id = str(uuid.uuid4())
-
-    logger.info("Correlation ID is {cid}".format(cid=correlation_id))
-
-    viewing_parameters = {'pyramid_levels': 'highest', 'correlation_id': correlation_id}
+    viewing_parameters = {'pyramid_levels': 'highest', 'correlation_id': str(uuid.uuid4())}
     if api_version:
         viewing_parameters['version'] = api_version
     process_graph = job_specification['process_graph']
