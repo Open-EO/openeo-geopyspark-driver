@@ -184,7 +184,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
-            if native_utm and viewing_parameters.get('pyramid_levels', 'all') != 'all':
+            if viewing_parameters.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
                 if not polygons:
