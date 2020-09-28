@@ -54,6 +54,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         bottom = viewing_parameters.get("bottom", None)
         srs = viewing_parameters.get("srs", None)
 
+        correlation_id = viewing_parameters.get("correlation_id", '')
+        print("Correlation ID is '{cid}'".format(cid=correlation_id))
+
         if isinstance(srs, int):
             srs = 'EPSG:%s' % srs
         if srs == None:
@@ -130,7 +133,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def file_probav_pyramid():
             return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
                 layer_source_info.get('oscars_collection_id'), layer_source_info.get('root_path')) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+                .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
         def file_pyramid(pyramid_factory):
             oscars_collection_id = layer_source_info['oscars_collection_id']
@@ -175,6 +178,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
+            # feature flag for EP-3556
+            native_utm = custom_properties.get('native_utm', False)
+
             polygons = viewing_parameters.get('polygons')
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
@@ -186,14 +192,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 else:
                     projected_polygons = to_projected_polygons(jvm, polygons)
                 projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,target_epsg_code)
-                return factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties)
+                return factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties, correlation_id)
             else:
                 if polygons:
                     projected_polygons = to_projected_polygons(jvm, polygons)
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
-                                               to_date, metadata_properties)
+                                               to_date, metadata_properties, correlation_id)
                 else:
-                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties)
+                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties, correlation_id)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
@@ -226,8 +232,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             catalog = CatalogClient(mission, level)
             product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
                                                         datetime.strptime(to_date[:10], "%Y-%m-%d"),
-                                                        ulx=extent.xmin, uly=extent.ymax,
-                                                        brx=extent.xmax, bry=extent.ymin)
+                                                        ulx=left, uly=top,
+                                                        brx=right, bry=bottom)
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .pyramid_seq(extent, srs, from_date, to_date)
 

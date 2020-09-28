@@ -185,6 +185,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
 
+    def rename_labels(self, dimension: str, target: list, source: list=None) -> 'ImageCollection':
+        """ Renames the labels of the specified dimension in the data cube from source to target.
+
+            :param dimension: Dimension name
+            :param target: The new names for the labels.
+            :param source: The names of the labels as they are currently in the data cube.
+
+            :return: An ImageCollection instance
+        """
+        return GeotrellisTimeSeriesImageCollection(
+            pyramid=self.pyramid, service_registry=self._service_registry,
+            metadata=self.metadata.rename_labels(dimension,target,source)
+        )
+
     @classmethod
     def _mapTransform(cls, layoutDefinition, spatialKey):
         ex = layoutDefinition.extent
@@ -943,7 +957,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 band_count = 1
                 if self.metadata.has_band_dimension():
                     band_count = len(self.metadata.band_dimension.band_names)
-                self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel)
+                if crop_bounds:
+                    crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
+                    cropped_cube = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().crop_spatial(spatial_rdd.srdd.rdd(),crop_extent)
+                else:
+                    crop_extent = None
+                    cropped_cube = spatial_rdd.srdd.rdd()
+                self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(cropped_cube,band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
             else:
                 self._save_stitched(spatial_rdd, filename, crop_bounds,zlevel=zlevel)
 

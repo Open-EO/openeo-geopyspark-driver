@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 from openeo.util import Rfc3339
+import uuid
 
 from openeo import ImageCollection
 from openeo.util import TimingLogger, ensure_dir
@@ -88,7 +89,7 @@ def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> No
     end_date = viewing_parameters.get('to')
 
     metadata = {  # FIXME: dedicated type?
-        'geometry': mapping(geometry),
+        'geometry': mapping(geometry) if geometry else None,
         'bbox': bbox,
         'start_datetime': rfc3339.datetime(start_date),
         'end_datetime': rfc3339.datetime(end_date)
@@ -98,6 +99,9 @@ def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> No
         json.dump(metadata, f)
 
     _add_permissions(metadata_file, stat.S_IWGRP)
+
+    logger.info("wrote metadata to %s" % metadata_file)
+
 
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
@@ -141,13 +145,14 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file, metadata_file, api_version):
-    viewing_parameters = {'pyramid_levels': 'highest'}
+    viewing_parameters = {'pyramid_levels': 'highest', 'correlation_id': str(uuid.uuid4())}
     if api_version:
         viewing_parameters['version'] = api_version
     process_graph = job_specification['process_graph']
+
     result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
     logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
-    _export_result_metadata(viewing_parameters, metadata_file)
+
     if isinstance(result, DelayedVector):
         from shapely.geometry import mapping
         geojsons = (mapping(geometry) for geometry in result.geometries)
@@ -175,6 +180,8 @@ def run_job(job_specification, output_file, metadata_file, api_version):
             json.dump(result, f)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote JSON result to %s" % output_file)
+
+    _export_result_metadata(viewing_parameters, metadata_file)
 
 
 if __name__ == '__main__':
