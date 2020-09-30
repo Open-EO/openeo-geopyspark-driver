@@ -25,6 +25,8 @@ with JobRegistry() as registry:
     memorycost_by_user_month = df.groupby(['user_id', 'yearmonth']).sum().memorycost
     memorycost_by_user_month = memorycost_by_user_month[memorycost_by_user_month > 1.0]
 
+    total_cost = (memorycost_by_user_month + cost_by_user_month).round()
+
     usageinfo = pd.DataFrame({'cpu': df.cpu_time_seconds, 'memory': df.memory_time_megabyte_seconds, 'yearmonth':df.yearmonth}, index=df.index)
     usageinfo['yearmonth'] = usageinfo.index.strftime('%Y%m')
     usageinfo['cpuhour'] = usageinfo.cpu / 3600.0
