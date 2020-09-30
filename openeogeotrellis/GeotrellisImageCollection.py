@@ -1430,12 +1430,20 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
     def apply_atmospheric_correction(self) -> 'ImageCollection':
+        # TODO: looking up the bandids is just coincidentally matching the lookuptable order
+        # in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
+        bandIds=self.metadata.band_names
+        _log.info("Bandids: "+str(bandIds))
         gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().printapply()
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
                 gps.get_spark_context()._jsc,
                 rdd,
-                "lut"
+                "lut_s2a",
+                bandIds,
+                [0.0001,10000.0],
+                [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33]
+                #sza,vza,raa,gnd,aot,cwv,ozone
             )
         )
         return atmo_corrected
