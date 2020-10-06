@@ -20,4 +20,5 @@ pythonPipeline {
   wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
   extras_require = 'dev'
+  upload_dev_wheels = false
 }
