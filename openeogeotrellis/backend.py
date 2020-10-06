@@ -26,7 +26,7 @@ from openeo_driver.errors import (JobNotFinishedException, JobNotStartedExceptio
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
@@ -100,7 +100,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
         service_id = str(uuid.uuid4())
 
-        image_collection: GeotrellisTimeSeriesImageCollection = evaluate(
+        image_collection: GeopysparkDataCube = evaluate(
             process_graph,
             viewingParameters={'version': api_version, 'pyramid_levels': 'all'}
         )
@@ -138,7 +138,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         if service_type.lower() != 'wmts':
             raise ServiceUnsupportedException(service_type)
 
-        image_collection: GeotrellisTimeSeriesImageCollection = evaluate(
+        image_collection: GeopysparkDataCube = evaluate(
             process_graph,
             viewingParameters={'version': api_version, 'pyramid_levels': 'all'}
         )
@@ -324,7 +324,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         metadata = CollectionMetadata(metadata={},dimensions=[TemporalDimension(name='t',extent=[])])
 
-        image_collection = GeotrellisTimeSeriesImageCollection(
+        image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
             service_registry=self._service_registry,
             metadata=metadata

@@ -12,7 +12,7 @@ from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
 import openeo_udf.functions
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from .data import get_test_data_file
@@ -154,7 +154,7 @@ class TestCustomFunctions(TestCase):
 
     def test_another_polygon_series(self):
         input = self._create_spacetime_layer(no_data=-1.0)
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
         means = imagecollection.polygonal_mean_timeseries(polygon)
         assert means == {'2017-09-25T11:37:00': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}

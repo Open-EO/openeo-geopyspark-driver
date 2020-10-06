@@ -4,18 +4,18 @@ import os
 import shutil
 import stat
 import sys
+import uuid
 from pathlib import Path
 from typing import Dict, List
-from openeo.util import Rfc3339
-import uuid
 
-from openeo import ImageCollection
+from pyspark import SparkContext
+
+from openeo.util import Rfc3339
 from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
-from pyspark import SparkContext
-
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
 
@@ -157,7 +157,7 @@ def run_job(job_specification, output_file, metadata_file, api_version):
         from shapely.geometry import mapping
         geojsons = (mapping(geometry) for geometry in result.geometries)
         result = JSONResult(geojsons)
-    if isinstance(result, ImageCollection):
+    if isinstance(result, GeopysparkDataCube):
         format_options = job_specification.get('output', {})
         result.download(output_file, bbox="", time="", **format_options)
         _add_permissions(output_file, stat.S_IWGRP)

@@ -4,7 +4,7 @@ import numpy as np
 from geopyspark import Tile
 
 from openeo.metadata import CollectionMetadata
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
@@ -58,8 +58,8 @@ class TestMultiBandUDF(TestCase):
                  'type': 'int16', 'unit': '1'}
             ]
             }})
-        imagecollection = GeotrellisTimeSeriesImageCollection("test", InMemoryServiceRegistry(), metadata=metadata)
-        datacube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
+        imagecollection = GeopysparkDataCube("test", InMemoryServiceRegistry(), metadata=metadata)
+        datacube = GeopysparkDataCube._tile_to_datacube(
             TestMultiBandUDF.tile.cells,
             None,
             band_dimension=metadata.band_dimension

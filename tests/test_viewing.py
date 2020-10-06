@@ -10,7 +10,7 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 PNG_SIGNATURE = b'\x89PNG\x0d\x0a\x1a\x0a'
@@ -89,7 +89,7 @@ class TestViewing(TestCase):
     @skip("currently unused")
     def test_viewing(self):
         geotrellis_layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(
+        imagecollection = GeopysparkDataCube(
             pyramid=gps.Pyramid({0: geotrellis_layer}),
             service_registry=InMemoryServiceRegistry()
         )
