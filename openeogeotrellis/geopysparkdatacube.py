@@ -2,11 +2,9 @@ import functools
 import json
 import logging
 import math
-import os
 import pathlib
 import subprocess
 import tempfile
-import uuid
 from datetime import datetime, date
 from typing import Dict, List, Union, Tuple, Iterable, Callable
 
@@ -15,35 +13,32 @@ import numpy as np
 import pandas as pd
 import pyproj
 import pytz
-from geopyspark import TiledRasterLayer, TMS, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
+import xarray as xr
+from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
 from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType
+from pandas import Series
+from py4j.java_gateway import JVMView
+from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
+
+import openeo.metadata
+from openeo.imagecollection import ImageCollection
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo_driver.backend import ServiceMetadata
+from openeo.metadata import CollectionMetadata, Band
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
+from openeo_driver.save_result import AggregatePolygonResult
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.run_udf import run_user_code
-from py4j.java_gateway import JVMView
+from openeogeotrellis.service_registry import AbstractServiceRegistry
+from openeogeotrellis.utils import to_projected_polygons, log_memory
 
 try:
     from openeo_udf.api.base import UdfData, SpatialExtent
-
 except ImportError as e:
     from openeo_udf.api.udf_data import UdfData
     from openeo_udf.api.spatial_extent import SpatialExtent
-
-from pandas import Series
-from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
-import xarray as xr
-
-from openeo.imagecollection import ImageCollection
-import openeo.metadata
-from openeo.metadata import CollectionMetadata, Band
-from openeo_driver.save_result import AggregatePolygonResult
-from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.service_registry import SecondaryService, AbstractServiceRegistry
-from openeogeotrellis.utils import to_projected_polygons,log_memory
 
 
 _log = logging.getLogger(__name__)
