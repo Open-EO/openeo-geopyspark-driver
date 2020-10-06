@@ -12,7 +12,7 @@ from openeo.metadata import CollectionMetadata
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
@@ -143,7 +143,7 @@ class TestCustomFunctions(TestCase):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         transformed_collection = imagecollection.apply("cos")
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)
@@ -155,7 +155,7 @@ class TestCustomFunctions(TestCase):
 
     def test_apply_cos(self):
         input = self.create_spacetime_layer()
-        cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         res = cube.apply("cos")
         data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
         np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(self.first[0]))
@@ -185,7 +185,7 @@ class TestCustomFunctions(TestCase):
         }
 
         input = self.create_spacetime_layer()
-        cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         res = cube.apply(graph)
         data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
         np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0*np.sin(self.first[0]))
@@ -199,7 +199,7 @@ class TestCustomFunctions(TestCase):
                 "my_bands": {"type": "bands", "values": ["B04", "B08"]},
             }
         })
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(),collection_metadata)
+        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), collection_metadata)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -243,7 +243,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -275,7 +275,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -299,7 +299,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph ={
@@ -407,7 +407,7 @@ class TestCustomFunctions(TestCase):
                 ]
             }
         })
-        imagecollection = GeotrellisTimeSeriesImageCollection(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+        imagecollection = GeopysparkDataCube(pyramid, InMemoryServiceRegistry(), metadata=metadata)
 
         stitched = imagecollection.ndvi().pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -435,7 +435,7 @@ class TestCustomFunctions(TestCase):
                 ]
             }
         })
-        imagecollection = GeotrellisTimeSeriesImageCollection(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+        imagecollection = GeopysparkDataCube(pyramid, InMemoryServiceRegistry(), metadata=metadata)
 
         stitched = imagecollection.ndvi().linear_scale_range(-1, 1, 0, 100).pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -465,8 +465,8 @@ class TestCustomFunctions(TestCase):
             }
         })
 
-        cube1 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
-        cube2 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
+        cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
+        cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
         sum = cube1.merge(cube2,'subtract')
         stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
 
@@ -489,8 +489,8 @@ class TestCustomFunctions(TestCase):
             }
         })
 
-        cube1 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
-        cube2 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
+        cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
+        cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
         sum = cube1.merge(cube2,'sum')
         stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
 
@@ -524,8 +524,8 @@ class TestCustomFunctions(TestCase):
             }
         })
 
-        cube1 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata1)
-        cube2 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata2)
+        cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata1)
+        cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata2)
         sum = cube1.merge(cube2)
         stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
 

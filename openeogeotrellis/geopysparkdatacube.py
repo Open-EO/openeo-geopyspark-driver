@@ -49,7 +49,7 @@ from openeogeotrellis.utils import to_projected_polygons,log_memory
 _log = logging.getLogger(__name__)
 
 
-class GeotrellisTimeSeriesImageCollection(ImageCollection):
+class GeopysparkDataCube(ImageCollection):
 
     # TODO: no longer dependent on ServiceRegistry so it can be removed
     def __init__(self, pyramid: Pyramid, service_registry: AbstractServiceRegistry, metadata: CollectionMetadata = None):
@@ -73,7 +73,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
+        return GeopysparkDataCube(pyramid, self._service_registry, metadata=self.metadata)
 
     def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
         jvm = self._get_jvm()
@@ -95,7 +95,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         :return:
         """
         pyramid = Pyramid({k:self._create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
+        return GeopysparkDataCube(pyramid, self._service_registry, metadata=self.metadata)
 
     def band_filter(self, bands) -> 'ImageCollection':
         return self.apply_to_levels(lambda rdd: rdd.bands(bands))
@@ -111,7 +111,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return self
 
     def rename_dimension(self, source:str, target:str):
-        return GeotrellisTimeSeriesImageCollection(self.pyramid,self._service_registry,self.metadata.rename_dimension(source,target))
+        return GeopysparkDataCube(self.pyramid, self._service_registry, self.metadata.rename_dimension(source, target))
 
     def apply(self, process: str, arguments: dict={}) -> 'ImageCollection':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
@@ -156,7 +156,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         else:
             return self.apply_to_levels(lambda layer: layer.to_spatial_layer().aggregate_by_cell(reducer))
 
-    def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeotrellisTimeSeriesImageCollection':
+    def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
         """
         TODO Define in super class? API is not yet ready for client side...
         :param pgVisitor:
@@ -180,7 +180,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return reducer
 
     def add_dimension(self, name: str, label: str, type: str = None):
-        return GeotrellisTimeSeriesImageCollection(
+        return GeopysparkDataCube(
             pyramid=self.pyramid, service_registry=self._service_registry,
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
@@ -194,7 +194,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
             :return: An ImageCollection instance
         """
-        return GeotrellisTimeSeriesImageCollection(
+        return GeopysparkDataCube(
             pyramid=self.pyramid, service_registry=self._service_registry,
             metadata=self.metadata.rename_labels(dimension,target,source)
         )
@@ -250,12 +250,12 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             arrays = map(lambda t: t[1].cells, tile_list)
             multidim_array = np.array(list(arrays))
 
-            extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,tile_list[0][0])
+            extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
 
             from openeo_udf.api.datacube import DataCube
             #new UDF API available
 
-            datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
+            datacube:DataCube = GeopysparkDataCube._tile_to_datacube(
                 multidim_array,
                 extent=extent,
                 band_dimension=openeo_metadata.band_dimension if openeo_metadata.has_band_dimension() else None,
@@ -328,11 +328,11 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                          geotrellis_tile: Tuple[SpaceTimeKey, Tile]):
 
             key = geotrellis_tile[0]
-            extent = GeotrellisTimeSeriesImageCollection._mapTransform(metadata.layout_definition,key)
+            extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, key)
 
             from openeo_udf.api.datacube import DataCube
 
-            datacube:DataCube = GeotrellisTimeSeriesImageCollection._tile_to_datacube(
+            datacube:DataCube = GeopysparkDataCube._tile_to_datacube(
                 geotrellis_tile[1].cells,
                 extent=extent,
                 band_dimension=openeo_metadata.band_dimension
@@ -412,7 +412,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         return transform(project, polygon)  # apply projection
 
-    def merge(self,other:'GeotrellisTimeSeriesImageCollection',overlaps_resolver:str=None):
+    def merge(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
         #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
         pysc = gps.get_spark_context()
@@ -470,7 +470,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
         return merged_data
 
     def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
-                     replacement=None, inside=False) -> 'GeotrellisTimeSeriesImageCollection':
+                     replacement=None, inside=False) -> 'GeopysparkDataCube':
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = self.__reproject_polygon(mask, "+init=" + srs, layer_crs)
@@ -482,8 +482,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             options=gps.RasterizerOptions()
         ))
 
-    def mask(self, mask: 'GeotrellisTimeSeriesImageCollection',
-             replacement=None) -> 'GeotrellisTimeSeriesImageCollection':
+    def mask(self, mask: 'GeopysparkDataCube',
+             replacement=None) -> 'GeopysparkDataCube':
         # mask needs to be the same layout as this layer
         mask_pyramid_levels = {
             k: l.tile_to_layout(layout=self.pyramid.levels[k])
@@ -619,7 +619,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
-        return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry, metadata=self.metadata)
+        return GeopysparkDataCube(pyramid, self._service_registry, metadata=self.metadata)
 
 
 
@@ -681,8 +681,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
                 resampled = max_level.tile_to_layout(newLayout,resample_method=resample_method)
 
             pyramid = Pyramid({0:resampled})
-            return GeotrellisTimeSeriesImageCollection(pyramid, self._service_registry,
-                                                       metadata=self.metadata)
+            return GeopysparkDataCube(pyramid, self._service_registry,
+                                      metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
@@ -853,7 +853,7 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
     def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
         layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = GeotrellisTimeSeriesImageCollection.__reproject_polygon(polygon, "+init=EPSG:4326" ,layer_crs)
+        reprojected_polygon = GeopysparkDataCube.__reproject_polygon(polygon, "+init=EPSG:4326", layer_crs)
 
         #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
         masked_layer = max_level.mask(reprojected_polygon)
@@ -1228,8 +1228,8 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
 
         sorted_keys = sorted(spatial_rdd.collect_keys())
 
-        upper_left_coords = GeotrellisTimeSeriesImageCollection._mapTransform(max_level.layer_metadata.layout_definition, sorted_keys[0])
-        lower_right_coords = GeotrellisTimeSeriesImageCollection._mapTransform(max_level.layer_metadata.layout_definition, sorted_keys[-1])
+        upper_left_coords = GeopysparkDataCube._mapTransform(max_level.layer_metadata.layout_definition, sorted_keys[0])
+        lower_right_coords = GeopysparkDataCube._mapTransform(max_level.layer_metadata.layout_definition, sorted_keys[-1])
 
         data = spatial_rdd.stitch()
 
@@ -1297,10 +1297,10 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             zk.stop()
             zk.close()
 
-    def ndvi(self, **kwargs) -> 'GeotrellisTimeSeriesImageCollection':
+    def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
         return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi_v04(**kwargs)
 
-    def _ndvi_v04(self, name: str = None) -> 'GeotrellisTimeSeriesImageCollection':
+    def _ndvi_v04(self, name: str = None) -> 'GeopysparkDataCube':
         """0.4-style of ndvi process"""
         try:
             red_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'red']
@@ -1315,13 +1315,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             .reduce_dimension("bands") \
             .add_dimension(type="bands", name="bands", label=name or 'ndvi')
 
-        return GeotrellisTimeSeriesImageCollection(
+        return GeopysparkDataCube(
             ndvi_collection.pyramid,
             self._service_registry,
             ndvi_metadata
         )
 
-    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'GeotrellisTimeSeriesImageCollection':
+    def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'GeopysparkDataCube':
         """1.0-style of ndvi process"""
         if not self.metadata.has_band_dimension():
             raise OpenEOApiException(
@@ -1382,13 +1382,13 @@ class GeotrellisTimeSeriesImageCollection(ImageCollection):
             result_collection = ndvi_collection
             result_metadata = self.metadata.reduce_dimension("bands")
 
-        return GeotrellisTimeSeriesImageCollection(
+        return GeopysparkDataCube(
             result_collection.pyramid,
             self._service_registry,
             result_metadata
         )
 
-    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'GeotrellisTimeSeriesImageCollection':
+    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'GeopysparkDataCube':
         reduce_graph = {
             "red": {
                 "process_id": "array_element",

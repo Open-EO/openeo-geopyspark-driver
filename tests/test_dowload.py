@@ -11,7 +11,7 @@ from pyspark import SparkContext
 from shapely import geometry
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from openeo.metadata import Band
 
@@ -97,7 +97,7 @@ class TestDownload(TestCase):
 
     def download_no_args(self,format):
         input = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
         
@@ -107,7 +107,7 @@ class TestDownload(TestCase):
 
     def download_masked(self,format):
         input = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -120,7 +120,7 @@ class TestDownload(TestCase):
 
     def download_masked_reproject(self,format):
         input = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -173,5 +173,5 @@ class TestDownload(TestCase):
     def test_download_as_catalog(self):
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection.download("catalogresult.tiff",format="GTIFF",parameters={"catalog":True})

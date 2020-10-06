@@ -13,7 +13,7 @@ import pytest
 import pytz
 from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from .data import get_test_data_file
 
@@ -133,7 +133,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
 
         polygon = Polygon(shell=[
             (0.0, 0.0),
@@ -162,7 +162,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics_datacube(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
 
         polygon = Polygon(shell=[
             (0.0, 0.0),
@@ -213,7 +213,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics_median_datacube(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
         polygon = Polygon(shell=[
             (0.0, 0.0),
             (1.0, 0.0),
@@ -241,7 +241,7 @@ class TestTimeSeries(TestCase):
     def test_zonal_statistics_for_unsigned_byte_layer(self):
         layer = self.create_spacetime_unsigned_byte_layer()
         # layer.to_spatial_layer().save_stitched('/tmp/unsigned_byte_layer.tif')
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
         polygon = Polygon(shell=[
             (0.0, 0.0),
             (2.0, 0.0),
@@ -266,7 +266,7 @@ class TestTimeSeries(TestCase):
 def _build_cube():
     # TODO: avoid instantiating TestTimeSeries? e.g. use pytest fixtures or simple builder functions.
     layer = TestTimeSeries().create_spacetime_layer()
-    cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+    cube = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
     return cube
 
 

@@ -11,7 +11,7 @@ from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
 from py4j.java_gateway import JavaGateway
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
@@ -32,7 +32,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._geotiff_pyramid_factories = {}
 
     @TimingLogger(title="load_collection", logger=logger)
-    def load_collection(self, collection_id: str, viewing_parameters: dict) -> 'GeotrellisTimeSeriesImageCollection':
+    def load_collection(self, collection_id: str, viewing_parameters: dict) -> GeopysparkDataCube:
         logger.info("Creating layer for {c} with viewingParameters {v}".format(c=collection_id, v=viewing_parameters))
 
         # TODO is it necessary to do this kerberos stuff here?
@@ -280,7 +280,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
 
-        image_collection = GeotrellisTimeSeriesImageCollection(
+        image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
             service_registry=self._service_registry,
             metadata=metadata
