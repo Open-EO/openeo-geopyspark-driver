@@ -25,13 +25,13 @@ def log_memory(function):
             from spark_memlogger import memlogger
         except ImportError:
             return function(*args, **kwargs)
+
+        ml = memlogger.MemLogger(5,api_version_auto_timeout_ms=60000)
         try:
-            ml = memlogger.MemLogger(5)
-        except:
-            logger.warning("Error while configuring memory logging, will not be available!",exc_info=True)
-            return function(*args, **kwargs)
-        try:
-            ml.start()
+            try:
+                ml.start()
+            except:
+                logger.warning("Error while configuring memory logging, will not be available!", exc_info=True)
             return function(*args, **kwargs)
         finally:
             ml.stop()
