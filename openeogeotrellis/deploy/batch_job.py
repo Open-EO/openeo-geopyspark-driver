@@ -18,6 +18,7 @@ from openeo_driver.save_result import ImageCollectionResult, JSONResult, Multipl
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
+from pyspark.profiler import BasicProfiler
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -135,9 +136,25 @@ def main(argv: List[str]) -> None:
         job_specification = _parse(job_specification_file)
         load_custom_processes(logger)
 
-        with SparkContext.getOrCreate():
+        with SparkContext.getOrCreate() as sc:
             kerberos()
-            run_job(job_specification, output_file, metadata_file, api_version)
+            
+            def run_driver(): 
+                run_job(job_specification, output_file, metadata_file, api_version)
+            
+            if sc.getConf().get('spark.python.profile', 'false').lower()=='true':
+                # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
+                driver_profile=BasicProfiler(sc)
+                driver_profile.profile(run_driver)
+                # running the driver code and adding driver's profiling results as "RDD==-1"
+                sc.profiler_collector.add_profiler(-1, driver_profile)
+                # collect profiles into a zip file
+                sc.dump_profiles(str(job_dir / 'profile_dumps'))
+                profile_zip=shutil.make_archive(str(job_dir / 'profile_dumps'), 'gztar', str(job_dir / 'profile_dumps'))
+                logger.info("Saving profiling info to: "+profile_zip)
+            else:
+                run_driver()
+                
     except Exception as e:
         logger.exception("error processing batch job")
         user_facing_logger.exception("error processing batch job")
