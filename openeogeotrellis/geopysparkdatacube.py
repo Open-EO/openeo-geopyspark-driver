@@ -33,6 +33,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.run_udf import run_user_code
 from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import to_projected_polygons, log_memory
+from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
 
 try:
     from openeo_udf.api.base import UdfData, SpatialExtent
@@ -966,16 +967,8 @@ class GeopysparkDataCube(DriverDataCube):
                 result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             else:
                 result=self._collect_as_xarray(spatial_rdd)
-            # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
-            l=list(result.dims[:-2])
-            result=result.transpose(*(l+['y','x']))
-            # turn it into a dataset where each band becomes a variable
-            if not 'bands' in result.dims:
-                result=result.expand_dims(dim={'bands':['band_0']})
-            result=result.to_dataset('bands')
-            #result=result.assign_coords(y=result.y[::-1])
-            # TODO: NETCDF4 is broken. look into
-            result.to_netcdf(filename, engine='h5netcdf') # engine='scipy')
+            
+            _save_DataArray_to_NetCDF(filename,result)
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
@@ -984,31 +977,8 @@ class GeopysparkDataCube(DriverDataCube):
                 result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             else:
                 result=self._collect_as_xarray(spatial_rdd)
-            jsonresult=result.to_dict()
-            # add attributes that needed for re-creating xarray from json
-            jsonresult['attrs']['dtype']=str(result.values.dtype)
-            jsonresult['attrs']['shape']=list(result.values.shape)
-            for i in result.coords.values():
-                jsonresult['coords'][i.name]['attrs']['dtype']=str(i.dtype)
-                jsonresult['coords'][i.name]['attrs']['shape']=list(i.shape)
-            result=None
-            # custom print so resulting json is easy to read humanly
-            with open(filename,'w') as f:
-                def custom_print(data_structure, indent=1):
-                    f.write("{\n")
-                    needs_comma=False
-                    for key, value in data_structure.items():
-                        if needs_comma: 
-                            f.write(',\n')
-                        needs_comma=True
-                        f.write('  '*indent+json.dumps(key)+':')
-                        if isinstance(value, dict): 
-                            custom_print(value, indent+1)
-                        else: 
-                            json.dump(value,f,default=str,separators=(',',':'))
-                    f.write('\n'+'  '*(indent-1)+"}")
-                    
-                custom_print(jsonresult)
+                
+            _save_DataArray_to_JSON(filename,result)
 
         else:
             raise OpenEOApiException(
@@ -1116,6 +1086,8 @@ class GeopysparkDataCube(DriverDataCube):
             .groupByKey()\
             .map(partial(stitch_at_time, crop_win, layout_win))\
             .collect()
+            
+# only for debugging on driver, do not use in production
 #         collection=rdd\
 #             .to_numpy_rdd()\
 #             .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
@@ -1123,7 +1095,6 @@ class GeopysparkDataCube(DriverDataCube):
 #             .groupByKey()\
 #             .collect()
 #         collection=list(map(partial(stitch_at_time, crop_win, layout_win),collection))
-        
         
         if len(collection)==0:
             return xr.DataArray(np.full([0]*len(dims),0),dims=dims,coords=dict(map(lambda k: (k[0],[]),coords.items())))
