@@ -38,6 +38,7 @@ drivercores=${14-14}
 executorcores=${15-2}
 drivermemoryoverhead=${16-8G}
 queue=${17-default}
+profile=${18-false}
 
 pysparkPython="venv/bin/python"
 
@@ -82,6 +83,7 @@ spark-submit \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
+ --conf spark.python.profile=$profile \
  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \

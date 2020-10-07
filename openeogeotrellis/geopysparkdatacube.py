@@ -33,6 +33,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.run_udf import run_user_code
 from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import to_projected_polygons, log_memory
+from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
 
 try:
     from openeo_udf.api.base import UdfData, SpatialExtent
@@ -98,13 +99,22 @@ class GeopysparkDataCube(DriverDataCube):
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
+    # TODO: deprecated
     def date_range_filter(
             self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
     ) -> 'GeopysparkDataCube':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
+    def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
+        # TODO: is this necessary? Temporal range is handled already at load_collection time
+        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]))
+
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
-        # Note: the bbox is already extracted in `apply_process` and applied in `GeoPySparkLayerCatalog.load_collection` through the viewingParameters
+        # Bbox is handled at load_collection time
+        return self
+
+    def filter_bands(self, bands) -> 'GeopysparkDataCube':
+        # Bands are handled at load_collection time
         return self
 
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
@@ -409,7 +419,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return transform(project, polygon)  # apply projection
 
-    def merge(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
+    def merge_cubes(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
         #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
         pysc = gps.get_spark_context()
@@ -465,6 +475,9 @@ class GeopysparkDataCube(DriverDataCube):
                     merged_data.metadata=merged_data.metadata.append_band(iband)
         
         return merged_data
+
+    # TODO legacy alias to be removed
+    merge = merge_cubes
 
     def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
@@ -966,16 +979,8 @@ class GeopysparkDataCube(DriverDataCube):
                 result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             else:
                 result=self._collect_as_xarray(spatial_rdd)
-            # rearrange in a basic way because older xarray versions have a bug and ellipsis don't work in xarray.transpose()
-            l=list(result.dims[:-2])
-            result=result.transpose(*(l+['y','x']))
-            # turn it into a dataset where each band becomes a variable
-            if not 'bands' in result.dims:
-                result=result.expand_dims(dim={'bands':['band_0']})
-            result=result.to_dataset('bands')
-            #result=result.assign_coords(y=result.y[::-1])
-            # TODO: NETCDF4 is broken. look into
-            result.to_netcdf(filename, engine='h5netcdf') # engine='scipy')
+            
+            _save_DataArray_to_NetCDF(filename,result)
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
@@ -984,31 +989,8 @@ class GeopysparkDataCube(DriverDataCube):
                 result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             else:
                 result=self._collect_as_xarray(spatial_rdd)
-            jsonresult=result.to_dict()
-            # add attributes that needed for re-creating xarray from json
-            jsonresult['attrs']['dtype']=str(result.values.dtype)
-            jsonresult['attrs']['shape']=list(result.values.shape)
-            for i in result.coords.values():
-                jsonresult['coords'][i.name]['attrs']['dtype']=str(i.dtype)
-                jsonresult['coords'][i.name]['attrs']['shape']=list(i.shape)
-            result=None
-            # custom print so resulting json is easy to read humanly
-            with open(filename,'w') as f:
-                def custom_print(data_structure, indent=1):
-                    f.write("{\n")
-                    needs_comma=False
-                    for key, value in data_structure.items():
-                        if needs_comma: 
-                            f.write(',\n')
-                        needs_comma=True
-                        f.write('  '*indent+json.dumps(key)+':')
-                        if isinstance(value, dict): 
-                            custom_print(value, indent+1)
-                        else: 
-                            json.dump(value,f,default=str,separators=(',',':'))
-                    f.write('\n'+'  '*(indent-1)+"}")
-                    
-                custom_print(jsonresult)
+                
+            _save_DataArray_to_JSON(filename,result)
 
         else:
             raise OpenEOApiException(
@@ -1116,6 +1098,8 @@ class GeopysparkDataCube(DriverDataCube):
             .groupByKey()\
             .map(partial(stitch_at_time, crop_win, layout_win))\
             .collect()
+            
+# only for debugging on driver, do not use in production
 #         collection=rdd\
 #             .to_numpy_rdd()\
 #             .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
@@ -1123,7 +1107,6 @@ class GeopysparkDataCube(DriverDataCube):
 #             .groupByKey()\
 #             .collect()
 #         collection=list(map(partial(stitch_at_time, crop_win, layout_win),collection))
-        
         
         if len(collection)==0:
             return xr.DataArray(np.full([0]*len(dims),0),dims=dims,coords=dict(map(lambda k: (k[0],[]),coords.items())))
