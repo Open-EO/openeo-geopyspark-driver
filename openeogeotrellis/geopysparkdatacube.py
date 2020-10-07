@@ -99,13 +99,22 @@ class GeopysparkDataCube(DriverDataCube):
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
+    # TODO: deprecated
     def date_range_filter(
             self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
     ) -> 'GeopysparkDataCube':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
+    def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
+        # TODO: is this necessary? Temporal range is handled already at load_collection time
+        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]))
+
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
-        # Note: the bbox is already extracted in `apply_process` and applied in `GeoPySparkLayerCatalog.load_collection` through the viewingParameters
+        # Bbox is handled at load_collection time
+        return self
+
+    def filter_bands(self, bands) -> 'GeopysparkDataCube':
+        # Bands are handled at load_collection time
         return self
 
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
@@ -410,7 +419,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return transform(project, polygon)  # apply projection
 
-    def merge(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
+    def merge_cubes(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
         #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
         pysc = gps.get_spark_context()
@@ -466,6 +475,9 @@ class GeopysparkDataCube(DriverDataCube):
                     merged_data.metadata=merged_data.metadata.append_band(iband)
         
         return merged_data
+
+    # TODO legacy alias to be removed
+    merge = merge_cubes
 
     def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
