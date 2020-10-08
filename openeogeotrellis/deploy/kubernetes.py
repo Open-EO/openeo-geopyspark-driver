@@ -51,7 +51,12 @@ def main():
         app.logger.setLevel('DEBUG')
 
     server.run(title="OpenEO API",
-               description="OpenEO API (using GeoPySpark driver).",
+               description="""[UNSTABLE] OpenEO API running on CreoDIAS (using GeoPySpark driver). This endpoint runs openEO on a Kubernetes cluster.
+                The main component can be found here: https://github.com/Open-EO/openeo-geopyspark-driver
+                The deployment is configured using Terraform and Kubernetes configs: https://github.com/Open-EO/openeo-geotrellis-kubernetes
+                Data is read directly from the CreoDIAS data offer through object storage. Processing is limited by the processing
+                capacity of the Kubernetes cluster running on DIAS. Contact VITO for experiments with higher resource needs.
+                """,
                deploy_metadata=build_backend_deploy_metadata(
                    packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
                     # TODO: add version info about geotrellis-extensions jar?
