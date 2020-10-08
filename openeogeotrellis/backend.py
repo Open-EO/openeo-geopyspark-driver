@@ -505,9 +505,13 @@ class GpsBatchJobs(backend.BatchJobs):
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
-        return {
-            "out": str(self._get_job_output_dir(job_id=job_id))
+        job_dir=self._get_job_output_dir(job_id=job_id)
+        results_dict= {
+            "out": str(job_dir)
         }
+        if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
+            results_dict['profile_dumps.tar.gz']=str(job_dir)
+        return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
         metadata_file = self._get_job_output_dir(job_id) / "metadata"
