@@ -21,10 +21,14 @@ def calibration(s1_grd_array):
     offset = 2024
     extractROI.SetParameterString("in", test_file)
     extractROI.SetParameterString("mode","extent")
-    extractROI.SetParameterFloat("mode.extent.ulx", offset)
-    extractROI.SetParameterFloat("mode.extent.uly", offset)
-    extractROI.SetParameterFloat("mode.extent.lrx", offset+256)
-    extractROI.SetParameterFloat("mode.extent.lry", offset+256)
+    extractROI.SetParameterString("mode.extent.unit","lonlat")
+    (ulx,uly,lrx,lry)=2.856445,51.155878,3.731232,51.442881
+
+    #(ulx, uly, lrx, lry) = offset, offset, offset+256, offset+256
+    extractROI.SetParameterFloat("mode.extent.ulx", ulx)
+    extractROI.SetParameterFloat("mode.extent.uly", uly)
+    extractROI.SetParameterFloat("mode.extent.lrx", lrx)
+    extractROI.SetParameterFloat("mode.extent.lry", lry)
 
     extractROI.Execute()
 
@@ -48,6 +52,7 @@ def calibration(s1_grd_array):
     OrthoRect.SetParameterInputImage("io.in", SARCalibration.GetParameterOutputImage("out"))
 
     OrthoRect.SetParameterString("elev.dem","/home/driesj/dems")
+    OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
     OrthoRect.SetParameterValue("map.utm.northhem",True)
     OrthoRect.SetParameterInt("map.epsg.code",32631)
 
