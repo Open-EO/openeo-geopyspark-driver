@@ -1115,7 +1115,8 @@ class GeopysparkDataCube(DriverDataCube):
             collection.sort(key= lambda i: i[0])
                         
         if not has_bands:
-            collection=list(map(lambda i: (i[0],i[1].reshape(list(i[1].shape[-2:]))), collection))
+            #no bands defined, so we need to force the data to only have 2 dimensions
+            collection=list(map(lambda i: (i[0],i[1][0] if len(i[1].shape)>2 else i[1]), collection))
 
         # collect to an xarray
         if has_time:
@@ -1123,7 +1124,7 @@ class GeopysparkDataCube(DriverDataCube):
             coords['t']=list(map(lambda i: np.datetime64(i),collection[0]))
             npresult=np.stack(collection[1])
             # TODO: this is a workaround if metadata goes out of sync, fix upstream process nodes to update metdata
-            if len(coords['bands'])!=npresult.shape[-3]:
+            if has_bands and len(coords['bands'])!=npresult.shape[-3]:
                 coords['bands']=[ 'band_'+str(i) for i in range(npresult.shape[-3])]
             result=xr.DataArray(npresult,dims=dims,coords=coords)
         else:

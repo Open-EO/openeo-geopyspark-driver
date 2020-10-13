@@ -94,6 +94,12 @@ class TestDownload(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
+    def download_no_bands(self, format):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+
+        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_result.") + format, format=format)
+        print(geotiffs)
 
     def download_no_args(self,format):
         input = self.create_spacetime_layer()
@@ -142,6 +148,9 @@ class TestDownload(TestCase):
 
     def test_download_geotiff_no_args(self):
         self.download_no_args('gtiff')
+
+    def test_download_netcdf_no_bands(self):
+        self.download_no_bands('netcdf')
 
     def test_download_netcdf_no_args(self):
         self.download_no_args('netcdf')
