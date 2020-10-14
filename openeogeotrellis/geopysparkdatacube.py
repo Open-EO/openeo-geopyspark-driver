@@ -146,7 +146,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def reduce(self, reducer: str, dimension: str) -> 'GeopysparkDataCube':
         # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
-        from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite
+        from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite, median_composite
 
         reducer = self._normalize_temporal_reducer(dimension, reducer)
 
@@ -160,6 +160,8 @@ class GeopysparkDataCube(DriverDataCube):
             return self._aggregate_over_time_numpy(max_composite)
         elif reducer == 'Sum':
             return self._aggregate_over_time_numpy(sum_composite)
+        elif reducer == 'Median':
+            return self._aggregate_over_time_numpy(median_composite)
         else:
             return self.apply_to_levels(lambda layer: layer.to_spatial_layer().aggregate_by_cell(reducer))
 
@@ -178,7 +180,7 @@ class GeopysparkDataCube(DriverDataCube):
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
         if dimension != self.metadata.temporal_dimension.name:
             raise FeatureUnsupportedException('Reduce on dimension {d!r} not supported'.format(d=dimension))
-        if reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE"]:
+        if reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE","MEDIAN"]:
             reducer = reducer.lower().capitalize()
         elif reducer.upper() == "SD":
             reducer = "StandardDeviation"
