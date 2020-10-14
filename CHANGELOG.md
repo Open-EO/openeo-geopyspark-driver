@@ -19,4 +19,8 @@ Geotiff (GTiff) output format is faster to generate, and works for larger areas.
 Copernicus projections stored in UTM are now also processed and returned in UTM, as opposed to web mercator.
 This affects processing parameters that depend on a specific projection, like the size of pixels in map units. 
 
-This change also improves memory usage and performance for a number of layers. 
+This change also improves memory usage and performance for a number of layers.
+
+## 2020-10-14
+### Feature
+Support "PNG" output format (non-indexed only).

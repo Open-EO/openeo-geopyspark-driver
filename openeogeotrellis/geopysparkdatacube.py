@@ -914,7 +914,8 @@ class GeopysparkDataCube(DriverDataCube):
         Extracts into various formats from this image collection.
         
         Supported formats:
-        * GeoTIFF: raster with the limitation that it only export bands at a single (random) date 
+        * GeoTIFF: raster with the limitation that it only export bands at a single (random) date
+        * PNG: 8-bit grayscale or RGB raster with the limitation that it only export bands at a single (random) date
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
         """
@@ -955,24 +956,31 @@ class GeopysparkDataCube(DriverDataCube):
         tiled = format_options.get("tiled", False)          
         catalog = format_options.get("parameters", {}).get("catalog", False)
 
-        if format == "GTIFF":
+        if format in ["GTIFF", "PNG"]:
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
-            zlevel = format_options.get("ZLEVEL",6)
-            if catalog:
-                self._save_on_executors(spatial_rdd, filename)
-            elif not tiled:
-                self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
-            else:
-                band_count = 1
-                if self.metadata.has_band_dimension():
-                    band_count = len(self.metadata.band_dimension.band_names)
-                if crop_bounds:
-                    crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
+            if format == "GTIFF":
+                zlevel = format_options.get("ZLEVEL",6)
+                if catalog:
+                    self._save_on_executors(spatial_rdd, filename)
+                elif not tiled:
+                    self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
                 else:
-                    crop_extent = None
-                self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+                    band_count = 1
+                    if self.metadata.has_band_dimension():
+                        band_count = len(self.metadata.band_dimension.band_names)
+                    if crop_bounds:
+                        crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
+                    else:
+                        crop_extent = None
+                    self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+            else:
+                if crop_bounds:
+                    crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename, crop_extent)
+                else:
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename)
 
         elif format == "NETCDF":
             if not tiled:

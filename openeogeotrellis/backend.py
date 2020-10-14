@@ -269,6 +269,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["raster"],
                     "parameters": {},
                 },
+                "PNG": {
+                    "title": "Portable Network Graphics",
+                    "gis_data_types": ["raster"],
+                    "parameters": {}
+                },
                 "CovJSON": {
                     "title": "CoverageJSON",
                     "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
