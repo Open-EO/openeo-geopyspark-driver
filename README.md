@@ -10,27 +10,18 @@ This driver implements the GeoPySpark/Geotrellis specific backend for OpenEO.
 It does this by implementing a direct (non-REST) version of the OpenEO client API on top 
 of [GeoPySpark](https://github.com/locationtech-labs/geopyspark/). 
 
-### Currently implemented features
-- Listing available layers through /openeo/data
-- Synchronous execution, with /openeo/execute
-- Asynchronous: Not implemented
-- Download of image as geotiff
-- Timeseries computation
-- Band math
-- Temporal min/max compositing
-- Basic viewing with TMS (early prototype)
-
-
 A REST service based on Flask translates incoming calls to this local API.
+
+![Technology stack](openeo-geotrellis-techstack.png?raw=true "Technology stack")
 
 ### Operating environment dependencies
 This backend has been tested with:
-- A Spark on Yarn cluster
+- Something that runs Spark: Kubernetes or YARN (Hadoop), standalone or on your laptop
 - Accumulo as the tile storage backend for Geotrellis
-- Other Geotrellis backends such as S3 should also work with minor modifications.
+- Reading GeoTiff files directly from disk or object storage
 
 ### Public endpoint
-Not available yet
+https://openeo.vito.be/openeo/
 
 ### Running locally
 Preparation:
