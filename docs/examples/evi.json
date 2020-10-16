@@ -151,7 +151,7 @@
         },
         "dimension": "t"
       },
-      "description": "Compute a minimum time composite by reducing the temporal dimension"
+      "description": "Compute a maximum time composite by reducing the temporal dimension"
     },
     "save": {
       "process_id": "save_result",
