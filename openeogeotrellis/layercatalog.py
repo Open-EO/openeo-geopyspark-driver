@@ -58,7 +58,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         print("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         if isinstance(srs, int):
-            srs = 'EPSG:%s' % srs
+            srs = 'EPSG:%s' % str(srs)
         if srs == None:
             srs = 'EPSG:4326'
 
