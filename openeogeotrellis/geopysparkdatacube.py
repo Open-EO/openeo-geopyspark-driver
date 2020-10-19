@@ -939,6 +939,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         if xmin and ymin and xmax and ymax:
             srs = format_options.get('srs', 'EPSG:4326')
+            if isinstance(srs, int):
+                srs = 'EPSG:%s' % str(srs)
             if srs is None:
                 srs = 'EPSG:4326'
 
