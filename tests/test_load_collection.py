@@ -33,14 +33,9 @@ def test_load_collection_bands_with_required_extent(javagateway):
                                               '}' \
                                               '}'
     collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', {
-        'from': '2019-01-01',
-        'to': '2019-01-01',
+        "temporal_extent": ('2019-01-01', '2019-01-01'),
         'bands': ['TOC-B03_10M'],
-        'left': 4,
-        'right': 4.001,
-        'top': 52,
-        'bottom': 51.9999,
-        'srs': 4326,
+        "spatial_extent": {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
         'require_bounds': True
     })
 

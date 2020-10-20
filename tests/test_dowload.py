@@ -97,18 +97,17 @@ class TestDownload(TestCase):
     def download_no_bands(self, format):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_result.") + format, format=format)
-        print(geotiffs)
+        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
+        print(res)
 
     def download_no_args(self,format):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
-        
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_result.")+format,format=format)
-        print(geotiffs)
+
+        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
+        print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
     def download_masked(self,format):
@@ -119,9 +118,10 @@ class TestDownload(TestCase):
 
         polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
         imagecollection = imagecollection.mask_polygon(mask=polygon)
-        
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.")+format,format=format)
-        print(geotiffs)
+
+        filename = str(self.temp_folder / "test_download_masked_result.") + format
+        res = imagecollection.save_result(filename, format=format)
+        print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
     def download_masked_reproject(self,format):
@@ -140,9 +140,10 @@ class TestDownload(TestCase):
             pyproj.Proj(init="EPSG:3857"))  # destination coordinate system
         reprojected = transform(project, polygon)
         imagecollection = imagecollection.mask_polygon(mask=reprojected, srs="EPSG:3857")
-        
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.3857.")+format,format=format)
-        print(geotiffs)
+
+        filename = str(self.temp_folder / "test_download_masked_result.3857.") + format
+        res = imagecollection.save_result(filename, format=format)
+        print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
 
@@ -183,4 +184,4 @@ class TestDownload(TestCase):
         input = self.create_spacetime_layer()
 
         imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        imagecollection.download("catalogresult.tiff",format="GTIFF",parameters={"catalog":True})
+        imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})

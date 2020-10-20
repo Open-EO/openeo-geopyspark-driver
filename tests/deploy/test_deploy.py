@@ -7,6 +7,7 @@ import uuid
 
 from openeo.capabilities import ComparableVersion
 from openeo_driver.ProcessGraphDeserializer import get_process_registry
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy import load_custom_processes
 
 
@@ -51,7 +52,7 @@ def test_load_custom_processes_present(tmp_path, api_version):
         f.write(textwrap.dedent("""
             from openeo_driver.ProcessGraphDeserializer import custom_process
             @custom_process
-            def {p}(*args):
+            def {p}(args, env):
                 return 42
         """.format(p=process_name)))
     with mock.patch("sys.path", new=[str(tmp_path)] + sys.path):
@@ -63,4 +64,4 @@ def test_load_custom_processes_present(tmp_path, api_version):
 
     process_registry = get_process_registry(ComparableVersion(api_version))
     f = process_registry.get_function(process_name)
-    assert f() == 42
+    assert f({}, EvalEnv()) == 42

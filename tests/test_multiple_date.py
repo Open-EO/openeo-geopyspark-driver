@@ -3,18 +3,18 @@ from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+import rasterio
 from geopyspark import CellType
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
 from numpy.testing import assert_array_almost_equal
-from openeo.metadata import CollectionMetadata
-from openeo_driver.errors import FeatureUnsupportedException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeo_driver.errors import FeatureUnsupportedException
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.numpy_aggregators import max_composite
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
@@ -80,7 +80,7 @@ class TestMultipleDates(TestCase):
                 'layoutDefinition': {
                     'extent': extent,
                     'tileLayout': {'tileCols': 5, 'tileRows': 5, 'layoutCols': 2, 'layoutRows': 2}}}
-    collection_metadata = CollectionMetadata({
+    collection_metadata = GeopysparkCubeMetadata({
         "cube:dimensions": {
             "t": {"type": "temporal"},
         }
@@ -129,13 +129,12 @@ class TestMultipleDates(TestCase):
         print(metadata)
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
-        resampled.reduce('max', dimension="t").download(path, format="GTIFF", parameters={'tiled': True})
+        res = resampled.reduce('max', dimension="t")
+        res.save_result(path, format="GTIFF", format_options={"parameters": {'tiled': True}})
 
-        import rasterio
         with rasterio.open(path) as ds:
             print(ds.profile)
-
-
+            assert ds.read().shape == (1, 15, 10)
 
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
@@ -336,7 +335,7 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeopysparkDataCube(
             input, InMemoryServiceRegistry(),
-            metadata=CollectionMetadata({
+            metadata=GeopysparkCubeMetadata({
                 "cube:dimensions": {
                     # TODO: also specify other dimensions?
                     "bands": {"type": "bands", "values": ["2"]}
@@ -374,7 +373,7 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeopysparkDataCube(
             input, InMemoryServiceRegistry(),
-            metadata=CollectionMetadata({
+            metadata=GeopysparkCubeMetadata({
                 "cube:dimensions": {
                     # TODO: also specify other dimensions?
                     "bands": {"type": "bands", "values": ["2"]}
@@ -460,7 +459,8 @@ def rct_savitzky_golay(udf_data:UdfData):
         resampled = imagecollection.resample_spatial(resolution=0.05)
 
         path = str(self.temp_folder / "resampled.tiff")
-        resampled.reduce('max', dimension="t").download(path, format="GTIFF", parameters={'tiled': True})
+        res = resampled.reduce('max', dimension="t")
+        res.save_result(path, format="GTIFF", format_options={"parameters": {'tiled': True}})
 
         import rasterio
         with rasterio.open(path) as ds:
