@@ -211,19 +211,22 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date)
 
         def sentinel_hub_s1_pyramid():
-            return jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory(layer_source_info.get('uuid')) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory)
 
         def sentinel_hub_s2_l1c_pyramid():
-            return jvm.org.openeo.geotrellissentinelhub.S2L1CPyramidFactory(layer_source_info.get('uuid')) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.S2L1CPyramidFactory)
 
         def sentinel_hub_s2_l2a_pyramid():
-            return jvm.org.openeo.geotrellissentinelhub.S2L2APyramidFactory(layer_source_info.get('uuid')) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.S2L2APyramidFactory)
 
         def sentinel_hub_l8_pyramid():
-            return jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory(layer_source_info.get('uuid')) \
+            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory)
+
+        def sentinel_hub_pyramid(ctor):
+            client_id = layer_source_info['client_id']
+            client_secret = layer_source_info['client_secret']
+
+            return ctor(client_id, client_secret) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def creo_pyramid():
