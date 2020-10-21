@@ -115,7 +115,7 @@ class TestCustomFunctions(TestCase):
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
 
         means = self.imagecollection_with_two_bands_and_one_date.polygonal_mean_timeseries(polygon)
-        assert means == {'2017-09-25T11:37:00': [[1.0, 2.0]]}
+        assert means == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
 
     def _create_spacetime_layer(self, no_data):
         def tile(value):
@@ -157,4 +157,4 @@ class TestCustomFunctions(TestCase):
         imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
         means = imagecollection.polygonal_mean_timeseries(polygon)
-        assert means == {'2017-09-25T11:37:00': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}
+        assert means == {'2017-09-25T11:37:00Z': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}
