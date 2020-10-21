@@ -143,7 +143,7 @@ class TestTimeSeries(TestCase):
             (0.0, 0.0)
         ])
         result = imagecollection.zonal_statistics(polygon, "mean")
-        assert result.data == {'2017-09-25T11:37:00': [[1.0, 2.0]]}
+        assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
 
         covjson = result.to_covjson()
         assert covjson["ranges"] == {
@@ -251,7 +251,7 @@ class TestTimeSeries(TestCase):
         ])
         result = imagecollection.zonal_statistics(polygon, "mean")
         # FIXME: the Python implementation doesn't return a time zone (Z)
-        assert result.data == {'2017-09-25T11:37:00': [[220.0]]}
+        assert result.data == {'2017-09-25T11:37:00Z': [[220.0]]}
 
         covjson = result.to_covjson()
         assert covjson["ranges"] == {
@@ -271,7 +271,7 @@ def _build_cube():
 
 
 @pytest.mark.parametrize(["func", "expected"], [
-    ("mean", {'2017-09-25T11:37:00': [[1.0, 2.0]]}),
+    ("mean", {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}),
     ("median", {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}),
     ("histogram", {'2017-09-25T11:37:00Z': [[{1.0: 4}, {2.0: 4}]]}),
     ("sd", {'2017-09-25T11:37:00Z': [[0.0, 0.0]]})

@@ -24,6 +24,7 @@ from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import openeo.metadata
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band
+from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
@@ -896,6 +897,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             return l1
 
+        # GeoPySpark uses utcfromtimestamp to convert SpaceTimeKey/ZonedDateTime; it returns a naive datetime ffs
         polygon_mean_by_timestamp = masked_layer.to_numpy_rdd() \
             .map(lambda pair: (pair[0].instant, pair[1])) \
             .aggregateByKey([], combine_cells, combine_values)
@@ -905,7 +907,7 @@ class GeopysparkDataCube(DriverDataCube):
             return sum / count
 
         collected = polygon_mean_by_timestamp.collect()
-        return {timestamp.isoformat(): [[to_mean(v) for v in values]] for timestamp, values in collected}
+        return {rfc3339.datetime(timestamp): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
     def _to_xarray(self):
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
