@@ -88,6 +88,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             srs = "EPSG:4326"
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
 
+        polygons = viewing_parameters.get('polygons')
+        target_epsg_code = auto_utm_epsg_for_geometry(box(left, bottom, right, top), srs)
+        if not polygons:
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
+        else:
+            projected_polygons = to_projected_polygons(jvm, polygons)
+        projected_polygons_utm = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
+
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
@@ -178,21 +186,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
-            # feature flag for EP-3556
-            native_utm = custom_properties.get('native_utm', False)
-
-            polygons = viewing_parameters.get('polygons')
-
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
             if viewing_parameters.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
-                target_epsg_code = auto_utm_epsg_for_geometry(box(left,bottom,right,top),srs)
-                if not polygons:
-                    projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent,srs)
-                else:
-                    projected_polygons = to_projected_polygons(jvm, polygons)
-                projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons,target_epsg_code)
-                return factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties, correlation_id)
+                return factory.datacube_seq(projected_polygons_utm, from_date, to_date, metadata_properties, correlation_id)
             else:
                 if polygons:
                     projected_polygons = to_projected_polygons(jvm, polygons)
@@ -238,7 +235,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                         ulx=left, uly=top,
                                                         brx=right, bry=bottom)
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
-                .pyramid_seq(extent, srs, from_date, to_date)
+                .datacube_seq(projected_polygons_utm, from_date, to_date,{},collection_id)
 
         logger.info("loading pyramid {s}".format(s=layer_source_type))
         if layer_source_type == 's3':
