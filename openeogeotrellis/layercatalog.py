@@ -89,12 +89,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
 
         polygons = viewing_parameters.get('polygons')
-        target_epsg_code = auto_utm_epsg_for_geometry(box(left, bottom, right, top), srs)
+                
         if not polygons:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
         else:
             projected_polygons = to_projected_polygons(jvm, polygons)
-        projected_polygons_utm = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
+
+        if spatial_bounds_present:
+            target_epsg_code = auto_utm_epsg_for_geometry(box(left, bottom, right, top), srs)
+            projected_polygons_utm = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
