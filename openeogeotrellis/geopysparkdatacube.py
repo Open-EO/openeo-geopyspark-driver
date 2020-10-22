@@ -293,7 +293,7 @@ class GeopysparkDataCube(DriverDataCube):
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME,
                                                        grouped_by_spatial_key.flatMap(
                                                     log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
-                                                       rdd.layer_metadata)
+                                                       GeopysparkDataCube._transform_metadata(rdd.layer_metadata,cellType=CellType.FLOAT32))
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
@@ -362,7 +362,7 @@ class GeopysparkDataCube(DriverDataCube):
             return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
                                                 rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
                                                     log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
-                                                rdd.layer_metadata)
+                                                GeopysparkDataCube._transform_metadata(rdd.layer_metadata,cellType=CellType.FLOAT32))
         from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
@@ -395,6 +395,13 @@ class GeopysparkDataCube(DriverDataCube):
         reducer = self._normalize_temporal_reducer(dimension, reducer)
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
+    @classmethod
+    def _transform_metadata(cls,metadata, cellType = None):
+        output_metadata_dict = metadata.to_dict()
+        if cellType != None:
+            output_metadata_dict['cellType'] = CellType.FLOAT32
+        return Metadata.from_dict(output_metadata_dict)
+
     def _aggregate_over_time_numpy(self, reducer: Callable[[Iterable[Tile]], Tile]) -> 'GeopysparkDataCube':
         """
         Aggregate over time.
@@ -405,7 +412,7 @@ class GeopysparkDataCube(DriverDataCube):
             grouped_numpy_rdd = layer.to_spatial_layer().convert_data_type(CellType.FLOAT32).to_numpy_rdd().groupByKey()
 
             composite = grouped_numpy_rdd.mapValues(reducer)
-            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, layer.layer_metadata)
+            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, GeopysparkDataCube._transform_metadata(layer.layer_metadata,CellType=CellType.FLOAT32))
             return aggregated_layer
 
         return self.apply_to_levels(aggregate_temporally)
