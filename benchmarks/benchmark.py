@@ -17,7 +17,7 @@ To run locally, unset SPARK_HOME, then:
 SPARK_HOME=$(find_spark_home.py) HADOOP_CONF_DIR=/etc/hadoop/conf DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis spark-submit \
 --master "local[*]" \
 --principal vdboschj@VGT.VITO.BE --keytab ${HOME}/Documents/VITO/vdboschj.keytab \
---jars jars/geotrellis-backend-assembly-0.4.5-openeo.jar,jars/geotrellis-extensions-1.4.0-SNAPSHOT.jar \
+--jars jars/geotrellis-backend-assembly-0.4.6-openeo.jar,jars/geotrellis-extensions-1.4.0-SNAPSHOT.jar \
 benchmarks/benchmark.py
 
 To debug application in PyCharm, set SPARK_HOME, HADOOP_CONF_DIR and DRIVER_IMPLEMENTATION_PACKAGE, then use e.g.
