@@ -207,7 +207,11 @@ class TestCustomFunctions(TestCase):
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
-        collection_metadata = _build_metadata(bands=["B04", "B08"])
+        collection_metadata = CollectionMetadata({
+            "cube:dimensions": {
+                "my_bands": {"type": "bands", "values": ["B04", "B08"]},
+            }
+        })
         imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), collection_metadata)
 
         visitor = GeotrellisTileProcessGraphVisitor()
@@ -485,7 +489,7 @@ class TestCustomFunctions(TestCase):
         self._test_merge_cubes_subtract_spatial(False, True)
 
     def test_merge_cubes_subtract_spatial_1_0(self):
-        self.skipTest("TODO still Causes exception in geotrellis extension")
+        self.skipTest("TODO EP-3635 still Causes exception in geotrellis extension")
         self._test_merge_cubes_subtract_spatial(True, False)
 
     def test_merge_cubes_subtract_spatial_1_1(self):
