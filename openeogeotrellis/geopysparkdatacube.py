@@ -437,8 +437,8 @@ class GeopysparkDataCube(DriverDataCube):
             merged_data = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level:
                 pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeSpatialCubes(
-                    other.pyramid.levels[level].srdd.rdd(),
                     rdd,
+                    other.pyramid.levels[level].srdd.rdd(),
                     overlaps_resolver
                 )
             )
@@ -449,7 +449,7 @@ class GeopysparkDataCube(DriverDataCube):
                     other.pyramid.levels[level].srdd.rdd(),
                     rdd,
                     overlaps_resolver,
-                    True
+                    True  # swapOperands
                 )
             )
         elif other._is_spatial():
@@ -459,7 +459,7 @@ class GeopysparkDataCube(DriverDataCube):
                     rdd,
                     other.pyramid.levels[level].srdd.rdd(),
                     overlaps_resolver,
-                    False
+                    False  # swapOperands
                 )
             )
         else:
