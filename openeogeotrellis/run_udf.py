@@ -10,6 +10,7 @@ from copy import deepcopy
 import math
 from typing import Dict
 from inspect import signature
+import logging
 
 from openeo_udf.api.feature_collection import FeatureCollection
 from openeo_udf.api.datacube import DataCube
@@ -28,6 +29,10 @@ __email__ = "soerengebbert@googlemail.com"
 """
 This is a copy of run_code.py in the UDF api. It allows more easy experimentation inside this backend.
 """
+
+
+_log = logging.getLogger(__name__)
+
 
 def _build_default_execution_context():
     context = {
@@ -49,13 +54,13 @@ def _build_default_execution_context():
         context['torch'] = torch
         import torchvision
     except ImportError as e:
-        print('torch not available')
+        _log.warning('torch not available for run_udf context')
     try:
         import tensorflow
         context['tensorflow'] = tensorflow
         import tensorboard
     except ImportError as e:
-        print('tensorflow not available')
+        _log.warning('tensorflow not available for run_udf context')
 
     return context
 
