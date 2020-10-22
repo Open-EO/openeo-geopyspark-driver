@@ -1,5 +1,6 @@
 import datetime
 import math
+from typing import List
 from unittest import TestCase
 
 import geopyspark as gps
@@ -8,13 +9,25 @@ import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from openeo.metadata import CollectionMetadata
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from openeo.metadata import CollectionMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
+
+
+def _build_metadata(bands: List[str] = ["B01", "B02"]) -> CollectionMetadata:
+    """Helper to build metadata instance"""
+    return CollectionMetadata({
+        "cube:dimensions": {
+            "bands": {"type": "bands", "values": bands}
+        },
+        "summaries": {
+            "eo:bands": [{"name": b, "common_name": "common" + b} for b in bands]
+        }
+    })
 
 
 class TestCustomFunctions(TestCase):
@@ -448,52 +461,50 @@ class TestCustomFunctions(TestCase):
         expected[0][0]=255.0
         np.testing.assert_array_almost_equal(cells, expected.astype(np.uint8))
 
-    def test_merge_cubes_spatial(self):
+    def _test_merge_cubes_subtract_spatial(self, left_spatial=False, right_spatial=False):
+        # TODO: this would be cleaner with @pytest.mark.parameterize but that's not supported on TestCase methods
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
-        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]])).to_spatial_layer()
-
-        metadata = CollectionMetadata({
-            "cube:dimensions": {
-                # TODO: also specify other dimensions?
-                "bands": {"type": "bands", "values": ["the_band"]}
-            },
-            "summaries": {
-                "eo:bands": [
-                    {"name": "the_band"}
-                ]
-            }
-        })
-
+        if left_spatial:
+            layer1 = layer1.to_spatial_layer()
+        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
+        if right_spatial:
+            layer2 = layer2.to_spatial_layer()
+        metadata = _build_metadata()
         cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
         cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
-        sum = cube1.merge(cube2,'subtract')
-        stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
 
-        np.testing.assert_array_equal(red_ramp - nir_ramp, stitched.cells[0, 0:4, 0:4])
+        res = cube1.merge_cubes(cube2, 'subtract')
+        layer = res.pyramid.levels[0]
+        if layer.layer_type != LayerType.SPATIAL:
+            layer = layer.to_spatial_layer()
+        actual = layer.stitch().cells[0, 0:4, 0:4]
+        expected = red_ramp - nir_ramp
+        np.testing.assert_array_equal(expected, actual)
+
+    def test_merge_cubes_subtract_spatial_0_0(self):
+        self._test_merge_cubes_subtract_spatial(False, False)
+
+    def test_merge_cubes_subtract_spatial_0_1(self):
+        self._test_merge_cubes_subtract_spatial(False, True)
+
+    def test_merge_cubes_subtract_spatial_1_0(self):
+        self.skipTest("TODO EP-3635 still Causes exception in geotrellis extension")
+        self._test_merge_cubes_subtract_spatial(True, False)
+
+    def test_merge_cubes_subtract_spatial_1_1(self):
+        self._test_merge_cubes_subtract_spatial(True, True)
 
     def test_merge_cubes_into_single_band(self):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
-
-        metadata = CollectionMetadata({
-            "cube:dimensions": {
-                # TODO: also specify other dimensions?
-                "bands": {"type": "bands", "values": ["the_band"]}
-            },
-            "summaries": {
-                "eo:bands": [
-                    {"name": "the_band"}
-                ]
-            }
-        })
-
+        metadata = _build_metadata(bands=["the_band"])
         cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
         cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
-        sum = cube1.merge(cube2,'sum')
-        stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
-
+        res = cube1.merge_cubes(cube2, 'sum')
+        stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
+        assert stitched.cells.shape[0] == 1
         np.testing.assert_array_equal(red_ramp + nir_ramp, stitched.cells[0, 0:4, 0:4])
         
     def test_merge_cubes_into_separate_bands(self):
@@ -501,34 +512,14 @@ class TestCustomFunctions(TestCase):
         layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
 
-        metadata1 = CollectionMetadata({
-            "cube:dimensions": {
-                # TODO: also specify other dimensions?
-                "bands": {"type": "bands", "values": ["the_band_1"]}
-            },
-            "summaries": {
-                "eo:bands": [
-                    {"name": "the_band_1"}
-                ]
-            }
-        })
-        metadata2 = CollectionMetadata({
-            "cube:dimensions": {
-                # TODO: also specify other dimensions?
-                "bands": {"type": "bands", "values": ["the_band_2"]}
-            },
-            "summaries": {
-                "eo:bands": [
-                    {"name": "the_band_2"}
-                ]
-            }
-        })
+        metadata1 = _build_metadata(bands=["the_band_1"])
+        metadata2 = _build_metadata(bands=["the_band_2"])
 
         cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata1)
         cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata2)
-        sum = cube1.merge(cube2)
-        stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
-
+        res = cube1.merge_cubes(cube2)
+        stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
+        assert stitched.cells.shape[0] == 2
         np.testing.assert_array_equal(red_ramp, stitched.cells[0, 0:4, 0:4])        
         np.testing.assert_array_equal(nir_ramp, stitched.cells[1, 0:4, 0:4])        
         
