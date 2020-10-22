@@ -301,7 +301,9 @@ class TestMultipleDates(TestCase):
         input = Pyramid( {0:self.tiled_raster_rdd })
         imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce('max', dimension='t').pyramid.levels[0].stitch()
+        layer = imagecollection.reduce('max', dimension='t').pyramid.levels[0]
+        stitched = layer.stitch()
+        assert CellType.FLOAT32.value == layer.layer_metadata.cell_type
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
