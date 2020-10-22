@@ -412,7 +412,7 @@ class GeopysparkDataCube(DriverDataCube):
             grouped_numpy_rdd = layer.to_spatial_layer().convert_data_type(CellType.FLOAT32).to_numpy_rdd().groupByKey()
 
             composite = grouped_numpy_rdd.mapValues(reducer)
-            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, GeopysparkDataCube._transform_metadata(layer.layer_metadata,CellType=CellType.FLOAT32))
+            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, GeopysparkDataCube._transform_metadata(layer.layer_metadata,cellType=CellType.FLOAT32))
             return aggregated_layer
 
         return self.apply_to_levels(aggregate_temporally)
