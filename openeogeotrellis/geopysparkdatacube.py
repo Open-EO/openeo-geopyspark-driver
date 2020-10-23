@@ -966,7 +966,8 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             crop_dates=None
 
-        tiled = format_options.get("tiled", False)          
+        tiled = format_options.get("tiled", False)
+        stitch = format_options.get("stitch", False)
         catalog = format_options.get("parameters", {}).get("catalog", False)
 
         if format in ["GTIFF", "PNG"]:
@@ -977,10 +978,10 @@ class GeopysparkDataCube(DriverDataCube):
                 zlevel = format_options.get("ZLEVEL",6)
                 if catalog:
                     self._save_on_executors(spatial_rdd, filename)
-                elif not tiled:
+                elif stitch:
                     self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
                 else:
-                    band_count = 1
+                    band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
                     if crop_bounds:
