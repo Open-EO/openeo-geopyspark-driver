@@ -46,7 +46,7 @@ def main():
     )
     download_jar(
         jar_dir,
-        "https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.5-openeo.jar"
+        "https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar"
     )
 
     logger.info("Listing of {j}:".format(j=jar_dir))
