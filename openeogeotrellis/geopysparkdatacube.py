@@ -23,7 +23,8 @@ from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
 import openeo.metadata
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import CollectionMetadata, Band
+from openeo.metadata import CollectionMetadata, Band, Dimension
+from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
 from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.delayed_vector import DelayedVector
@@ -34,7 +35,6 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.run_udf import run_user_code
 from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import to_projected_polygons, log_memory
-from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
 
 try:
     from openeo_udf.api.base import UdfData, SpatialExtent
@@ -46,11 +46,63 @@ except ImportError as e:
 _log = logging.getLogger(__name__)
 
 
+class GeopysparkCubeMetadata(CollectionMetadata):
+    """
+    GeoPySpark Cube metadata (additional tracking of spatial and temporal extent
+    """
+    # TODO move to python driver?
+
+    def __init__(
+            self, metadata: dict, dimensions: List[Dimension] = None,
+            spatial_extent: dict = None, temporal_extent: tuple = None
+    ):
+        super().__init__(metadata=metadata, dimensions=dimensions)
+        self._spatial_extent = spatial_extent
+        self._temporal_extent = temporal_extent
+
+    def _clone_and_update(
+            self, metadata: dict = None, dimensions: List[Dimension] = None,
+            spatial_extent: dict = None, temporal_extent: tuple = None, **kwargs
+    ) -> 'GeopysparkCubeMetadata':
+        # noinspection PyTypeChecker
+        return super()._clone_and_update(
+            metadata=metadata, dimensions=dimensions,
+            spatial_extent=spatial_extent or self._spatial_extent,
+            temporal_extent=temporal_extent or self._temporal_extent,
+            **kwargs
+        )
+
+    def filter_bbox(self, west, south, east, north, crs) -> 'GeopysparkCubeMetadata':
+        """Create new metadata instance with spatial extent"""
+        # TODO take intersection with existing extent
+        return self._clone_and_update(
+            spatial_extent={"west": west, "south": south, "east": east, "north": north, "crs": crs}
+        )
+
+    @property
+    def spatial_extent(self) -> dict:
+        return self._spatial_extent
+
+    def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
+        """Create new metadata instance with temporal extent"""
+        # TODO take intersection with existing extent
+        return self._clone_and_update(temporal_extent=(start, end))
+
+    @property
+    def temporal_extent(self) -> tuple:
+        return self._temporal_extent
+
+
 class GeopysparkDataCube(DriverDataCube):
 
+    metadata: GeopysparkCubeMetadata = None
+
     # TODO: no longer dependent on ServiceRegistry so it can be removed
-    def __init__(self, pyramid: Pyramid, service_registry: AbstractServiceRegistry, metadata: CollectionMetadata = None):
-        super().__init__(metadata=metadata)
+    def __init__(
+            self, pyramid: Pyramid, service_registry: AbstractServiceRegistry,
+            metadata: GeopysparkCubeMetadata = None
+    ):
+        super().__init__(metadata=metadata or GeopysparkCubeMetadata({}))
         self.pyramid = pyramid
         self.tms = None
         self._service_registry = service_registry
@@ -62,7 +114,7 @@ class GeopysparkDataCube(DriverDataCube):
     def _is_spatial(self):
         return self.pyramid.levels[self.pyramid.max_zoom].layer_type == gps.LayerType.SPATIAL
 
-    def apply_to_levels(self, func) -> 'GeopysparkDataCube':
+    def apply_to_levels(self, func, metadata: GeopysparkCubeMetadata = None) -> 'GeopysparkDataCube':
         """
         Applies a function to each level of the pyramid. The argument provided to the function is of type TiledRasterLayer
 
@@ -70,7 +122,7 @@ class GeopysparkDataCube(DriverDataCube):
         :return:
         """
         pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeopysparkDataCube(pyramid, self._service_registry, metadata=self.metadata)
+        return GeopysparkDataCube(pyramid, self._service_registry, metadata=metadata or self.metadata)
 
     def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
         jvm = self._get_jvm()
@@ -84,7 +136,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return gps.TiledRasterLayer(layer_type, srdd)
 
-    def _apply_to_levels_geotrellis_rdd(self, func):
+    def _apply_to_levels_geotrellis_rdd(self, func, metadata: GeopysparkCubeMetadata = None):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD.
 
@@ -92,10 +144,8 @@ class GeopysparkDataCube(DriverDataCube):
         :return:
         """
         pyramid = Pyramid({k:self._create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeopysparkDataCube(pyramid, self._service_registry, metadata=self.metadata)
+        return GeopysparkDataCube(pyramid, self._service_registry, metadata=metadata or self.metadata)
 
-    def band_filter(self, bands) -> 'GeopysparkDataCube':
-        return self.apply_to_levels(lambda rdd: rdd.bands(bands))
 
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
@@ -108,15 +158,22 @@ class GeopysparkDataCube(DriverDataCube):
 
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
         # TODO: is this necessary? Temporal range is handled already at load_collection time
-        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]))
+        return self.apply_to_levels(
+            lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]),
+            metadata=self.metadata.filter_temporal(start, end)
+        )
 
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
         # Bbox is handled at load_collection time
-        return self
+        return GeopysparkDataCube(
+            pyramid=self.pyramid, service_registry=self._service_registry,
+            metadata=self.metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
+        )
 
     def filter_bands(self, bands) -> 'GeopysparkDataCube':
-        # Bands are handled at load_collection time
-        return self
+        band_indices = [self.metadata.get_band_index(b) for b in bands]
+        _log.info("filter_bands({b!r}) -> indices {i!r}".format(b=bands, i=band_indices))
+        return self.apply_to_levels(lambda rdd: rdd.bands(band_indices), metadata=self.metadata.filter_bands(bands))
 
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(self.pyramid, self._service_registry, self.metadata.rename_dimension(source, target))
@@ -255,7 +312,7 @@ class GeopysparkDataCube(DriverDataCube):
         #early compile to detect syntax errors
         compiled_code = compile(function,'UDF.py',mode='exec')
 
-        def tilefunction(metadata:Metadata, openeo_metadata: CollectionMetadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
+        def tilefunction(metadata:Metadata, openeo_metadata: GeopysparkCubeMetadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
             tile_list = list(tiles[1])
             #sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
@@ -290,7 +347,7 @@ class GeopysparkDataCube(DriverDataCube):
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=datetime.now()),
                   Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
-        def rdd_function(openeo_metadata: CollectionMetadata, rdd):
+        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
             grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
 
@@ -336,7 +393,7 @@ class GeopysparkDataCube(DriverDataCube):
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
 
-        def tilefunction(metadata: Metadata, openeo_metadata: CollectionMetadata,
+        def tilefunction(metadata: Metadata, openeo_metadata: GeopysparkCubeMetadata,
                          geotrellis_tile: Tuple[SpaceTimeKey, Tile]):
 
             key = geotrellis_tile[0]
@@ -362,7 +419,7 @@ class GeopysparkDataCube(DriverDataCube):
             return (key,Tile(result_array.values, geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
 
-        def rdd_function(openeo_metadata: CollectionMetadata, rdd):
+        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
             return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
                                                 rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
                                                     log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
@@ -455,6 +512,8 @@ class GeopysparkDataCube(DriverDataCube):
                 str(self.metadata.has_band_dimension()),
                 str(other.metadata.has_band_dimension())
             ))
+
+        # TODO properly combine bbox and temporal extents in metadata?
 
         if self._is_spatial() and other._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
@@ -936,51 +995,41 @@ class GeopysparkDataCube(DriverDataCube):
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
         return self._collect_as_xarray(spatial_rdd)
 
-    def download(self,outputfile:str, **format_options) -> str:
+    def save_result(self, filename: str, format: str, format_options: dict = None) -> str:
         """
-        Extracts into various formats from this image collection.
-        
+        Save cube to disk
+
         Supported formats:
         * GeoTIFF: raster with the limitation that it only export bands at a single (random) date
         * PNG: 8-bit grayscale or RGB raster with the limitation that it only export bands at a single (random) date
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
         """
+        format = format.upper()
+        format_options = format_options or {}
+        _log.info("save_result {f} with options {o}".format(f=format, o=format_options))
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
-        format=format_options.get("format", "GTiff").upper()
-        
-        filename = outputfile
-        if outputfile is None:
-            _, filename = tempfile.mkstemp(suffix='.oeo-gps-dl')
-        else:
-            filename = outputfile
 
         # get the data at highest resolution
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
 
-        # spatial bounds        
-        xmin, ymin, xmax, ymax = format_options.get('left'), format_options.get('bottom'),\
-                                 format_options.get('right'), format_options.get('top')
-
-        if xmin and ymin and xmax and ymax:
-            srs = format_options.get('srs', 'EPSG:4326')
-            if isinstance(srs, int):
-                srs = 'EPSG:%s' % str(srs)
-            if srs is None:
-                srs = 'EPSG:4326'
-
-            src_crs = "+init=" + srs
-            dst_crs = spatial_rdd.layer_metadata.crs
-            crop_bounds = self._reproject_extent(src_crs, dst_crs, xmin, ymin, xmax, ymax)
+        if self.metadata.spatial_extent:
+            bbox = self.metadata.spatial_extent
+            crs = bbox.get("crs") or "EPSG:4326"
+            if isinstance(crs, int):
+                crs = "EPSG:%d" % crs
+            crop_bounds = self._reproject_extent(
+                src_crs="+init=" + crs, dst_crs=spatial_rdd.layer_metadata.crs,
+                xmin=bbox["west"], ymin=bbox["south"], xmax=bbox["east"], ymax=bbox["north"]
+            )
         else:
             crop_bounds = None
 
-        # date bounds        
-        datefrom,dateto= format_options.get('from'), format_options.get('to')
-        if datefrom and dateto:
-            crop_dates=(pd.Timestamp(datefrom), pd.Timestamp(dateto))
+        if self.metadata.temporal_extent:
+            date_from, date_to = self.metadata.temporal_extent
+            crop_dates = (pd.Timestamp(date_from), pd.Timestamp(date_to))
         else:
-            crop_dates=None
+            crop_dates = None
 
         tiled = format_options.get("tiled", False)
         stitch = format_options.get("stitch", False)

@@ -1,42 +1,41 @@
-import json
 import logging
+import logging
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import traceback
 import uuid
+from datetime import datetime
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import List, Dict, Union
-import shutil
-from datetime import datetime
-import os
+from typing import Dict
 
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
-from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import CollectionMetadata, TemporalDimension
-from openeo.util import dict_no_none, rfc3339
-from openeo_driver import backend
-from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
-from openeo_driver.errors import (JobNotFinishedException, JobNotStartedException, ProcessGraphMissingException,
-                                  OpenEOApiException, InternalException, ServiceUnsupportedException)
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.configparams import ConfigParams
+from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+from openeo.metadata import TemporalDimension
+from openeo.util import dict_no_none, rfc3339
+from openeo_driver import backend
+from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
+from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
+                                  OpenEOApiException, InternalException, ServiceUnsupportedException)
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.oscars import OscarsClient
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
+from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import normalize_date, kerberos, zk_client
-from openeogeotrellis.traefik import Traefik
-from openeogeotrellis.oscars import OscarsClient
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +326,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
-        metadata = CollectionMetadata(metadata={},dimensions=[TemporalDimension(name='t',extent=[])])
+        metadata = GeopysparkCubeMetadata(metadata={},dimensions=[TemporalDimension(name='t',extent=[])])
 
         image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
@@ -335,7 +334,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             metadata=metadata
         )
 
-        return image_collection.band_filter(band_indices) if band_indices else image_collection
+        return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)

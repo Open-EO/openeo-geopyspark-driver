@@ -176,11 +176,12 @@ def run_job(job_specification, output_file, metadata_file, api_version):
         result = JSONResult(geojsons)
     if isinstance(result, GeopysparkDataCube):
         format_options = job_specification.get('output', {})
-        result.download(output_file, bbox="", time="", **format_options)
+        format = format_options.pop("format")
+        result.save_result(filename=output_file, format=format, format_options=format_options)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
     elif isinstance(result, ImageCollectionResult):
-        result.imagecollection.download(output_file, bbox="", time="", format=result.format, **result.options)
+        result.save_result(filename=output_file)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
     elif isinstance(result, JSONResult):

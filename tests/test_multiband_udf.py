@@ -3,8 +3,7 @@ from unittest import TestCase
 import numpy as np
 from geopyspark import Tile
 
-from openeo.metadata import CollectionMetadata
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
@@ -36,7 +35,7 @@ class TestMultiBandUDF(TestCase):
     tile = Tile.from_numpy_array(bands,np.nan)
 
     def test_convert_multiband_tile_hypercube(self):
-        metadata = CollectionMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["2", "3", "4"]}

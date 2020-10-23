@@ -12,15 +12,14 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo.metadata import CollectionMetadata
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
-def _build_metadata(bands: List[str] = ["B01", "B02"]) -> CollectionMetadata:
+def _build_metadata(bands: List[str] = ["B01", "B02"]) -> GeopysparkCubeMetadata:
     """Helper to build metadata instance"""
-    return CollectionMetadata({
+    return GeopysparkCubeMetadata({
         "cube:dimensions": {
             "bands": {"type": "bands", "values": bands}
         },
@@ -207,7 +206,7 @@ class TestApplyProcess(TestCase):
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
-        collection_metadata = CollectionMetadata({
+        collection_metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 "my_bands": {"type": "bands", "values": ["B04", "B08"]},
             }
@@ -408,7 +407,7 @@ class TestApplyProcess(TestCase):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
-        metadata = CollectionMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["B04", "B08"]}
@@ -436,7 +435,7 @@ class TestApplyProcess(TestCase):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
-        metadata = CollectionMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["B04", "B08"]}
