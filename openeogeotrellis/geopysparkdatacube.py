@@ -176,6 +176,9 @@ class GeopysparkDataCube(DriverDataCube):
         float_datacube = self.apply_to_levels(lambda layer : layer.convert_data_type("float32"))
         result = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
+
+        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer.layer_metadata,cellType=CellType.FLOAT32))
+        result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
