@@ -177,7 +177,7 @@ class GeopysparkDataCube(DriverDataCube):
         result = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
 
-        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer.layer_metadata,cellType=CellType.FLOAT32))
+        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer,cellType=CellType.FLOAT32))
         result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
@@ -399,11 +399,23 @@ class GeopysparkDataCube(DriverDataCube):
         return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
 
     @classmethod
-    def _transform_metadata(cls,metadata, cellType = None):
+    def _transform_metadata(cls,layer_or_metadata, cellType = None):
+        layer = None
+        if hasattr(layer_or_metadata,'layer_metadata'):
+            layer=layer_or_metadata
+            metadata=layer_or_metadata.layer_metadata
+        else:
+            metadata=layer_or_metadata
+
         output_metadata_dict = metadata.to_dict()
         if cellType != None:
             output_metadata_dict['cellType'] = CellType.FLOAT32
-        return Metadata.from_dict(output_metadata_dict)
+        metadata= Metadata.from_dict(output_metadata_dict)
+        if layer is not None:
+            layer.layer_metadata = metadata
+            return layer
+        else:
+            return metadata
 
     def _aggregate_over_time_numpy(self, reducer: Callable[[Iterable[Tile]], Tile]) -> 'GeopysparkDataCube':
         """
