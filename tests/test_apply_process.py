@@ -30,7 +30,7 @@ def _build_metadata(bands: List[str] = ["B01", "B02"]) -> CollectionMetadata:
     })
 
 
-class TestCustomFunctions(TestCase):
+class TestApplyProcess(TestCase):
 
     first = np.zeros((1, 4, 4))
     first.fill(10)
