@@ -17,7 +17,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.deploy import load_custom_processes
-from openeogeotrellis.utils import kerberos, describe_path, log_memory
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, set_max_memory
 from pyspark.profiler import BasicProfiler
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
@@ -137,6 +137,7 @@ def main(argv: List[str]) -> None:
         load_custom_processes(logger)
 
         with SparkContext.getOrCreate() as sc:
+            set_max_memory(sc.getConf())
             kerberos()
             
             def run_driver(): 
