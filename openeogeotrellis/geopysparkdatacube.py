@@ -994,7 +994,7 @@ class GeopysparkDataCube(DriverDataCube):
                 zlevel = format_options.get("ZLEVEL",6)
                 if catalog:
                     self._save_on_executors(spatial_rdd, filename)
-                elif stitch:
+                elif not tiled:
                     self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
                 else:
                     band_count = -1
