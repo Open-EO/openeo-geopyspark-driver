@@ -35,7 +35,6 @@ sys.path.insert(0, 'pyspark.zip')
 from openeo_driver import server
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
-from openeogeotrellis.utils import set_max_memory
 
 
 log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
@@ -45,7 +44,6 @@ def main():
     from pyspark import SparkContext
     print("starting spark context")
     sc = SparkContext.getOrCreate()
-    set_max_memory(sc.getConf())
 
     from openeogeotrellis import get_backend_version, deploy
     from openeo_driver.views import build_backend_deploy_metadata

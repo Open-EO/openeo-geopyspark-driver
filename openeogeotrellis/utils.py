@@ -162,20 +162,3 @@ def zk_client(hosts: str = ','.join(ConfigParams().zookeepernodes)):
     finally:
         zk.stop()
         zk.close()
-
-
-def set_max_memory(spark_conf):
-    from py4j.protocol import Py4JJavaError
-    import resource
-
-    try:
-        max_total_memory_in_bytes = spark_conf._jconf.getSizeAsBytes("spark.driver.memoryOverhead")
-        soft_limit, hard_limit = max_total_memory_in_bytes, max_total_memory_in_bytes
-        resource.setrlimit(resource.RLIMIT_AS, (soft_limit, hard_limit))
-
-        print("set resource.RLIMIT_AS to %d bytes" % max_total_memory_in_bytes)
-    except Py4JJavaError as e:
-        java_exception_class_name = e.java_exception.getClass().getName()
-
-        if java_exception_class_name != 'java.util.NoSuchElementException':
-            raise e
