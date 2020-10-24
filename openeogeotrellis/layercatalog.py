@@ -1,23 +1,22 @@
 import logging
 from datetime import datetime, date
 from typing import List, Optional
-from shapely.geometry import box
 
 from geopyspark import TiledRasterLayer, LayerType
-from openeo.metadata import CollectionMetadata
+from py4j.java_gateway import JavaGateway
+from shapely.geometry import box
+
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
-from py4j.java_gateway import JavaGateway
-
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, AbstractServiceRegistry
-from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
-from openeogeotrellis._utm import auto_utm_epsg_for_geometry
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.oscars import Oscars
+from openeogeotrellis.service_registry import AbstractServiceRegistry
+from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
 logger = logging.getLogger(__name__)
 
@@ -38,28 +37,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()
 
-        metadata = CollectionMetadata(self.get_collection_metadata(collection_id))
+        metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
-        import geopyspark as gps
-        from_date = normalize_date(viewing_parameters.get("from", None))
-        to_date = normalize_date(viewing_parameters.get("to", None))
+        temporal_extent = viewing_parameters.get("temporal_extent", (None, None))
+        from_date, to_date = [normalize_date(d) for d in temporal_extent]
+        metadata = metadata.filter_temporal(from_date, to_date)
 
-        left = viewing_parameters.get("left", None)
-        right = viewing_parameters.get("right", None)
-        top = viewing_parameters.get("top", None)
-        bottom = viewing_parameters.get("bottom", None)
-        srs = viewing_parameters.get("srs", None)
-
-        correlation_id = viewing_parameters.get("correlation_id", '')
-        print("Correlation ID is '{cid}'".format(cid=correlation_id))
-
+        spatial_extent = viewing_parameters.get("spatial_extent", {})
+        west = spatial_extent.get("west", None)
+        east = spatial_extent.get("east", None)
+        north = spatial_extent.get("north", None)
+        south = spatial_extent.get("south", None)
+        srs = spatial_extent.get("crs", None)
         if isinstance(srs, int):
             srs = 'EPSG:%s' % str(srs)
-        if srs == None:
+        if srs is None:
             srs = 'EPSG:4326'
 
         bands = viewing_parameters.get("bands", None)
@@ -72,16 +68,22 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
+
+        correlation_id = viewing_parameters.get("correlation_id", '')
+        logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
+
+        # TODO: avoid local import?
+        import geopyspark as gps
         pysc = gps.get_spark_context()
         extent = None
 
         gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
         jvm = gateway.jvm
 
-        spatial_bounds_present = left is not None and right is not None and top is not None and bottom is not None
-
+        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
         if spatial_bounds_present:
-            extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top))
+            extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
+            metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
         elif viewing_parameters.get('require_bounds', False):
             raise ProcessGraphComplexityException
         else:
@@ -96,7 +98,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             projected_polygons = to_projected_polygons(jvm, polygons)
 
         if spatial_bounds_present:
-            target_epsg_code = auto_utm_epsg_for_geometry(box(left, bottom, right, top), srs)
+            target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
             projected_polygons_utm = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
         def accumulo_pyramid():
@@ -235,8 +237,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             catalog = CatalogClient(mission, level)
             product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
                                                         datetime.strptime(to_date[:10], "%Y-%m-%d"),
-                                                        ulx=left, uly=top,
-                                                        brx=right, bry=bottom)
+                                                        ulx=west, uly=north,
+                                                        brx=east, bry=south)
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .datacube_seq(projected_polygons_utm, from_date, to_date,{},collection_id)
 
@@ -297,7 +299,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if still_needs_band_filter:
             # TODO: avoid this `still_needs_band_filter` ugliness.
             #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-            image_collection = image_collection.band_filter(band_indices)
+            image_collection = image_collection.filter_bands(band_indices)
 
         return image_collection
 
