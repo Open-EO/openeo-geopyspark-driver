@@ -124,6 +124,9 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
 
+        ref_path = str(self.temp_folder / "reproj_ref.tiff")
+        imagecollection.save_result(ref_path, format="GTIFF")
+
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3857",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
@@ -132,9 +135,12 @@ class TestMultipleDates(TestCase):
         res = resampled.reduce('max', dimension="t")
         res.save_result(path, format="GTIFF", format_options={"parameters": {'tiled': True}})
 
-        with rasterio.open(path) as ds:
-            print(ds.profile)
-            assert ds.read().shape == (1, 15, 10)
+        with rasterio.open(ref_path) as ref_ds:
+            with rasterio.open(path) as ds:
+                print(ds.profile)
+                #this reprojection does not change the shape, so we can compare
+                assert ds.read().shape == ref_ds.read().shape
+                assert str(ds.crs) == 'EPSG:3857'
 
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
