@@ -42,8 +42,13 @@ log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
 
 def main():
     from pyspark import SparkContext
+    import geopyspark as gps
+
+    conf = gps.geopyspark_conf(appName="openeogeotrellis.deploy.probav-mep.py")
+    conf.set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,'
+                                                 'org.openeo.geotrellis.png.KryoRegistrator')
     print("starting spark context")
-    sc = SparkContext.getOrCreate()
+    sc = SparkContext(conf=conf)
 
     from openeogeotrellis import get_backend_version, deploy
     from openeo_driver.views import build_backend_deploy_metadata
