@@ -20,7 +20,7 @@ from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import TemporalDimension
+from openeo.metadata import TemporalDimension, SpatialDimension
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
@@ -291,6 +291,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         }
 
     def load_disk_data(self, format: str, glob_pattern: str, options: dict, viewing_parameters: dict) -> object:
+        logger.info("load_disk_data with format {f!r}, glob {g!r}, options {o!r} and view pars {p!r}".format(
+            f=format, g=glob_pattern, o=options, p=viewing_parameters
+        ))
         if format != 'GTiff':
             raise NotImplementedError("The format is not supported by the backend: " + format)
 
@@ -299,34 +302,50 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if glob_pattern.startswith("hdfs:"):
             kerberos()
 
-        from_date = normalize_date(viewing_parameters.get("from", None))
-        to_date = normalize_date(viewing_parameters.get("to", None))
+        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
+            # TODO: detect actual dimensions instead of this simple default?
+            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
+            TemporalDimension(name='t', extent=[])
+        ])
 
-        left = viewing_parameters.get("left", None)
-        right = viewing_parameters.get("right", None)
-        top = viewing_parameters.get("top", None)
-        bottom = viewing_parameters.get("bottom", None)
-        srs = viewing_parameters.get("srs", None)
-        band_indices = viewing_parameters.get("bands")
+        # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
+        temporal_extent = viewing_parameters.get("temporal_extent", (None, None))
+        from_date, to_date = [normalize_date(d) for d in temporal_extent]
+        metadata = metadata.filter_temporal(from_date, to_date)
+
+        spatial_extent = viewing_parameters.get("spatial_extent", {})
+        west = spatial_extent.get("west", None)
+        east = spatial_extent.get("east", None)
+        north = spatial_extent.get("north", None)
+        south = spatial_extent.get("south", None)
+        crs = spatial_extent.get("crs", None)
+        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
+        if spatial_bounds_present:
+            metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
+
+        bands = viewing_parameters.get("bands", None)
+        if bands:
+            band_indices = [metadata.get_band_index(b) for b in bands]
+            metadata = metadata.filter_bands(bands)
+        else:
+            band_indices = None
 
         sc = gps.get_spark_context()
 
         gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
         jvm = gateway.jvm
 
-        extent = jvm.geotrellis.vector.Extent(float(left), float(bottom), float(right), float(top)) \
-            if left is not None and right is not None and top is not None and bottom is not None else None
+        extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
+            if spatial_bounds_present else None
 
         pyramid = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex) \
-            .pyramid_seq(extent, srs, from_date, to_date)
+            .pyramid_seq(extent, crs, from_date, to_date)
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
         levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
-
-        metadata = GeopysparkCubeMetadata(metadata={},dimensions=[TemporalDimension(name='t',extent=[])])
 
         image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
