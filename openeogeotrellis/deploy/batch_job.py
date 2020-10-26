@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List
 
-from pyspark import SparkContext
+from pyspark import SparkContext, SparkConf
 
 from openeo.util import Rfc3339
 from openeo.util import TimingLogger, ensure_dir
@@ -137,7 +137,13 @@ def main(argv: List[str]) -> None:
         job_specification = _parse(job_specification_file)
         load_custom_processes(logger)
 
-        with SparkContext.getOrCreate() as sc:
+        conf = (SparkConf()
+                .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,'
+                                                         'org.openeo.geotrellis.png.KryoRegistrator')
+                .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration"))
+
+        with SparkContext(conf=conf) as sc:
             kerberos()
             
             def run_driver(): 
