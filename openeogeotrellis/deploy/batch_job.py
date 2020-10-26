@@ -15,6 +15,7 @@ from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
@@ -162,12 +163,13 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file, metadata_file, api_version):
-    viewing_parameters = {'pyramid_levels': 'highest', 'correlation_id': str(uuid.uuid4())}
-    if api_version:
-        viewing_parameters['version'] = api_version
     process_graph = job_specification['process_graph']
-
-    result = ProcessGraphDeserializer.evaluate(process_graph, viewing_parameters)
+    env = EvalEnv({
+        'version': api_version or "1.0.0",
+        'pyramid_levels': 'highest',
+        'correlation_id': str(uuid.uuid4())
+    })
+    result = ProcessGraphDeserializer.evaluate(process_graph, env=env)
     logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
@@ -199,7 +201,8 @@ def run_job(job_specification, output_file, metadata_file, api_version):
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote JSON result to %s" % output_file)
 
-    _export_result_metadata(viewing_parameters, metadata_file)
+    # TODO EP-3509 do metadata extraction without viewing_parameters
+    _export_result_metadata(viewing_parameters={}, metadata_file=metadata_file)
 
 
 if __name__ == '__main__':
