@@ -41,12 +41,12 @@ log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
 
 
 def main():
-    from pyspark import SparkContext
-    import geopyspark as gps
+    from pyspark import SparkContext, SparkConf
 
-    conf = gps.geopyspark_conf(appName="openeogeotrellis.deploy.probav-mep.py")
-    conf.set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,'
-                                                 'org.openeo.geotrellis.png.KryoRegistrator')
+    conf = (SparkConf()
+            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,'
+                                                     'org.openeo.geotrellis.png.KryoRegistrator'))
     print("starting spark context")
     sc = SparkContext(conf=conf)
 
