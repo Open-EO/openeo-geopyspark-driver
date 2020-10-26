@@ -85,7 +85,7 @@ def main(argv: List[str]) -> None:
 
             def evaluate() -> Dict:
                 kerberos()
-                return ProcessGraphDeserializer.evaluate(process_graph, viewingParameters={'version': "0.4.0"})
+                return ProcessGraphDeserializer.evaluate(process_graph, env=None)
 
             def combine_iterations(acc: (Dict, float), i: int) -> (Dict, float):
                 count = i + 1

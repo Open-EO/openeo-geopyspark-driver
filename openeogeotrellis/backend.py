@@ -26,6 +26,7 @@ from openeo_driver import backend
 from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException, ServiceUnsupportedException)
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
@@ -101,7 +102,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
         image_collection: GeopysparkDataCube = evaluate(
             process_graph,
-            viewingParameters={'version': api_version, 'pyramid_levels': 'all'}
+            env=EvalEnv({'version': api_version, 'pyramid_levels': 'all'})
         )
 
         wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
@@ -139,7 +140,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
         image_collection: GeopysparkDataCube = evaluate(
             process_graph,
-            viewingParameters={'version': api_version, 'pyramid_levels': 'all'}
+            env=EvalEnv({'version': api_version, 'pyramid_levels': 'all'})
         )
 
         wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
