@@ -14,8 +14,9 @@ from openeo.util import Rfc3339
 from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
@@ -64,38 +65,60 @@ def _parse(job_specification_file: str) -> Dict:
     return job_specification
 
 
-def _export_result_metadata(viewing_parameters: dict, metadata_file: Path) -> None:
-    from openeo_driver.delayed_vector import DelayedVector
-    from shapely.geometry import mapping
-    from shapely.geometry.base import BaseGeometry
-    from shapely.geometry.polygon import Polygon
+def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
+    logger.info("Extracting result metadata from {t!r}".format(t=tracer))
+    from shapely import geometry
 
     rfc3339 = Rfc3339(propagate_none=True)
 
-    polygons = viewing_parameters.get('polygons')
+    source_constraints = tracer.get_source_constraints()
 
-    if isinstance(polygons, BaseGeometry):
-        bbox = polygons.bounds
-        geometry = polygons
-    elif isinstance(polygons, DelayedVector):  # intentionally don't return the complete vector file
-        bbox = polygons.bounds
-        geometry = Polygon.from_bounds(*bbox)
+    # Take union of extents
+    temporal_extent = temporal_extent_union(*[
+        sc["temporal_extent"] for sc in source_constraints.values() if "temporal_extent" in sc
+    ])
+    spatial_extent = spatial_extent_union(*[
+        sc["spatial_extent"] for sc in source_constraints.values() if "spatial_extent" in sc
+    ])
+
+    start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
+    bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+    if all(b is not None for b in bbox):
+        geometry = geometry.mapping(geometry.Polygon.from_bounds(*bbox))
     else:
-        left, bottom, right, top = (viewing_parameters.get('left'), viewing_parameters.get('bottom'), viewing_parameters.get('right'),
-                viewing_parameters.get('top'))
+        bbox = None
+        geometry=None
 
-        bbox = (left, bottom, right, top) if left and bottom and right and top else None
-        geometry = Polygon.from_bounds(*bbox) if bbox else None
+    # TODO EP-3640 extract polygons (from aggregate_spatial, ...)
+    # from openeo_driver.delayed_vector import DelayedVector
+    # from shapely.geometry import mapping
+    # from shapely.geometry.base import BaseGeometry
+    # from shapely.geometry.polygon import Polygon
+    # polygons = viewing_parameters.get('polygons')
+    #
+    # if isinstance(polygons, BaseGeometry):
+    #     bbox = polygons.bounds
+    #     geometry = polygons
+    # elif isinstance(polygons, DelayedVector):  # intentionally don't return the complete vector file
+    #     bbox = polygons.bounds
+    #     geometry = Polygon.from_bounds(*bbox)
+    # else:
+    #     left, bottom, right, top = (viewing_parameters.get('left'), viewing_parameters.get('bottom'), viewing_parameters.get('right'),
+    #             viewing_parameters.get('top'))
+    #
+    #     bbox = (left, bottom, right, top) if left and bottom and right and top else None
+    #     geometry = Polygon.from_bounds(*bbox) if bbox else None
 
-    start_date = viewing_parameters.get('from')
-    end_date = viewing_parameters.get('to')
-
-    metadata = {  # FIXME: dedicated type?
-        'geometry': mapping(geometry) if geometry else None,
+    return {  # FIXME: dedicated type?
+        'geometry': geometry,
         'bbox': bbox,
-        'start_datetime': rfc3339.datetime(start_date),
-        'end_datetime': rfc3339.datetime(end_date)
+        'start_datetime': start_date,
+        'end_datetime': end_date
     }
+
+
+def _export_result_metadata(tracer: DryRunDataTracer, metadata_file: Path) -> None:
+    metadata = extract_result_metadata(tracer)
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -175,7 +198,8 @@ def run_job(job_specification, output_file, metadata_file, api_version):
         'pyramid_levels': 'highest',
         'correlation_id': str(uuid.uuid4())
     })
-    result = ProcessGraphDeserializer.evaluate(process_graph, env=env)
+    tracer = DryRunDataTracer()
+    result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
     logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
@@ -208,7 +232,7 @@ def run_job(job_specification, output_file, metadata_file, api_version):
         logger.info("wrote JSON result to %s" % output_file)
 
     # TODO EP-3509 do metadata extraction without viewing_parameters
-    _export_result_metadata(viewing_parameters={}, metadata_file=metadata_file)
+    _export_result_metadata(tracer=tracer, metadata_file=metadata_file)
 
 
 if __name__ == '__main__':
