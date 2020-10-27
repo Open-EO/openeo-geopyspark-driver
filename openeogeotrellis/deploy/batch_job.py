@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Dict, List
 
 from pyspark import SparkContext, SparkConf
+from pyspark.profiler import BasicProfiler
+from shapely.geometry import mapping, Polygon
+from shapely.geometry.base import BaseGeometry
 
 from openeo.util import Rfc3339
 from openeo.util import TimingLogger, ensure_dir
@@ -17,10 +20,9 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.deploy import load_custom_processes
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
-from pyspark.profiler import BasicProfiler
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -67,7 +69,6 @@ def _parse(job_specification_file: str) -> Dict:
 
 def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     logger.info("Extracting result metadata from {t!r}".format(t=tracer))
-    from shapely import geometry
 
     rfc3339 = Rfc3339(propagate_none=True)
 
@@ -82,32 +83,26 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     ])
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
+
     bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
     if all(b is not None for b in bbox):
-        geometry = geometry.mapping(geometry.Polygon.from_bounds(*bbox))
+        geometry = mapping(Polygon.from_bounds(*bbox))
     else:
         bbox = None
-        geometry=None
+        geometry = None
 
-    # TODO EP-3640 extract polygons (from aggregate_spatial, ...)
-    # from openeo_driver.delayed_vector import DelayedVector
-    # from shapely.geometry import mapping
-    # from shapely.geometry.base import BaseGeometry
-    # from shapely.geometry.polygon import Polygon
-    # polygons = viewing_parameters.get('polygons')
-    #
-    # if isinstance(polygons, BaseGeometry):
-    #     bbox = polygons.bounds
-    #     geometry = polygons
-    # elif isinstance(polygons, DelayedVector):  # intentionally don't return the complete vector file
-    #     bbox = polygons.bounds
-    #     geometry = Polygon.from_bounds(*bbox)
-    # else:
-    #     left, bottom, right, top = (viewing_parameters.get('left'), viewing_parameters.get('bottom'), viewing_parameters.get('right'),
-    #             viewing_parameters.get('top'))
-    #
-    #     bbox = (left, bottom, right, top) if left and bottom and right and top else None
-    #     geometry = Polygon.from_bounds(*bbox) if bbox else None
+    aggregate_spatial_geometries = tracer.get_geometries()
+    if aggregate_spatial_geometries:
+        if len(aggregate_spatial_geometries) > 1:
+            logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
+        agg_geometry = aggregate_spatial_geometries[0]
+        if isinstance(agg_geometry, BaseGeometry):
+            bbox = geometry.bounds
+            geometry = agg_geometry
+        elif isinstance(agg_geometry, DelayedVector):
+            bbox = geometry.bounds
+            # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
+            geometry = Polygon.from_bounds(*bbox)
 
     return {  # FIXME: dedicated type?
         'geometry': geometry,
@@ -203,7 +198,6 @@ def run_job(job_specification, output_file, metadata_file, api_version):
     logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
-        from shapely.geometry import mapping
         geojsons = (mapping(geometry) for geometry in result.geometries)
         result = JSONResult(geojsons)
     if isinstance(result, GeopysparkDataCube):

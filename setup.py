@@ -38,7 +38,7 @@ setup(
         'flask',
         'pyspark>=2.3.1,<2.4.0',
         'openeo>=0.4.3a1.*',
-        'openeo_driver>=0.5.1a1.*',
+        'openeo_driver>=0.5.2a1.*',
         'openeo_udf>=1.0.0rc2',
         'matplotlib>=2.0.0,<3.0.0',
         'colortools>=0.1.2',
