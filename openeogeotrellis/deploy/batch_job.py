@@ -97,12 +97,12 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
         agg_geometry = aggregate_spatial_geometries[0]
         if isinstance(agg_geometry, BaseGeometry):
-            bbox = geometry.bounds
-            geometry = agg_geometry
+            bbox = agg_geometry.bounds
+            geometry = mapping(agg_geometry)
         elif isinstance(agg_geometry, DelayedVector):
-            bbox = geometry.bounds
+            bbox = agg_geometry.bounds
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            geometry = Polygon.from_bounds(*bbox)
+            geometry = mapping(Polygon.from_bounds(*bbox))
 
     return {  # FIXME: dedicated type?
         'geometry': geometry,
