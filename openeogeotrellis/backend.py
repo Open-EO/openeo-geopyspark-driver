@@ -23,7 +23,8 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
-from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary
+from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters
+from openeo_driver.dummy.dummy_backend import DummyDataCube
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException, ServiceUnsupportedException)
 from openeo_driver.utils import EvalEnv
@@ -291,9 +292,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             }
         }
 
-    def load_disk_data(self, format: str, glob_pattern: str, options: dict, viewing_parameters: dict) -> object:
-        logger.info("load_disk_data with format {f!r}, glob {g!r}, options {o!r} and view pars {p!r}".format(
-            f=format, g=glob_pattern, o=options, p=viewing_parameters
+    def load_disk_data(
+            self, format: str, glob_pattern: str, options: dict, viewing_parameters: LoadParameters
+    ) -> GeopysparkDataCube:
+        load_params = viewing_parameters
+        logger.info("load_disk_data with format {f!r}, glob {g!r}, options {o!r} and load params {p!r}".format(
+            f=format, g=glob_pattern, o=options, p=load_params
         ))
         if format != 'GTiff':
             raise NotImplementedError("The format is not supported by the backend: " + format)
@@ -310,11 +314,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         ])
 
         # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
-        temporal_extent = viewing_parameters.get("temporal_extent", (None, None))
+        temporal_extent = load_params.temporal_extent
         from_date, to_date = [normalize_date(d) for d in temporal_extent]
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        spatial_extent = viewing_parameters.get("spatial_extent", {})
+        spatial_extent = load_params.spatial_extent
         west = spatial_extent.get("west", None)
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
@@ -324,7 +328,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if spatial_bounds_present:
             metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
 
-        bands = viewing_parameters.get("bands", None)
+        bands = load_params.bands
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             metadata = metadata.filter_bands(bands)

@@ -225,7 +225,6 @@ def run_job(job_specification, output_file, metadata_file, api_version):
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote JSON result to %s" % output_file)
 
-    # TODO EP-3509 do metadata extraction without viewing_parameters
     _export_result_metadata(tracer=tracer, metadata_file=metadata_file)
 
 

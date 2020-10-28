@@ -7,7 +7,7 @@ from py4j.java_gateway import JavaGateway
 from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
-from openeo_driver.backend import CollectionCatalog
+from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
@@ -31,8 +31,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._geotiff_pyramid_factories = {}
 
     @TimingLogger(title="load_collection", logger=logger)
-    def load_collection(self, collection_id: str, viewing_parameters: dict) -> GeopysparkDataCube:
-        logger.info("Creating layer for {c} with viewingParameters {v}".format(c=collection_id, v=viewing_parameters))
+    def load_collection(self, collection_id: str, viewing_parameters: LoadParameters) -> GeopysparkDataCube:
+        load_params = viewing_parameters
+        logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
 
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()
@@ -43,11 +44,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
 
-        temporal_extent = viewing_parameters.get("temporal_extent", (None, None))
+        temporal_extent = load_params.temporal_extent
         from_date, to_date = [normalize_date(d) for d in temporal_extent]
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        spatial_extent = viewing_parameters.get("spatial_extent", {})
+        spatial_extent = load_params.spatial_extent
         west = spatial_extent.get("west", None)
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
@@ -58,7 +59,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if srs is None:
             srs = 'EPSG:4326'
 
-        bands = viewing_parameters.get("bands", None)
+        bands = load_params.bands
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             metadata = metadata.filter_bands(bands)
@@ -69,6 +70,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
 
+        # TODO: get this from EvalEnv instead of viewing parameters
         correlation_id = viewing_parameters.get("correlation_id", '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
@@ -84,14 +86,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
             metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
+        # TODO: get this from EvalEnv instead of viewing parameters
         elif viewing_parameters.get('require_bounds', False):
             raise ProcessGraphComplexityException
         else:
             srs = "EPSG:4326"
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
 
-        polygons = viewing_parameters.get('polygons')
-                
+        polygons = load_params.aggregate_spatial_geometries
+
         if not polygons:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
         else:
@@ -111,7 +114,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             nonlocal still_needs_band_filter
             still_needs_band_filter = bool(band_indices)
 
-            polygons = viewing_parameters.get('polygons')
+            polygons = load_params.aggregate_spatial_geometries
 
             if polygons:
                 projected_polygons = to_projected_polygons(jvm, polygons)
@@ -186,12 +189,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     return condition
 
             layer_properties = metadata.get("_vito", "properties", default={})
-            custom_properties = viewing_parameters.get('properties', {})
+            custom_properties = load_params.properties
 
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
             factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
+            # TODO: get this from EvalEnv instead of viewing parameters
             if viewing_parameters.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_utm, from_date, to_date, metadata_properties, correlation_id)
@@ -281,6 +285,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             for index in range(0, pyramid.size())
         }
 
+        # TODO: get this from EvalEnv instead of viewing parameters
         if viewing_parameters.get('pyramid_levels', 'all') != 'all':
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
