@@ -212,24 +212,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return self._geotiff_pyramid_factories.setdefault(collection_id, new_pyramid_factory) \
                 .pyramid_seq(extent, srs, from_date, to_date)
 
-        def sentinel_hub_s1_pyramid():
-            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.S1PyramidFactory)
-
-        def sentinel_hub_s2_l1c_pyramid():
-            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.S2L1CPyramidFactory)
-
-        def sentinel_hub_s2_l2a_pyramid():
-            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.S2L2APyramidFactory)
-
-        def sentinel_hub_l8_pyramid():
-            return sentinel_hub_pyramid(jvm.org.openeo.geotrellissentinelhub.L8PyramidFactory)
-
-        def sentinel_hub_pyramid(ctor):
+        def sentinel_hub_pyramid():
+            dataset_id = layer_source_info['dataset_id']
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
 
-            return ctor(client_id, client_secret) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
+            return jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret) \
+                .pyramid_seq(extent, srs, from_date, to_date, metadata.band_names)
 
         def creo_pyramid():
             mission = layer_source_info['mission']
@@ -257,14 +246,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = geotiff_pyramid()
         elif layer_source_type == 'file-s1-coherence':
             pyramid = file_s2_pyramid()
-        elif layer_source_type == 'sentinel-hub-s1':
-            pyramid = sentinel_hub_s1_pyramid()
-        elif layer_source_type == 'sentinel-hub-s2-l1c':
-            pyramid = sentinel_hub_s2_l1c_pyramid()
-        elif layer_source_type == 'sentinel-hub-s2-l2a':
-            pyramid = sentinel_hub_s2_l2a_pyramid()
-        elif layer_source_type == 'sentinel-hub-l8':
-            pyramid = sentinel_hub_l8_pyramid()
+        elif layer_source_type == 'sentinel-hub':
+            pyramid = sentinel_hub_pyramid()
         elif layer_source_type == 'creo':
             pyramid = creo_pyramid()
         else:
