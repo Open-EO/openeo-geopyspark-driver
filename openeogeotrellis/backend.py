@@ -293,9 +293,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         }
 
     def load_disk_data(
-            self, format: str, glob_pattern: str, options: dict, viewing_parameters: LoadParameters
+            self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
     ) -> GeopysparkDataCube:
-        load_params = viewing_parameters
         logger.info("load_disk_data with format {f!r}, glob {g!r}, options {o!r} and load params {p!r}".format(
             f=format, g=glob_pattern, o=options, p=load_params
         ))

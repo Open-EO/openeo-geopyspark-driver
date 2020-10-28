@@ -4,17 +4,18 @@ from mock import MagicMock
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.errors import ProcessGraphComplexityException
+from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
 def test_load_collection_bands_missing_required_extent():
     catalog = get_layer_catalog()
+    load_params = LoadParameters(bands=['TOC-B03_10M'])
+    env = EvalEnv({'require_bounds': True})
     with pytest.raises(ProcessGraphComplexityException):
-        catalog.load_collection('TERRASCOPE_S2_TOC_V2', LoadParameters({
-            'bands': ['TOC-B03_10M'],
-            'require_bounds': True
-        }))
+        catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
+
 
 @mock.patch('openeogeotrellis.layercatalog.JavaGateway', autospec=True)
 def test_load_collection_bands_with_required_extent(javagateway):
@@ -34,12 +35,14 @@ def test_load_collection_bands_with_required_extent(javagateway):
                                               '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
                                               '}' \
                                               '}'
-    collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', LoadParameters({
-        "temporal_extent": ('2019-01-01', '2019-01-01'),
-        'bands': ['TOC-B03_10M'],
-        "spatial_extent": {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
-        'require_bounds': True
-    }))
+
+    load_params = LoadParameters(
+        temporal_extent=('2019-01-01', '2019-01-01'),
+        bands=['TOC-B03_10M'],
+        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
+    )
+    env = EvalEnv({'require_bounds': True})
+    collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
     print(collection.metadata)
     assert len(collection.metadata.bands)==1
