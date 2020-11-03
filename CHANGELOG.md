@@ -10,6 +10,9 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2020-10-14
+### Feature
+Support "PNG" output format (non-indexed only).
 
 ## 2020-10-06
 ### Performance improvement
@@ -21,6 +24,4 @@ This affects processing parameters that depend on a specific projection, like th
 
 This change also improves memory usage and performance for a number of layers.
 
-## 2020-10-14
-### Feature
-Support "PNG" output format (non-indexed only).
+
