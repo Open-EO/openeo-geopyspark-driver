@@ -31,10 +31,18 @@ user_facing_logger = logging.getLogger('openeo-user-log')
 
 
 def _setup_app_logging() -> None:
-    logger.setLevel(logging.DEBUG)
     console_handler = logging.StreamHandler(stream=sys.stdout)
     console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+    logger.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
+
+    logging.getLogger("openeo").setLevel(logging.INFO)
+    logging.getLogger("openeo").addHandler(console_handler)
+    logging.getLogger("openeo_driver").setLevel(logging.INFO)
+    logging.getLogger("openeo_driver").addHandler(console_handler)
+    logging.getLogger("openeogeotrellis").setLevel(logging.INFO)
+    logging.getLogger("openeogeotrellis").addHandler(console_handler)
 
 
 def _setup_user_logging(log_file: Path) -> None:
