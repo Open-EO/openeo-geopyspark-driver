@@ -217,8 +217,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
 
-            return jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret) \
-                .pyramid_seq(extent, srs, from_date, to_date, metadata.band_names)
+            pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret)
+
+            return (
+                pyramid_factory.datacube_seq(projected_polygons_utm.polygons(), projected_polygons_utm.crs(), from_date,
+                                             to_date,metadata.band_names) if env.get('pyramid_levels', 'all') != 'all'
+                else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
