@@ -10,6 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2020-10-28
+### Internal
+Refactored internal process graph parsing: first to a dry-run processing to extract
+information that can help loading initial data sources. (EP-3509)
+
 ## 2020-10-14
 ### Feature
 Support "PNG" output format (non-indexed only).
