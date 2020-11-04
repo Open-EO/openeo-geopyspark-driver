@@ -1007,7 +1007,7 @@ class GeopysparkDataCube(DriverDataCube):
         """
         format = format.upper()
         format_options = format_options or {}
-        _log.info("save_result {f} with options {o}".format(f=format, o=format_options))
+        _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution
@@ -1042,10 +1042,13 @@ class GeopysparkDataCube(DriverDataCube):
             if format == "GTIFF":
                 zlevel = format_options.get("ZLEVEL",6)
                 if catalog:
+                    _log.info("save_result (catalog) save_on_executors")
                     self._save_on_executors(spatial_rdd, filename)
                 elif stitch:
+                    _log.info("save_result save_stitched")
                     self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
                 else:
+                    _log.info("save_result: saveRDD")
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
