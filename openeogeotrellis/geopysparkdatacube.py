@@ -586,7 +586,7 @@ class GeopysparkDataCube(DriverDataCube):
         }
         rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
         return self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
+            lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), float(replacement))
         )
 
     def apply_kernel(self, kernel: np.ndarray, factor=1, border = 0, replace_invalid=0):
