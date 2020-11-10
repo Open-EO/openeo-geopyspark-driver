@@ -420,21 +420,56 @@ def rct_savitzky_golay(udf_data:UdfData):
             tile = result_dict[k]
             assert_array_almost_equal(np.squeeze(v.cells),np.squeeze(tile.cells),decimal=2)
 
-
-    def test_mask_raster(self):
-        input = Pyramid({0: self.tiled_raster_rdd})
+    def test_mask_raster_replacement_default_none(self):
         def createMask(tile):
             tile.cells[0][0][0] = 0.0
             return tile
+
+        input = Pyramid({0: self.tiled_raster_rdd})
         mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
         mask = Pyramid({0: mask_layer})
 
-        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
-        stitched = imagecollection.mask(mask=GeopysparkDataCube(mask, InMemoryServiceRegistry()),
-                                        replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        reg = InMemoryServiceRegistry()
+        cube = GeopysparkDataCube(input, reg, metadata=self.collection_metadata)
+        mask_cube = GeopysparkDataCube(mask, reg)
+        stitched = cube.mask(mask=mask_cube).reduce('max', dimension="t").pyramid.levels[0].stitch()
         print(stitched)
-        self.assertEquals(2.0,stitched.cells[0][0][0])
-        self.assertEquals(10.0, stitched.cells[0][0][1])
+        assert stitched.cells[0][0][0] == 2.0
+        assert np.isnan(stitched.cells[0][0][1])
+
+    def test_mask_raster_replacement_float(self):
+        def createMask(tile):
+            tile.cells[0][0][0] = 0.0
+            return tile
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+        mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
+        mask = Pyramid({0: mask_layer})
+
+        reg = InMemoryServiceRegistry()
+        cube = GeopysparkDataCube(input, reg, metadata=self.collection_metadata)
+        mask_cube = GeopysparkDataCube(mask, reg)
+        stitched = cube.mask(mask=mask_cube, replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        print(stitched)
+        assert stitched.cells[0][0][0] == 2.0
+        assert stitched.cells[0][0][1] == 10.0
+
+    def test_mask_raster_replacement_int(self):
+        def createMask(tile):
+            tile.cells[0][0][0] = 0.0
+            return tile
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+        mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
+        mask = Pyramid({0: mask_layer})
+
+        reg = InMemoryServiceRegistry()
+        cube = GeopysparkDataCube(input, reg, metadata=self.collection_metadata)
+        mask_cube = GeopysparkDataCube(mask, reg)
+        stitched = cube.mask(mask=mask_cube, replacement=10).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        print(stitched)
+        assert stitched.cells[0][0][0] == 2.0
+        assert stitched.cells[0][0][1] == 10.0
 
     def test_apply_kernel_float(self):
         kernel = np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]])

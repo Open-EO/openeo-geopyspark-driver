@@ -584,9 +584,10 @@ class GeopysparkDataCube(DriverDataCube):
             k: l.tile_to_layout(layout=self.pyramid.levels[k])
             for k, l in mask.pyramid.levels.items()
         }
+        replacement = float(replacement) if replacement is not None else None
         rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
         return self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), float(replacement))
+            lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
 
     def apply_kernel(self, kernel: np.ndarray, factor=1, border = 0, replace_invalid=0):
