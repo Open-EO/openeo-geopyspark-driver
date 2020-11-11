@@ -234,7 +234,7 @@ class GeopysparkDataCube(DriverDataCube):
         result = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
 
-        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer,cellType=CellType.FLOAT32))
+        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer.convert_data_type("float32"),cellType=CellType.FLOAT32))
         if result.metadata.has_band_dimension():
             result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
