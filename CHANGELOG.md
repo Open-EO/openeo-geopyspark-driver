@@ -10,6 +10,14 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+
+## 2020-11-11
+### Feature
+Support the "if" process:https://processes.openeo.org/#if
+
+Major performance improvements for SentinelHub layers. The UTM projection is now used
+by default when processing these layers. The datatype is no longer set to float by default.
+
 ## 2020-10-28
 ### Internal
 Refactored internal process graph parsing: first to a dry-run processing to extract
