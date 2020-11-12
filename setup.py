@@ -51,6 +51,7 @@ setup(
         'flask-cors',
         'rasterio==1.1.1',
         'pydantic',
+        'h5py<3.0.0',
         'h5netcdf',
         'requests==2.24'
     ],
