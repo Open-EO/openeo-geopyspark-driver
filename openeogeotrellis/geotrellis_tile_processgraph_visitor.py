@@ -31,6 +31,10 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         self.builder.argumentEnd()
         return self
 
+    def from_parameter(self,parameter_id:str):
+        self.builder.fromParameter(parameter_id)
+        return self
+
     def constantArgument(self, argument_id: str, value):
         if isinstance(value, numbers.Real):
             self.builder.constantArgument(argument_id, value)
