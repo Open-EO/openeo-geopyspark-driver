@@ -1511,7 +1511,7 @@ class GeopysparkDataCube(DriverDataCube):
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
                 gps.get_spark_context()._jsc,
                 rdd,
-                "lut_s2a",
+                "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
                 bandIds,
                 [0.0001,10000.0],
                 [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33]
