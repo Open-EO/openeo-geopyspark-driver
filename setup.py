@@ -37,7 +37,7 @@ setup(
     install_requires=[
         'flask',
         'pyspark>=2.3.1,<2.4.0',
-        'openeo>=0.4.3a1.*',
+        'openeo>=0.4.8a2.*',
         'openeo_driver>=0.6.0a1.*',
         'openeo_udf>=1.0.0rc2',
         'matplotlib>=2.0.0,<3.0.0',
