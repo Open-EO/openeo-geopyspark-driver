@@ -1499,6 +1499,9 @@ class GeopysparkDataCube(DriverDataCube):
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
     def apply_atmospheric_correction(self) -> 'GeopysparkDataCube':
+        return self.atmospheric_correction()
+
+    def atmospheric_correction(self) -> 'GeopysparkDataCube':
         # TODO: looking up the bandids is just coincidentally matching the lookuptable order
         # in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
         bandIds=self.metadata.band_names
