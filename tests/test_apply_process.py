@@ -283,6 +283,41 @@ class TestApplyProcess(TestCase):
         print(stitched)
         self.assertEqual(0, stitched.cells[0][0][0])
 
+    def test_apply_if(self):
+        input = self.create_spacetime_layer_singleband()
+        input = gps.Pyramid({0: input})
+
+        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
+
+
+        graph = {
+            "6": {
+              "arguments": {
+                "reject": {"from_parameter":"x"},
+                "value": {
+                  "from_node": "10"
+                },
+                "accept": 2.0
+
+              },
+              "process_id": "if",
+              "result": True
+            },
+            "10": {
+              "process_id": "gt",
+              "arguments": {
+                "x": {
+                  "from_parameter": "x"
+                },
+                "y": 7.0
+              }
+            }
+          }
+
+        stitched = imagecollection.apply(graph).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+
     def test_reduce_bands_comparison_ops(self):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
