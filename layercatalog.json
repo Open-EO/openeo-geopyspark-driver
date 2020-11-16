@@ -568,7 +568,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"
       }
     }
@@ -624,7 +624,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/LAI_V2"
       }
     }
@@ -773,7 +773,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
       }
     }
@@ -802,7 +802,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"
       }
     }
@@ -831,7 +831,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_LAI_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/LAI_V2"
       }
     }
@@ -860,7 +860,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FCOVER_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FCOVER_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FCOVER_V2"
       }
     }
@@ -1070,7 +1070,7 @@
     "_vito": {
       "data_source": {
         "type": "file-s2",
-        "oscars_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
       }
     }

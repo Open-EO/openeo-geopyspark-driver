@@ -72,7 +72,7 @@ def skip_sentinelhub_layer():
     datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
 
 
-def test_get_layer_catalog_from_oscars():
+def test_get_layer_catalog_from_opensearch():
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             "tests/data/layercatalog01.json",
@@ -80,8 +80,8 @@ def test_get_layer_catalog_from_oscars():
             "tests/data/layercatalog03.json"
         ]
 
-        oscars = mock.MagicMock()
-        oscars.get_collections.return_value = [
+        opensearch = mock.MagicMock()
+        opensearch.get_collections.return_value = [
             {
                 "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
                 "bbox": [-1.05893, 47.66031, 11.6781, 53.67487],
@@ -130,14 +130,14 @@ def test_get_layer_catalog_from_oscars():
             }
         ]
 
-        all_metadata = get_layer_catalog(oscars).get_all_metadata()
+        all_metadata = get_layer_catalog(opensearch).get_all_metadata()
 
     assert all_metadata == [
         {
             "id": "XIP",
             "_vito": {
                 "data_source": {
-                    "oscars_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+                    "opensearch_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
                 }
             },
             "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",

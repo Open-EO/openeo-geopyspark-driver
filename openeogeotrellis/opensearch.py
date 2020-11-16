@@ -3,13 +3,13 @@ from typing import List
 import requests
 
 
-class Oscars(ABC):
+class OpenSearch(ABC):
     @abstractmethod
     def get_collections(self) -> List[dict]:
         pass
 
 
-class OscarsClient(Oscars):
+class OpenSearchClient(OpenSearch):
     def __init__(self, endpoint: str):
         self.endpoint = endpoint
 
@@ -25,8 +25,8 @@ class OscarsClient(Oscars):
 
 
 if __name__ == '__main__':
-    oscars = OscarsClient("http://oscars-dev.vgt.vito.be")
-    collections = oscars.get_collections()
+    opensearch = OpenSearchClient("http://oscars-dev.vgt.vito.be")
+    collections = opensearch.get_collections()
 
     ids = (feature["id"] for feature in collections)
 

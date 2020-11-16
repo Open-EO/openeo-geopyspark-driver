@@ -14,7 +14,7 @@ from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.oscars import Oscars
+from openeogeotrellis.opensearch import OpenSearch
 from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
@@ -149,12 +149,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_probav_pyramid():
             return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
-                layer_source_info.get('oscars_collection_id'), layer_source_info.get('root_path')) \
+                layer_source_info.get('opensearch_collection_id'), layer_source_info.get('root_path')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
         def file_pyramid(pyramid_factory):
-            oscars_collection_id = layer_source_info['oscars_collection_id']
-            oscars_link_titles = metadata.band_names
+            opensearch_collection_id = layer_source_info['opensearch_collection_id']
+            opensearch_link_titles = metadata.band_names
             root_path = layer_source_info['root_path']
 
             def extract_literal_match(condition) -> (str, object):
@@ -195,7 +195,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
-            factory = pyramid_factory(oscars_collection_id, oscars_link_titles, root_path)
+            factory = pyramid_factory(opensearch_collection_id, opensearch_link_titles, root_path)
             if env.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id)
@@ -295,7 +295,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return image_collection
 
 
-def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(opensearch: OpenSearch = None) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
@@ -315,31 +315,31 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
         local_metadata = list(metadata_by_layer_id.values())
 
     # TODO: extract this into its own function
-    if oscars:
-        logger.info("Updating layer catalog metadata from {o!r}".format(o=oscars))
+    if opensearch:
+        logger.info("Updating layer catalog metadata from {o!r}".format(o=opensearch))
 
-        oscars_collection_ids = \
+        opensearch_collection_ids = \
             {layer_id: collection_id for layer_id, collection_id in
-             {l["id"]: l.get("_vito", {}).get("data_source", {}).get("oscars_collection_id") for l in local_metadata}.items()
+             {l["id"]: l.get("_vito", {}).get("data_source", {}).get("opensearch_collection_id") for l in local_metadata}.items()
              if collection_id}
 
-        oscars_collections = oscars.get_collections()
+        opensearch_collections = opensearch.get_collections()
 
-        def derive_from_oscars_collection_metadata(collection_id: str) -> dict:
-            collection = next((c for c in oscars_collections if c["id"] == collection_id), None)
+        def derive_from_opensearch_collection_metadata(collection_id: str) -> dict:
+            collection = next((c for c in opensearch_collections if c["id"] == collection_id), None)
             rfc3339 = Rfc3339(propagate_none=True)
 
             if not collection:
                 raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
 
-            def transform_link(oscars_link: dict) -> dict:
+            def transform_link(opensearch_link: dict) -> dict:
                 return dict_no_none(
                     rel="alternate",
-                    href=oscars_link["href"],
-                    title=oscars_link.get("title")
+                    href=opensearch_link["href"],
+                    title=opensearch_link.get("title")
                 )
 
-            def search_link(oscars_link: dict) -> dict:
+            def search_link(opensearch_link: dict) -> dict:
                 from urllib.parse import urlparse, urlunparse
 
                 def replace_endpoint(url: str) -> str:
@@ -353,8 +353,8 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
 
                 return dict_no_none(
                     rel="alternate",
-                    href=replace_endpoint(oscars_link["href"]),
-                    title=oscars_link.get("title")
+                    href=replace_endpoint(opensearch_link["href"]),
+                    title=opensearch_link.get("title")
                 )
 
             def date_bounds() -> (date, Optional[date]):
@@ -400,15 +400,15 @@ def get_layer_catalog(oscars: Oscars = None) -> GeoPySparkLayerCatalog:
                 }
             }
 
-        oscars_metadata_by_layer_id = {layer_id: derive_from_oscars_collection_metadata(collection_id)
-                                       for layer_id, collection_id in oscars_collection_ids.items()}
+        opensearch_metadata_by_layer_id = {layer_id: derive_from_opensearch_collection_metadata(collection_id)
+                                       for layer_id, collection_id in opensearch_collection_ids.items()}
     else:
-        oscars_metadata_by_layer_id = {}
+        opensearch_metadata_by_layer_id = {}
 
     local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
 
     return GeoPySparkLayerCatalog(
         all_metadata=
-        list(dict_merge_recursive(oscars_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
+        list(dict_merge_recursive(opensearch_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
         service_registry=None
     )

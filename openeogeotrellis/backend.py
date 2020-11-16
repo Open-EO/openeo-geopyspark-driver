@@ -32,7 +32,7 @@ from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCu
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
-from openeogeotrellis.oscars import OscarsClient
+from openeogeotrellis.opensearch import OpenSearchClient
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
@@ -230,11 +230,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository()
         )
 
-        oscars_endpoint = ConfigParams().oscars_endpoint
+        opensearch_endpoint = ConfigParams().opensearch_endpoint
 
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
-            catalog=get_layer_catalog(oscars=OscarsClient(oscars_endpoint) if oscars_endpoint else None),
+            catalog=get_layer_catalog(opensearch=OpenSearchClient(opensearch_endpoint) if opensearch_endpoint else None),
             batch_jobs=GpsBatchJobs(),
             user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )
