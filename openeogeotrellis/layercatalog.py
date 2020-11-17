@@ -148,11 +148,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
 
         def file_probav_pyramid():
-            return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
+            opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
+                                                        ConfigParams().default_opensearch_endpoint)
+
+            return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(opensearch_endpoint,
                 layer_source_info.get('opensearch_collection_id'), layer_source_info.get('root_path')) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
         def file_pyramid(pyramid_factory):
+            opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
+                                                        ConfigParams().default_opensearch_endpoint)
             opensearch_collection_id = layer_source_info['opensearch_collection_id']
             opensearch_link_titles = metadata.band_names
             root_path = layer_source_info['root_path']
@@ -195,7 +200,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata_properties = {property_name: extract_literal_match(condition)
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
-            factory = pyramid_factory(opensearch_collection_id, opensearch_link_titles, root_path)
+            factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
             if env.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id)
