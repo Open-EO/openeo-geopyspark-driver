@@ -230,11 +230,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository()
         )
 
-        opensearch_endpoint = ConfigParams().opensearch_endpoint
-
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
-            catalog=get_layer_catalog(opensearch=OpenSearchClient(opensearch_endpoint) if opensearch_endpoint else None),
+            catalog=get_layer_catalog(OpenSearchClient),
             batch_jobs=GpsBatchJobs(),
             user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )

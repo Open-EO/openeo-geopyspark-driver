@@ -130,7 +130,7 @@ def test_get_layer_catalog_from_opensearch():
             }
         ]
 
-        all_metadata = get_layer_catalog(opensearch).get_all_metadata()
+        all_metadata = get_layer_catalog(lambda _: opensearch).get_all_metadata()
 
     assert all_metadata == [
         {

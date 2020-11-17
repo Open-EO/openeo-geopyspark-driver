@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, date
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway
@@ -295,7 +295,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return image_collection
 
 
-def get_layer_catalog(opensearch: OpenSearch = None) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
@@ -314,20 +314,24 @@ def get_layer_catalog(opensearch: OpenSearch = None) -> GeoPySparkLayerCatalog:
 
         local_metadata = list(metadata_by_layer_id.values())
 
-    # TODO: extract this into its own function
-    if opensearch:
-        logger.info("Updating layer catalog metadata from {o!r}".format(o=opensearch))
+    if get_opensearch:
+        opensearch_collections_cache = {}
 
-        opensearch_collection_ids = \
-            {layer_id: collection_id for layer_id, collection_id in
-             {l["id"]: l.get("_vito", {}).get("data_source", {}).get("opensearch_collection_id") for l in local_metadata}.items()
-             if collection_id}
+        def get_opensearch_collections(endpoint: str) -> List[dict]:
+            opensearch_collections = opensearch_collections_cache.get(endpoint)
 
-        opensearch_collections = opensearch.get_collections()
+            if opensearch_collections is None:
+                opensearch = get_opensearch(endpoint)
+                logger.info("Updating layer catalog metadata from {o!r}".format(o=opensearch))
 
-        def derive_from_opensearch_collection_metadata(collection_id: str) -> dict:
-            collection = next((c for c in opensearch_collections if c["id"] == collection_id), None)
+                opensearch_collections = opensearch.get_collections()
+                opensearch_collections_cache[endpoint] = opensearch_collections
+
+            return opensearch_collections
+
+        def derive_from_opensearch_collection_metadata(endpoint: str, collection_id: str) -> dict:
             rfc3339 = Rfc3339(propagate_none=True)
+            collection = next((c for c in get_opensearch_collections(endpoint) if c["id"] == collection_id), None)
 
             if not collection:
                 raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
@@ -400,8 +404,15 @@ def get_layer_catalog(opensearch: OpenSearch = None) -> GeoPySparkLayerCatalog:
                 }
             }
 
-        opensearch_metadata_by_layer_id = {layer_id: derive_from_opensearch_collection_metadata(collection_id)
-                                       for layer_id, collection_id in opensearch_collection_ids.items()}
+        opensearch_collection_sources = \
+            {layer_id: collection_source for layer_id, collection_source in
+             {l["id"]: l.get("_vito", {}).get("data_source", {}) for l in local_metadata}.items()
+             if "opensearch_collection_id" in collection_source}
+
+        opensearch_metadata_by_layer_id = {layer_id: derive_from_opensearch_collection_metadata(
+            collection_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint,
+            collection_source["opensearch_collection_id"])
+            for layer_id, collection_source in opensearch_collection_sources.items()}
     else:
         opensearch_metadata_by_layer_id = {}
 
