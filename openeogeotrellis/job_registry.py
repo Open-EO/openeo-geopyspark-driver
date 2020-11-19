@@ -25,7 +25,10 @@ class JobRegistry:
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 
-    def register(self, job_id: str, user_id: str, api_version: str, specification: dict) -> dict:
+    def register(
+            self, job_id: str, user_id: str, api_version: str, specification: dict,
+            title:str=None, description:str=None
+    ) -> dict:
         """Registers a to-be-run batch job."""
         # TODO: use `BatchJobMetadata` instead of free form dict here?
         job_info = {
@@ -38,6 +41,8 @@ class JobRegistry:
             'specification': json.dumps(specification),
             'application_id': None,
             'created': rfc3339.datetime(datetime.utcnow()),
+            'title': title,
+            'description': description,
         }
         self._create(job_info)
         return job_info
@@ -60,6 +65,8 @@ class JobRegistry:
         return BatchJobMetadata(
             id=job_info["job_id"],
             process=specification,
+            title=job_info.get("title"),
+            description=job_info.get("description"),
             status=status,
             created=map_safe("created", rfc3339.parse_datetime),
             updated=map_safe("updated", rfc3339.parse_datetime),

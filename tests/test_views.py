@@ -137,7 +137,7 @@ class TestBatchJobs:
 
     def test_create_job(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -148,10 +148,12 @@ class TestBatchJobs:
             assert meta_data["api_version"] == api.api_version
             assert meta_data["application_id"] == None
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
+            assert meta_data["title"] == "Dummy"
+            assert meta_data["description"] == "Dummy job!"
 
     def test_create_and_get(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -161,14 +163,16 @@ class TestBatchJobs:
                 "id": job_id,
                 "process": {"process_graph": self.DUMMY_PROCESS_GRAPH},
                 "status": "created",
-                "created": "2020-04-20T16:04:03Z"
+                "created": "2020-04-20T16:04:03Z",
+                "title": "Dummy",
             }
         else:
             expected = {
                 "id": job_id,
                 "process_graph": self.DUMMY_PROCESS_GRAPH,
                 "status": "submitted",
-                "submitted": "2020-04-20T16:04:03Z"
+                "submitted": "2020-04-20T16:04:03Z",
+                "title": "Dummy",
             }
         assert res == expected
 
@@ -209,14 +213,14 @@ class TestBatchJobs:
 
     def test_create_and_get_user_jobs(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
             assert result == {
                 "jobs": [
-                    {"id": job_id, "status": created, created: "2020-04-20T16:04:03Z"},
+                    {"id": job_id, "status": created, created: "2020-04-20T16:04:03Z", "title": "Dummy"},
                 ],
                 "links": []
             }
@@ -227,7 +231,7 @@ class TestBatchJobs:
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -264,7 +268,9 @@ class TestBatchJobs:
             assert meta_data["user_id"] == TEST_USER
             assert meta_data["status"] == "created"
             assert meta_data["api_version"] == api.api_version
-            assert json.loads(meta_data["specification"]) == (data['process'] if api.api_version_compare.at_least("1.0.0") else data)
+            assert json.loads(meta_data["specification"]) == (
+                data['process'] if api.api_version_compare.at_least("1.0.0")
+                else {"process_graph": data["process_graph"]})
             assert meta_data["application_id"] == 'application_1587387643572_0842'
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -323,7 +329,7 @@ class TestBatchJobs:
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10000G"}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
