@@ -1506,7 +1506,6 @@ class GeopysparkDataCube(DriverDataCube):
         # in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
-        gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().printapply()
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
                 gps.get_spark_context()._jsc,
