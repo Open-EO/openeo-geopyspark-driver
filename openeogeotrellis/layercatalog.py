@@ -102,7 +102,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if( native_crs == 'UTM'):
                 target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
             else:
-                target_epsg_code = native_crs
+                target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
         def accumulo_pyramid():
@@ -145,7 +145,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_s2_pyramid():
-            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory)
+            return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
+                                jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
+                                                                                       opensearch_collection_id,
+                                                                                       opensearch_link_titles,
+                                                                                       root_path,
+                                                                                       jvm.geotrellis.raster.CellSize(
+                                                                                           10.0,
+                                                                                           10.0)
+                                                                                       ))
+
+        def file_s5p_pyramid():
+            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel5PPyramidFactory)
 
         def file_probav_pyramid():
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
@@ -201,6 +212,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
 
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
+
             if env.get('pyramid_levels', 'all') != 'all':
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id)
@@ -253,6 +265,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_s2_radiometry_pyramid()
         elif layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
+        elif layer_source_type == 'file-s5p':
+            pyramid = file_s5p_pyramid()
         elif layer_source_type == 'file-probav':
             pyramid = file_probav_pyramid()
         elif layer_source_type == 'geotiff':
