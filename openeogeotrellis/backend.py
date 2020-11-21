@@ -390,8 +390,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 class GpsBatchJobs(backend.BatchJobs):
     _OUTPUT_ROOT_DIR = Path("/data/projects/OpenEO/")
 
-    def create_job(self, user_id: str, process: dict, api_version: str, job_options: dict = None) -> BatchJobMetadata:
+    def create_job(
+            self, user_id: str, process: dict, api_version: str,
+            metadata: dict, job_options: dict = None
+    ) -> BatchJobMetadata:
         job_id = str(uuid.uuid4())
+        title = metadata.get("title")
+        description = metadata.get("description")
         with JobRegistry() as registry:
             job_info = registry.register(
                 job_id=job_id,
@@ -400,11 +405,13 @@ class GpsBatchJobs(backend.BatchJobs):
                 specification=dict_no_none(
                     process_graph=process["process_graph"],
                     job_options=job_options,
-                )
+                ),
+                title=title, description=description,
             )
         return BatchJobMetadata(
             id=job_id, process=process, status=job_info["status"],
-            created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options
+            created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options,
+            title=title, description=description,
         )
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
