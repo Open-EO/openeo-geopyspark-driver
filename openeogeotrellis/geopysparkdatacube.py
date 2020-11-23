@@ -1502,8 +1502,7 @@ class GeopysparkDataCube(DriverDataCube):
         return self.atmospheric_correction()
 
     def atmospheric_correction(self) -> 'GeopysparkDataCube':
-        # TODO: looking up the bandids is just coincidentally matching the lookuptable order
-        # in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
+        # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
@@ -1518,3 +1517,22 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return atmo_corrected
+
+
+    def water_vapor(self) -> 'GeopysparkDataCube':
+        # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
+        bandIds=self.metadata.band_names
+        _log.info("Bandids: "+str(bandIds))
+        wv = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.ComputeWaterVapor.correct(
+                gps.get_spark_context()._jsc,
+                rdd,
+                "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
+                bandIds,
+                [0.0001,1.0],
+                [np.NaN, np.NaN, np.NaN, np.NaN, 0.1, 0.33]
+                #sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33
+                # sza,saa,vza,vaa angles are fallbacks if no bands provided
+            )
+        )
+        return wv
