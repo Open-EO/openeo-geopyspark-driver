@@ -1524,7 +1524,7 @@ class GeopysparkDataCube(DriverDataCube):
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
         wv = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.ComputeWaterVapor.correct(
+            lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.water_vapor.ComputeWaterVapor().correct(
                 gps.get_spark_context()._jsc,
                 rdd,
                 "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
