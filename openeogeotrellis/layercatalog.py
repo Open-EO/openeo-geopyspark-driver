@@ -1,9 +1,17 @@
+import json
 import logging
+import os
+import re
+import tempfile
+import zipfile
 from datetime import datetime, date
-from typing import List, Optional, Callable
+from glob import glob
+from typing import List, Optional, Callable, Dict, Tuple
 
-from geopyspark import TiledRasterLayer, LayerType
-from py4j.java_gateway import JavaGateway
+import geopyspark
+import pyproj
+import pyspark
+from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
@@ -18,6 +26,13 @@ from openeogeotrellis.opensearch import OpenSearch
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
 logger = logging.getLogger(__name__)
+
+
+def get_jvm() -> JVMView:
+    pysc = geopyspark.get_spark_context()
+    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
+    jvm = gateway.jvm
+    return jvm
 
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
@@ -71,14 +86,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         experimental = load_params.get("featureflags",{}).get("experimental",False)
 
-        # TODO: avoid local import?
-        import geopyspark as gps
-        pysc = gps.get_spark_context()
+        jvm = get_jvm()
+
         extent = None
-
-        gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
-        jvm = gateway.jvm
-
         spatial_bounds_present = all(b is not None for b in [west, south, east, north])
         if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
@@ -334,26 +344,35 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'creodias-s1-backscatter':
+            pyramid = _S1BackscatterOrfeo(jvm=jvm).creodias(
+                projected_polygons=projected_polygons_native_crs,
+                from_date=from_date, to_date=to_date,
+                correlation_id=correlation_id,
+            )
         else:
             pyramid = accumulo_pyramid()
 
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        option = jvm.scala.Option
+        if isinstance(pyramid, dict):
+            levels = pyramid
+        else:
+            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+            option = jvm.scala.Option
 
-        levels = {
-            pyramid.apply(index)._1(): TiledRasterLayer(
-                LayerType.SPACETIME,
-                temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
-            )
-            for index in range(0, pyramid.size())
-        }
+            levels = {
+                pyramid.apply(index)._1(): geopyspark.TiledRasterLayer(
+                    geopyspark.LayerType.SPACETIME,
+                    temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
+                )
+                for index in range(0, pyramid.size())
+            }
 
         if single_level:
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
 
         image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
+            pyramid=geopyspark.Pyramid(levels),
             metadata=metadata
         )
 
@@ -368,6 +387,208 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             image_collection = image_collection.filter_bands(band_indices)
 
         return image_collection
+
+
+class _S1BackscatterOrfeo:
+    """
+    Collection loader that uses Orfeo pipeline to calculate Sentinel-1 Backscatter on the fly.
+    """
+
+    def __init__(self, jvm: JVMView = None):
+        self.jvm = jvm or get_jvm()
+
+    def _load_feature_rdd(
+            self, file_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int, tile_size: int
+    ) -> Tuple[pyspark.RDD, JavaObject]:
+        logger.info("Loading feature JSON RDD from {f}".format(f=file_factory))
+        json_rdd = file_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size)
+        jrdd = json_rdd._1()
+        layer_metadata_sc = json_rdd._2()
+
+        # Decode/unwrap the JavaRDD of JSON blobs we built in Scala,
+        # additionally pickle-serialized by the PySpark adaption layer.
+        j2p_rdd = self.jvm.SerDe.javaToPython(jrdd)
+        serializer = pyspark.serializers.PickleSerializer()
+        pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
+        pyrdd = pyrdd.map(json.loads)
+        return pyrdd, layer_metadata_sc
+
+    def _convert_scala_metadata(self, metadata_sc: JavaObject) -> geopyspark.Metadata:
+        """
+        Convert geotrellis TileLayerMetadata (Java) object to geopyspark Metadata object
+        """
+        crs_py = str(metadata_sc.crs())
+        cell_type_py = str(metadata_sc.cellType())
+
+        def convert_key(key_sc: JavaObject) -> geopyspark.SpaceTimeKey:
+            return geopyspark.SpaceTimeKey(
+                col=key_sc.col(), row=key_sc.row(),
+                instant=datetime.utcfromtimestamp(key_sc.instant() // 1000)
+            )
+
+        bounds_sc = metadata_sc.bounds()
+        bounds_py = geopyspark.Bounds(minKey=convert_key(bounds_sc.minKey()), maxKey=convert_key(bounds_sc.maxKey()))
+
+        def convert_extent(extent_sc: JavaObject) -> geopyspark.Extent:
+            return geopyspark.Extent(extent_sc.xmin(), extent_sc.ymin(), extent_sc.xmax(), extent_sc.ymax())
+
+        extent_py = convert_extent(metadata_sc.extent())
+
+        layout_definition_sc = metadata_sc.layout()
+        tile_layout_sc = layout_definition_sc.tileLayout()
+        tile_layout_py = geopyspark.TileLayout(
+            layoutCols=tile_layout_sc.layoutCols(), layoutRows=tile_layout_sc.layoutRows(),
+            tileCols=tile_layout_sc.tileCols(), tileRows=tile_layout_sc.tileRows()
+        )
+        layout_definition_py = geopyspark.LayoutDefinition(
+            extent=convert_extent(layout_definition_sc.extent()),
+            tileLayout=tile_layout_py
+        )
+
+        return geopyspark.Metadata(
+            bounds=bounds_py, crs=crs_py, cell_type=cell_type_py,
+            extent=extent_py, layout_definition=layout_definition_py
+        )
+
+    def creodias(
+            self,
+            projected_polygons,
+            from_date: str, to_date: str,
+            collection_id: str = "Sentinel1",
+            correlation_id: str = "NA",
+            # TODO: what to do with zoom? Highest level? lowest level?
+            zoom=0,
+            tile_size=256,
+    ) -> Dict[int, geopyspark.TiledRasterLayer]:
+        """
+        Implementation of S1 backscatter
+        :param projected_polygons:
+        :param from_date:
+        :param to_date:
+        :param collection_id:
+        :param correlation_id:
+        :param zoom:
+        :param tile_size:
+        :return:
+        """
+        # TODO openSearchLinkTitles?
+        attributeValues = {
+            "productType": "GRD",
+            "sensorMpde": "IW",
+            "processingLevel": "LEVEL1",
+        }
+        file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
+            collection_id, [], attributeValues, correlation_id
+        )
+        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
+            file_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
+            zoom=zoom, tile_size=tile_size
+        )
+        layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
+
+        def process_feature(feature):
+            col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
+
+            key_extent = feature["key_extent"]
+            key_crs = pyproj.CRS.from_epsg(feature["metadata"]["crs_epsg"])
+            latlon_crs = pyproj.CRS.from_epsg(4326)
+            south, west = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmin"], y=key_extent["ymin"])
+            north, east = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmax"], y=key_extent["ymax"])
+
+            creo_path = feature["feature"]["id"]
+            # TODO Get tiff path from manifest instead of assuming this subfolder format?
+            tiffs = glob(creo_path + "/measurement/*.tiff")
+            # TODO properly handle VV/VH bands
+            input_tiff = tiffs[0]
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                import otbApplication as otb
+                extractROI = otb.Registry.CreateApplication("ExtractROI")
+                extractROI.SetParameterString("in", input_tiff)
+                extractROI.SetParameterString("mode", "extent")
+                extractROI.SetParameterString("mode.extent.unit", "lonlat")
+                extractROI.SetParameterFloat("mode.extent.ulx", west)
+                extractROI.SetParameterFloat("mode.extent.uly", south)
+                extractROI.SetParameterFloat("mode.extent.lrx", east)
+                extractROI.SetParameterFloat("mode.extent.lry", north)
+                extractROI.Execute()
+
+                # TODO: extract numpy array directly (instead of through on disk files)
+                #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
+                #       but requires orfeo toolbox to be compiled with numpy support
+                #       (numpy header files must be available at compile time I guess)
+
+                out_path = os.path.join(temp_dir, "out.tiff")
+                extractROI.SetParameterString("out", out_path)
+                # TODO: add SARCalibration and OrthoRectification too
+                extractROI.ExecuteAndWriteOutput()
+
+                import rasterio
+                with rasterio.open(out_path) as ds:
+                    # TODO: check band count. make sure we pick the right band.
+                    # TODO: also check projection/CRS...?
+                    data = ds.read(1)
+                    nodata = ds.nodata
+
+            key = geopyspark.SpaceTimeKey(row=row, col=col, instant=instant)
+            tile = geopyspark.Tile(data, geopyspark.CellType.FLOAT32, no_data_value=nodata)
+            return key, tile
+
+        tile_rdd = feature_pyrdd.map(process_feature)
+        tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
+            layer_type=geopyspark.LayerType.SPACETIME,
+            numpy_rdd=tile_rdd,
+            metadata=layer_metadata_py
+        )
+        return {zoom: tile_layer}
+
+    def oscars(
+            self,
+            from_date: str, to_date: str,
+            projected_polygons,
+            collection_id: str = "urn:eop:VITO:CGS_S1_GRD_L1",
+            correlation_id: str = "NA",
+            # TODO: what to do with zoom? Highest level? lowest level?
+            zoom=0,
+            tile_size=256,
+    ):
+        # TODO openSearchLinkTitles?  attributeValues
+        file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.oscars(collection_id, [], {}, correlation_id)
+
+        pyrdd, layer_metadata_sc = self._load_feature_rdd(
+            file_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date, zoom=zoom,
+            tile_size=tile_size
+        )
+
+        def load_data(metadata: str):
+            # Oscars search response (passed as JSON dump)
+            metadata = json.loads(metadata)
+
+            # Get path to GRD zip file on disk
+            grds = [link["href"]["file"] for link in metadata["feature"]["links"] if link["title"] == "GRD"]
+            if len(grds) != 1:
+                # TODO: raise exception?
+                logger.error("One GRD link expected, but got {c}. Metadata: {m}".format(c=len(grds), m=metadata))
+                return None
+            grd_zip_path = grds[0]
+            logger.info("GRD file: {g}".format(g=grd_zip_path))
+
+            # Extract TIFF from zip
+            with tempfile.TemporaryDirectory(suffix=".oeogps-s1bs") as work_dir:
+                logger.info("Working in temp dir {t}".format(t=work_dir))
+
+                with zipfile.ZipFile(grd_zip_path, 'r') as grd_zip:
+                    regex = re.compile(r'.*/measurement/.*tiff?$')
+                    tiffs = [p for p in grd_zip.infolist() if regex.match(p.filename)]
+                    logger.info("{c} TIFF files in zip: {t}".format(c=len(tiffs), t=tiffs))
+                    # TODO: use cube bands: VV/VH
+                    tiff_name = tiffs[0]
+                    with TimingLogger(title="Extract {t} from {z}".format(t=tiff_name, z=grd_zip_path), logger=logger):
+                        tiff_path = grd_zip.extract(tiffs[0], path=work_dir)
+                        raise RuntimeError("WIP")
+
+        tile_layer = pyrdd.map(load_data)
+        raise RuntimeError("WIP")
 
 
 def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> GeoPySparkLayerCatalog:
