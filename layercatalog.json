@@ -1213,7 +1213,11 @@
     "description": "Global Sentinel 1 Gamma0, provided by SentinelHub. IW mode, VV and VH bands.",
     "_vito": {
       "data_source": {
-        "type": "sentinel-hub"
+        "type": "sentinel-hub",
+        "dataset_id": "S1GRD",
+        "client_id": "???",
+        "client_secret": "!!!",
+        "sample_type": "FLOAT32"
       }
     },
     "providers": [{"name": "SentinelHub"}],
@@ -1228,18 +1232,18 @@
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["VV", "VH", "VV_DB", "VH_DB"]
+        "values": ["VV", "VH", "HV", "HH"]
       }
     },
     "summaries": {
       "eo:bands": [
         {"name": "VV"},
         {"name": "VH"},
-        {"name": "VV_DB"},
-        {"name": "VH_DB"}
+        {"name": "HV"},
+        {"name": "HH"}
       ]
     },
-     "links": [
+    "links": [
       {
         "rel": "alternate",
         "href": "https://www.sentinel-hub.com/develop/documentation/eo_products/Sentinel1EOproducts",

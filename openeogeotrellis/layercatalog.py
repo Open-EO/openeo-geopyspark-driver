@@ -237,8 +237,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             dataset_id = layer_source_info['dataset_id']
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
+            sample_type = layer_source_info.get('sample_type')
 
-            pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret)
+            pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
+                                                                                  sample_type)
 
             return (
                 pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
