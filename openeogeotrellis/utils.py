@@ -7,6 +7,7 @@ import pwd
 import stat
 from typing import Union
 import contextlib
+import resource
 
 from dateutil.parser import parse
 from py4j.java_gateway import JavaGateway
@@ -162,3 +163,10 @@ def zk_client(hosts: str = ','.join(ConfigParams().zookeepernodes)):
     finally:
         zk.stop()
         zk.close()
+
+
+def set_max_memory(max_total_memory_in_bytes: int):
+    soft_limit, hard_limit = max_total_memory_in_bytes, max_total_memory_in_bytes
+    resource.setrlimit(resource.RLIMIT_AS, (soft_limit, hard_limit))
+
+    logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
