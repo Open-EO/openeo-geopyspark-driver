@@ -290,13 +290,27 @@ class TestMultipleDates(TestCase):
         print(context.exception)
 
     def test_aggregate_temporal(self):
+        """
+        Tests deprecated process spec! To be phased out.
+        @return:
+        """
+        interval_list = ["2017-01-01", "2018-01-01"]
+        self._test_aggregate_temporal(interval_list)
+
+    def _test_aggregate_temporal(self, interval_list):
         input = Pyramid({0: self.tiled_raster_rdd})
         imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
         stitched = (
-            imagecollection.aggregate_temporal(["2017-01-01", "2018-01-01"], ["2017-01-03"], "max", dimension="t")
+            imagecollection.aggregate_temporal(interval_list, ["2017-01-03"], "min", dimension="t")
                 .pyramid.levels[0].to_spatial_layer().stitch()
         )
         print(stitched)
+        expected_max = np.min([self.tile2.cells, self.tile.cells],axis=0)
+        assert_array_almost_equal(stitched.cells[0, 0:5, 0:5], expected_max)
+
+
+    def test_aggregate_temporal_100(self):
+        self._test_aggregate_temporal([["2017-01-01", "2018-01-01"]])
 
     def test_max_aggregator(self):
         tiles = [self.tile,self.tile2]

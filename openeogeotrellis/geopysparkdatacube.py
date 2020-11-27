@@ -441,14 +441,24 @@ class GeopysparkDataCube(DriverDataCube):
 
             If the dimension is not set, the data cube is expected to only have one temporal dimension.
 
-            :param intervals: Temporal left-closed intervals so that the start time is contained, but not the end time.
+            :param intervals: Left-closed temporal intervals, which are allowed to overlap. Each temporal interval in the array has exactly two elements:
+                                The first element is the start of the temporal interval. The specified instance in time is included in the interval.
+                                The second element is the end of the temporal interval. The specified instance in time is excluded from the interval.
             :param labels: Labels for the intervals. The number of labels and the number of groups need to be equal.
             :param reducer: A reducer to be applied on all values along the specified dimension. The reducer must be a callable process (or a set processes) that accepts an array and computes a single return value of the same type as the input values, for example median.
             :param dimension: The temporal dimension for aggregation. All data along the dimension will be passed through the specified reducer. If the dimension is not set, the data cube is expected to only have one temporal dimension.
 
             :return: A data cube containing  a result for each time window
         """
-        intervals_iso = list(map(lambda d:pd.to_datetime(d).strftime('%Y-%m-%dT%H:%M:%SZ'),intervals))
+        reformat_date = lambda d : pd.to_datetime(d).strftime('%Y-%m-%dT%H:%M:%SZ')
+        date_list = []
+        for interval in intervals:
+            if isinstance(interval,str):
+                date_list.append(interval)
+            else:
+                for date in interval:
+                    date_list.append(date)
+        intervals_iso = [ reformat_date(date) for date in date_list  ]
         labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
         pysc = gps.get_spark_context()
         mapped_keys = self._apply_to_levels_geotrellis_rdd(
