@@ -237,7 +237,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             dataset_id = layer_source_info['dataset_id']
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
-            sample_type = layer_source_info.get('sample_type')
+            sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
+                layer_source_info.get('sample_type', 'UINT16'))
 
             pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
                                                                                   sample_type)
