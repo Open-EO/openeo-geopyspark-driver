@@ -57,7 +57,8 @@ def _setup_user_logging(log_file: Path) -> None:
 def _create_job_dir(job_dir: Path):
     logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
-    shutil.chown(job_dir, user=None, group='eodata')
+    if not os.environ.get('KUBE') == 'true':
+        shutil.chown(job_dir, user=None, group='eodata')
 
     _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
@@ -160,6 +161,21 @@ def main(argv: List[str]) -> None:
     os.environ["TMPDIR"] = str(temp_dir)
 
     try:
+        if os.environ.get('KUBE') == 'true':
+            import boto3
+
+            bucket = os.environ.get('SWIFT_BUCKET')
+            s3_client = boto3.client('s3',
+                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                endpoint_url=os.environ.get('SWIFT_URL'))
+
+            if not os.path.exists(job_dir):
+                os.makedirs(job_dir)
+
+            s3_client.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+
+
         job_specification = _parse(job_specification_file)
         load_custom_processes(logger)
 

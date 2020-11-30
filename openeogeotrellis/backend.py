@@ -457,72 +457,143 @@ class GpsBatchJobs(backend.BatchJobs):
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
 
-            kerberos()
+            if not os.environ.get('KUBE') == 'true':
+                kerberos()
 
             conf = SparkContext.getOrCreate().getConf()
+
             principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
-            script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
+            if os.environ.get('KUBE') == 'true':
+                import kubernetes
+                import yaml
+                import time
+                import boto3
+                import io
 
-            with tempfile.NamedTemporaryFile(mode="wt",
-                                             encoding='utf-8',
-                                             dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
-                                             prefix="{j}_".format(j=job_id),
-                                             suffix=".in") as temp_input_file:
-                temp_input_file.write(job_info['specification'])
-                temp_input_file.flush()
+                from jinja2 import Template
+                from kubernetes import client, config
+                from kubernetes.client.rest import ApiException
 
-                args = [script_location,
-                        "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
-                        temp_input_file.name,
-                        str(self._get_job_output_dir(job_id)),
-                        "out",  # TODO: how support multiple output files?
-                        "log",
-                        "metadata"]
+                bucket = 'OpenEO-data'
+                aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID')
+                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+                swift_url = os.environ.get('SWIFT_URL')
+                s3_client = boto3.client('s3',
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                    endpoint_url=swift_url)
 
-                if principal is not None and key_tab is not None:
-                    args.append(principal)
-                    args.append(key_tab)
-                else:
-                    args.append("no_principal")
-                    args.append("no_keytab")
+                s3_client.create_bucket(Bucket=bucket)
 
-                args.append(user_id)
+                output_dir = '/batch_jobs'
+
+                job_specification_file = output_dir + '/' + job_id + '.json'
+
+                jobspec_bytes = str.encode(job_info['specification'])
+                file = io.BytesIO(jobspec_bytes)
+                s3_client.upload_fileobj(file, bucket, job_specification_file.strip('/'))
 
                 if api_version:
-                    args.append(api_version)
+                    api_version = api_version
                 else:
-                    args.append("0.4.0")
+                    api_version = '0.4.0'
 
-                args.append(driver_memory)
-                args.append(executor_memory)
-                args.append(executor_memory_overhead)
-                args.append(driver_cores)
-                args.append(executor_cores)
-                args.append(driver_memory_overhead)
-                args.append(queue)
-                args.append(profile)
+                jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
+                rendered = Template(open(jinja_template).read()).render(
+                    job_name="job-{j}-{u}".format(j=job_id, u=user_id),
+                    job_specification=job_specification_file,
+                    output_dir=output_dir,
+                    output_file="out",
+                    log_file="log",
+                    metadata_file="metadata",
+                    job_id=job_id,
+                    driver_cores=driver_cores,
+                    driver_memory=driver_memory,
+                    executor_cores=executor_cores,
+                    executor_memory=executor_memory,
+                    api_version=api_version,
+                    current_time=int(time.time()),
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                    swift_url=swift_url,
+                    image_name=os.environ.get("IMAGE_NAME"),
+                    swift_bucket=bucket,
+                    zookeeper_nodes=os.environ.get("ZOOKEEPERNODES")
+                )
+
+                config.load_incluster_config()
+                api_instance = client.CustomObjectsApi()
+
+                dict = yaml.safe_load(rendered)
 
                 try:
-                    logger.info("Submitting job: {a!r}".format(a=args))
-                    output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                except CalledProcessError as e:
-                    logger.exception(e)
-                    logger.error(e.stdout)
-                    logger.error(e.stderr)
-                    raise e
+                    api_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict, pretty=True)
+                except ApiException as e:
+                    print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
-            try:
-                # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-                logger.info(output_string)
-                application_id = self._extract_application_id(output_string)
-                print("mapped job_id %s to application ID %s" % (job_id, application_id))
+            else:
+                script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
 
-                registry.set_application_id(job_id, user_id, application_id)
-            except _BatchJobError as e:
-                traceback.print_exc(file=sys.stderr)
-                # TODO: why reraise as CalledProcessError?
-                raise CalledProcessError(1, str(args), output=output_string)
+                with tempfile.NamedTemporaryFile(mode="wt",
+                                                 encoding='utf-8',
+                                                 dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
+                                                 prefix="{j}_".format(j=job_id),
+                                                 suffix=".in") as temp_input_file:
+                    temp_input_file.write(job_info['specification'])
+                    temp_input_file.flush()
+
+                    args = [script_location,
+                            "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
+                            temp_input_file.name,
+                            str(self._get_job_output_dir(job_id)),
+                            "out",  # TODO: how support multiple output files?
+                            "log",
+                            "metadata"]
+
+                    if principal is not None and key_tab is not None:
+                        args.append(principal)
+                        args.append(key_tab)
+                    else:
+                        args.append("no_principal")
+                        args.append("no_keytab")
+
+                    args.append(user_id)
+
+                    if api_version:
+                        args.append(api_version)
+                    else:
+                        args.append("0.4.0")
+
+                    args.append(driver_memory)
+                    args.append(executor_memory)
+                    args.append(executor_memory_overhead)
+                    args.append(driver_cores)
+                    args.append(executor_cores)
+                    args.append(driver_memory_overhead)
+                    args.append(queue)
+                    args.append(profile)
+
+                    try:
+                        logger.info("Submitting job: {a!r}".format(a=args))
+                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                    except CalledProcessError as e:
+                        logger.exception(e)
+                        logger.error(e.stdout)
+                        logger.error(e.stderr)
+                        raise e
+
+                try:
+                    # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
+                    logger.info(output_string)
+                    application_id = self._extract_application_id(output_string)
+                    print("mapped job_id %s to application ID %s" % (job_id, application_id))
+
+                    registry.set_application_id(job_id, user_id, application_id)
+                except _BatchJobError as e:
+                    traceback.print_exc(file=sys.stderr)
+                    # TODO: why reraise as CalledProcessError?
+                    raise CalledProcessError(1, str(args), output=output_string)
 
     @staticmethod
     def _extract_application_id(stream) -> str:
