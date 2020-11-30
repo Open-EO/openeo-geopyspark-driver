@@ -414,7 +414,7 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
                     ]}
                 },
                 "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]] +
-                         [search_link(l) for l in collection["properties"]["links"]["search"]],
+                         [search_link(l) for l in collection["properties"]["links"].get("search", [])],
                 "cube:dimensions": {
                     "bands": {
                         "type": "bands",
