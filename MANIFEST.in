@@ -1,2 +1,2 @@
 include openeogeotrellis/**/*.sh
-include openeogeotrellis/deploy/*.j2
+include openeogeotrellis/**/*.j2
