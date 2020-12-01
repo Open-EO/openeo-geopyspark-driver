@@ -39,7 +39,7 @@ setup(
         'openeo>=0.3.0a1.*',
         'openeo_driver>=0.2.6a1.*',
         'openeo_udf>=0.0.9.post0',
-        'matplotlib>=2.0.0,<3.0.0',
+        'matplotlib==3.3.3',
         'colortools>=0.1.2',
         'geopandas==0.3.0',
         'geopyspark==0.4.5+openeo',
