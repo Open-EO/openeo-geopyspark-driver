@@ -64,6 +64,14 @@ spec:
       - name: "testdata"
         mountPath: "/data"
   executor:
+    envVars:
+      OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
+      KUBE: "true"
+      AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
+      AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
+      SWIFT_URL: {{ swift_url }}
+      SWIFT_BUCKET: {{ swift_bucket }}
+      ZOOKEEPERNODES: {{ zookeeper_nodes }}
     cores: {{ executor_cores }}
     instances: 1
     memory: "{{ executor_memory }}"
