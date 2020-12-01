@@ -170,9 +170,6 @@ def main(argv: List[str]) -> None:
                 aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
                 endpoint_url=os.environ.get('SWIFT_URL'))
 
-            if not os.path.exists(job_dir):
-                os.makedirs(job_dir)
-
             s3_client.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
 
 
@@ -189,7 +186,7 @@ def main(argv: List[str]) -> None:
             kerberos()
             
             def run_driver(): 
-                run_job(job_specification, output_file, metadata_file, api_version)
+                run_job(job_specification, output_file, metadata_file, api_version, job_dir)
             
             if sc.getConf().get('spark.python.profile', 'false').lower()=='true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
@@ -210,7 +207,7 @@ def main(argv: List[str]) -> None:
         raise e
 
 @log_memory
-def run_job(job_specification, output_file, metadata_file, api_version):
+def run_job(job_specification, output_file, metadata_file, api_version, job_dir):
     process_graph = job_specification['process_graph']
     env = EvalEnv({
         'version': api_version or "1.0.0",
@@ -251,6 +248,19 @@ def run_job(job_specification, output_file, metadata_file, api_version):
 
     _export_result_metadata(tracer=tracer, metadata_file=metadata_file)
 
+    if os.environ.get('KUBE') == 'true':
+        import boto3
+
+        bucket = os.environ.get('SWIFT_BUCKET')
+        s3_client = boto3.client('s3',
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+            endpoint_url=os.environ.get('SWIFT_URL'))
+
+        logger.info("Writing results to object storage")
+        for file in os.listdir(job_dir):
+            full_path = str(job_dir) + "/" + file
+            s3_client.upload_file(full_path, bucket, full_path.strip("/"))
 
 if __name__ == '__main__':
     _setup_app_logging()
