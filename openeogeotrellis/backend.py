@@ -486,9 +486,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 s3_client.create_bucket(Bucket=bucket)
 
-                output_dir = '/batch_jobs'
+                output_dir = '/batch_jobs' + '/' + job_id
 
-                job_specification_file = output_dir + '/' + job_id + '.json'
+                job_specification_file = output_dir + '/job_specification.json'
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
