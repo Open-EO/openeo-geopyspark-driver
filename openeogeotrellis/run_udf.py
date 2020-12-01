@@ -1,24 +1,20 @@
 import functools
-from pprint import pprint
+import logging
+import math
+from inspect import signature
 
-import xarray
+import geopandas
 import numpy
 import pandas
-import geopandas
 import shapely
-from copy import deepcopy
-import math
-from typing import Dict
-from inspect import signature
-import logging
+import xarray
 
-from openeo_udf.api.feature_collection import FeatureCollection
 from openeo_udf.api.datacube import DataCube
+from openeo_udf.api.feature_collection import FeatureCollection
 from openeo_udf.api.machine_learn_model import MachineLearnModelConfig
 from openeo_udf.api.spatial_extent import SpatialExtent
 from openeo_udf.api.structured_data import StructuredData
 from openeo_udf.api.udf_data import UdfData
-from openeo_udf.server.data_model.udf_schemas import UdfRequestModel
 
 __license__ = "Apache License, Version 2.0"
 __author__ = "Soeren Gebbert"
