@@ -14,7 +14,7 @@ pythonPipeline {
   hadoop = true
   pre_test_script = 'pre_test.sh'
   extra_env_variables = 'TRAVIS=1'
-  python_version = ["3.6","3.8"]
+  python_version = ["3.8"]
   docker_registry = 'vito-docker-private-dev.artifactory.vgt.vito.be'
   downstream_job = 'geo.OpenEO/openeo-geopyspark-integrationtests'
   wheel_repo = 'python-openeo'
