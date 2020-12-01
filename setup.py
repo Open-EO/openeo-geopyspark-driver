@@ -38,7 +38,7 @@ setup(
         'pyspark>=2.3.1,<2.4.0',
         'openeo>=0.4.8a2.*',
         'openeo_driver>=0.6.2a1.*',
-        'openeo_udf>=1.0.0rc2',
+        'openeo_udf>=1.0.0rc3',
         'matplotlib>=2.0.0,<3.0.0',
         'geopandas==0.7.0',
         'geopyspark==0.4.6+openeo',
