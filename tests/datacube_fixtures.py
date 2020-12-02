@@ -1,13 +1,8 @@
 import datetime
 
-import geopyspark as gps
 import numpy as np
 import pytest
 import pytz
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
-from geopyspark.geotrellis.constants import LayerType
-from geopyspark.geotrellis.layer import TiledRasterLayer
-from pyspark import SparkContext
 
 from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -73,6 +68,12 @@ openeo_metadata = {
 
 @pytest.fixture
 def imagecollection_with_two_bands_and_one_date(request):
+    import geopyspark as gps
+    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis.constants import LayerType
+    from geopyspark.geotrellis.layer import TiledRasterLayer
+    from pyspark import SparkContext
+
     print(request)
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     tile = Tile.from_numpy_array(two_band_one_two, -1)
@@ -110,6 +111,11 @@ def imagecollection_with_two_bands_and_one_date(request):
 
 @pytest.fixture
 def imagecollection_with_two_bands_and_three_dates(request):
+    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis.constants import LayerType
+    from geopyspark.geotrellis.layer import TiledRasterLayer
+    from pyspark import SparkContext
+
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     first_tile = Tile.from_numpy_array(two_band_one_two, -1)
     second_tile = Tile.from_numpy_array(np.array([matrix_of_two, matrix_of_one], dtype='int'), -1)
