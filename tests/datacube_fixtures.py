@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 import pytz
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 matrix_of_one = np.zeros((1, 4, 4))
@@ -74,6 +73,8 @@ def imagecollection_with_two_bands_and_one_date(request):
     from geopyspark.geotrellis.layer import TiledRasterLayer
     from pyspark import SparkContext
 
+    from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+
     print(request)
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     tile = Tile.from_numpy_array(two_band_one_two, -1)
@@ -115,6 +116,8 @@ def imagecollection_with_two_bands_and_three_dates(request):
     from geopyspark.geotrellis.constants import LayerType
     from geopyspark.geotrellis.layer import TiledRasterLayer
     from pyspark import SparkContext
+
+    from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
 
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     first_tile = Tile.from_numpy_array(two_band_one_two, -1)
