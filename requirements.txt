@@ -4,7 +4,7 @@ protobuf==3.6.0
 geopyspark==0.4.5+openeo
 setuptools
 gunicorn==19.9.0
-kazoo==2.5.0
+kazoo==2.8.0
 cloudpickle
 colortools>=0.1.2
 pyproj==2.6.1
