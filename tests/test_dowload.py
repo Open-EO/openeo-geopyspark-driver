@@ -11,8 +11,9 @@ from pyspark import SparkContext
 from shapely import geometry
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from openeo.metadata import Band
 
 
 class TestDownload(TestCase):
@@ -93,53 +94,94 @@ class TestDownload(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-
-    def test_download_geotiff_no_args(self):
-
+    def download_no_bands(self, format):
         input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
+        print(res)
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_result.geotiff"))
-        print(geotiffs)
+    def download_no_args(self,format):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
+
+        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
+        print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
-    def test_download_masked_geotiff(self):
-
+    def download_masked(self,format):
         input = self.create_spacetime_layer()
-        polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
         imagecollection = imagecollection.mask_polygon(mask=polygon)
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.geotiff"))
-        print(geotiffs)
+
+        filename = str(self.temp_folder / "test_download_masked_result.") + format
+        res = imagecollection.save_result(filename, format=format)
+        print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
-    def test_download_masked_geotiff_reproject(self):
-
+    def download_masked_reproject(self,format):
         input = self.create_spacetime_layer()
-        polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
+        polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
         import pyproj
         from shapely.ops import transform
         from functools import partial
-
         project = partial(
             pyproj.transform,
             pyproj.Proj(init="EPSG:4326"),  # source coordinate system
             pyproj.Proj(init="EPSG:3857"))  # destination coordinate system
-
         reprojected = transform(project, polygon)
-
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         imagecollection = imagecollection.mask_polygon(mask=reprojected, srs="EPSG:3857")
-        geotiffs = imagecollection.download(str(self.temp_folder / "test_download_masked_result.3857"))
-        print(geotiffs)
+
+        filename = str(self.temp_folder / "test_download_masked_result.3857.") + format
+        res = imagecollection.save_result(filename, format=format)
+        print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
+
+
+    def test_download_geotiff_no_args(self):
+        self.download_no_args('gtiff')
+
+    def test_download_netcdf_no_bands(self):
+        self.download_no_bands('netcdf')
+
+    def test_download_netcdf_no_args(self):
+        self.download_no_args('netcdf')
+
+    def test_download_json_no_args(self):
+        self.download_no_args('json')
+
+    def test_download_masked_geotiff(self):
+        self.download_masked('gtiff')
+
+    def test_download_masked_netcdf(self):
+        self.download_masked('netcdf')
+
+    def test_download_masked_json(self):
+        self.download_masked('json')
+
+    def test_download_masked_geotiff_reproject(self):
+        self.download_masked_reproject('gtiff')
+
+    def test_download_masked_netcdf_reproject(self):
+        self.download_masked_reproject('netcdf')
+
+    def test_download_masked_json_reproject(self):
+        self.download_masked_reproject('json')
+
 
     #skipped because gdal_merge.py is not available on jenkins and Travis
     @skip
     def test_download_as_catalog(self):
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-        imagecollection.download("catalogresult.tiff",format="GTIFF",parameters={"catalog":True})
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})

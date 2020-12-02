@@ -17,7 +17,7 @@ To run locally, unset SPARK_HOME, then:
 SPARK_HOME=$(find_spark_home.py) HADOOP_CONF_DIR=/etc/hadoop/conf DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis spark-submit \
 --master "local[*]" \
 --principal vdboschj@VGT.VITO.BE --keytab ${HOME}/Documents/VITO/vdboschj.keytab \
---jars jars/geotrellis-backend-assembly-0.4.5-openeo.jar,jars/geotrellis-extensions-1.3.0-SNAPSHOT.jar \
+--jars jars/geotrellis-backend-assembly-0.4.6-openeo.jar,jars/geotrellis-extensions-2.0.0-SNAPSHOT.jar \
 benchmarks/benchmark.py
 
 To debug application in PyCharm, set SPARK_HOME, HADOOP_CONF_DIR and DRIVER_IMPLEMENTATION_PACKAGE, then use e.g.
@@ -85,7 +85,7 @@ def main(argv: List[str]) -> None:
 
             def evaluate() -> Dict:
                 kerberos()
-                return ProcessGraphDeserializer.evaluate(process_graph, viewingParameters={'version': "0.4.0"})
+                return ProcessGraphDeserializer.evaluate(process_graph, env=None)
 
             def combine_iterations(acc: (Dict, float), i: int) -> (Dict, float):
                 count = i + 1

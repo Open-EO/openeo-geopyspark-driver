@@ -6,14 +6,38 @@ from pathlib import Path
 import pwd
 import stat
 from typing import Union
+import contextlib
+import resource
 
 from dateutil.parser import parse
 from py4j.java_gateway import JavaGateway
 import pytz
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from kazoo.client import KazooClient
+from .configparams import ConfigParams
+
+from openeo_driver.delayed_vector import DelayedVector
 
 logger = logging.getLogger("openeo")
 
+def log_memory(function):
+    def memory_logging_wrapper(*args, **kwargs):
+        try:
+            from spark_memlogger import memlogger
+        except ImportError:
+            return function(*args, **kwargs)
+
+        ml = memlogger.MemLogger(5,api_version_auto_timeout_ms=60000)
+        try:
+            try:
+                ml.start()
+            except:
+                logger.warning("Error while configuring memory logging, will not be available!", exc_info=True)
+            return function(*args, **kwargs)
+        finally:
+            ml.stop()
+
+    return memory_logging_wrapper
 
 def kerberos():
     import geopyspark as gps
@@ -113,6 +137,8 @@ def to_projected_polygons(jvm, *args):
     if len(args) == 1 and isinstance(args[0], (str, Path)):
         # Vector file
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
+    elif len(args) == 1 and isinstance(args[0], DelayedVector):
+        return to_projected_polygons(jvm, args[0].path)
     elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
         # Multiple polygons
         polygon_wkts = [str(x) for x in args[0]]
@@ -125,3 +151,22 @@ def to_projected_polygons(jvm, *args):
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     else:
         raise ValueError(args)
+
+
+@contextlib.contextmanager
+def zk_client(hosts: str = ','.join(ConfigParams().zookeepernodes)):
+    zk = KazooClient(hosts)
+    zk.start()
+
+    try:
+        yield zk
+    finally:
+        zk.stop()
+        zk.close()
+
+
+def set_max_memory(max_total_memory_in_bytes: int):
+    soft_limit, hard_limit = max_total_memory_in_bytes, max_total_memory_in_bytes
+    resource.setrlimit(resource.RLIMIT_AS, (soft_limit, hard_limit))
+
+    logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))

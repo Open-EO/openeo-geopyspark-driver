@@ -16,8 +16,8 @@ class Traefik:
         :param host: the host the service runs on, typically myself
         :param port: the port the service runs on, typically random
         """
-        backend_id = "backend%s" % service_id
-        frontend_id = "frontend%s" % service_id
+        backend_id = self._backend_id(service_id)
+        frontend_id = self._frontend_id(service_id)
         match_specific_service = "PathPrefixStripRegex: /openeo/services/%s,/openeo/{version}/services/%s" \
                                  % (service_id, service_id)
 
@@ -39,7 +39,7 @@ class Traefik:
 
         # FIXME: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional "test" node
         if environment == 'dev':
-            match_openeo = "Host: openeo-dev.vgt.vito.be;PathPrefix: /openeo,/.well-known/openeo"
+            match_openeo = "Host: openeo-dev.vgt.vito.be,openeo-dev.vito.be;PathPrefix: /openeo,/.well-known/openeo"
             priority = 100
         else:
             match_openeo = "Host: openeo.vgt.vito.be,openeo.vito.be;PathPrefix: /openeo,/.well-known/openeo"
@@ -49,24 +49,33 @@ class Traefik:
         self._create_frontend_rule(cluster_id, cluster_id, match_openeo, priority)
         self._trigger_configuration_update()
 
-    def remove(self, service_id):
-        # TODO
-        pass
+    def unproxy_service(self, *service_ids) -> None:
+        """
+        Removes routes to dynamically created services.
+        """
+
+        for service_id in service_ids:
+            frontend_key = self._frontend_key(self._frontend_id(service_id))
+            backend_key = self._backend_key(self._backend_id(service_id))
+
+            self._zk.delete(frontend_key, recursive=True)
+            self._zk.delete(backend_key, recursive=True)
+
+        self._trigger_configuration_update()
 
     def _create_backend_server(self, backend_id, server_id, host, port) -> None:
-        url_key = "/%s/backends/%s/servers/%s/url" % (self._prefix, backend_id, server_id)
+        backend_key = self._backend_key(backend_id)
+        url_key = "%s/servers/%s/url" % (backend_key, server_id)
         url = "http://%s:%d" % (host, port)
         self._zk_merge(url_key, url.encode())
 
     def _create_frontend_rule(self, frontend_id, backend_id, match_path, priority: int):
-        frontend_key = "/%s/frontends/%s" % (self._prefix, frontend_id)
-        test_key = frontend_key + "/routes/test"
+        frontend_key = self._frontend_key(frontend_id)
 
         self._zk_merge(frontend_key + "/entrypoints", b"web")
         self._zk_merge(frontend_key + "/backend", backend_id.encode())
         self._zk_merge(frontend_key + "/priority", str(priority).encode())  # higher priority matches first
-
-        self._zk_merge(test_key + "/rule", match_path.encode())
+        self._zk_merge(frontend_key + "/routes/test/rule", match_path.encode())
 
     def _zk_merge(self, path, value):
         self._zk.ensure_path(path)
@@ -75,3 +84,15 @@ class Traefik:
     def _trigger_configuration_update(self):
         # https://github.com/containous/traefik/issues/2068
         self._zk.delete("/%s/leader" % self._prefix, recursive=True)
+
+    def _backend_id(self, service_id):
+        return "backend%s" % service_id
+
+    def _backend_key(self, backend_id):
+        return "/%s/backends/%s" % (self._prefix, backend_id)
+
+    def _frontend_id(self, service_id):
+        return "frontend%s" % service_id
+
+    def _frontend_key(self, frontend_id) -> str:
+        return "/%s/frontends/%s" % (self._prefix, frontend_id)

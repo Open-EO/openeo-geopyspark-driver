@@ -12,7 +12,7 @@ from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
 import openeo_udf.functions
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from .data import get_test_data_file
@@ -84,21 +84,6 @@ class TestCustomFunctions(TestCase):
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
 
-
-
-    def test_point_series(self):
-
-        def custom_function(cells:np.ndarray,nd):
-            return cells[0]+cells[1]
-
-        transformed_collection = self.imagecollection_with_two_bands_and_one_date.apply_pixel([0, 1], custom_function)
-
-        for p in self.points[0:3]:
-            result = transformed_collection.timeseries(p.x, p.y)
-            print(result)
-            value = result.popitem()
-            self.assertEqual(3.0,value[1][0])
-
     def test_point_series_apply_tile(self):
         file_name = get_test_data_file( "datacube_ndvi.py")
         with open(file_name, "r")  as f:
@@ -130,7 +115,7 @@ class TestCustomFunctions(TestCase):
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
 
         means = self.imagecollection_with_two_bands_and_one_date.polygonal_mean_timeseries(polygon)
-        assert means == {'2017-09-25T11:37:00': [[1.0, 2.0]]}
+        assert means == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
 
     def _create_spacetime_layer(self, no_data):
         def tile(value):
@@ -169,7 +154,7 @@ class TestCustomFunctions(TestCase):
 
     def test_another_polygon_series(self):
         input = self._create_spacetime_layer(no_data=-1.0)
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
         means = imagecollection.polygonal_mean_timeseries(polygon)
-        assert means == {'2017-09-25T11:37:00': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}
+        assert means == {'2017-09-25T11:37:00Z': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}

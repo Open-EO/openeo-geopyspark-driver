@@ -1,0 +1,168 @@
+{
+	"process_graph": {
+    "dc": {
+      "process_id": "load_collection",
+      "arguments": {
+        "id": "TERRASCOPE_S2_TOC_V2",
+        "spatial_extent": {
+          "west": 16.06,
+          "south": 48.06,
+          "east": 16.65,
+          "north": 48.35
+        },
+        "temporal_extent": [
+          "2020-01-01T00:00:00Z",
+          "2020-01-31T23:59:59Z"
+        ],
+        "bands": [
+          "TOC-B08_10M",
+          "TOC-B04_10M",
+          "TOC-B02_10M"
+        ]
+      },
+      "description": "Loading the data; The order of the specified bands is important for the following reduce operation."
+    },
+    "evi": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "dc"
+        },
+        "reducer": {
+          "process_graph": {
+            "nir": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 0
+              }
+            },
+            "sub": {
+              "process_id": "subtract",
+              "arguments": {
+                "x": {
+                  "from_node": "nir"
+                },
+                "y": {
+                  "from_node": "red"
+                }
+              }
+            },
+            "div": {
+              "process_id": "divide",
+              "arguments": {
+                "x": {
+                  "from_node": "sub"
+                },
+                "y": {
+                  "from_node": "sum"
+                }
+              }
+            },
+            "p3": {
+              "process_id": "multiply",
+              "arguments": {
+                "x": 2.5,
+                "y": {
+                  "from_node": "div"
+                }
+              },
+              "result": true
+            },
+            "sum": {
+              "process_id": "sum",
+              "arguments": {
+                "data": [
+                  1,
+                  {
+                    "from_node": "nir"
+                  },
+                  {
+                    "from_node": "p1"
+                  },
+                  {
+                    "from_node": "p2"
+                  }
+                ]
+              }
+            },
+            "red": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 1
+              }
+            },
+            "p1": {
+              "process_id": "multiply",
+              "arguments": {
+                "x": 6,
+                "y": {
+                  "from_node": "red"
+                }
+              }
+            },
+            "blue": {
+              "process_id": "array_element",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "index": 2
+              }
+            },
+            "p2": {
+              "process_id": "multiply",
+              "arguments": {
+                "x": -7.5,
+                "y": {
+                  "from_node": "blue"
+                }
+              }
+            }
+          }
+        },
+        "dimension": "bands"
+      },
+      "description": "Compute the EVI. Formula: 2.5 * (NIR - RED) / (1 + NIR + 6*RED + -7.5*BLUE)"
+    },
+    "maxtime": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "evi"
+        },
+        "reducer": {
+          "process_graph": {
+            "min": {
+              "process_id": "max",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              },
+              "result": true
+            }
+          }
+        },
+        "dimension": "t"
+      },
+      "description": "Compute a maximum time composite by reducing the temporal dimension"
+    },
+    "save": {
+      "process_id": "save_result",
+      "arguments": {
+        "data": {
+          "from_node": "maxtime"
+        },
+        "format": "GTIFF"
+
+      },
+      "result": true
+    }
+  }
+}

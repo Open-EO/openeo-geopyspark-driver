@@ -15,4 +15,4 @@ class ConfigParams:
         # TODO: can we avoid using env variables?
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
 
-        self.require_bounds = env.get("OPENEO_REQUIRE_BOUNDS") != "False"
+        self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")

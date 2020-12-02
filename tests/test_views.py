@@ -74,28 +74,33 @@ class TestCollections:
             {"name": "4", "common_name": "red", "center_wavelength": 0.6645},
             {"name": "8", "common_name": "nir", "center_wavelength": 0.8351}
         ]
-        cube_dims = {
-            'x': {'type': 'spatial', 'axis': 'x'},
-            'y': {'type': 'spatial', 'axis': 'y'},
-            't': {'type': 'temporal'},
-            'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
-        }
         if api.api_version_compare.at_least("1.0.0"):
             assert resp['stac_version'] == "0.9.0"
             assert resp['extent'] == {
                 "spatial": {"bbox": [[-180, -56, 180, 83]]},
-                "temporal": {"interval": [["2015-07-06", None]]},
+                "temporal": {"interval": [["2015-07-06T00:00:00Z", None]]},
             }
-            assert resp['cube:dimensions'] == cube_dims
+            assert resp['cube:dimensions'] == {
+                'x': {'type': 'spatial', 'axis': 'x', 'extent': [-180, 180]},
+                'y': {'type': 'spatial', 'axis': 'y', 'extent': [-56, 83]},
+                't': {'type': 'temporal', 'extent': ["2015-07-06T00:00:00Z", None]},
+                'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
+            }
             for f in eo_bands[0].keys():
                 assert [b[f] for b in resp['summaries']['eo:bands']] == [b[f] for b in eo_bands]
         else:
             assert resp['stac_version'] == "0.6.2"
             assert resp['extent'] == {
                 "spatial": [-180, -56, 180, 83],
-                "temporal": ["2015-07-06", None]
+                "temporal": ["2015-07-06T00:00:00Z", None]
             }
-            assert resp["properties"]['cube:dimensions'] == cube_dims
+            assert resp["properties"]['cube:dimensions'] == {
+                'x': {'type': 'spatial', 'axis': 'x'},
+                'y': {'type': 'spatial', 'axis': 'y'},
+                't': {'type': 'temporal'},
+                'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
+            }
+
             for f in eo_bands[0].keys():
                 assert [b[f] for b in resp['properties']["eo:bands"]] == [b[f] for b in eo_bands]
 
@@ -132,7 +137,7 @@ class TestBatchJobs:
 
     def test_create_job(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -143,10 +148,12 @@ class TestBatchJobs:
             assert meta_data["api_version"] == api.api_version
             assert meta_data["application_id"] == None
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
+            assert meta_data["title"] == "Dummy"
+            assert meta_data["description"] == "Dummy job!"
 
     def test_create_and_get(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -156,14 +163,16 @@ class TestBatchJobs:
                 "id": job_id,
                 "process": {"process_graph": self.DUMMY_PROCESS_GRAPH},
                 "status": "created",
-                "created": "2020-04-20T16:04:03Z"
+                "created": "2020-04-20T16:04:03Z",
+                "title": "Dummy",
             }
         else:
             expected = {
                 "id": job_id,
                 "process_graph": self.DUMMY_PROCESS_GRAPH,
                 "status": "submitted",
-                "submitted": "2020-04-20T16:04:03Z"
+                "submitted": "2020-04-20T16:04:03Z",
+                "title": "Dummy",
             }
         assert res == expected
 
@@ -204,14 +213,14 @@ class TestBatchJobs:
 
     def test_create_and_get_user_jobs(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
             assert result == {
                 "jobs": [
-                    {"id": job_id, "status": created, created: "2020-04-20T16:04:03Z"},
+                    {"id": job_id, "status": created, created: "2020-04-20T16:04:03Z", "title": "Dummy"},
                 ],
                 "links": []
             }
@@ -222,7 +231,7 @@ class TestBatchJobs:
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -238,14 +247,19 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_output = (tmp_path / job_id / "out")
-            job_log = (tmp_path / job_id / "log")
+            job_dir = (tmp_path / job_id)
+            job_output = (job_dir / "out")
+            job_log = (job_dir / "log")
+            job_metadata = (job_dir / "metadata")
             assert batch_job_args[2].endswith(".in")
-            assert batch_job_args[3] == str(job_output)
-            assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == TEST_USER
-            assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['12G', '2G', '2G', '5', '2']
+            assert batch_job_args[3] == str(job_dir)
+            assert batch_job_args[4] == job_output.name
+            assert batch_job_args[5] == job_log.name
+            assert batch_job_args[6] == job_metadata.name
+            assert batch_job_args[9] == TEST_USER
+            assert batch_job_args[10] == api.api_version
+            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2','2G', 'default','false']
+            
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -254,11 +268,19 @@ class TestBatchJobs:
             assert meta_data["user_id"] == TEST_USER
             assert meta_data["status"] == "created"
             assert meta_data["api_version"] == api.api_version
-            assert json.loads(meta_data["specification"]) == (data['process'] if api.api_version_compare.at_least("1.0.0") else data)
+            assert json.loads(meta_data["specification"]) == (
+                data['process'] if api.api_version_compare.at_least("1.0.0")
+                else {"process_graph": data["process_graph"]})
             assert meta_data["application_id"] == 'application_1587387643572_0842'
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
+
+            # Get logs
+            res = api.get(
+                '/jobs/{j}/logs'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(200).json
+            assert res["logs"] == []
 
             # Fake update from job tracker
             with openeogeotrellis.job_registry.JobRegistry() as reg:
@@ -307,8 +329,8 @@ class TestBatchJobs:
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
-            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4"}
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10000G"}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -323,14 +345,18 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_output = (tmp_path / job_id / "out")
-            job_log = (tmp_path / job_id / "log")
+            job_dir = (tmp_path / job_id)
+            job_output = (job_dir / "out")
+            job_log = (job_dir / "log")
+            job_metadata = (job_dir / "metadata")
             assert batch_job_args[2].endswith(".in")
-            assert batch_job_args[3] == str(job_output)
-            assert batch_job_args[4] == str(job_log)
-            assert batch_job_args[7] == TEST_USER
-            assert batch_job_args[8] == api.api_version
-            assert batch_job_args[9:] == ['3g', '11g', '2G', '5', '4']
+            assert batch_job_args[3] == str(job_dir)
+            assert batch_job_args[4] == job_output.name
+            assert batch_job_args[5] == job_log.name
+            assert batch_job_args[6] == job_metadata.name
+            assert batch_job_args[9] == TEST_USER
+            assert batch_job_args[10] == api.api_version
+            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue','false']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:

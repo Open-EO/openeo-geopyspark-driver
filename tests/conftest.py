@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 from _pytest.terminal import TerminalReporter
-from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date
+from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
+from .data import get_test_data_file
+from openeogeotrellis.user_defined_process_repository import (UserDefinedProcessRepository,
+                                                              InMemoryUserDefinedProcessRepository)
+from openeogeotrellis.backend import UserDefinedProcesses
 os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
 
 
@@ -21,24 +25,24 @@ def _ensure_geopyspark(out: TerminalReporter):
     """Make sure GeoPySpark knows where to find Spark (SPARK_HOME) and py4j"""
     try:
         import geopyspark
-        out.write_line("Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
+        out.write_line("[conftest.py] Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
     except KeyError as e:
         # Geopyspark failed to detect Spark home and py4j, let's fix that.
         from pyspark import find_spark_home
         pyspark_home = Path(find_spark_home._find_spark_home())
-        out.write_line("Failed to import geopyspark automatically. "
+        out.write_line("[conftest.py] Failed to import geopyspark automatically. "
                        "Will set up py4j path using Spark home: {h}".format(h=pyspark_home))
         py4j_zip = next((pyspark_home / 'python' / 'lib').glob('py4j-*-src.zip'))
-        out.write_line("py4j zip: {z!r}".format(z=py4j_zip))
+        out.write_line("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
         sys.path.append(str(py4j_zip))
 
 
 def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
-    out.write_line("Setting up local Spark")
+    out.write_line("[conftest.py] Setting up local Spark")
 
     travis_mode = 'TRAVIS' in os.environ
-    master_str = "local[2]" if travis_mode else "local[*]"
+    master_str = "local[2]" if travis_mode else "local[2]"
 
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
@@ -55,9 +59,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     else:
         conf.set('spark.ui.enabled', True)
 
-    out.write_line("SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
+    out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
-    out.write_line("JVM info: {d!r}".format(d={
+    out.write_line("[conftest.py] JVM info: {d!r}".format(d={
         f: context._jvm.System.getProperty(f)
         for f in [
             "java.version", "java.vendor", "java.home",
@@ -66,10 +70,10 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         ]
     }))
 
-    out.write_line("Validating the Spark context")
+    out.write_line("[conftest.py] Validating the Spark context")
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
     answer = context.parallelize([9, 10, 11, 12]).sum()
-    out.write_line(repr((answer, dummy)))
+    out.write_line("[conftest.py] " + repr((answer, dummy)))
 
     return context
 
@@ -78,3 +82,33 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 def api_version(request):
     return request.param
 
+
+@pytest.fixture
+def udp_repository() -> UserDefinedProcessRepository:
+    return InMemoryUserDefinedProcessRepository()
+
+
+@pytest.fixture
+def udps(udp_repository) -> UserDefinedProcesses:
+    return UserDefinedProcesses(udp_repository)
+
+@pytest.fixture
+def udf_noop():
+
+    file_name = get_test_data_file("udf_noop.py")
+    with open(file_name, "r")  as f:
+        udf_code = f.read()
+
+    noop_udf_callback = {
+        "udf_process": {
+            "arguments": {
+                "data": {
+                    "from_argument": "dimension_data"
+                },
+                "udf": udf_code
+            },
+            "process_id": "run_udf",
+            "result": True
+        },
+    }
+    return noop_udf_callback

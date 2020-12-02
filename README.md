@@ -10,32 +10,23 @@ This driver implements the GeoPySpark/Geotrellis specific backend for OpenEO.
 It does this by implementing a direct (non-REST) version of the OpenEO client API on top 
 of [GeoPySpark](https://github.com/locationtech-labs/geopyspark/). 
 
-### Currently implemented features
-- Listing available layers through /openeo/data
-- Synchronous execution, with /openeo/execute
-- Asynchronous: Not implemented
-- Download of image as geotiff
-- Timeseries computation
-- Band math
-- Temporal min/max compositing
-- Basic viewing with TMS (early prototype)
-
-
 A REST service based on Flask translates incoming calls to this local API.
+
+![Technology stack](openeo-geotrellis-techstack.png?raw=true "Technology stack")
 
 ### Operating environment dependencies
 This backend has been tested with:
-- A Spark on Yarn cluster
+- Something that runs Spark: Kubernetes or YARN (Hadoop), standalone or on your laptop
 - Accumulo as the tile storage backend for Geotrellis
-- Other Geotrellis backends such as S3 should also work with minor modifications.
+- Reading GeoTiff files directly from disk or object storage
 
 ### Public endpoint
-Not available yet
+https://openeo.vito.be/openeo/
 
 ### Running locally
 Preparation:
 A few custom Scala classes are needed to run this project, these can be found in this jar:
-https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.1.0-SNAPSHOT/geotrellis-extensions-1.1.0-20190506.091531-1.jar
+https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.0.0-SNAPSHOT/geotrellis-extensions-2.0.0-SNAPSHOT.jar
 Geopyspark will search for any jar in the 'jars' directory and add it to the classpath. So make
 sure that this jar can be found in the correct location.
  
@@ -55,3 +46,12 @@ PYTHONPATH=. python openeogeotrellis/server.py
 The web application can be deployed by running:
 sh scripts/submit.sh
 This will package the application and it's dependencies from source, and submit it on the cluster. The application will register itself with an NginX reverse proxy using Zookeeper.
+
+
+### Running the unit tests
+
+The unit tests expect that environment variable `SPARK_HOME` is set,
+which can easily be done from within you development virtual environment as follows:
+
+    export SPARK_HOME=$(find_spark_home.py)
+    pytest

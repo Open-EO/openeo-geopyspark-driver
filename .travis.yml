@@ -14,4 +14,5 @@ script:
   - sudo update-java-alternatives --set java-1.8.0-openjdk-amd64
   - export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-amd64
   # Run tests
+  - export SPARK_HOME=$(find_spark_home.py)
   - pytest

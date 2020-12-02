@@ -1,0 +1,16 @@
+[
+  {
+    "id": "XIP",
+    "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
+    "_vito": {
+      "data_source": {
+        "opensearch_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x"},
+      "y": {"type": "spatial", "axis": "y"},
+      "t": {"type": "temporal"}
+    }
+  }
+]
