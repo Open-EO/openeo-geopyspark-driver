@@ -48,9 +48,6 @@ def main():
     port = 50001 if not 'KUBE_OPENEO_API_PORT' in os.environ else os.environ['KUBE_OPENEO_API_PORT']
 
     def setup_batch_jobs() -> None:
-#        principal = sc.getConf().get("spark.yarn.principal")
-#        keytab = sc.getConf().get("spark.yarn.keytab")
-
         with JobRegistry() as job_registry:
             job_registry.ensure_paths()
 
