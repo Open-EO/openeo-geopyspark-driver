@@ -46,7 +46,7 @@ setup(
         'pandas>=0.24.2',
         'matplotlib>=2.0.0,<3.0.0',
         'geopandas~=0.7.0',
-        'pyproj<2.2.0',
+        'pyproj>=2.2.0',
         'protobuf~=3.6.0',
         'kazoo~=2.5.0',
         'rasterio~=1.1.1',
