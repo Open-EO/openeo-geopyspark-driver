@@ -10,6 +10,7 @@ from collections import namedtuple
 from datetime import datetime
 from openeo.util import date_to_rfc3339
 import re
+import os
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
@@ -25,6 +26,7 @@ class JobTracker:
 
     _YarnStatus = namedtuple('YarnStatus', ['state', 'final_state', 'start_time', 'finish_time',
                                             'aggregate_resource_allocation'])
+    _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
     def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
         self._job_registry = job_registry
@@ -53,30 +55,54 @@ class JobTracker:
 
                             if application_id:
                                 try:
-                                    state, final_state, start_time, finish_time, aggregate_resource_allocation =\
+                                    if os.environ.get("KUBE") == "true":
+                                        from openeogeotrellis.utils import s3_client, download_s3_dir
+                                        state, start_time, finish_time =\
+                                        JobTracker._kube_status(job_id, user_id)
+
+                                        new_status = JobTracker._kube_status_parser(state)
+
+                                        registry.patch(job_id, user_id,
+                                                       status=new_status,
+                                                       started=start_time,
+                                                       finished=finish_time)
+
+                                        if current_status != new_status:
+                                            print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+
+                                        if state == "COMPLETED":
+                                            download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
+
+                                            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                            registry.patch(job_id, user_id, **result_metadata)
+
+                                            registry.mark_done(job_id, user_id)
+                                            print("marked %s as done" % job_id)
+                                    else:
+                                        state, final_state, start_time, finish_time, aggregate_resource_allocation =\
                                         JobTracker._yarn_status(application_id)
 
-                                    memory_time_megabyte_seconds, cpu_time_seconds =\
-                                        JobTracker._parse_resource_allocation(aggregate_resource_allocation)
+                                        memory_time_megabyte_seconds, cpu_time_seconds =\
+                                            JobTracker._parse_resource_allocation(aggregate_resource_allocation)
 
-                                    new_status = JobTracker._to_openeo_status(state, final_state)
+                                        new_status = JobTracker._to_openeo_status(state, final_state)
 
-                                    registry.patch(job_id, user_id,
-                                                   status=new_status,
-                                                   started=JobTracker._to_serializable_datetime(start_time),
-                                                   finished=JobTracker._to_serializable_datetime(finish_time),
-                                                   memory_time_megabyte_seconds=memory_time_megabyte_seconds,
-                                                   cpu_time_seconds=cpu_time_seconds)
+                                        registry.patch(job_id, user_id,
+                                                       status=new_status,
+                                                       started=JobTracker._to_serializable_datetime(start_time),
+                                                       finished=JobTracker._to_serializable_datetime(finish_time),
+                                                       memory_time_megabyte_seconds=memory_time_megabyte_seconds,
+                                                       cpu_time_seconds=cpu_time_seconds)
 
-                                    if current_status != new_status:
-                                        print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+                                        if current_status != new_status:
+                                            print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
-                                    if final_state != "UNDEFINED":
-                                        result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                        registry.patch(job_id, user_id, **result_metadata)
+                                        if final_state != "UNDEFINED":
+                                            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                            registry.patch(job_id, user_id, **result_metadata)
 
-                                        registry.mark_done(job_id, user_id)
-                                        print("marked %s as done" % job_id)
+                                            registry.mark_done(job_id, user_id)
+                                            print("marked %s as done" % job_id)
                                 except JobTracker._UnknownApplicationIdException:
                                     registry.mark_done(job_id, user_id)
                 except Exception:
@@ -100,6 +126,27 @@ class JobTracker:
         except Exception as e:
             _log.info("Failed to run 'yarn': {e!r}".format(e=e))
             return False
+
+    @staticmethod
+    def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
+        from openeogeotrellis.utils import kube_client
+        try:
+            api_instance = kube_client()
+            status = api_instance.get_namespaced_custom_object(
+                    "sparkoperator.k8s.io",
+                    "v1beta2",
+                    "spark-jobs",
+                    "sparkapplications",
+                    "job-{id}-{user}".format(id=job_id, user=user_id))
+
+            return JobTracker._KubeStatus(
+                status['status']['applicationState']['state'],
+                status['status']['lastSubmissionAttemptTime'],
+                status['status']['terminationTime']
+            )
+
+        except Exception as e:
+            _log.info(e)
 
     @staticmethod
     def _yarn_status(application_id: str) -> '_YarnStatus':
@@ -150,6 +197,21 @@ class JobTracker:
             new_status = 'finished'
         elif final_state == 'FAILED':
             new_status = 'error'
+
+        return new_status
+
+    @staticmethod
+    def _kube_status_parser(state: str) -> str:
+        if state == 'PENDING':
+            new_status = 'queued'
+        elif state == 'RUNNING':
+            new_status = 'running'
+        elif state == 'COMPLETED':
+            new_status = 'finished'
+        elif state == 'FAILED':
+            new_status = 'error'
+        else:
+            new_status = 'created'
 
         return new_status
 
