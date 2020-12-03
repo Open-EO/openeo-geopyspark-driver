@@ -162,15 +162,12 @@ def main(argv: List[str]) -> None:
 
     try:
         if os.environ.get('KUBE') == 'true':
-            import boto3
+            from openeogeotrellis.utils import s3_client
 
             bucket = os.environ.get('SWIFT_BUCKET')
-            s3_client = boto3.client('s3',
-                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-                endpoint_url=os.environ.get('SWIFT_URL'))
+            s3_instance = s3_client()
 
-            s3_client.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
 
 
         job_specification = _parse(job_specification_file)
@@ -250,17 +247,15 @@ def run_job(job_specification, output_file, metadata_file, api_version, job_dir)
 
     if os.environ.get('KUBE') == 'true':
         import boto3
+        from openeogeotrellis.utils import s3_client
 
         bucket = os.environ.get('SWIFT_BUCKET')
-        s3_client = boto3.client('s3',
-            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-            endpoint_url=os.environ.get('SWIFT_URL'))
+        s3_instance = s3_client()
 
         logger.info("Writing results to object storage")
         for file in os.listdir(job_dir):
             full_path = str(job_dir) + "/" + file
-            s3_client.upload_file(full_path, bucket, full_path.strip("/"))
+            s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
 if __name__ == '__main__':
     _setup_app_logging()

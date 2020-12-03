@@ -170,3 +170,40 @@ def set_max_memory(max_total_memory_in_bytes: int):
     resource.setrlimit(resource.RLIMIT_AS, (soft_limit, hard_limit))
 
     logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
+
+def kube_client():
+    from kubernetes import client, config
+    config.load_incluster_config()
+    api_instance = client.CustomObjectsApi()
+    return api_instance
+
+def s3_client():
+    import boto3
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    swift_url = os.environ.get("SWIFT_URL")
+    s3_client = boto3.client("s3",
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        endpoint_url=swift_url)
+    return s3_client
+
+def download_s3_dir(bucketName, directory):
+    import boto3
+
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    swift_url = os.environ.get("SWIFT_URL")
+
+    s3_resource = boto3.resource("s3",
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        endpoint_url=swift_url)
+    bucket = s3_resource.Bucket(bucketName)
+
+    for obj in bucket.objects.filter(Prefix = directory):
+        if not os.path.exists("/" + os.path.dirname(obj.key)):
+            os.makedirs("/" + os.path.dirname(obj.key))
+        bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
+
+

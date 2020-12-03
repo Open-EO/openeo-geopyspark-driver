@@ -465,26 +465,18 @@ class GpsBatchJobs(backend.BatchJobs):
             principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
             if os.environ.get('KUBE') == 'true':
-                import kubernetes
                 import yaml
                 import time
-                import boto3
                 import io
 
                 from jinja2 import Template
-                from kubernetes import client, config
                 from kubernetes.client.rest import ApiException
+                from openeogeotrellis.utils import kube_client, s3_client
 
                 bucket = 'OpenEO-data'
-                aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID')
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
-                swift_url = os.environ.get('SWIFT_URL')
-                s3_client = boto3.client('s3',
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key,
-                    endpoint_url=swift_url)
+                s3_instance = s3_client()
 
-                s3_client.create_bucket(Bucket=bucket)
+                s3_instance.create_bucket(Bucket=bucket)
 
                 output_dir = '/batch_jobs' + '/' + job_id
 
@@ -492,7 +484,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
-                s3_client.upload_fileobj(file, bucket, job_specification_file.strip('/'))
+                s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
 
                 if api_version:
                     api_version = api_version
@@ -514,16 +506,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     executor_memory=executor_memory,
                     api_version=api_version,
                     current_time=int(time.time()),
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key,
-                    swift_url=swift_url,
+                    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                    swift_url=os.environ.get("SWIFT_URL"),
                     image_name=os.environ.get("IMAGE_NAME"),
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES")
                 )
 
-                config.load_incluster_config()
-                api_instance = client.CustomObjectsApi()
+                api_instance = kube_client()
 
                 dict = yaml.safe_load(rendered)
 
