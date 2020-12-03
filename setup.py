@@ -56,7 +56,7 @@ setup(
         'python_dateutil',
         'pytz',
         'affine',
-        'xarray==0.11.2',
+        'xarray>=0.12.3',
         'Shapely',
     ],
     extras_require={
