@@ -48,7 +48,7 @@ setup(
         'rasterio==1.1.1',
         'h5py<3.0.0',
         'h5netcdf',
-        'requests==2.24'
+        'requests==2.24',
     ],
     extras_require={
         "dev": tests_require,
