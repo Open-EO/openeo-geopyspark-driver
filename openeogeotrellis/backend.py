@@ -388,7 +388,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsBatchJobs(backend.BatchJobs):
-    _OUTPUT_ROOT_DIR = Path("/data/projects/OpenEO/")
+    _OUTPUT_ROOT_DIR = Path("/batch_jobs") if os.environ.get("KUBE") == "true" else Path("/data/projects/OpenEO/")
 
     def create_job(
             self, user_id: str, process: dict, api_version: str,
@@ -478,7 +478,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 s3_instance.create_bucket(Bucket=bucket)
 
-                output_dir = '/batch_jobs' + '/' + job_id
+                output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
 
                 job_specification_file = output_dir + '/job_specification.json'
 
