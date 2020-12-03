@@ -1,4 +1,6 @@
 #!/bin/sh
+yum info hdf5
+yum install hdf5
 runuser jenkins -c '
 mkdir -p jars
 cd jars
