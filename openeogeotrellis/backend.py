@@ -388,7 +388,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsBatchJobs(backend.BatchJobs):
-    _OUTPUT_ROOT_DIR = Path("/batch_jobs") if os.environ.get("KUBE") == "true" else Path("/data/projects/OpenEO/")
+    _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
 
     def create_job(
             self, user_id: str, process: dict, api_version: str,
@@ -457,14 +457,14 @@ class GpsBatchJobs(backend.BatchJobs):
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
 
-            if not os.environ.get('KUBE') == 'true':
+            if not ConfigParams().is_kube_deploy:
                 kerberos()
 
             conf = SparkContext.getOrCreate().getConf()
 
             principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
 
-            if os.environ.get('KUBE') == 'true':
+            if ConfigParams().is_kube_deploy:
                 import yaml
                 import time
                 import io

@@ -23,6 +23,7 @@ from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_u
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
+from openeogeotrellis.configparams import ConfigParams
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -57,7 +58,7 @@ def _setup_user_logging(log_file: Path) -> None:
 def _create_job_dir(job_dir: Path):
     logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
-    if not os.environ.get('KUBE') == 'true':
+    if not ConfigParams().is_kube_deploy:
         shutil.chown(job_dir, user=None, group='eodata')
 
     _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
@@ -161,7 +162,7 @@ def main(argv: List[str]) -> None:
     os.environ["TMPDIR"] = str(temp_dir)
 
     try:
-        if os.environ.get('KUBE') == 'true':
+        if ConfigParams().is_kube_deploy:
             from openeogeotrellis.utils import s3_client
 
             bucket = os.environ.get('SWIFT_BUCKET')
@@ -245,7 +246,7 @@ def run_job(job_specification, output_file, metadata_file, api_version, job_dir)
 
     _export_result_metadata(tracer=tracer, metadata_file=metadata_file)
 
-    if os.environ.get('KUBE') == 'true':
+    if ConfigParams().is_kube_deploy:
         import boto3
         from openeogeotrellis.utils import s3_client
 

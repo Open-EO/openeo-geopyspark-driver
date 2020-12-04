@@ -14,6 +14,7 @@ import os
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ class JobTracker:
 
                             if application_id:
                                 try:
-                                    if os.environ.get("KUBE") == "true":
+                                    if ConfigParams().is_kube_deploy:
                                         from openeogeotrellis.utils import s3_client, download_s3_dir
                                         state, start_time, finish_time =\
                                         JobTracker._kube_status(job_id, user_id)

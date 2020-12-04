@@ -16,3 +16,5 @@ class ConfigParams:
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
 
         self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")
+
+        self.is_kube_deploy = env.get("KUBE", False)
