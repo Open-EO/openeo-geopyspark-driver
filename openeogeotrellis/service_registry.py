@@ -153,7 +153,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):  # currently a combinat
         data = json.loads(raw.decode('utf-8'))
         if "metadata" in data:
             metadata = ServiceMetadata.from_dict(data["metadata"])
-            api_version = "0.4.0"
+            api_version = data["api_version"]
         elif "specification" in data:
             # Old style metadata
             metadata = ServiceMetadata(
@@ -163,7 +163,7 @@ class ZooKeeperServiceRegistry(AbstractServiceRegistry):  # currently a combinat
                 configuration={},
                 url="n/a", enabled=True, attributes={}, created=datetime.utcfromtimestamp(stat.created)
             )
-            api_version = data["api_version"]
+            api_version = "0.4.0"
         else:
             raise ValueError("Failed to load metadata (keys: {k!r})".format(k=data.keys()))
 
