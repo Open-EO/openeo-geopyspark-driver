@@ -45,8 +45,8 @@ def main():
 
     conf = (SparkConf()
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-            .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,'
-                                                     'org.openeo.geotrellis.png.KryoRegistrator'))
+            .set(key='spark.kryo.registrator', value=['geopyspark.geotools.kryo.ExpandedKryoRegistrator',
+                                                     'org.openeo.geotrellis.png.KryoRegistrator']))
     print("starting spark context")
     sc = SparkContext(conf=conf)
 
