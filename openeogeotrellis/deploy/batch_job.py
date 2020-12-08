@@ -181,8 +181,8 @@ def main(argv: List[str]) -> None:
 
         conf = (SparkConf()
                 .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,org.openeo.geotrellis.png.KryoRegistrator')
-                .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration"))
+                .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
+                .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt"))
 
         with SparkContext(conf=conf) as sc:
             kerberos()
