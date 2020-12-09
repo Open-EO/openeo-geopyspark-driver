@@ -1140,10 +1140,10 @@ class GeopysparkDataCube(DriverDataCube):
         dims.append('y')
         coords['y']=np.linspace(crop_dim[1]+0.5*yres, crop_dim[1]+crop_dim[3]-0.5*yres, crop_win[3])
         
-        def stitch_at_time(crop_win, layout_win, items):
+        def stitch_at_time(crop_win, layout_win, tiles):
             
             # value expected to be another tuple with the original spacetime key and the array
-            subarrs=list(items[1])
+            subarrs=list(tiles)
                         
             # get block sizes
             bw,bh=subarrs[0][1].cells.shape[-2:]
@@ -1187,7 +1187,7 @@ class GeopysparkDataCube(DriverDataCube):
                     window[np.ix_(wbind,xoverlap[1],yoverlap[1])]=iarr[np.ix_(wbind,xoverlap[2],yoverlap[2])]
                     
             # return date (or None) - window tuple
-            return (items[0],window)
+            return window
 
         # at every date stitch together the layer, still on the workers   
         #mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
@@ -1196,7 +1196,7 @@ class GeopysparkDataCube(DriverDataCube):
             .to_numpy_rdd()\
             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
             .groupByKey()\
-            .map(partial(stitch_at_time, crop_win, layout_win))\
+            .mapValues(partial(stitch_at_time, crop_win, layout_win))\
             .collect()
             
 # only for debugging on driver, do not use in production
