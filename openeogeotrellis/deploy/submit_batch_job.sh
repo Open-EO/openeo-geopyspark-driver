@@ -63,7 +63,7 @@ if [ -f __pyfiles__/custom_processes.py ]; then
    pyfiles=${pyfiles},__pyfiles__/custom_processes.py
 fi
 
-main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
+main_py_file='venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
