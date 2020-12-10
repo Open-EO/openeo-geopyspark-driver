@@ -14,6 +14,7 @@ import os
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class JobTracker:
         self._principal = principal
         self._keytab = keytab
         self._track_interval = 60  # seconds
-        self._batch_jobs = GpsBatchJobs()
+        self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(get_opensearch=None))
 
     def update_statuses(self) -> None:
         try:

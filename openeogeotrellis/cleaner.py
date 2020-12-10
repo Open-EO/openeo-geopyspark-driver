@@ -3,6 +3,7 @@ import logging
 import kazoo.client
 
 from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
+from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
 
 logging.basicConfig(level=logging.INFO)
@@ -14,7 +15,7 @@ _log = logging.getLogger(__name__)
 def remove_batch_jobs_before(upper: datetime) -> None:
     _log.info("removing batch jobs before {d}...".format(d=upper))
 
-    batch_jobs = GpsBatchJobs()
+    batch_jobs = GpsBatchJobs(get_layer_catalog(get_opensearch=None))
     batch_jobs.delete_jobs_before(upper)
 
 
