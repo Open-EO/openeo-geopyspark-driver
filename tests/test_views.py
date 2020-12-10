@@ -258,7 +258,7 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2','2G', 'default','false']
+            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2', '2G', 'default', 'false', 'no_dependencies']
             
 
             # Check metadata in zookeeper
@@ -356,7 +356,8 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue','false']
+            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue', 'false',
+                                           'no_dependencies']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:

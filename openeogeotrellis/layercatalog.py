@@ -234,19 +234,38 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date)
 
         def sentinel_hub_pyramid():
-            dataset_id = layer_source_info['dataset_id']
-            client_id = layer_source_info['client_id']
-            client_secret = layer_source_info['client_secret']
-            sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
-                layer_source_info.get('sample_type', 'UINT16'))
+            single_level = env.get('pyramid_levels', 'all') != 'all'
+            dependencies = env.get('dependencies', {})
 
-            pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
-                                                                                  sample_type)
+            if dependencies:
+                batch_request_id = dependencies[collection_id]
+                key_regex = r".*\.tif"
+                date_regex = r".*_(\d{4})(\d{2})(\d{2}).tif"
+                recursive = True
 
-            return (
-                pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
-                                             to_date,metadata.band_names) if env.get('pyramid_levels', 'all') != 'all'
-                else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
+                pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
+                    "s3://openeo-sentinelhub-vito-test/{b}/".format(b=batch_request_id),
+                    key_regex,
+                    date_regex,
+                    recursive
+                )
+
+                return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
+                        else pyramid_factory.pyramid_seq(extent, srs, None, None))
+            else:
+                dataset_id = layer_source_info['dataset_id']
+                client_id = layer_source_info['client_id']
+                client_secret = layer_source_info['client_secret']
+                sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
+                    layer_source_info.get('sample_type', 'UINT16'))
+
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
+                                                                                      sample_type)
+
+                return (
+                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
+                                                 to_date,metadata.band_names) if single_level
+                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
