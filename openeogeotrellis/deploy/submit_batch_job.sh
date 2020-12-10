@@ -39,6 +39,7 @@ executorcores=${15-2}
 drivermemoryoverhead=${16-8G}
 queue=${17-default}
 profile=${18-false}
+dependencies=${19-"no_dependencies"}
 
 pysparkPython="venv/bin/python"
 
@@ -111,4 +112,4 @@ spark-submit \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}"

@@ -133,6 +133,14 @@ def _export_result_metadata(tracer: DryRunDataTracer, metadata_file: Path) -> No
     logger.info("wrote metadata to %s" % metadata_file)
 
 
+def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> batch_request_id
+    if not arg or arg == 'no_dependencies':  # TODO: clean this up
+        return {}
+
+    pairs = [pair.split(":") for pair in arg.split(",")]
+    return {pair[0]: pair[1] for pair in pairs}
+
+
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
@@ -140,7 +148,7 @@ def main(argv: List[str]) -> None:
     if len(argv) < 6:
         print("usage: %s "
               "<job specification input file> <job directory> <results output file name> <user log file name> "
-              "<metadata file name> [api version]" % argv[0],
+              "<metadata file name> [api version] [dependencies]" % argv[0],
               file=sys.stderr)
         exit(1)
 
@@ -149,7 +157,8 @@ def main(argv: List[str]) -> None:
     output_file = str(job_dir / argv[3])
     log_file = job_dir / argv[4]
     metadata_file = job_dir / argv[5]
-    api_version = argv[6] if len(argv) == 7 else None
+    api_version = argv[6] if len(argv) >= 7 else None
+    dependencies = _deserialize_dependencies(argv[7]) if len(argv) >= 8 else {}
 
     _create_job_dir(job_dir)
 
@@ -184,7 +193,7 @@ def main(argv: List[str]) -> None:
             kerberos()
             
             def run_driver(): 
-                run_job(job_specification, output_file, metadata_file, api_version, job_dir)
+                run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies)
             
             if sc.getConf().get('spark.python.profile', 'false').lower()=='true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
@@ -205,12 +214,13 @@ def main(argv: List[str]) -> None:
         raise e
 
 @log_memory
-def run_job(job_specification, output_file, metadata_file, api_version, job_dir):
+def run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies):
     process_graph = job_specification['process_graph']
     env = EvalEnv({
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
-        'correlation_id': str(uuid.uuid4())
+        'correlation_id': str(uuid.uuid4()),
+        'dependencies': dependencies
     })
     tracer = DryRunDataTracer()
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
