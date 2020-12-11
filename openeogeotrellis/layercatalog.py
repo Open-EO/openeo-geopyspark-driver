@@ -73,6 +73,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         correlation_id = env.get("correlation_id", '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
+        experimental = load_params.get("feature_flags",{}).get("experimental",False)
+
         # TODO: avoid local import?
         import geopyspark as gps
         pysc = gps.get_spark_context()
@@ -152,7 +154,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        root_path,
                                                                                        jvm.geotrellis.raster.CellSize(
                                                                                            10.0,
-                                                                                           10.0)
+                                                                                           10.0),
+                                                                                       experimental
                                                                                        ))
 
         def file_s5p_pyramid():
