@@ -73,7 +73,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         correlation_id = env.get("correlation_id", '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
-        experimental = load_params.get("feature_flags",{}).get("experimental",False)
+        experimental = load_params.get("featureflags",{}).get("experimental",False)
 
         # TODO: avoid local import?
         import geopyspark as gps
