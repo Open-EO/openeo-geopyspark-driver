@@ -425,11 +425,15 @@ class GpsBatchJobs(backend.BatchJobs):
             job_info = registry.get_job(job_id, user_id)
 
         # FIXME: for now, the assumption is that the client will call this on a regular basis
-        self._resume_with_sentinelhub_batch_results(job_id, user_id, job_info)
+        # an external process can poll SHub, schedule a Spark job if all DONE and stop -> no unnecessary invocations
+        # but this one has to keep state somewhere to prevent it from doing this
+        # TODO: don't do this if called internally
+        if job_info.get('dependency_status') == 'awaiting':
+            self._poll_sentinelhub_batch_processes(job_id, user_id, job_info)
 
         return registry.job_info_to_metadata(job_info)
 
-    def _resume_with_sentinelhub_batch_results(self, job_id: str, user_id: str, job_info: dict):
+    def _poll_sentinelhub_batch_processes(self, job_id: str, user_id: str, job_info: dict):
         def status(batch_process_dependency: dict) -> str:
             collection_id = batch_process_dependency['collection_id']
 
@@ -449,8 +453,13 @@ class GpsBatchJobs(backend.BatchJobs):
         dependencies = job_info.get('dependencies', [])
         statuses = set((status(batch_process) for batch_process in dependencies))
 
+        logger.debug("Sentinel Hub dependency statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
+
         if statuses == {"DONE"}:
-            self._start_job(job_id, user_id, dependencies)
+            with JobRegistry() as registry:
+                registry.set_dependency_status(job_id, user_id, 'available')
+
+            self._start_job(job_id, user_id, dependencies)  # resume batch job with now available data
         elif "FAILED" in statuses:
             with JobRegistry() as registry:
                 registry.set_status(job_id, user_id, 'error')
@@ -471,33 +480,33 @@ class GpsBatchJobs(backend.BatchJobs):
     def start_job(self, job_id: str, user_id: str):
         self._start_job(job_id, user_id)
 
-    def _start_job(self, job_id: str, user_id: str, batch_process_dependencies=None):
+    def _start_job(self, job_id: str, user_id: str, batch_process_dependencies: Union[list, None] = None):
         from pyspark import SparkContext
-
-        if batch_process_dependencies is None:
-            batch_process_dependencies = []
 
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
-            # restart logic
-            current_status = job_info['status']
-            if current_status in ['queued', 'running']:
-                return
-            elif current_status != 'created':
-                registry.mark_ongoing(job_id, user_id)
-                registry.set_application_id(job_id, user_id, None)
-                registry.set_status(job_id, user_id, 'created')
+            if batch_process_dependencies is None:
+                # restart logic
+                current_status = job_info['status']
+
+                if current_status in ['queued', 'running']:
+                    return
+                elif current_status != 'created':  # TODO: not in line with the current spec (it must first be canceled)
+                    registry.mark_ongoing(job_id, user_id)
+                    registry.set_application_id(job_id, user_id, None)
+                    registry.set_status(job_id, user_id, 'created')
 
             spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
 
             # currently the scope of the "sentinel-hub-batch" flag is the entire batch job (not load_collection)
-            if (extra_options.get('sentinel-hub-batch', False) and not batch_process_dependencies and
-                    self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                user_id, job_id)):
-                registry.set_status(job_id, user_id, 'queued')
+            if (batch_process_dependencies is None and extra_options.get('sentinel-hub-batch', False)
+                    and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
+                                                                    user_id, job_id)):
+                # TODO: don't redo SHub batch process on restart if dependencies 'available'
+                registry.set_dependency_status(job_id, user_id, 'awaiting')
                 return
 
             driver_memory = extra_options.get("driver-memory", "12G")
@@ -510,9 +519,13 @@ class GpsBatchJobs(backend.BatchJobs):
             profile = extra_options.get("profile", "false")
 
             def serialize_dependencies():
+                if batch_process_dependencies is None:
+                    return 'no_dependencies'  # TODO: clean this up
+
                 pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['batch_request_id'])
                          for dependency in batch_process_dependencies]
-                return ",".join(pairs) if pairs else 'no_dependencies'  # TODO: clean this up
+
+                return ",".join(pairs)
 
             if not ConfigParams().is_kube_deploy:
                 kerberos()
@@ -647,6 +660,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                     registry.set_application_id(job_id, user_id, application_id)
+                    registry.set_status(job_id, user_id, 'queued')
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)
                     # TODO: why reraise as CalledProcessError?
@@ -774,6 +788,7 @@ class GpsBatchJobs(backend.BatchJobs):
         ]
 
     def cancel_job(self, job_id: str, user_id: str):
+        # TODO: ignore cancel requests if status created/finished/error/canceled
         with JobRegistry() as registry:
             application_id = registry.get_job(job_id, user_id)['application_id']
         if application_id:
@@ -785,6 +800,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
             )
 
+            with JobRegistry() as registry:
+                registry.set_status(job_id, user_id, 'canceled')
             logger.debug("Killed corresponding Spark job for job {j}: {a!r}".format(j=job_id, a=kill_spark_job.args))
         else:
             raise InternalException("Application ID unknown for job {j}".format(j=job_id))
