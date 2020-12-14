@@ -788,9 +788,14 @@ class GpsBatchJobs(backend.BatchJobs):
         ]
 
     def cancel_job(self, job_id: str, user_id: str):
-        # TODO: ignore cancel requests if status created/finished/error/canceled
         with JobRegistry() as registry:
-            application_id = registry.get_job(job_id, user_id)['application_id']
+            job_info = registry.get_job(job_id, user_id)
+
+        if job_info['status'] in ['created', 'finished', 'error', 'canceled']:
+            return
+
+        application_id = job_info['application_id']
+
         if application_id:
             kill_spark_job = subprocess.run(
                 ["yarn", "application", "-kill", application_id],
