@@ -453,7 +453,7 @@ class GpsBatchJobs(backend.BatchJobs):
         dependencies = job_info.get('dependencies', [])
         statuses = set((status(batch_process) for batch_process in dependencies))
 
-        logger.debug("Sentinel Hub dependency statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
+        logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
 
         if statuses == {"DONE"}:
             with JobRegistry() as registry:
@@ -733,7 +733,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         constraints['bands']
                     )
 
-                    logger.info("scheduled batch process with ID {b}".format(b=batch_request_id))
+                    logger.info("scheduled Sentinel Hub batch process {b} for batch job {j}".format(b=batch_request_id,
+                                                                                                    j=job_id))
 
                     batch_process_dependencies.append({
                         'collection_id': collection_id,

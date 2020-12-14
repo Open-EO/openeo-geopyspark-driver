@@ -90,11 +90,11 @@ class JobRegistry:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
 
         self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
-        _log.debug("job {j} -> {s}".format(j=job_id, s=status))
+        _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
 
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
-        _log.debug("job {j} dependency -> {s}".format(j=job_id, s=dependency_status))
+        _log.debug("batch job {j} dependency -> {s}".format(j=job_id, s=dependency_status))
 
     def add_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
         self.patch(job_id, user_id, dependencies=dependencies)

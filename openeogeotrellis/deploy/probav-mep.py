@@ -26,6 +26,7 @@ dictConfig({
         'werkzeug': {'level': 'DEBUG'},
         'flask': {'level': 'DEBUG'},
         'openeo': {'level': 'DEBUG'},
+        'openeogeotrellis': {'level': 'DEBUG'}
     }
 })
 
