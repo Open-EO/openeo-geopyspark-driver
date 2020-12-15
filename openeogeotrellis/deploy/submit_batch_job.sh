@@ -87,7 +87,7 @@ spark-submit \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
- --conf spark.executor.defaultJavaOptions="${sparkExecutorJavaOptions}" \
+ --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
