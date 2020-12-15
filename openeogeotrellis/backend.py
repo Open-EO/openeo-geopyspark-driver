@@ -708,7 +708,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     jvm = gps.get_spark_context()._gateway.jvm
 
                     sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
-                        layer_source_info.get('sample_type', 'UINT16'))  # FIXME: implement sample_type in Scala
+                        layer_source_info.get('sample_type', 'UINT16'))
 
                     spatial_extent = constraints['spatial_extent']
                     from_date, to_date = [normalize_date(d) for d in constraints['temporal_extent']]
@@ -729,7 +729,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         spatial_extent['crs'],
                         from_date,
                         to_date,
-                        constraints['bands']
+                        constraints['bands'],
+                        sample_type
                     )
 
                     logger.info("scheduled Sentinel Hub batch process {b} for batch job {j}".format(b=batch_request_id,
