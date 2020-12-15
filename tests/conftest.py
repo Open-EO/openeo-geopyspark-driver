@@ -44,6 +44,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     travis_mode = 'TRAVIS' in os.environ
     master_str = "local[2]" if travis_mode else "local[2]"
 
+    if 'PYSPARK_PYTHON' not in os.environ:
+        os.environ['PYSPARK_PYTHON'] = sys.executable
+
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
 
