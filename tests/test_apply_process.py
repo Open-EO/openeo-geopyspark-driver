@@ -155,7 +155,7 @@ class TestApplyProcess(TestCase):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         transformed_collection = imagecollection.apply("cos")
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)
@@ -167,7 +167,7 @@ class TestApplyProcess(TestCase):
 
     def test_apply_cos(self):
         input = self.create_spacetime_layer()
-        cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         res = cube.apply("cos")
         data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
         np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(self.first[0]))
@@ -211,7 +211,7 @@ class TestApplyProcess(TestCase):
                 "my_bands": {"type": "bands", "values": ["B04", "B08"]},
             }
         })
-        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry(), collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=collection_metadata)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -255,7 +255,7 @@ class TestApplyProcess(TestCase):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -287,8 +287,7 @@ class TestApplyProcess(TestCase):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
-
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         graph = {
             "6": {
@@ -322,7 +321,7 @@ class TestApplyProcess(TestCase):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -346,7 +345,7 @@ class TestApplyProcess(TestCase):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeopysparkDataCube(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph ={
@@ -454,7 +453,7 @@ class TestApplyProcess(TestCase):
                 ]
             }
         })
-        imagecollection = GeopysparkDataCube(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+        imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
 
         stitched = imagecollection.ndvi().pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -482,7 +481,7 @@ class TestApplyProcess(TestCase):
                 ]
             }
         })
-        imagecollection = GeopysparkDataCube(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+        imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
 
         stitched = imagecollection.ndvi().linear_scale_range(-1, 1, 0, 100).pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -505,8 +504,8 @@ class TestApplyProcess(TestCase):
         if right_spatial:
             layer2 = layer2.to_spatial_layer()
         metadata = _build_metadata()
-        cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
-        cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata)
 
         res = cube1.merge_cubes(cube2, 'subtract')
         layer = res.pyramid.levels[0]
@@ -534,8 +533,8 @@ class TestApplyProcess(TestCase):
         layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
         metadata = _build_metadata(bands=["the_band"])
-        cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
-        cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata)
         res = cube1.merge_cubes(cube2, 'sum')
         stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
         assert stitched.cells.shape[0] == 1
@@ -549,8 +548,8 @@ class TestApplyProcess(TestCase):
         metadata1 = _build_metadata(bands=["the_band_1"])
         metadata2 = _build_metadata(bands=["the_band_2"])
 
-        cube1 = GeopysparkDataCube(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata1)
-        cube2 = GeopysparkDataCube(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata2)
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
         res = cube1.merge_cubes(cube2)
         stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
         assert stitched.cells.shape[0] == 2

@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from unittest import TestCase,skip
+from unittest import TestCase, skip
 
 import geopyspark as gps
 import numpy as np
@@ -11,9 +11,8 @@ from pyspark import SparkContext
 from shapely import geometry
 from shapely.geometry import Point
 
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from openeo.metadata import Band
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
 
 class TestDownload(TestCase):
@@ -96,13 +95,13 @@ class TestDownload(TestCase):
 
     def download_no_bands(self, format):
         input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
         print(res)
 
     def download_no_args(self,format):
         input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -112,7 +111,7 @@ class TestDownload(TestCase):
 
     def download_masked(self,format):
         input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -126,7 +125,7 @@ class TestDownload(TestCase):
 
     def download_masked_reproject(self,format):
         input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -183,5 +182,5 @@ class TestDownload(TestCase):
     def test_download_as_catalog(self):
         input = self.create_spacetime_layer()
 
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})

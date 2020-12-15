@@ -33,7 +33,6 @@ from openeo_driver.save_result import AggregatePolygonResult
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.run_udf import run_user_code
-from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 
 try:
@@ -97,15 +96,13 @@ class GeopysparkDataCube(DriverDataCube):
 
     metadata: GeopysparkCubeMetadata = None
 
-    # TODO: no longer dependent on ServiceRegistry so it can be removed
     def __init__(
-            self, pyramid: Pyramid, service_registry: AbstractServiceRegistry,
+            self, pyramid: Pyramid,
             metadata: GeopysparkCubeMetadata = None
     ):
         super().__init__(metadata=metadata or GeopysparkCubeMetadata({}))
         self.pyramid = pyramid
         self.tms = None
-        self._service_registry = service_registry
 
     def _get_jvm(self) -> JVMView:
         # TODO: cache this?
@@ -121,8 +118,8 @@ class GeopysparkDataCube(DriverDataCube):
         :param func:
         :return:
         """
-        pyramid = Pyramid({k:func( l ) for k,l in self.pyramid.levels.items()})
-        return GeopysparkDataCube(pyramid, self._service_registry, metadata=metadata or self.metadata)
+        pyramid = Pyramid({k: func(l) for k, l in self.pyramid.levels.items()})
+        return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
 
     def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
         jvm = self._get_jvm()
@@ -143,8 +140,11 @@ class GeopysparkDataCube(DriverDataCube):
         :param func:
         :return:
         """
-        pyramid = Pyramid({k:self._create_tilelayer(func( l.srdd.rdd(),k ),l.layer_type,k) for k,l in self.pyramid.levels.items()})
-        return GeopysparkDataCube(pyramid, self._service_registry, metadata=metadata or self.metadata)
+        pyramid = Pyramid({
+            k: self._create_tilelayer(func(l.srdd.rdd(), k), l.layer_type, k)
+            for k, l in self.pyramid.levels.items()
+        })
+        return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
 
 
     def _data_source_type(self):
@@ -166,7 +166,7 @@ class GeopysparkDataCube(DriverDataCube):
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
         # Bbox is handled at load_collection time
         return GeopysparkDataCube(
-            pyramid=self.pyramid, service_registry=self._service_registry,
+            pyramid=self.pyramid,
             metadata=self.metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
         )
 
@@ -176,7 +176,7 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(lambda rdd: rdd.bands(band_indices), metadata=self.metadata.filter_bands(bands))
 
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
-        return GeopysparkDataCube(self.pyramid, self._service_registry, self.metadata.rename_dimension(source, target))
+        return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
     def apply(self, process: str, arguments: dict = {}) -> 'GeopysparkDataCube':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
@@ -252,7 +252,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def add_dimension(self, name: str, label: str, type: str = None):
         return GeopysparkDataCube(
-            pyramid=self.pyramid, service_registry=self._service_registry,
+            pyramid=self.pyramid,
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
 
@@ -266,7 +266,7 @@ class GeopysparkDataCube(DriverDataCube):
             :return: An GeopysparkDataCube instance
         """
         return GeopysparkDataCube(
-            pyramid=self.pyramid, service_registry=self._service_registry,
+            pyramid=self.pyramid,
             metadata=self.metadata.rename_labels(dimension,target,source)
         )
 
@@ -724,7 +724,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
-        return GeopysparkDataCube(pyramid, self._service_registry, metadata=self.metadata)
+        return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
 
 
 
@@ -785,9 +785,8 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 resampled = max_level.tile_to_layout(newLayout,resample_method=resample_method)
 
-            pyramid = Pyramid({0:resampled})
-            return GeopysparkDataCube(pyramid, self._service_registry,
-                                      metadata=self.metadata)
+            pyramid = Pyramid({0: resampled})
+            return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
@@ -1395,11 +1394,7 @@ class GeopysparkDataCube(DriverDataCube):
             .reduce_dimension("bands") \
             .add_dimension(type="bands", name="bands", label=name or 'ndvi')
 
-        return GeopysparkDataCube(
-            ndvi_collection.pyramid,
-            self._service_registry,
-            ndvi_metadata
-        )
+        return GeopysparkDataCube(pyramid=ndvi_collection.pyramid, metadata=ndvi_metadata)
 
     def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'GeopysparkDataCube':
         """1.0-style of ndvi process"""
@@ -1462,11 +1457,7 @@ class GeopysparkDataCube(DriverDataCube):
             result_collection = ndvi_collection
             result_metadata = self.metadata.reduce_dimension("bands")
 
-        return GeopysparkDataCube(
-            result_collection.pyramid,
-            self._service_registry,
-            result_metadata
-        )
+        return GeopysparkDataCube(pyramid=result_collection.pyramid, metadata=result_metadata)
 
     def _ndvi_collection(self, red_index: int, nir_index: int) -> 'GeopysparkDataCube':
         reduce_graph = {

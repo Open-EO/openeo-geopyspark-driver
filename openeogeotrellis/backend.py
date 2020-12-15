@@ -354,7 +354,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
-            service_registry=self._service_registry,
             metadata=metadata
         )
 
