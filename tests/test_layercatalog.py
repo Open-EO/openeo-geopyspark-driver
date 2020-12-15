@@ -219,10 +219,10 @@ def test_creodias_s1_backscatter(tmp_path):
     }])
 
     load_params = LoadParameters(
-        temporal_extent=("2020-06-05", "2020-06-10"),
+        temporal_extent=("2020-06-06", "2020-06-08"),
         spatial_extent=dict(west=3.15, south=51.3, east=3.25, north=51.37),
     )
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 
     filename = tmp_path / "s1backscatter.tiff"
-    datacube.save_result(filename, format="GTiff")
+    datacube.save_result(filename, format="GTiff")#, format_options={'stitch':True})

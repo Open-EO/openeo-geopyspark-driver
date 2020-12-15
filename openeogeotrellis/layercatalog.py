@@ -459,7 +459,7 @@ class _S1BackscatterOrfeo:
             correlation_id: str = "NA",
             # TODO: what to do with zoom? Highest level? lowest level?
             zoom=0,
-            tile_size=256,
+            tile_size=512,
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter
