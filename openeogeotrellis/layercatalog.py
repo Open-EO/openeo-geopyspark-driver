@@ -1,11 +1,11 @@
 import json
 import logging
 import os
+import pathlib
 import re
 import tempfile
 import zipfile
 from datetime import datetime, date
-from glob import glob
 from typing import List, Optional, Callable, Dict, Tuple
 
 import geopyspark
@@ -16,7 +16,7 @@ from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
-from openeo_driver.errors import ProcessGraphComplexityException
+from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
@@ -417,6 +417,7 @@ class _S1BackscatterOrfeo:
         """
         Convert geotrellis TileLayerMetadata (Java) object to geopyspark Metadata object
         """
+        logger.info("Convert {m!r} to geopyspark.Metadata".format(m=metadata_sc))
         crs_py = str(metadata_sc.crs())
         cell_type_py = str(metadata_sc.cellType())
 
@@ -495,16 +496,21 @@ class _S1BackscatterOrfeo:
             south, west = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmin"], y=key_extent["ymin"])
             north, east = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmax"], y=key_extent["ymax"])
 
-            creo_path = feature["feature"]["id"]
+            creo_path = pathlib.Path(feature["feature"]["id"])
+            logger.info("Feature creo path: {p}".format(p=creo_path))
+            if not creo_path.exists():
+                raise OpenEOApiException("Creo path does not exist")
             # TODO Get tiff path from manifest instead of assuming this subfolder format?
-            tiffs = glob(creo_path + "/measurement/*.tiff")
+            tiffs = list(creo_path.glob("measurement/*.tiff"))
+            if not tiffs:
+                raise OpenEOApiException("No tiffs found")
             # TODO properly handle VV/VH bands
             input_tiff = tiffs[0]
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 import otbApplication as otb
                 extractROI = otb.Registry.CreateApplication("ExtractROI")
-                extractROI.SetParameterString("in", input_tiff)
+                extractROI.SetParameterString("in", str(input_tiff))
                 extractROI.SetParameterString("mode", "extent")
                 extractROI.SetParameterString("mode.extent.unit", "lonlat")
                 extractROI.SetParameterFloat("mode.extent.ulx", west)
@@ -530,7 +536,7 @@ class _S1BackscatterOrfeo:
                     data = ds.read(1)
                     nodata = ds.nodata
 
-            key = geopyspark.SpaceTimeKey(row=row, col=col, instant=instant)
+            key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
             tile = geopyspark.Tile(data, geopyspark.CellType.FLOAT32, no_data_value=nodata)
             return key, tile
 

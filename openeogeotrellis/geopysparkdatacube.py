@@ -1034,7 +1034,7 @@ class GeopysparkDataCube(DriverDataCube):
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
         return self._collect_as_xarray(spatial_rdd)
 
-    def save_result(self, filename: str, format: str, format_options: dict = None) -> str:
+    def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
         """
         Save cube to disk
 
@@ -1044,6 +1044,7 @@ class GeopysparkDataCube(DriverDataCube):
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
         """
+        filename = str(filename)
         format = format.upper()
         format_options = format_options or {}
         _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))

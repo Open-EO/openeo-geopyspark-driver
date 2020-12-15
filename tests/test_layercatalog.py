@@ -1,11 +1,14 @@
-from typing import List, Tuple
+import os
 import unittest.mock as mock
+from typing import List, Tuple
 
 import pytest
 import schema
 
 from openeo.util import deep_get
-from openeogeotrellis.layercatalog import get_layer_catalog
+from openeo_driver.backend import LoadParameters
+from openeo_driver.utils import EvalEnv
+from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -206,3 +209,20 @@ def test_get_layer_catalog_from_opensearch():
             "id": "QUU"
         }
     ]
+
+
+@pytest.mark.skipif(not os.environ.get("CREODIAS"), reason="Requires CREODIAS environment.")
+def test_creodias_s1_backscatter(tmp_path):
+    catalog = GeoPySparkLayerCatalog(all_metadata=[{
+        "id": "Creodias-S1-Backscatter",
+        "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}}
+    }])
+
+    load_params = LoadParameters(
+        temporal_extent=("2020-06-05", "2020-06-10"),
+        spatial_extent=dict(west=3.15, south=51.3, east=3.25, north=51.37),
+    )
+    datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
+
+    filename = tmp_path / "s1backscatter.tiff"
+    datacube.save_result(filename, format="GTiff")
