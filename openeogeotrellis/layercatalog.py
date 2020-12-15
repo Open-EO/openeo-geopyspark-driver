@@ -15,7 +15,6 @@ from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch
-from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
 logger = logging.getLogger(__name__)
@@ -23,11 +22,8 @@ logger = logging.getLogger(__name__)
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
 
-    # TODO: eliminate the dependency/coupling with service registry
-
-    def __init__(self, all_metadata: List[dict], service_registry: AbstractServiceRegistry):
+    def __init__(self, all_metadata: List[dict]):
         super().__init__(all_metadata=all_metadata)
-        self._service_registry = service_registry
         self._geotiff_pyramid_factories = {}
 
     @TimingLogger(title="load_collection", logger=logger)
@@ -462,7 +458,9 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
     local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
 
     return GeoPySparkLayerCatalog(
-        all_metadata=
-        list(dict_merge_recursive(opensearch_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
-        service_registry=None
+        all_metadata=list(dict_merge_recursive(
+            opensearch_metadata_by_layer_id,
+            local_metadata_by_layer_id,
+            overwrite=True
+        ).values()),
     )
