@@ -68,7 +68,10 @@ main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_j
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
- -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
+ -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+
+sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
 if PYTHONPATH= ipa -v user-find --login "${openEoUser}"; then
   run_as="--proxy-user ${openEoUser}"
@@ -84,6 +87,7 @@ spark-submit \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
+ --conf spark.executor.defaultJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
