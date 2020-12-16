@@ -243,7 +243,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 recursive = True
 
                 pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                    "s3://openeo-sentinelhub-vito-test/{b}/".format(b=batch_request_id),
+                    "s3://{b}/{i}/".format(b=ConfigParams().sentinel_hub_batch_bucket, i=batch_request_id),
                     key_regex,
                     date_regex,
                     recursive

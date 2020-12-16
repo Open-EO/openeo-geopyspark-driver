@@ -444,7 +444,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             jvm = gps.get_spark_context()._gateway.jvm
             batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                client_id, client_secret)
+                ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
 
             batch_request_id = batch_process_dependency['batch_request_id']
             return batch_processing_service.get_batch_process_status(batch_request_id)
@@ -720,6 +720,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     bbox = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
 
                     batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+                        ConfigParams().sentinel_hub_batch_bucket,
                         layer_source_info['client_id'], layer_source_info['client_secret'])
 
                     batch_request_id = batch_processing_service.start_batch_process(
