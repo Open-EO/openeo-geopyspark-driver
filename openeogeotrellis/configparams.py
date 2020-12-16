@@ -19,4 +19,4 @@ class ConfigParams:
 
         self.is_kube_deploy = env.get("KUBE", False)
 
-        self.sentinel_hub_batch_bucket = "openeo-sentinelhub-vito-test"
+        self.sentinel_hub_batch_bucket = "openeo-sentinelhub"
