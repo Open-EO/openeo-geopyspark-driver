@@ -506,6 +506,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
                                                                     user_id, job_id)):
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
+                registry.set_status(job_id, user_id, 'queued')
                 return
 
             driver_memory = extra_options.get("driver-memory", "12G")
