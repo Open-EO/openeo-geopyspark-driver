@@ -502,9 +502,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
             # currently the scope of the "sentinel-hub-batch" flag is the entire batch job (not load_collection)
             if (batch_process_dependencies is None and extra_options.get('sentinel-hub-batch', False)
+                    and job_info.get('dependency_status') not in ['awaiting', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
                                                                     user_id, job_id)):
-                # TODO: don't redo SHub batch process on restart if dependencies 'available'
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 return
 
