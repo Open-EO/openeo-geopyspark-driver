@@ -13,6 +13,7 @@ import pyproj
 import pyspark
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from shapely.geometry import box
+import shapely.ops
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
@@ -494,12 +495,13 @@ class _S1BackscatterOrfeo:
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
             log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
 
-            key_extent = feature["key_extent"]
+            key_ext = feature["key_extent"]
             key_crs = pyproj.CRS.from_epsg(feature["metadata"]["crs_epsg"])
             latlon_crs = pyproj.CRS.from_epsg(4326)
-            south, west = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmin"], y=key_extent["ymin"])
-            north, east = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmax"], y=key_extent["ymax"])
-            logger.info(log_prefix + ("extent {key_extent} ({key_crs})"
+            key_poly_utm = box(minx=key_ext["xmin"], miny=key_ext["ymin"], maxx=key_ext["xmax"], maxy=key_ext["ymax"])
+            transform = pyproj.Transformer.from_crs(key_crs, latlon_crs, always_xy=True).transform
+            west, south, east, north = shapely.ops.transform(transform, key_poly_utm).bounds
+            logger.info(log_prefix + ("extent {key_ext} ({key_crs})"
                                       " -> lonlat ({west},{south})-({east},{north})").format(**locals()))
 
             creo_path = pathlib.Path(feature["feature"]["id"])
@@ -512,6 +514,7 @@ class _S1BackscatterOrfeo:
                 raise OpenEOApiException("No tiffs found")
             # TODO properly handle VV/VH bands
             input_tiff = tiffs[0]
+            logger.info("Input tiff {i}".format(i=input_tiff))
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 import otbApplication as otb
