@@ -488,16 +488,22 @@ class _S1BackscatterOrfeo:
         layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
 
         def process_feature(feature):
+            if not logging.root.handlers:
+                logging.basicConfig(level=logging.INFO)
+
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
+            log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
 
             key_extent = feature["key_extent"]
             key_crs = pyproj.CRS.from_epsg(feature["metadata"]["crs_epsg"])
             latlon_crs = pyproj.CRS.from_epsg(4326)
             south, west = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmin"], y=key_extent["ymin"])
             north, east = pyproj.transform(key_crs, latlon_crs, x=key_extent["xmax"], y=key_extent["ymax"])
+            logger.info(log_prefix + ("extent {key_extent} ({key_crs})"
+                                      " -> lonlat ({west},{south})-({east},{north})").format(**locals()))
 
             creo_path = pathlib.Path(feature["feature"]["id"])
-            logger.info("Feature creo path: {p}".format(p=creo_path))
+            logger.info(log_prefix + "Feature creo path: {p}".format(p=creo_path))
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
             # TODO Get tiff path from manifest instead of assuming this subfolder format?
@@ -530,14 +536,18 @@ class _S1BackscatterOrfeo:
                 extractROI.ExecuteAndWriteOutput()
 
                 import rasterio
+                logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
                 with rasterio.open(out_path) as ds:
+                    logger.info(log_prefix + "Output tiff metadata: {m}, bounds {b}".format(m=ds.meta, b=ds.bounds))
                     # TODO: check band count. make sure we pick the right band.
                     # TODO: also check projection/CRS...?
                     data = ds.read(1)
                     nodata = ds.nodata
+                    dtype = ds.meta["dtype"]
 
             key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
-            tile = geopyspark.Tile(data, geopyspark.CellType.FLOAT32, no_data_value=nodata)
+            cell_type = geopyspark.CellType(dtype)
+            tile = geopyspark.Tile(data, cell_type, no_data_value=nodata)
             return key, tile
 
         tile_rdd = feature_pyrdd.map(process_feature)
