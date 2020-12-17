@@ -553,6 +553,7 @@ class _S1BackscatterOrfeo:
             pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
             data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
             logger.info(log_prefix + "Pad {p} + crop to shape {s}".format(p=pad_width, s=data.shape))
+            data = data.astype("float32")
 
             key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
             cell_type = geopyspark.CellType(data.dtype.name)
