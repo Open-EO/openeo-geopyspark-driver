@@ -9,11 +9,12 @@ from datetime import datetime, date
 from typing import List, Optional, Callable, Dict, Tuple
 
 import geopyspark
+import numpy
 import pyproj
 import pyspark
+import shapely.ops
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from shapely.geometry import box
-import shapely.ops
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
@@ -547,6 +548,11 @@ class _S1BackscatterOrfeo:
                     data = ds.read(1)
                     nodata = ds.nodata
                     dtype = ds.meta["dtype"]
+
+            # TODO: properly reproject data instead of stupid padding/cropping?
+            pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
+            data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
+            logger.info(log_prefix + "Pad {p} + crop to shape {s}".format(p=pad_width, s=data.shape))
 
             key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
             cell_type = geopyspark.CellType(dtype)
