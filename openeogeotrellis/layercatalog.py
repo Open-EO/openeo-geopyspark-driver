@@ -10,9 +10,7 @@ from typing import List, Optional, Callable, Dict, Tuple
 
 import geopyspark
 import numpy
-import pyproj
 import pyspark
-import shapely.ops
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from shapely.geometry import box
 
@@ -20,7 +18,7 @@ from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.utils import read_json, EvalEnv
-from openeogeotrellis._utm import auto_utm_epsg_for_geometry
+from openeogeotrellis._utm import auto_utm_epsg_for_geometry, utm_zone_from_epsg
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -499,13 +497,11 @@ class _S1BackscatterOrfeo:
 
             key_ext = feature["key_extent"]
             key_epsg = feature["metadata"]["crs_epsg"]
-            key_crs = pyproj.CRS.from_epsg(key_epsg)
-            latlon_crs = pyproj.CRS.from_epsg(4326)
-            key_poly_utm = box(minx=key_ext["xmin"], miny=key_ext["ymin"], maxx=key_ext["xmax"], maxy=key_ext["ymax"])
-            transform = pyproj.Transformer.from_crs(key_crs, latlon_crs, always_xy=True).transform
-            west, south, east, north = shapely.ops.transform(transform, key_poly_utm).bounds
-            logger.info(log_prefix + ("extent {key_ext} ({key_crs})"
-                                      " -> lonlat ({west},{south})-({east},{north})").format(**locals()))
+            key_utm_zone, key_utm_northhem = utm_zone_from_epsg(key_epsg)
+            extract_roi_extent = {
+                b: key_ext[a] for (a, b) in {"xmin": "ulx", "ymin": "uly", "xmax": "lrx", "ymax": "lry"}.items()
+            }
+            logger.info(log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=key_ext, u=key_utm_zone, c=key_epsg))
 
             creo_path = pathlib.Path(feature["feature"]["id"])
             logger.info(log_prefix + "Feature creo path: {p}".format(p=creo_path))
@@ -536,8 +532,9 @@ class _S1BackscatterOrfeo:
                 # TODO
                 # OrthoRect.SetParameterString("elev.dem", "/home/driesj/dems")
                 # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
-                ortho_rect.SetParameterValue("map.utm.northhem", True)
-                ortho_rect.SetParameterInt("map.epsg.code", key_epsg)
+                ortho_rect.SetParameterString("map", "utm")
+                ortho_rect.SetParameterInt("map.utm.zone", key_utm_zone)
+                ortho_rect.SetParameterValue("map.utm.northhem", key_utm_northhem)
                 ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
                 ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
                 ortho_rect.SetParameterString("interpolator", "nn")
@@ -549,13 +546,10 @@ class _S1BackscatterOrfeo:
                 extract_roi = otb.Registry.CreateApplication("ExtractROI")
                 extract_roi.SetParameterInputImage("in", ortho_rect.GetParameterOutputImage("io.out"))
                 extract_roi.SetParameterString("mode", "extent")
-                extract_roi.SetParameterString("mode.extent.unit", "lonlat")
-                extract_roi.SetParameterFloat("mode.extent.ulx", west)
-                extract_roi.SetParameterFloat("mode.extent.uly", south)
-                extract_roi.SetParameterFloat("mode.extent.lrx", east)
-                extract_roi.SetParameterFloat("mode.extent.lry", north)
+                extract_roi.SetParameterString("mode.extent.unit", "phy")
+                for p, v in extract_roi_extent.items():
+                    extract_roi.SetParameterFloat("mode.extent.%s" % p, v)
                 extract_roi.Execute()
-
 
                 # TODO: extract numpy array directly (instead of through on disk files)
                 #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
@@ -574,7 +568,6 @@ class _S1BackscatterOrfeo:
                     # TODO: also check projection/CRS...?
                     data = ds.read(1)
                     nodata = ds.nodata
-                    dtype = ds.meta["dtype"]
 
             # TODO: properly reproject data instead of stupid padding/cropping?
             pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]

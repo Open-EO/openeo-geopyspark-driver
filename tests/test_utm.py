@@ -1,7 +1,7 @@
 import pytest
 import shapely.geometry
 
-from openeogeotrellis._utm import auto_utm_epsg, auto_utm_epsg_for_geometry
+from openeogeotrellis._utm import auto_utm_epsg, auto_utm_epsg_for_geometry, utm_zone_from_epsg
 
 
 @pytest.mark.parametrize(["lon", "lat", "epsg"], [
@@ -25,3 +25,18 @@ def test_auto_utm_epsg(lon, lat, epsg):
 ])
 def test_auto_utm_epsg_for_geometry(geom, crs, epsg):
     assert auto_utm_epsg_for_geometry(geom, crs) == epsg
+
+
+@pytest.mark.parametrize(["epsg", "expected"], [
+    (32601, (1, True)), (32602, (2, True)), (32660, (60, True)),
+    (32701, (1, False)), (32702, (2, False)), (32760, (60, False)),
+    (32600, ValueError), (32661, ValueError),
+    (32700, ValueError), (32761, ValueError),
+    (31, ValueError), (-32740, ValueError),
+])
+def test_utm_zone_from_epsg(epsg, expected):
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
+            utm_zone_from_epsg(epsg)
+    else:
+        assert utm_zone_from_epsg(epsg) == expected

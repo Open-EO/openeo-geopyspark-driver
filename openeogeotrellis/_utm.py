@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 
 import pyproj
 import shapely.ops
@@ -19,6 +20,13 @@ def auto_utm_epsg(lon: float, lat: float) -> int:
         epsg = 32700 + zone
 
     return epsg
+
+
+def utm_zone_from_epsg(epsg: int) -> Tuple[int, bool]:
+    """Get `(utm_zone, is_northern_hemisphere)` from given EPSG code."""
+    if not (32601 <= epsg <= 32660 or 32701 <= epsg <= 32760):
+        raise ValueError("Can not convert EPSG {e} to UTM zone".format(e=epsg))
+    return epsg % 100, epsg < 32700
 
 
 def auto_utm_epsg_for_geometry(geometry: BaseGeometry, crs: str = "EPSG:4326") -> int:
