@@ -220,7 +220,7 @@ def test_creodias_s1_backscatter(tmp_path):
 
     load_params = LoadParameters(
         temporal_extent=("2020-06-06", "2020-06-08"),
-        spatial_extent=dict(west=3.15, south=51.3, east=3.25, north=51.37),
+        spatial_extent=dict(west=3.1, south=51.27, east=3.3, north=51.37),
     )
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 
