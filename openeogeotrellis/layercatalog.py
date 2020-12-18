@@ -569,6 +569,9 @@ class _S1BackscatterOrfeo:
                     data = ds.read(1)
                     nodata = ds.nodata
 
+            # TODO: make conversion to dB optional in some way?
+            data = 10 * numpy.log10(data)
+
             # TODO: properly reproject data instead of stupid padding/cropping?
             pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
             data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
