@@ -561,6 +561,7 @@ class _S1BackscatterOrfeo:
             return key, tile
 
         tile_rdd = feature_pyrdd.map(process_feature)
+        logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m}".format(m=layer_metadata_py))
         tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
             layer_type=geopyspark.LayerType.SPACETIME,
             numpy_rdd=tile_rdd,
