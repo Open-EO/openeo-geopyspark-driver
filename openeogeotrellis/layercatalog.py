@@ -241,12 +241,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 key_regex = r".*\.tif"
                 date_regex = r".*_(\d{4})(\d{2})(\d{2}).tif"
                 recursive = True
+                interpret_as_cell_type = "float32ud0"
 
                 pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
                     "s3://{b}/{i}/".format(b=ConfigParams().sentinel_hub_batch_bucket, i=batch_request_id),
                     key_regex,
                     date_regex,
-                    recursive
+                    recursive,
+                    interpret_as_cell_type
                 )
 
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
