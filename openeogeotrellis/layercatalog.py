@@ -462,6 +462,7 @@ class _S1BackscatterOrfeo:
             # TODO: what to do with zoom? Highest level? lowest level?
             zoom=0,
             tile_size=512,
+            result_dtype="float32"
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter
@@ -553,7 +554,8 @@ class _S1BackscatterOrfeo:
             pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
             data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
             logger.info(log_prefix + "Pad {p} + crop to shape {s}".format(p=pad_width, s=data.shape))
-            data = data.astype("int16")
+            if result_dtype:
+                data = data.astype(result_dtype)
 
             key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
             cell_type = geopyspark.CellType(data.dtype.name)
@@ -561,6 +563,8 @@ class _S1BackscatterOrfeo:
             return key, tile
 
         tile_rdd = feature_pyrdd.map(process_feature)
+        if result_dtype:
+            layer_metadata_py.cell_type = result_dtype
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
         tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
             layer_type=geopyspark.LayerType.SPACETIME,
