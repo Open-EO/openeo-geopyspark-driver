@@ -523,20 +523,9 @@ class _S1BackscatterOrfeo:
             with tempfile.TemporaryDirectory() as temp_dir:
                 import otbApplication as otb
 
-                # ExtractROI
-                extract_roi = otb.Registry.CreateApplication("ExtractROI")
-                extract_roi.SetParameterString("in", str(input_tiff))
-                extract_roi.SetParameterString("mode", "extent")
-                extract_roi.SetParameterString("mode.extent.unit", "lonlat")
-                extract_roi.SetParameterFloat("mode.extent.ulx", west)
-                extract_roi.SetParameterFloat("mode.extent.uly", south)
-                extract_roi.SetParameterFloat("mode.extent.lrx", east)
-                extract_roi.SetParameterFloat("mode.extent.lry", north)
-                extract_roi.Execute()
-
                 # SARCalibration
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
-                sar_calibration.SetParameterInputImage("in", extract_roi.GetParameterOutputImage("out"))
+                sar_calibration.SetParameterString("in", str(input_tiff))
                 sar_calibration.SetParameterValue('noise', True)
                 sar_calibration.SetParameterInt('ram', 512)
                 sar_calibration.Execute()
@@ -556,14 +545,26 @@ class _S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("opt.ram", 512)
                 ortho_rect.Execute()
 
+                # ExtractROI
+                extract_roi = otb.Registry.CreateApplication("ExtractROI")
+                extract_roi.SetParameterInputImage("in", ortho_rect.GetParameterOutputImage("io.out"))
+                extract_roi.SetParameterString("mode", "extent")
+                extract_roi.SetParameterString("mode.extent.unit", "lonlat")
+                extract_roi.SetParameterFloat("mode.extent.ulx", west)
+                extract_roi.SetParameterFloat("mode.extent.uly", south)
+                extract_roi.SetParameterFloat("mode.extent.lrx", east)
+                extract_roi.SetParameterFloat("mode.extent.lry", north)
+                extract_roi.Execute()
+
+
                 # TODO: extract numpy array directly (instead of through on disk files)
                 #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
                 #       but requires orfeo toolbox to be compiled with numpy support
                 #       (numpy header files must be available at compile time I guess)
 
                 out_path = os.path.join(temp_dir, "out.tiff")
-                ortho_rect.SetParameterString("io.out", out_path)
-                ortho_rect.ExecuteAndWriteOutput()
+                extract_roi.SetParameterString("out", out_path)
+                extract_roi.ExecuteAndWriteOutput()
 
                 import rasterio
                 logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
