@@ -498,7 +498,8 @@ class _S1BackscatterOrfeo:
             log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
 
             key_ext = feature["key_extent"]
-            key_crs = pyproj.CRS.from_epsg(feature["metadata"]["crs_epsg"])
+            key_epsg = feature["metadata"]["crs_epsg"]
+            key_crs = pyproj.CRS.from_epsg(key_epsg)
             latlon_crs = pyproj.CRS.from_epsg(4326)
             key_poly_utm = box(minx=key_ext["xmin"], miny=key_ext["ymin"], maxx=key_ext["xmax"], maxy=key_ext["ymax"])
             transform = pyproj.Transformer.from_crs(key_crs, latlon_crs, always_xy=True).transform
@@ -518,17 +519,42 @@ class _S1BackscatterOrfeo:
             input_tiff = tiffs[0]
             logger.info("Input tiff {i}".format(i=input_tiff))
 
+            # TODO: temp dir is removed automatically by default. Add option to keep it for debugging?
             with tempfile.TemporaryDirectory() as temp_dir:
                 import otbApplication as otb
-                extractROI = otb.Registry.CreateApplication("ExtractROI")
-                extractROI.SetParameterString("in", str(input_tiff))
-                extractROI.SetParameterString("mode", "extent")
-                extractROI.SetParameterString("mode.extent.unit", "lonlat")
-                extractROI.SetParameterFloat("mode.extent.ulx", west)
-                extractROI.SetParameterFloat("mode.extent.uly", south)
-                extractROI.SetParameterFloat("mode.extent.lrx", east)
-                extractROI.SetParameterFloat("mode.extent.lry", north)
-                extractROI.Execute()
+
+                # ExtractROI
+                extract_roi = otb.Registry.CreateApplication("ExtractROI")
+                extract_roi.SetParameterString("in", str(input_tiff))
+                extract_roi.SetParameterString("mode", "extent")
+                extract_roi.SetParameterString("mode.extent.unit", "lonlat")
+                extract_roi.SetParameterFloat("mode.extent.ulx", west)
+                extract_roi.SetParameterFloat("mode.extent.uly", south)
+                extract_roi.SetParameterFloat("mode.extent.lrx", east)
+                extract_roi.SetParameterFloat("mode.extent.lry", north)
+                extract_roi.Execute()
+
+                # SARCalibration
+                sar_calibration = otb.Registry.CreateApplication('SARCalibration')
+                sar_calibration.SetParameterInputImage("in", extract_roi.GetParameterOutputImage("out"))
+                sar_calibration.SetParameterValue('noise', True)
+                sar_calibration.SetParameterInt('ram', 512)
+                sar_calibration.Execute()
+
+                # OrthoRectification
+                ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
+                ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
+                # TODO
+                # OrthoRect.SetParameterString("elev.dem", "/home/driesj/dems")
+                # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
+                ortho_rect.SetParameterValue("map.utm.northhem", True)
+                ortho_rect.SetParameterInt("map.epsg.code", key_epsg)
+                ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
+                ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+                ortho_rect.SetParameterString("interpolator", "nn")
+                ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
+                ortho_rect.SetParameterInt("opt.ram", 512)
+                ortho_rect.Execute()
 
                 # TODO: extract numpy array directly (instead of through on disk files)
                 #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
@@ -536,9 +562,8 @@ class _S1BackscatterOrfeo:
                 #       (numpy header files must be available at compile time I guess)
 
                 out_path = os.path.join(temp_dir, "out.tiff")
-                extractROI.SetParameterString("out", out_path)
-                # TODO: add SARCalibration and OrthoRectification too
-                extractROI.ExecuteAndWriteOutput()
+                ortho_rect.SetParameterString("io.out", out_path)
+                ortho_rect.ExecuteAndWriteOutput()
 
                 import rasterio
                 logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
