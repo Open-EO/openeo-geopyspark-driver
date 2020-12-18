@@ -40,7 +40,7 @@ from glob import glob
 _log = logging.getLogger('openeo-geotrellis-local')
 
 
-def setup_local_spark():
+def setup_local_spark(additional_jar_dirs=[]):
     from pyspark import find_spark_home, SparkContext
 
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
@@ -53,7 +53,7 @@ def setup_local_spark():
         master_str = "local[*]"
 
     from geopyspark import geopyspark_conf
-    conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local")
+    conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs)
     conf.set('spark.kryoserializer.buffer.max', value='1G')
     conf.set('spark.ui.enabled', True)
     # Some options to allow attaching a Java debugger to running Spark driver
