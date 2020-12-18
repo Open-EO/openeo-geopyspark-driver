@@ -225,4 +225,4 @@ def test_creodias_s1_backscatter(tmp_path):
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 
     filename = tmp_path / "s1backscatter.tiff"
-    datacube.save_result(filename, format="GTiff")#, format_options={'stitch':True})
+    datacube.save_result(filename, format="GTiff", format_options={'stitch': True})
