@@ -2,7 +2,7 @@ import logging
 import subprocess
 from subprocess import CalledProcessError
 import json
-from typing import Callable, Union
+from typing import Callable, Union, List
 import traceback
 import sys
 import time
@@ -10,7 +10,7 @@ from collections import namedtuple
 from datetime import datetime
 from openeo.util import date_to_rfc3339
 import re
-import os
+import geopyspark as gps
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
@@ -59,8 +59,7 @@ class JobTracker:
                                 try:
                                     if ConfigParams().is_kube_deploy:
                                         from openeogeotrellis.utils import s3_client, download_s3_dir
-                                        state, start_time, finish_time =\
-                                        JobTracker._kube_status(job_id, user_id)
+                                        state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
 
                                         new_status = JobTracker._kube_status_parser(state)
 
@@ -73,6 +72,8 @@ class JobTracker:
                                             print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
                                         if state == "COMPLETED":
+                                            # FIXME: do we support SHub batch processes in this environment? The AWS
+                                            #  credentials conflict.
                                             download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
 
                                             result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
@@ -82,7 +83,7 @@ class JobTracker:
                                             print("marked %s as done" % job_id)
                                     else:
                                         state, final_state, start_time, finish_time, aggregate_resource_allocation =\
-                                        JobTracker._yarn_status(application_id)
+                                            JobTracker._yarn_status(application_id)
 
                                         memory_time_megabyte_seconds, cpu_time_seconds =\
                                             JobTracker._parse_resource_allocation(aggregate_resource_allocation)
@@ -102,6 +103,13 @@ class JobTracker:
                                         if final_state != "UNDEFINED":
                                             result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                             registry.patch(job_id, user_id, **result_metadata)
+
+                                            if new_status == 'finished':
+                                                batch_request_ids = [dependency['batch_request_id']
+                                                                     for dependency in job.get('dependencies', [])]
+
+                                                JobTracker._delete_batch_process_results(batch_request_ids)
+                                                registry.remove_dependencies(job_id, user_id)
 
                                             registry.mark_done(job_id, user_id)
                                             print("marked %s as done" % job_id)
@@ -239,6 +247,17 @@ class JobTracker:
                 _log.warning("{c} returned exit code {r}".format(c=" ".join(cmd), r=p.returncode))
         else:
             _log.warning("No Kerberos principal/keytab: will not refresh TGT")
+
+    @staticmethod
+    def _delete_batch_process_results(batch_request_ids: List[str]):
+        jvm = gps.get_spark_context()._gateway.jvm
+        s3_service = jvm.org.openeo.geotrellissentinelhub.S3Service
+        bucket_name = ConfigParams().sentinel_hub_batch_bucket
+
+        for batch_request_id in batch_request_ids:
+            s3_service.delete_batch_process_results(bucket_name, batch_request_id)
+
+        _log.info("deleted results for batch processes {bs}".format(bs=batch_request_ids))
 
 
 if __name__ == '__main__':

@@ -99,6 +99,9 @@ class JobRegistry:
     def add_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
         self.patch(job_id, user_id, dependencies=dependencies)
 
+    def remove_dependencies(self, job_id: str, user_id: str):
+        self.patch(job_id, user_id, dependencies=None, dependency_status=None)
+
     def patch(self, job_id: str, user_id: str, **kwargs) -> None:
         """Partially updates a registered batch job."""
 

@@ -214,7 +214,7 @@ def main(argv: List[str]) -> None:
         raise e
 
 @log_memory
-def run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies):
+def run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies: dict):
     process_graph = job_specification['process_graph']
     env = EvalEnv({
         'version': api_version or "1.0.0",
