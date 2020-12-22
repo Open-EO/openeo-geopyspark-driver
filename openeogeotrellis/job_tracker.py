@@ -251,7 +251,7 @@ class JobTracker:
     @staticmethod
     def _delete_batch_process_results(batch_request_ids: List[str]):
         jvm = gps.get_spark_context()._gateway.jvm
-        s3_service = jvm.org.openeo.geotrellissentinelhub.S3Service
+        s3_service = jvm.org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
         for batch_request_id in batch_request_ids:

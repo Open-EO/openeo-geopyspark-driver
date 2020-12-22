@@ -236,7 +236,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             single_level = env.get('pyramid_levels', 'all') != 'all'
             dependencies = env.get('dependencies', {})
 
-            logger.debug("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
+            logger.info("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
 
             if dependencies:
                 batch_request_id = dependencies[collection_id]
