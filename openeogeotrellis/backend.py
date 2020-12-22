@@ -519,11 +519,13 @@ class GpsBatchJobs(backend.BatchJobs):
             profile = extra_options.get("profile", "false")
 
             def serialize_dependencies():
-                if batch_process_dependencies is None:
+                dependencies = batch_process_dependencies or job_info.get('dependencies', [])
+
+                if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up
 
                 pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['batch_request_id'])
-                         for dependency in batch_process_dependencies]
+                         for dependency in dependencies]
 
                 return ",".join(pairs)
 
