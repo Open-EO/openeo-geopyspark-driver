@@ -39,6 +39,7 @@ executorcores=${15-2}
 drivermemoryoverhead=${16-8G}
 queue=${17-default}
 profile=${18-false}
+dependencies=${19-"no_dependencies"}
 
 pysparkPython="venv/bin/python"
 
@@ -67,7 +68,11 @@ main_py_file='venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_j
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
- -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties  -Dhdp.version=3.1.4.0-315"
+ -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+ -Dhdp.version=3.1.4.0-315\
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+
+sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
 if PYTHONPATH= ipa -v user-find --login "${openEoUser}"; then
   run_as="--proxy-user ${openEoUser}"
@@ -83,6 +88,7 @@ spark-submit \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
+ --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
@@ -104,6 +110,7 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
  --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
+ --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=true --conf spark.dynamicAllocation.enabled=true \
@@ -119,4 +126,4 @@ spark-submit \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}"

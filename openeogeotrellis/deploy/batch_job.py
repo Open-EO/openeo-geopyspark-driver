@@ -23,6 +23,7 @@ from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_u
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory
+from openeogeotrellis.configparams import ConfigParams
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -57,7 +58,7 @@ def _setup_user_logging(log_file: Path) -> None:
 def _create_job_dir(job_dir: Path):
     logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
-    if not os.environ.get('KUBE') == 'true':
+    if not ConfigParams().is_kube_deploy:
         shutil.chown(job_dir, user=None, group='eodata')
 
     _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
@@ -132,6 +133,14 @@ def _export_result_metadata(tracer: DryRunDataTracer, metadata_file: Path) -> No
     logger.info("wrote metadata to %s" % metadata_file)
 
 
+def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> batch_request_id
+    if not arg or arg == 'no_dependencies':  # TODO: clean this up
+        return {}
+
+    pairs = [pair.split(":") for pair in arg.split(",")]
+    return {pair[0]: pair[1] for pair in pairs}
+
+
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
@@ -139,7 +148,7 @@ def main(argv: List[str]) -> None:
     if len(argv) < 6:
         print("usage: %s "
               "<job specification input file> <job directory> <results output file name> <user log file name> "
-              "<metadata file name> [api version]" % argv[0],
+              "<metadata file name> [api version] [dependencies]" % argv[0],
               file=sys.stderr)
         exit(1)
 
@@ -148,7 +157,8 @@ def main(argv: List[str]) -> None:
     output_file = str(job_dir / argv[3])
     log_file = job_dir / argv[4]
     metadata_file = job_dir / argv[5]
-    api_version = argv[6] if len(argv) == 7 else None
+    api_version = argv[6] if len(argv) >= 7 else None
+    dependencies = _deserialize_dependencies(argv[7]) if len(argv) >= 8 else {}
 
     _create_job_dir(job_dir)
 
@@ -161,19 +171,13 @@ def main(argv: List[str]) -> None:
     os.environ["TMPDIR"] = str(temp_dir)
 
     try:
-        if os.environ.get('KUBE') == 'true':
-            import boto3
+        if ConfigParams().is_kube_deploy:
+            from openeogeotrellis.utils import s3_client
 
             bucket = os.environ.get('SWIFT_BUCKET')
-            s3_client = boto3.client('s3',
-                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-                endpoint_url=os.environ.get('SWIFT_URL'))
+            s3_instance = s3_client()
 
-            if not os.path.exists(job_dir):
-                os.makedirs(job_dir)
-
-            s3_client.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
 
 
         job_specification = _parse(job_specification_file)
@@ -188,7 +192,7 @@ def main(argv: List[str]) -> None:
             kerberos()
             
             def run_driver(): 
-                run_job(job_specification, output_file, metadata_file, api_version)
+                run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies)
             
             if sc.getConf().get('spark.python.profile', 'false').lower()=='true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
@@ -209,12 +213,13 @@ def main(argv: List[str]) -> None:
         raise e
 
 @log_memory
-def run_job(job_specification, output_file, metadata_file, api_version):
+def run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies: dict):
     process_graph = job_specification['process_graph']
     env = EvalEnv({
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
-        'correlation_id': str(uuid.uuid4())
+        'correlation_id': str(uuid.uuid4()),
+        'dependencies': dependencies
     })
     tracer = DryRunDataTracer()
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
@@ -250,6 +255,17 @@ def run_job(job_specification, output_file, metadata_file, api_version):
 
     _export_result_metadata(tracer=tracer, metadata_file=metadata_file)
 
+    if ConfigParams().is_kube_deploy:
+        import boto3
+        from openeogeotrellis.utils import s3_client
+
+        bucket = os.environ.get('SWIFT_BUCKET')
+        s3_instance = s3_client()
+
+        logger.info("Writing results to object storage")
+        for file in os.listdir(job_dir):
+            full_path = str(job_dir) + "/" + file
+            s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
 if __name__ == '__main__':
     _setup_app_logging()

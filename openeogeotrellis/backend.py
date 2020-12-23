@@ -23,7 +23,8 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
-from openeo_driver.backend import ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters
+from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
+                                   CollectionCatalog)
 from openeo_driver.dummy.dummy_backend import DummyDataCube
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException, ServiceUnsupportedException)
@@ -230,10 +231,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository()
         )
 
+        catalog = get_layer_catalog(OpenSearchClient)
+
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
-            catalog=get_layer_catalog(OpenSearchClient),
-            batch_jobs=GpsBatchJobs(),
+            catalog=catalog,
+            batch_jobs=GpsBatchJobs(catalog),
             user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
         )
 
@@ -351,7 +354,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
-            service_registry=self._service_registry,
             metadata=metadata
         )
 
@@ -388,7 +390,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsBatchJobs(backend.BatchJobs):
-    _OUTPUT_ROOT_DIR = Path("/data/projects/OpenEO/")
+    _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
+
+    def __init__(self, catalog: CollectionCatalog):
+        self._catalog = catalog
 
     def create_job(
             self, user_id: str, process: dict, api_version: str,
@@ -417,7 +422,49 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
-            return registry.job_info_to_metadata(job_info)
+
+        # FIXME: for now, the assumption is that the client will call this on a regular basis
+        # an external process can poll SHub, schedule a Spark job if all DONE and stop -> no unnecessary invocations
+        # but this one has to keep state somewhere to prevent it from doing this
+        # TODO: don't do this if called internally
+        if job_info.get('dependency_status') == 'awaiting':
+            self._poll_sentinelhub_batch_processes(job_id, user_id, job_info)
+
+        return registry.job_info_to_metadata(job_info)
+
+    def _poll_sentinelhub_batch_processes(self, job_id: str, user_id: str, job_info: dict):
+        def status(batch_process_dependency: dict) -> str:
+            collection_id = batch_process_dependency['collection_id']
+
+            metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
+            layer_source_info = metadata.get("_vito", "data_source", default={})
+
+            client_id = layer_source_info['client_id']
+            client_secret = layer_source_info['client_secret']
+
+            jvm = gps.get_spark_context()._gateway.jvm
+            batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+                ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
+
+            batch_request_id = batch_process_dependency['batch_request_id']
+            return batch_processing_service.get_batch_process_status(batch_request_id)
+
+        dependencies = job_info.get('dependencies', [])
+        statuses = set((status(batch_process) for batch_process in dependencies))
+
+        logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
+
+        if statuses == {"DONE"}:
+            with JobRegistry() as registry:
+                registry.set_dependency_status(job_id, user_id, 'available')
+
+            self._start_job(job_id, user_id, dependencies)  # resume batch job with now available data
+        elif "FAILED" in statuses:
+            with JobRegistry() as registry:
+                registry.set_status(job_id, user_id, 'error')
+                registry.mark_done(job_id, user_id)
+
+            job_info['status'] = 'error'  # TODO: avoid mutation
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with JobRegistry() as registry:
@@ -430,23 +477,37 @@ class GpsBatchJobs(backend.BatchJobs):
         return GpsBatchJobs._OUTPUT_ROOT_DIR / job_id
 
     def start_job(self, job_id: str, user_id: str):
+        self._start_job(job_id, user_id)
+
+    def _start_job(self, job_id: str, user_id: str, batch_process_dependencies: Union[list, None] = None):
         from pyspark import SparkContext
 
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
-            # restart logic
-            current_status = job_info['status']
-            if current_status in ['queued', 'running']:
-                return
-            elif current_status != 'created':
-                registry.mark_ongoing(job_id, user_id)
-                registry.set_application_id(job_id, user_id, None)
-                registry.set_status(job_id, user_id, 'created')
+            if batch_process_dependencies is None:
+                # restart logic
+                current_status = job_info['status']
+
+                if current_status in ['queued', 'running']:
+                    return
+                elif current_status != 'created':  # TODO: not in line with the current spec (it must first be canceled)
+                    registry.mark_ongoing(job_id, user_id)
+                    registry.set_application_id(job_id, user_id, None)
+                    registry.set_status(job_id, user_id, 'created')
 
             spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
+
+            # currently the scope of the "sentinel-hub-batch" flag is the entire batch job (not load_collection)
+            if (batch_process_dependencies is None and extra_options.get('sentinel-hub-batch', False)
+                    and job_info.get('dependency_status') not in ['awaiting', 'available']
+                    and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
+                                                                    user_id, job_id)):
+                registry.set_dependency_status(job_id, user_id, 'awaiting')
+                registry.set_status(job_id, user_id, 'queued')
+                return
 
             driver_memory = extra_options.get("driver-memory", "12G")
             driver_memory_overhead = extra_options.get("driver-memoryOverhead", "2G")
@@ -457,42 +518,45 @@ class GpsBatchJobs(backend.BatchJobs):
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
 
-            if not os.environ.get('KUBE') == 'true':
+            def serialize_dependencies():
+                dependencies = batch_process_dependencies or job_info.get('dependencies', [])
+
+                if not dependencies:
+                    return 'no_dependencies'  # TODO: clean this up
+
+                pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['batch_request_id'])
+                         for dependency in dependencies]
+
+                return ",".join(pairs)
+
+            if not ConfigParams().is_kube_deploy:
                 kerberos()
 
             conf = SparkContext.getOrCreate().getConf()
 
             principal, key_tab = conf.get("spark.yarn.principal",conf.get("spark.kerberos.principal")), conf.get("spark.yarn.keytab",conf.get("spark.kerberos.keytab"))
 
-            if os.environ.get('KUBE') == 'true':
-                import kubernetes
+            if ConfigParams().is_kube_deploy:
                 import yaml
                 import time
-                import boto3
                 import io
 
                 from jinja2 import Template
-                from kubernetes import client, config
                 from kubernetes.client.rest import ApiException
+                from openeogeotrellis.utils import kube_client, s3_client
 
                 bucket = 'OpenEO-data'
-                aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID')
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
-                swift_url = os.environ.get('SWIFT_URL')
-                s3_client = boto3.client('s3',
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key,
-                    endpoint_url=swift_url)
+                s3_instance = s3_client()
 
-                s3_client.create_bucket(Bucket=bucket)
+                s3_instance.create_bucket(Bucket=bucket)
 
-                output_dir = '/batch_jobs'
+                output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
 
-                job_specification_file = output_dir + '/' + job_id + '.json'
+                job_specification_file = output_dir + '/job_specification.json'
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
-                s3_client.upload_fileobj(file, bucket, job_specification_file.strip('/'))
+                s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
 
                 if api_version:
                     api_version = api_version
@@ -514,21 +578,27 @@ class GpsBatchJobs(backend.BatchJobs):
                     executor_memory=executor_memory,
                     api_version=api_version,
                     current_time=int(time.time()),
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key,
-                    swift_url=swift_url,
+                    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                    swift_url=os.environ.get("SWIFT_URL"),
                     image_name=os.environ.get("IMAGE_NAME"),
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES")
                 )
 
-                config.load_incluster_config()
-                api_instance = client.CustomObjectsApi()
+                api_instance = kube_client()
 
                 dict = yaml.safe_load(rendered)
 
                 try:
-                    api_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict, pretty=True)
+                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict, pretty=True)
+
+                    time.sleep(5)
+                    status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id))
+                    application_id = status_response['status']['sparkApplicationId']
+
+                    logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
+                    registry.set_application_id(job_id, user_id, application_id)
                 except ApiException as e:
                     print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
@@ -543,6 +613,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     temp_input_file.write(job_info['specification'])
                     temp_input_file.flush()
 
+                    # TODO: implement a saner way of passing arguments
                     args = [script_location,
                             "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
                             temp_input_file.name,
@@ -573,6 +644,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(driver_memory_overhead)
                     args.append(queue)
                     args.append(profile)
+                    args.append(serialize_dependencies())
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args))
@@ -590,6 +662,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     print("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                     registry.set_application_id(job_id, user_id, application_id)
+                    registry.set_status(job_id, user_id, 'queued')
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)
                     # TODO: why reraise as CalledProcessError?
@@ -603,6 +676,80 @@ class GpsBatchJobs(backend.BatchJobs):
             return match.group(1)
         else:
             raise _BatchJobError(stream)
+
+    def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
+                                               job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
+        # TODO: reduce code duplication between this and ProcessGraphDeserializer
+        from openeo_driver.dry_run import DryRunDataTracer
+        from openeo_driver.ProcessGraphDeserializer import convert_node, _expand_macros, ENV_DRY_RUN_TRACER
+        from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+
+        env = EvalEnv()
+
+        if api_version:
+            env = env.push({"version": api_version})
+
+        preprocessed_process_graph = _expand_macros(process_graph)
+        top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(preprocessed_process_graph)
+        result_node = preprocessed_process_graph[top_level_node]
+
+        dry_run_tracer = DryRunDataTracer()
+        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer}))
+
+        source_constraints = dry_run_tracer.get_source_constraints()
+        logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
+
+        batch_process_dependencies = []
+
+        for (process, arguments), constraints in source_constraints.items():
+            if process == 'load_collection':
+                collection_id, = arguments
+                metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
+                layer_source_info = metadata.get("_vito", "data_source")
+
+                if layer_source_info['type'] == 'sentinel-hub':
+                    jvm = gps.get_spark_context()._gateway.jvm
+
+                    sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
+                        layer_source_info.get('sample_type', 'UINT16'))
+
+                    spatial_extent = constraints['spatial_extent']
+                    from_date, to_date = [normalize_date(d) for d in constraints['temporal_extent']]
+
+                    west = spatial_extent['west']
+                    south = spatial_extent['south']
+                    east = spatial_extent['east']
+                    north = spatial_extent['north']
+                    bbox = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
+
+                    batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+                        ConfigParams().sentinel_hub_batch_bucket,
+                        layer_source_info['client_id'], layer_source_info['client_secret'])
+
+                    batch_request_id = batch_processing_service.start_batch_process(
+                        layer_source_info['collection_id'],
+                        layer_source_info['dataset_id'],
+                        bbox,
+                        spatial_extent['crs'],
+                        from_date,
+                        to_date,
+                        constraints['bands'],
+                        sample_type
+                    )
+
+                    logger.info("scheduled Sentinel Hub batch process {b} for batch job {j}".format(b=batch_request_id,
+                                                                                                    j=job_id))
+
+                    batch_process_dependencies.append({
+                        'collection_id': collection_id,
+                        'batch_request_id': batch_request_id
+                    })
+
+        if batch_process_dependencies:
+            job_registry.add_dependencies(job_id, user_id, batch_process_dependencies)
+            return True
+
+        return False
 
     def get_results(self, job_id: str, user_id: str) -> Dict[str, str]:
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
@@ -647,7 +794,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def cancel_job(self, job_id: str, user_id: str):
         with JobRegistry() as registry:
-            application_id = registry.get_job(job_id, user_id)['application_id']
+            job_info = registry.get_job(job_id, user_id)
+
+        if job_info['status'] in ['created', 'finished', 'error', 'canceled']:
+            return
+
+        application_id = job_info['application_id']
+
         if application_id:
             kill_spark_job = subprocess.run(
                 ["yarn", "application", "-kill", application_id],
@@ -657,6 +810,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
             )
 
+            with JobRegistry() as registry:
+                registry.set_status(job_id, user_id, 'canceled')
             logger.debug("Killed corresponding Spark job for job {j}: {a!r}".format(j=job_id, a=kill_spark_job.args))
         else:
             raise InternalException("Application ID unknown for job {j}".format(j=job_id))

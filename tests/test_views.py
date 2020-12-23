@@ -258,7 +258,7 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2','2G', 'default','false']
+            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2', '2G', 'default', 'false', 'no_dependencies']
             
 
             # Check metadata in zookeeper
@@ -266,7 +266,7 @@ class TestBatchJobs:
             meta_data = json.loads(raw.decode())
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
-            assert meta_data["status"] == "created"
+            assert meta_data["status"] == "queued"
             assert meta_data["api_version"] == api.api_version
             assert json.loads(meta_data["specification"]) == (
                 data['process'] if api.api_version_compare.at_least("1.0.0")
@@ -274,7 +274,7 @@ class TestBatchJobs:
             assert meta_data["application_id"] == 'application_1587387643572_0842'
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
-            assert res["status"] == "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
+            assert res["status"] == "queued"
 
             # Get logs
             res = api.get(
@@ -356,7 +356,8 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue','false']
+            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue', 'false',
+                                           'no_dependencies']
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:

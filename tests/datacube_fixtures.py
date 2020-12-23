@@ -107,7 +107,7 @@ def imagecollection_with_two_bands_and_one_date(request):
 
     geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-    datacube = GeopysparkDataCube(gps.Pyramid({0: geopyspark_layer}), InMemoryServiceRegistry(), openeo_metadata)
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
 
     request.instance.imagecollection_with_two_bands_and_one_date = datacube
     return datacube
@@ -139,7 +139,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
 
     geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-    datacube = GeopysparkDataCube(gps.Pyramid({0: geopyspark_layer}), InMemoryServiceRegistry(), openeo_metadata)
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube
@@ -199,7 +199,7 @@ def imagecollection_with_two_bands_and_three_dates_webmerc(request):
 
     geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-    datacube = GeopysparkDataCube(gps.Pyramid({0: geopyspark_layer}), InMemoryServiceRegistry(), openeo_metadata)
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube

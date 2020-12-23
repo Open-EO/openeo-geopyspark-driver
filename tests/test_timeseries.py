@@ -4,17 +4,16 @@ from tempfile import NamedTemporaryFile
 from unittest import TestCase
 
 import geopyspark as gps
+import numpy as np
+import pytest
+import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-import numpy as np
 from pyspark import SparkContext
-import pytest
-import pytz
 from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
 from .data import get_test_data_file
 
 
@@ -133,7 +132,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
 
         polygon = Polygon(shell=[
             (0.0, 0.0),
@@ -162,7 +161,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics_datacube(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
 
         polygon = Polygon(shell=[
             (0.0, 0.0),
@@ -213,7 +212,7 @@ class TestTimeSeries(TestCase):
 
     def test_zonal_statistics_median_datacube(self):
         layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
         polygon = Polygon(shell=[
             (0.0, 0.0),
             (1.0, 0.0),
@@ -241,7 +240,7 @@ class TestTimeSeries(TestCase):
     def test_zonal_statistics_for_unsigned_byte_layer(self):
         layer = self.create_spacetime_unsigned_byte_layer()
         # layer.to_spatial_layer().save_stitched('/tmp/unsigned_byte_layer.tif')
-        imagecollection = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
         polygon = Polygon(shell=[
             (0.0, 0.0),
             (2.0, 0.0),
@@ -266,7 +265,7 @@ class TestTimeSeries(TestCase):
 def _build_cube():
     # TODO: avoid instantiating TestTimeSeries? e.g. use pytest fixtures or simple builder functions.
     layer = TestTimeSeries().create_spacetime_layer()
-    cube = GeopysparkDataCube(gps.Pyramid({0: layer}), InMemoryServiceRegistry())
+    cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
     return cube
 
 

@@ -4,9 +4,7 @@ python:
   - "3.6"
 
 install:
-  - pip install -r requirements.txt --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
-  - pip install -r requirements-dev.txt --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
-  - pip install . --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+  - pip install .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
   - python scripts/get-jars.py
 
 script:

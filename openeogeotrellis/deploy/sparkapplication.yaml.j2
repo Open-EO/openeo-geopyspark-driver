@@ -32,7 +32,7 @@ spec:
   sparkVersion: "2.4.5"
   restartPolicy:
     type: OnFailure
-    onFailureRetries: 3
+    onFailureRetries: 0
     onFailureRetryInterval: 10
     onSubmissionFailureRetries: 5
     onSubmissionFailureRetryInterval: 20
@@ -64,6 +64,14 @@ spec:
       - name: "testdata"
         mountPath: "/data"
   executor:
+    envVars:
+      OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
+      KUBE: "true"
+      AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
+      AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
+      SWIFT_URL: {{ swift_url }}
+      SWIFT_BUCKET: {{ swift_bucket }}
+      ZOOKEEPERNODES: {{ zookeeper_nodes }}
     cores: {{ executor_cores }}
     instances: 1
     memory: "{{ executor_memory }}"
@@ -75,7 +83,7 @@ spec:
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-2.0.0-SNAPSHOT.jar'
-      - 'local:///opt/geotrellis-backend-assembly-0.4.5-openeo.jar'
+      - 'local:///opt/geotrellis-backend-assembly-0.4.6-openeo.jar'
     files:
       - 'local:///opt/layercatalog.json'
   monitoring:

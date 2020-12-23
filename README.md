@@ -24,11 +24,15 @@ This backend has been tested with:
 https://openeo.vito.be/openeo/
 
 ### Running locally
-Preparation:
-A few custom Scala classes are needed to run this project, these can be found in this jar:
-https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.0.0-SNAPSHOT/geotrellis-extensions-2.0.0-SNAPSHOT.jar
-Geopyspark will search for any jar in the 'jars' directory and add it to the classpath. So make
-sure that this jar can be found in the correct location.
+
+Set up your (virtual) environment with necessary dependencies:
+
+    # Install Python package and its depdendencies
+    pip install .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+    
+    # Get necessary jars for Geopyspark
+    python scripts/get-jars.py
+
  
 For development, you can run the service:
 

@@ -15,7 +15,6 @@ from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch
-from openeogeotrellis.service_registry import AbstractServiceRegistry
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
 
 logger = logging.getLogger(__name__)
@@ -23,11 +22,8 @@ logger = logging.getLogger(__name__)
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
 
-    # TODO: eliminate the dependency/coupling with service registry
-
-    def __init__(self, all_metadata: List[dict], service_registry: AbstractServiceRegistry):
+    def __init__(self, all_metadata: List[dict]):
         super().__init__(all_metadata=all_metadata)
-        self._service_registry = service_registry
         self._geotiff_pyramid_factories = {}
 
     @TimingLogger(title="load_collection", logger=logger)
@@ -72,6 +68,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         correlation_id = env.get("correlation_id", '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
+
+        experimental = load_params.get("featureflags",{}).get("experimental",False)
 
         # TODO: avoid local import?
         import geopyspark as gps
@@ -152,7 +150,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        root_path,
                                                                                        jvm.geotrellis.raster.CellSize(
                                                                                            10.0,
-                                                                                           10.0)
+                                                                                           10.0),
+                                                                                       experimental
                                                                                        ))
 
         def file_s5p_pyramid():
@@ -234,19 +233,42 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date)
 
         def sentinel_hub_pyramid():
-            dataset_id = layer_source_info['dataset_id']
-            client_id = layer_source_info['client_id']
-            client_secret = layer_source_info['client_secret']
-            sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
-                layer_source_info.get('sample_type', 'UINT16'))
+            single_level = env.get('pyramid_levels', 'all') != 'all'
+            dependencies = env.get('dependencies', {})
 
-            pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
-                                                                                  sample_type)
+            logger.info("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
 
-            return (
-                pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
-                                             to_date,metadata.band_names) if env.get('pyramid_levels', 'all') != 'all'
-                else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
+            if dependencies:
+                batch_request_id = dependencies[collection_id]
+                key_regex = r".*\.tif"
+                date_regex = r".*_(\d{4})(\d{2})(\d{2}).tif"
+                recursive = True
+                interpret_as_cell_type = "float32ud0"
+
+                pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
+                    "s3://{b}/{i}/".format(b=ConfigParams().sentinel_hub_batch_bucket, i=batch_request_id),
+                    key_regex,
+                    date_regex,
+                    recursive,
+                    interpret_as_cell_type
+                )
+
+                return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
+                        else pyramid_factory.pyramid_seq(extent, srs, None, None))
+            else:
+                dataset_id = layer_source_info['dataset_id']
+                client_id = layer_source_info['client_id']
+                client_secret = layer_source_info['client_secret']
+                sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
+                    layer_source_info.get('sample_type', 'UINT16'))
+
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
+                                                                                      sample_type)
+
+                return (
+                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
+                                                 to_date,metadata.band_names) if single_level
+                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
@@ -300,7 +322,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         image_collection = GeopysparkDataCube(
             pyramid=gps.Pyramid(levels),
-            service_registry=self._service_registry,
             metadata=metadata
         )
 
@@ -441,7 +462,9 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
     local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
 
     return GeoPySparkLayerCatalog(
-        all_metadata=
-        list(dict_merge_recursive(opensearch_metadata_by_layer_id, local_metadata_by_layer_id, overwrite=True).values()),
-        service_registry=None
+        all_metadata=list(dict_merge_recursive(
+            opensearch_metadata_by_layer_id,
+            local_metadata_by_layer_id,
+            overwrite=True
+        ).values()),
     )
