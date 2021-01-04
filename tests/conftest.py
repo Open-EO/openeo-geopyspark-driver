@@ -52,7 +52,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     conf = geopyspark_conf(master=master_str, appName="OpenEO-GeoPySpark-Driver-Tests")
     conf.set('spark.kryoserializer.buffer.max', value='1G')
-    conf.set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator,org.openeo.geotrellis.png.KryoRegistrator')
+    conf.set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
+    conf.set(key='spark.kryo.classesToRegister', value='org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion')
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
 
