@@ -132,7 +132,7 @@ class TestMultipleDates(TestCase):
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
         res = resampled.reduce('max', dimension="t")
-        res.save_result(path, format="GTIFF", format_options={"parameters": {'tiled': True}})
+        res.save_result(path, format="GTIFF", format_options={"parameters": {'stitch': True}})
 
         with rasterio.open(ref_path) as ref_ds:
             with rasterio.open(path) as ds:
