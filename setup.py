@@ -50,7 +50,7 @@ setup(
         'pyproj>=2.2.0',
         'protobuf~=3.6.0',
         'kazoo~=2.8.0',
-        'rasterio~=1.1.1',
+        'rasterio~=1.1.8',
         'h5py==3.1.0',
         'h5netcdf',
         'requests~=2.24.0',
