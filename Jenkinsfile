@@ -13,7 +13,7 @@ pythonPipeline {
   wipeout_workspace = true
   hadoop = false
   pre_test_script = 'pre_test.sh'
-  extra_env_variables = ['TRAVIS=1']
+  extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/java/default']
   python_version = ["3.6","3.8"]
   docker_registry = 'vito-docker-private-dev.artifactory.vgt.vito.be'
   downstream_job = 'geo.OpenEO/openeo-geopyspark-integrationtests'
