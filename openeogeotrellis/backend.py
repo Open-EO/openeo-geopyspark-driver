@@ -534,7 +534,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             conf = SparkContext.getOrCreate().getConf()
 
-            principal, key_tab = conf.get("spark.yarn.principal"), conf.get("spark.yarn.keytab")
+            principal, key_tab = conf.get("spark.yarn.principal",conf.get("spark.kerberos.principal")), conf.get("spark.yarn.keytab",conf.get("spark.kerberos.keytab"))
 
             if ConfigParams().is_kube_deploy:
                 import yaml
