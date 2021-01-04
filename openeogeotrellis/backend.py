@@ -603,7 +603,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
             else:
-                script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', 'submit_batch_job.sh')
+                submit_script = 'submit_batch_job.sh'
+                if(sys.version_info[0]>=3 and sys.version_info[1]>=8):
+                    submit_script = 'submit_batch_job_spark3.sh'
+                script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
 
                 with tempfile.NamedTemporaryFile(mode="wt",
                                                  encoding='utf-8',
