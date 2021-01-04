@@ -212,16 +212,23 @@ def test_get_layer_catalog_from_opensearch():
 
 
 @pytest.mark.skipif(not os.environ.get("CREODIAS"), reason="Requires CREODIAS environment.")
-def test_creodias_s1_backscatter(tmp_path):
+@pytest.mark.parametrize(["spatial_extent", "temporal_extent"], [
+    (
+            dict(west=3.1, south=51.27, east=3.3, north=51.37),  # Zeebrugge
+            ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
+    ),
+    (
+            dict(west=5.5, south=50.13, east=5.65, north=50.23),  # La Roche-en-Ardenne
+            ("2020-07-29T00:00:00", "2020-07-29T23:59:59"),
+    ),
+])
+def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent):
     catalog = GeoPySparkLayerCatalog(all_metadata=[{
         "id": "Creodias-S1-Backscatter",
         "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}}
     }])
 
-    load_params = LoadParameters(
-        temporal_extent=("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
-        spatial_extent=dict(west=3.1, south=51.27, east=3.3, north=51.37),
-    )
+    load_params = LoadParameters(temporal_extent=temporal_extent, spatial_extent=spatial_extent)
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 
     filename = tmp_path / "s1backscatter.tiff"

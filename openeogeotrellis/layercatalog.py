@@ -529,8 +529,11 @@ class _S1BackscatterOrfeo:
                 # OrthoRectification
                 ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
                 ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
+                # TODO: use this abs path? Prepare a temp path with symlinks to relevant DEMs?
+                ortho_rect.SetParameterString("elev.dem", "/opt/spark/work-dir/stefaan/dem")
+                # ortho_rect.SetParameterString("elev.dem", "/eodata/auxdata/Elevation-Tiles/geotiff/6/32")
+                ortho_rect.SetParameterString("elev.dem", "/opt/spark/work-dir/stefaan/dem/geotiff/9")
                 # TODO
-                # OrthoRect.SetParameterString("elev.dem", "/home/driesj/dems")
                 # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
                 ortho_rect.SetParameterString("map", "utm")
                 ortho_rect.SetParameterInt("map.utm.zone", key_utm_zone)
