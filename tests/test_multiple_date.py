@@ -140,7 +140,7 @@ class TestMultipleDates(TestCase):
                 #this reprojection does not change the shape, so we can compare
                 assert ds.read().shape == ref_ds.read().shape
                 #more then one epsg code for web merc ...
-                assert (str(ds.crs) == 'EPSG:3857') or (str(ds.crs) == 'EPSG:3785')
+                assert (ds.crs.to_epsg() == 3857 or ds.crs.to_epsg() == 3785)
 
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
