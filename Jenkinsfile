@@ -11,7 +11,7 @@
 pythonPipeline {
   package_name = 'openeo-geopyspark'
   wipeout_workspace = true
-  hadoop = false
+  hadoop = true
   pre_test_script = 'pre_test.sh'
   extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/java/default']
   python_version = ["3.6","3.8"]
