@@ -59,6 +59,7 @@ setup(
         'affine',
         'xarray~=0.16.2',
         'Shapely',
+        'epsel~=1.0.0',
     ],
     extras_require={
         "dev": tests_require,

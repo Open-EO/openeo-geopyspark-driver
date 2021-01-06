@@ -8,6 +8,7 @@ import zipfile
 from datetime import datetime, date
 from typing import List, Optional, Callable, Dict, Tuple
 
+import epsel
 import geopyspark
 import numpy
 import pyproj
@@ -490,6 +491,7 @@ class _S1BackscatterOrfeo:
         )
         layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
 
+        @epsel.ensure_info_logging
         def process_feature(feature):
             if not logging.root.handlers:
                 logging.basicConfig(level=logging.INFO)
