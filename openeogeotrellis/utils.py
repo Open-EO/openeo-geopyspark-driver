@@ -1,6 +1,7 @@
 import collections
 import grp
 import logging
+import math
 import os
 from pathlib import Path
 import pwd
@@ -207,3 +208,27 @@ def download_s3_dir(bucketName, directory):
         bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
 
 
+def lonlat_to_mercator_tile_indices(longitude: float, latitude: float, zoom: int, tile_size: int = 512, flip_y:bool=False):
+    """
+    Conversion of lon-lat coordinates to (web)Mercator tile indices
+    :param longitude:
+    :param latitude:
+    :param zoom: zoom level (0, 1, ...)
+    :param tile_size: tile size in pixels
+    :param flip_y: False: [0, 0] is lower left corner (TMS); True: [0, 0] is upper left (Google Maps/QuadTree style)
+    :return: (tx, ty) mercator tile indices
+    """
+    # Lon-lat to Spherical Mercator "meters" (EPSG:3857/EPSG:900913)
+    offset = 2 * math.pi * 6378137 / 2.0
+    mx = longitude * offset / 180
+    my = (math.log(math.tan((90 + latitude) * math.pi / 360)) / (math.pi / 180.0)) * offset / 180
+    # Meters to pyramid pixels at zoom level
+    resolution = 2 * math.pi * 6378137 / tile_size / (2 ** zoom)
+    px = (mx + offset) / resolution
+    py = (my + offset) / resolution
+    # Pixels to TMS tile
+    tx = int(math.ceil(px / tile_size) - 1)
+    ty = int(math.ceil(py / tile_size) - 1)
+    if flip_y:
+        ty = (2 ** zoom - 1) - ty
+    return tx, ty

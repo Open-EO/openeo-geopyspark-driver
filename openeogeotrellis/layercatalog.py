@@ -10,6 +10,7 @@ from typing import List, Optional, Callable, Dict, Tuple
 
 import geopyspark
 import numpy
+import pyproj
 import pyspark
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from shapely.geometry import box
@@ -23,7 +24,8 @@ from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch
-from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
+from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons, \
+    lonlat_to_mercator_tile_indices
 
 logger = logging.getLogger(__name__)
 
@@ -496,6 +498,7 @@ class _S1BackscatterOrfeo:
             log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
 
             key_ext = feature["key_extent"]
+            key_bbox = (key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"])
             key_epsg = feature["metadata"]["crs_epsg"]
             key_utm_zone, key_utm_northhem = utm_zone_from_epsg(key_epsg)
             extract_roi_extent = {
@@ -514,9 +517,13 @@ class _S1BackscatterOrfeo:
             # TODO properly handle VV/VH bands
             input_tiff = tiffs[0]
             logger.info("Input tiff {i}".format(i=input_tiff))
+            # TODO: option to set the DEM zoom level?
+            dem_zoom = 9
 
             # TODO: temp dir is removed automatically by default. Add option to keep it for debugging?
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir,\
+                    _S1BackscatterOrfeo._creodias_dem_subset(bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom) as dem_dir\
+                    :
                 import otbApplication as otb
 
                 # SARCalibration
@@ -529,10 +536,7 @@ class _S1BackscatterOrfeo:
                 # OrthoRectification
                 ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
                 ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
-                # TODO: use this abs path? Prepare a temp path with symlinks to relevant DEMs?
-                ortho_rect.SetParameterString("elev.dem", "/opt/spark/work-dir/stefaan/dem")
-                # ortho_rect.SetParameterString("elev.dem", "/eodata/auxdata/Elevation-Tiles/geotiff/6/32")
-                ortho_rect.SetParameterString("elev.dem", "/opt/spark/work-dir/stefaan/dem/geotiff/9")
+                ortho_rect.SetParameterString("elev.dem", dem_dir)
                 # TODO
                 # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
                 ortho_rect.SetParameterString("map", "utm")
@@ -572,7 +576,7 @@ class _S1BackscatterOrfeo:
                     data = ds.read(1)
                     nodata = ds.nodata
 
-            # TODO: make conversion to dB optional in some way?
+            # TODO: make conversion to dB optional in some way? Or remove it from here and require user to do it explicitly through openeo processes?
             data = 10 * numpy.log10(data)
 
             # TODO: properly reproject data instead of stupid padding/cropping?
@@ -597,6 +601,46 @@ class _S1BackscatterOrfeo:
             metadata=layer_metadata_py
         )
         return {zoom: tile_layer}
+
+    @staticmethod
+    def _creodias_dem_subset(
+            bbox: Tuple, bbox_epsg: int = 4326, zoom: int = 5,
+            _dem_tile_size: int = 512, _dem_path_tpl: str = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+    ) -> tempfile.TemporaryDirectory:
+        """
+        Create subset of CREODIAS DEM symlinks covering the given lon-lat bbox to pass to Orfeo
+
+        :return: tempfile.TemporaryDirectory to be used as context manager (for automatic cleanup)
+        """
+        # Get "bounding box" of DEM tiles
+        w, s, e, n = bbox
+        to_lonlat = pyproj.Transformer.from_crs(crs_from=bbox_epsg, crs_to=4326, always_xy=True)
+        corners_lonlat = [to_lonlat.transform(x, y) for (x, y) in [(w, s), (e, s), (e, n), (w, n)]]
+        bbox_tile_indices = [
+            lonlat_to_mercator_tile_indices(lon, lat, zoom=zoom, tile_size=_dem_tile_size, flip_y=True)
+            for (lon, lat) in corners_lonlat
+        ]
+        logger.info("DEM tile indices for {b} (epsg {e}) at zoom level {z}: {t}".format(
+            b=bbox, e=bbox_epsg, z=zoom, t=bbox_tile_indices
+        ))
+        xmin, xmax = min(t[0] for t in bbox_tile_indices), max(t[0] for t in bbox_tile_indices)
+        ymin, ymax = min(t[1] for t in bbox_tile_indices), max(t[1] for t in bbox_tile_indices)
+
+        # Set up temp symlink tree
+        temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-creodias-dem")
+        root = pathlib.Path(temp_dir.name)
+        logger.info(
+            "Creating temporary DEM tile subset tree {r!s}/{z}/[{xi}:{xa}]/[{yi}:{ya}] ({c} tiles) symlinking to {t}".format(
+                r=root, z=zoom, xi=xmin, xa=xmax, yi=ymin, ya=ymax, c=(xmax - xmin + 1) * (ymax - ymin + 1),
+                t=_dem_path_tpl
+            ))
+        for x in range(xmin, xmax + 1):
+            x_dir = (root / str(zoom) / str(x))
+            x_dir.mkdir(parents=True, exist_ok=True)
+            for y in range(ymin, ymax + 1):
+                (x_dir / ("%d.tif" % y)).symlink_to(_dem_path_tpl.format(z=zoom, x=x, y=y))
+
+        return temp_dir
 
     def oscars(
             self,

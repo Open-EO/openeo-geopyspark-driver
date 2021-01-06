@@ -1,5 +1,6 @@
 import os
 import unittest.mock as mock
+from pathlib import Path
 from typing import List, Tuple
 
 import pytest
@@ -8,7 +9,7 @@ import schema
 from openeo.util import deep_get
 from openeo_driver.backend import LoadParameters
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
+from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog, _S1BackscatterOrfeo
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -233,3 +234,35 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent):
 
     filename = tmp_path / "s1backscatter.tiff"
     datacube.save_result(filename, format="GTiff", format_options={'stitch': True})
+
+
+@pytest.mark.parametrize(["bbox", "bbox_epsg"], [
+    ((3.1, 51.2, 3.5, 51.3), 4326),
+    ((506986, 5672070, 534857, 5683305), 32631),
+])
+def test_creodias_dem_subset(bbox, bbox_epsg):
+    dirs = set()
+    symlinks = {}
+    with _S1BackscatterOrfeo._creodias_dem_subset(
+            bbox=bbox, bbox_epsg=bbox_epsg, zoom=11,
+            _dem_path_tpl="/path/to/geotiff/{z}/{x}/{y}.tif"
+    ) as temp_dir:
+        temp_dir = Path(temp_dir)
+        for path in temp_dir.glob("**/*"):
+            relative = path.relative_to(temp_dir)
+            if path.is_dir():
+                dirs.add(str(relative))
+            elif path.is_symlink():
+                symlinks[str(relative)] = os.readlink(path)
+            else:
+                raise ValueError(path)
+    assert dirs == {"11", "11/1041", "11/1042", "11/1043"}
+    assert symlinks == {
+        "11/1041/682.tif": "/path/to/geotiff/11/1041/682.tif",
+        "11/1041/683.tif": "/path/to/geotiff/11/1041/683.tif",
+        "11/1042/682.tif": "/path/to/geotiff/11/1042/682.tif",
+        "11/1042/683.tif": "/path/to/geotiff/11/1042/683.tif",
+        "11/1043/682.tif": "/path/to/geotiff/11/1043/682.tif",
+        "11/1043/683.tif": "/path/to/geotiff/11/1043/683.tif",
+    }
+    assert not temp_dir.exists()
