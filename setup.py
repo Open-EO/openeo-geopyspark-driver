@@ -51,7 +51,7 @@ setup(
         'protobuf~=3.6.0',
         'kazoo~=2.8.0',
         'rasterio~=1.1.1',
-        'h5py==3.1.0',
+        'h5py==2.10.0',
         'h5netcdf',
         'requests~=2.24.0',
         'python_dateutil',
