@@ -16,6 +16,7 @@ Simple usage example:
 
 """
 
+
 import argparse
 import json
 import logging
@@ -24,6 +25,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Tuple
 
+from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.utils import EvalEnv
 from openeo_driver.utils import read_json
 
@@ -79,6 +81,9 @@ def handle_cli(argv=None) -> Tuple[dict, argparse.Namespace]:
         help="Process graph to evaluate. Can be given as path to JSON file or directly as JSON string."
              " If nothing is given, the process graph should be given on standard input."
     )
+    parser.add_argument(
+        "-o", "--output", default=None, help="Output file name."
+    )
     parser.add_argument("--api-version", default="1.0.0", help="openEO API version to evaluate against.")
 
     args = parser.parse_args(argv)
@@ -116,8 +121,18 @@ def main(argv=None):
         "correlation_id": f"cli-pid{os.getpid()}"
     })
     result = evaluate(process_graph, env=env)
-    # TODO: option to store raster data to output file
-    print(result)
+
+    if isinstance(result, ImageCollectionResult):
+        filename = args.output or f"result.{result.format}"
+        _log.info(f"Saving result to {filename!r}")
+        result.save_result(filename)
+        _log.info(f"Saved result to {filename!r}")
+    elif isinstance(result, dict):
+        # TODO: support storing JSON result to file
+        print(result)
+    else:
+        # TODO: support more result types
+        raise ValueError(result)
 
 
 if __name__ == '__main__':
