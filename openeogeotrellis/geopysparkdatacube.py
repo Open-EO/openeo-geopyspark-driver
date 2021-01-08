@@ -27,6 +27,7 @@ from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
 from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
 from openeo_driver.save_result import AggregatePolygonResult
@@ -1567,3 +1568,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return wv
+
+    def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
+        # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
+        return self

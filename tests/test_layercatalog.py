@@ -5,9 +5,10 @@ from typing import List, Tuple
 
 import pytest
 import schema
-
 from openeo.util import deep_get
+
 from openeo_driver.backend import LoadParameters
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog, _S1BackscatterOrfeo
 
@@ -229,7 +230,14 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent):
         "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}}
     }])
 
-    load_params = LoadParameters(temporal_extent=temporal_extent, spatial_extent=spatial_extent)
+    load_params = LoadParameters(
+        temporal_extent=temporal_extent, spatial_extent=spatial_extent,
+        sar_backscatter=SarBackscatterArgs(
+            backscatter_coefficient="sigma0",
+            orthorectify=True,
+            options={"dem_zoom_level": 6}
+        )
+    )
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 
     filename = tmp_path / "s1backscatter.tiff"
@@ -245,7 +253,7 @@ def test_creodias_dem_subset(bbox, bbox_epsg):
     symlinks = {}
     with _S1BackscatterOrfeo._creodias_dem_subset(
             bbox=bbox, bbox_epsg=bbox_epsg, zoom=11,
-            _dem_path_tpl="/path/to/geotiff/{z}/{x}/{y}.tif"
+            dem_path_tpl="/path/to/geotiff/{z}/{x}/{y}.tif"
     ) as temp_dir:
         temp_dir = Path(temp_dir)
         for path in temp_dir.glob("**/*"):

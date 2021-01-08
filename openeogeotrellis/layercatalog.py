@@ -18,6 +18,7 @@ from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry, utm_zone_from_epsg
@@ -352,6 +353,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 projected_polygons=projected_polygons_native_crs,
                 from_date=from_date, to_date=to_date,
                 correlation_id=correlation_id,
+                sar_backscatter_arguments=load_params.sar_backscatter,
             )
         else:
             pyramid = accumulo_pyramid()
@@ -460,6 +462,7 @@ class _S1BackscatterOrfeo:
             from_date: str, to_date: str,
             collection_id: str = "Sentinel1",
             correlation_id: str = "NA",
+            sar_backscatter_arguments: SarBackscatterArgs = SarBackscatterArgs(),
             # TODO: what to do with zoom? Highest level? lowest level?
             zoom=0,
             tile_size=512,
@@ -472,6 +475,7 @@ class _S1BackscatterOrfeo:
         :param to_date:
         :param collection_id:
         :param correlation_id:
+        :param sar_backscatter_arguments:
         :param zoom:
         :param tile_size:
         :return:
@@ -519,13 +523,26 @@ class _S1BackscatterOrfeo:
             # TODO properly handle VV/VH bands
             input_tiff = tiffs[0]
             logger.info("Input tiff {i}".format(i=input_tiff))
-            # TODO: option to set the DEM zoom level?
-            dem_zoom = 9
 
+            if sar_backscatter_arguments.backscatter_coefficient != "sigma0":
+                raise OpenEOApiException(
+                    "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
+                        c=sar_backscatter_arguments.backscatter_coefficient))
+
+            if sar_backscatter_arguments.elevation_model is None:
+                dem_tile_size = 512
+                dem_path_tpl = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+                dem_zoom_level = sar_backscatter_arguments.options.get("dem_zoom_level", 10)
+            else:
+                # TODO: handle user specified elevation model?
+                raise ValueError(sar_backscatter_arguments.elevation_model)
+
+            temp_dem_dir = _S1BackscatterOrfeo._creodias_dem_subset(
+                bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom_level,
+                dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
+            )
             # TODO: temp dir is removed automatically by default. Add option to keep it for debugging?
-            with tempfile.TemporaryDirectory() as temp_dir,\
-                    _S1BackscatterOrfeo._creodias_dem_subset(bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom) as dem_dir\
-                    :
+            with tempfile.TemporaryDirectory() as temp_dir, temp_dem_dir:
                 import otbApplication as otb
 
                 # SARCalibration
@@ -538,9 +555,10 @@ class _S1BackscatterOrfeo:
                 # OrthoRectification
                 ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
                 ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
-                ortho_rect.SetParameterString("elev.dem", dem_dir)
-                # TODO
-                # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
+                if sar_backscatter_arguments.orthorectify:
+                    ortho_rect.SetParameterString("elev.dem", temp_dem_dir.name)
+                    # TODO
+                    # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
                 ortho_rect.SetParameterString("map", "utm")
                 ortho_rect.SetParameterInt("map.utm.zone", key_utm_zone)
                 ortho_rect.SetParameterValue("map.utm.northhem", key_utm_northhem)
@@ -607,7 +625,7 @@ class _S1BackscatterOrfeo:
     @staticmethod
     def _creodias_dem_subset(
             bbox: Tuple, bbox_epsg: int = 4326, zoom: int = 5,
-            _dem_tile_size: int = 512, _dem_path_tpl: str = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+            dem_tile_size: int = 512, dem_path_tpl: str = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
     ) -> tempfile.TemporaryDirectory:
         """
         Create subset of CREODIAS DEM symlinks covering the given lon-lat bbox to pass to Orfeo
@@ -619,7 +637,7 @@ class _S1BackscatterOrfeo:
         to_lonlat = pyproj.Transformer.from_crs(crs_from=bbox_epsg, crs_to=4326, always_xy=True)
         corners_lonlat = [to_lonlat.transform(x, y) for (x, y) in [(w, s), (e, s), (e, n), (w, n)]]
         bbox_tile_indices = [
-            lonlat_to_mercator_tile_indices(lon, lat, zoom=zoom, tile_size=_dem_tile_size, flip_y=True)
+            lonlat_to_mercator_tile_indices(lon, lat, zoom=zoom, tile_size=dem_tile_size, flip_y=True)
             for (lon, lat) in corners_lonlat
         ]
         logger.info("DEM tile indices for {b} (epsg {e}) at zoom level {z}: {t}".format(
@@ -634,13 +652,13 @@ class _S1BackscatterOrfeo:
         logger.info(
             "Creating temporary DEM tile subset tree {r!s}/{z}/[{xi}:{xa}]/[{yi}:{ya}] ({c} tiles) symlinking to {t}".format(
                 r=root, z=zoom, xi=xmin, xa=xmax, yi=ymin, ya=ymax, c=(xmax - xmin + 1) * (ymax - ymin + 1),
-                t=_dem_path_tpl
+                t=dem_path_tpl
             ))
         for x in range(xmin, xmax + 1):
             x_dir = (root / str(zoom) / str(x))
             x_dir.mkdir(parents=True, exist_ok=True)
             for y in range(ymin, ymax + 1):
-                (x_dir / ("%d.tif" % y)).symlink_to(_dem_path_tpl.format(z=zoom, x=x, y=y))
+                (x_dir / ("%d.tif" % y)).symlink_to(dem_path_tpl.format(z=zoom, x=x, y=y))
 
         return temp_dir
 
