@@ -16,7 +16,6 @@ Simple usage example:
 
 """
 
-
 import argparse
 import json
 import logging
@@ -84,6 +83,14 @@ def handle_cli(argv=None) -> Tuple[dict, argparse.Namespace]:
     parser.add_argument(
         "-o", "--output", default=None, help="Output file name."
     )
+    parser.add_argument(
+        "-e", "--edit", metavar="PATH=VALUE", nargs="*", default=[],
+        help="Preprocess the process graph before executing it."
+             " Specify as `path=value`, with `path` the period separated path in JSON tree"
+             " and `value` the new/updated value (in JSON format)."
+             " For example, to change the 'west' border of load_collection bbox:"
+             " `--edit loadcollection.arguments.spatial_extent.west=3.3`"
+    )
     parser.add_argument("--api-version", default="1.0.0", help="openEO API version to evaluate against.")
 
     args = parser.parse_args(argv)
@@ -100,12 +107,33 @@ def handle_cli(argv=None) -> Tuple[dict, argparse.Namespace]:
         process_graph = read_json(args.process_graph)
     else:
         raise ValueError(args.process_graph)
+
+    # Edit process graph in-place
+    for path, value in (e.split("=", 1) for e in args.edit):
+        steps = path.split(".")
+        cursor = process_graph
+        for step in steps[:-1]:
+            if step not in cursor:
+                cursor[step] = {}
+            cursor = cursor[step]
+        cursor[steps[-1]] = json.loads(value)
+
     return process_graph, args
+
+
+def safe_repr(x, max_length=2000) -> str:
+    s = repr(x)
+    if len(s) > max_length:
+        i = max(0, (max_length - 3) // 2)
+        j = max(0, max_length - 3 - i)
+        return s[:i] + "..." + s[len(s) - j:]
+    return s
 
 
 def main(argv=None):
     logging.basicConfig(level=logging.INFO)
     process_graph, args = handle_cli(argv)
+    _log.info("Evaluating process graph: {pg}".format(pg=safe_repr(process_graph)))
 
     _setup_local_spark(print=_log.info)
 
