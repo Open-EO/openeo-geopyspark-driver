@@ -108,6 +108,9 @@ def handle_cli(argv=None) -> Tuple[dict, argparse.Namespace]:
     else:
         raise ValueError(args.process_graph)
 
+    if len(process_graph) == 1 and set(process_graph.keys()) == {"process_graph"}:
+        process_graph = process_graph["process_graph"]
+
     # Edit process graph in-place
     for path, value in (e.split("=", 1) for e in args.edit):
         steps = path.split(".")

@@ -20,6 +20,15 @@ def test_handle_cli_basic():
     }}
 
 
+def test_handle_cli_wrapper():
+    argv = ['{"process_graph":' + PG_BLOB1 + '}']
+    pg, args = handle_cli(argv)
+    assert pg == {"load": {
+        "process_id": "load_collection",
+        "arguments": {"id": "FOOBAR", "spatial_extent": {"west": 3, "south": 51, "east": 4, "north": 52}}
+    }}
+
+
 def test_handle_cli_edit_west():
     argv = [PG_BLOB1, '--edit', "load.arguments.spatial_extent.west=2"]
     pg, args = handle_cli(argv)
