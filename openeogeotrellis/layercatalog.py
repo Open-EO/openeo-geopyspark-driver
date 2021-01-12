@@ -522,7 +522,8 @@ class _S1BackscatterOrfeo:
                 raise OpenEOApiException("No tiffs found")
             # TODO properly handle VV/VH bands
             input_tiff = tiffs[0]
-            logger.info("Input tiff {i}".format(i=input_tiff))
+            logger.info(log_prefix + "Input tiff {i}".format(i=input_tiff))
+            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
 
             if sar_backscatter_arguments.backscatter_coefficient != "sigma0":
                 raise OpenEOApiException(
@@ -596,8 +597,11 @@ class _S1BackscatterOrfeo:
                     data = ds.read(1)
                     nodata = ds.nodata
 
-            # TODO: make conversion to dB optional in some way? Or remove it from here and require user to do it explicitly through openeo processes?
-            data = 10 * numpy.log10(data)
+            logger.info(log_prefix + f"Data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
+
+            if sar_backscatter_arguments.options.get("to_db", False):
+                logger.info(log_prefix + "Converting backscatter intensity to decibel")
+                data = 10 * numpy.log10(data)
 
             # TODO: properly reproject data instead of stupid padding/cropping?
             pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
