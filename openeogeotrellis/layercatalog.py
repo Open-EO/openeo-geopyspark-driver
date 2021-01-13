@@ -19,7 +19,7 @@ from shapely.geometry import box
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
+from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry, utm_zone_from_epsg
 from openeogeotrellis.catalogs.creo import CatalogClient
@@ -535,8 +535,10 @@ class _S1BackscatterOrfeo:
                 dem_path_tpl = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
                 dem_zoom_level = sar_backscatter_arguments.options.get("dem_zoom_level", 10)
             else:
-                # TODO: handle user specified elevation model?
-                raise ValueError(sar_backscatter_arguments.elevation_model)
+                # TODO: support different kind of elevation models?
+                raise FeatureUnsupportedException(
+                    f"Custom elevation models are not supported: {sar_backscatter_arguments.elevation_model}"
+                )
 
             if sar_backscatter_arguments.orthorectify:
                 temp_dem_dir = _S1BackscatterOrfeo._creodias_dem_subset(
