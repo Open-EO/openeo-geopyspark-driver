@@ -49,7 +49,8 @@ def _ensure_geopyspark(print=print):
 
 def _setup_local_spark(
         print: Callable = print, verbosity=0,
-        master_url="local[2]", app_name="openEO-GeoPySpark-Driver"
+        master_url="local[2]", app_name="openEO-GeoPySpark-Driver",
+        additional_jar_dirs=[]
 ):
     print("Setting up local Spark")
 
@@ -60,7 +61,7 @@ def _setup_local_spark(
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
 
-    conf = geopyspark_conf(master=master_url, appName=app_name)
+    conf = geopyspark_conf(master=master_url, appName=app_name, additional_jar_dirs=additional_jar_dirs)
     conf.set('spark.kryoserializer.buffer.max', value='1G')
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
