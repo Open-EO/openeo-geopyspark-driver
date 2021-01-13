@@ -558,8 +558,12 @@ class _S1BackscatterOrfeo:
                 ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
                 if sar_backscatter_arguments.orthorectify:
                     ortho_rect.SetParameterString("elev.dem", temp_dem_dir.name)
-                    # TODO
-                    # OrthoRect.SetParameterString("elev.geoid", "/home/driesj/egm96.grd")
+                if sar_backscatter_arguments.options.get("elev_geoid"):
+                    ortho_rect.SetParameterString("elev.geoid", sar_backscatter_arguments.options.get("elev_geoid"))
+                if sar_backscatter_arguments.options.get("elev_default"):
+                    ortho_rect.SetParameterFloat(
+                        "elev.default", float(sar_backscatter_arguments.options.get("elev_default"))
+                    )
                 ortho_rect.SetParameterString("map", "utm")
                 ortho_rect.SetParameterInt("map.utm.zone", key_utm_zone)
                 ortho_rect.SetParameterValue("map.utm.northhem", key_utm_northhem)
