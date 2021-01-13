@@ -463,13 +463,12 @@ class _S1BackscatterOrfeo:
             collection_id: str = "Sentinel1",
             correlation_id: str = "NA",
             sar_backscatter_arguments: SarBackscatterArgs = SarBackscatterArgs(),
-            # TODO: what to do with zoom? Highest level? lowest level?
-            zoom=0,
+            zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
             tile_size=512,
             result_dtype="float32"
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
-        Implementation of S1 backscatter
+        Implementation of S1 backscatter calculation with Orfeo in CREODIAS environment
         :param projected_polygons:
         :param from_date:
         :param to_date:
@@ -516,11 +515,11 @@ class _S1BackscatterOrfeo:
             logger.info(log_prefix + "Feature creo path: {p}".format(p=creo_path))
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
-            # TODO Get tiff path from manifest instead of assuming this subfolder format?
+            # TODO Get tiff path from manifest instead of assuming this `measurement` subfolder format?
             tiffs = list(creo_path.glob("measurement/*.tiff"))
             if not tiffs:
                 raise OpenEOApiException("No tiffs found")
-            # TODO properly handle VV/VH bands
+            # TODO EP-3612 properly handle VV/VH bands
             input_tiff = tiffs[0]
             logger.info(log_prefix + "Input tiff {i}".format(i=input_tiff))
             logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
@@ -548,7 +547,6 @@ class _S1BackscatterOrfeo:
             else:
                 temp_dem_dir = nullcontext()
 
-            # TODO: temp dir is removed automatically by default. Add option to keep it for debugging?
             with tempfile.TemporaryDirectory() as temp_dir, temp_dem_dir:
                 import otbApplication as otb
 
@@ -602,8 +600,8 @@ class _S1BackscatterOrfeo:
                 logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
                 with rasterio.open(out_path) as ds:
                     logger.info(log_prefix + "Output tiff metadata: {m}, bounds {b}".format(m=ds.meta, b=ds.bounds))
-                    # TODO: check band count. make sure we pick the right band.
-                    # TODO: also check projection/CRS...?
+                    # TODO EP-3612: check band count. make sure we pick the right band.
+                    # TODO EP-3612: also check projection/CRS...?
                     data = ds.read(1)
                     nodata = ds.nodata
 
@@ -613,7 +611,7 @@ class _S1BackscatterOrfeo:
                 logger.info(log_prefix + "Converting backscatter intensity to decibel")
                 data = 10 * numpy.log10(data)
 
-            # TODO: properly reproject data instead of stupid padding/cropping?
+            # TODO EP-3694: properly reproject data instead of stupid padding/cropping?
             pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
             data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
             logger.info(log_prefix + "Pad {p} + crop to shape {s}".format(p=pad_width, s=data.shape))
@@ -686,6 +684,8 @@ class _S1BackscatterOrfeo:
             zoom=0,
             tile_size=256,
     ):
+        raise RuntimeError("WIP")
+
         # TODO openSearchLinkTitles?  attributeValues
         file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.oscars(collection_id, [], {}, correlation_id)
 
@@ -722,7 +722,6 @@ class _S1BackscatterOrfeo:
                         raise RuntimeError("WIP")
 
         tile_layer = pyrdd.map(load_data)
-        raise RuntimeError("WIP")
 
 
 def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> GeoPySparkLayerCatalog:
