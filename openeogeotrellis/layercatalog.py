@@ -27,7 +27,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons, \
-    lonlat_to_mercator_tile_indices
+    lonlat_to_mercator_tile_indices, nullcontext
 
 logger = logging.getLogger(__name__)
 
@@ -538,10 +538,14 @@ class _S1BackscatterOrfeo:
                 # TODO: handle user specified elevation model?
                 raise ValueError(sar_backscatter_arguments.elevation_model)
 
-            temp_dem_dir = _S1BackscatterOrfeo._creodias_dem_subset(
-                bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom_level,
-                dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
-            )
+            if sar_backscatter_arguments.orthorectify:
+                temp_dem_dir = _S1BackscatterOrfeo._creodias_dem_subset(
+                    bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom_level,
+                    dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
+                )
+            else:
+                temp_dem_dir = nullcontext()
+
             # TODO: temp dir is removed automatically by default. Add option to keep it for debugging?
             with tempfile.TemporaryDirectory() as temp_dir, temp_dem_dir:
                 import otbApplication as otb

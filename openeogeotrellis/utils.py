@@ -232,3 +232,14 @@ def lonlat_to_mercator_tile_indices(longitude: float, latitude: float, zoom: int
     if flip_y:
         ty = (2 ** zoom - 1) - ty
     return tx, ty
+
+
+
+@contextlib.contextmanager
+def nullcontext():
+    """
+    Context manager that does nothing.
+
+    Backport of Python 3.7 `contextlib.nullcontext`
+    """
+    yield

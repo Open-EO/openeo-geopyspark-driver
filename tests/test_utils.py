@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from openeogeotrellis.utils import dict_merge_recursive, describe_path, lonlat_to_mercator_tile_indices
+from openeogeotrellis.utils import dict_merge_recursive, describe_path, lonlat_to_mercator_tile_indices, nullcontext
 
 
 @pytest.mark.parametrize(["a", "b", "expected"], [
@@ -104,3 +104,8 @@ def test_describe_path(tmp_path):
 ])
 def test_lonlat_to_mercator_tile_indices(lon, lat, zoom, flip_y, expected):
     assert lonlat_to_mercator_tile_indices(longitude=lon, latitude=lat, zoom=zoom, flip_y=flip_y) == expected
+
+
+def test_nullcontext():
+    with nullcontext() as n:
+        assert n is None
