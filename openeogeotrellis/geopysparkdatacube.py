@@ -1512,8 +1512,10 @@ class GeopysparkDataCube(DriverDataCube):
                 "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
                 bandIds,
                 [0.0001,10000.0],
-                [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33]
                 #sza,vza,raa,gnd,aot,cwv,ozone
+                [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33],
+                # DEM or SRTM
+                "DEM"
             )
         )
         return atmo_corrected
