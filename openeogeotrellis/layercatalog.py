@@ -103,6 +103,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
+        single_level = env.get('pyramid_levels', 'all') != 'all'
+
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
@@ -212,12 +214,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
-            if env.get('pyramid_levels', 'all') != 'all':
+            if single_level:
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id)
             else:
                 if polygons:
-                    projected_polygons = to_projected_polygons(jvm, polygons)
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
                                                to_date, metadata_properties, correlation_id)
                 else:
@@ -233,7 +234,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date)
 
         def sentinel_hub_pyramid():
-            single_level = env.get('pyramid_levels', 'all') != 'all'
             dependencies = env.get('dependencies', {})
 
             logger.info("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
@@ -281,6 +281,22 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
 
+        def file_cgls_pyramid():
+            if len(metadata.band_names) != 1:
+                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
+                    cid=collection_id, bs=metadata.band_names))
+
+            data_glob = layer_source_info['data_glob']
+            band_name = metadata.band_names[0].upper()
+            date_regex = layer_source_info['date_regex']
+
+            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory(data_glob, band_name, date_regex)
+
+            return (
+                factory.datacube_seq(projected_polygons, from_date, to_date) if single_level
+                else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
+            )
+
         logger.info("loading pyramid {s}".format(s=layer_source_type))
         if layer_source_type == 's3':
             pyramid = s3_pyramid()
@@ -302,6 +318,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel_hub_pyramid()
         elif layer_source_type == 'creo':
             pyramid = creo_pyramid()
+        elif layer_source_type == 'file-cgls':
+            pyramid = file_cgls_pyramid()
         else:
             pyramid = accumulo_pyramid()
 
@@ -316,7 +334,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             for index in range(0, pyramid.size())
         }
 
-        if env.get('pyramid_levels', 'all') != 'all':
+        if single_level:
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
 

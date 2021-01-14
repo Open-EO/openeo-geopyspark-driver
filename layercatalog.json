@@ -118,8 +118,9 @@
     "description": "Global LAI at 300m resolution, 10-daily. The Leaf Area Index is defined as half the total area of green elements of the canopy per unit horizontal ground area. The satellite-derived value corresponds to the total green LAI of all the canopy layers, including the understory which may represent a very significant contribution, particularly for forests. Practically, the LAI quantifies the thickness of the vegetation cover.",
     "_vito": {
       "data_source": {
-        "type": "Accumulo",
-        "data_id": "BIOPAR_LAI300_V1_GLOBAL"
+        "type": "file-cgls",
+        "data_glob": "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})0000_.+"
       }
     },
     "license": "free",
@@ -155,8 +156,9 @@
     "description": "Global NDVI at 300m resolution, 10-daily. The Normalized Difference Vegetation Index (NDVI) is an indicator of the greenness of the biomes. As such, it is closely linked to the FAPAR.",
     "_vito": {
       "data_source": {
-        "type": "Accumulo",
-        "data_id": "BIOPAR_NDVI300_V1_GLOBAL"
+        "type": "file-cgls",
+        "data_glob": "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/*/*/*/*.nc",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})0000_.+"
       }
     },
     "license": "free",
@@ -192,8 +194,9 @@
     "description": "Global burnt area at 300m resolution, 10-daily. The Burnt Area product maps the burnt scars, and gives temporal information on the fire season. ",
     "_vito": {
       "data_source": {
-        "type": "Accumulo",
-        "data_id": "BIOPAR_BA300_V1_GLOBAL"
+        "type": "file-cgls",
+        "data_glob": "/data/MTDA/BIOPAR/BioPar_BA300_V1_Global/*/*/*/*.nc",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})0000_.+"
       }
     },
     "license": "free",
