@@ -227,7 +227,13 @@ def test_get_layer_catalog_from_opensearch():
 def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent):
     catalog = GeoPySparkLayerCatalog(all_metadata=[{
         "id": "Creodias-S1-Backscatter",
-        "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}}
+        "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}},
+        "cube:dimensions": {
+            "x": {"type": "spatial", "axis": "x"},
+            "y": {"type": "spatial", "axis": "y"},
+            "t": {"type": "temporal"},
+            "bands": {"type": "bands", "values": ["VH", "VV"]}
+        }
     }])
 
     load_params = LoadParameters(

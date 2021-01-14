@@ -6,7 +6,7 @@ import re
 import tempfile
 import zipfile
 from datetime import datetime, date
-from typing import List, Optional, Callable, Dict, Tuple
+from typing import List, Optional, Callable, Dict, Tuple, Union
 
 import epsel
 import geopyspark
@@ -354,6 +354,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 from_date=from_date, to_date=to_date,
                 correlation_id=correlation_id,
                 sar_backscatter_arguments=load_params.sar_backscatter,
+                bands=bands
             )
         else:
             pyramid = accumulo_pyramid()
@@ -463,26 +464,27 @@ class _S1BackscatterOrfeo:
             collection_id: str = "Sentinel1",
             correlation_id: str = "NA",
             sar_backscatter_arguments: SarBackscatterArgs = SarBackscatterArgs(),
+            bands=None,
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
             tile_size=512,
             result_dtype="float32"
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
-        Implementation of S1 backscatter calculation with Orfeo in CREODIAS environment
-        :param projected_polygons:
-        :param from_date:
-        :param to_date:
-        :param collection_id:
-        :param correlation_id:
-        :param sar_backscatter_arguments:
-        :param zoom:
-        :param tile_size:
-        :return:
+        Implementation of S1 backscatter calculation with Orfeo in Creodias environment
         """
+        # Initial argument checking
+        bands = bands or ["VH", "VV"]
+
+        if sar_backscatter_arguments.backscatter_coefficient != "sigma0":
+            raise OpenEOApiException(
+                "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
+                    c=sar_backscatter_arguments.backscatter_coefficient))
+
+        # Build RDD of file metadata from Creodias catalog query.
         # TODO openSearchLinkTitles?
         attributeValues = {
             "productType": "GRD",
-            "sensorMpde": "IW",
+            "sensorMode": "IW",
             "processingLevel": "LEVEL1",
         }
         file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
@@ -505,29 +507,24 @@ class _S1BackscatterOrfeo:
             key_ext = feature["key_extent"]
             key_bbox = (key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"])
             key_epsg = feature["metadata"]["crs_epsg"]
-            key_utm_zone, key_utm_northhem = utm_zone_from_epsg(key_epsg)
-            extract_roi_extent = {
-                b: key_ext[a] for (a, b) in {"xmin": "ulx", "ymin": "uly", "xmax": "lrx", "ymax": "lry"}.items()
-            }
-            logger.info(log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=key_ext, u=key_utm_zone, c=key_epsg))
 
             creo_path = pathlib.Path(feature["feature"]["id"])
             logger.info(log_prefix + "Feature creo path: {p}".format(p=creo_path))
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
-            # TODO Get tiff path from manifest instead of assuming this `measurement` subfolder format?
-            tiffs = list(creo_path.glob("measurement/*.tiff"))
-            if not tiffs:
-                raise OpenEOApiException("No tiffs found")
-            # TODO EP-3612 properly handle VV/VH bands
-            input_tiff = tiffs[0]
-            logger.info(log_prefix + "Input tiff {i}".format(i=input_tiff))
-            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
 
-            if sar_backscatter_arguments.backscatter_coefficient != "sigma0":
-                raise OpenEOApiException(
-                    "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
-                        c=sar_backscatter_arguments.backscatter_coefficient))
+            # We expect the desired geotiff files under `creo_path` at location like
+            #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
+            # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
+            band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
+            band_tiffs = {}
+            for tiff in creo_path.glob("measurement/*.tiff"):
+                match = band_regex.match(tiff.name)
+                if match:
+                    band_tiffs[match.group(1).lower()] = tiff
+            if not band_tiffs:
+                raise OpenEOApiException("No tiffs found")
+            logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
 
             if sar_backscatter_arguments.elevation_model is None:
                 dem_tile_size = 512
@@ -540,15 +537,58 @@ class _S1BackscatterOrfeo:
                 )
 
             if sar_backscatter_arguments.orthorectify:
-                temp_dem_dir = _S1BackscatterOrfeo._creodias_dem_subset(
+                dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset(
                     bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom_level,
                     dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
                 )
             else:
-                temp_dem_dir = nullcontext()
+                # Context that returns None when entering
+                dem_dir_context = nullcontext()
 
-            with tempfile.TemporaryDirectory() as temp_dir, temp_dem_dir:
-                import otbApplication as otb
+            with dem_dir_context as dem_dir:
+                # Allocate numpy array tile
+                tile_data = numpy.zeros((len(bands), tile_size, tile_size), dtype=result_dtype)
+
+                for b, band in enumerate(bands):
+                    if band.lower() not in band_tiffs:
+                        raise OpenEOApiException(f"No tiff for band {band}")
+                    data, nodata = orfeo_pipeline(
+                        input_tiff=band_tiffs[band.lower()], key_extent=key_ext, key_epsg=key_epsg, dem_dir=dem_dir,
+                        log_prefix=log_prefix.replace(": ", f"-{band}: ")
+                    )
+                    # TODO EP-3694: investigate why we still have to pad/crop sometimes to fit the result tile.
+                    if data.shape != (tile_size, tile_size):
+                        logger.warning(
+                            log_prefix + f"Cropping/padding Orfeo result shape {data.shape} to expected ({tile_size},{tile_size})"
+                        )
+                        pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
+                        data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
+
+                    tile_data[b] = data
+
+                if sar_backscatter_arguments.options.get("to_db", False):
+                    logger.info(log_prefix + "Converting backscatter intensity to decibel")
+                    tile_data = 10 * numpy.log10(tile_data)
+
+                key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
+                cell_type = geopyspark.CellType(tile_data.dtype.name)
+                logger.info(log_prefix + f"Create Tile for key {key} from {tile_data.shape}")
+                tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
+                return key, tile
+
+        def orfeo_pipeline(
+                input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None],
+                log_prefix: str = ""
+        ):
+            logger.info(log_prefix + f"Input tiff {input_tiff}")
+            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
+
+            key_utm_zone, key_utm_northhem = utm_zone_from_epsg(key_epsg)
+            logger.info(
+                log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=key_extent, u=key_utm_zone, c=key_epsg))
+
+            import otbApplication as otb
+            with tempfile.TemporaryDirectory() as temp_dir:
 
                 # SARCalibration
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
@@ -560,8 +600,8 @@ class _S1BackscatterOrfeo:
                 # OrthoRectification
                 ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
                 ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
-                if sar_backscatter_arguments.orthorectify:
-                    ortho_rect.SetParameterString("elev.dem", temp_dem_dir.name)
+                if dem_dir:
+                    ortho_rect.SetParameterString("elev.dem", dem_dir)
                 if sar_backscatter_arguments.options.get("elev_geoid"):
                     ortho_rect.SetParameterString("elev.geoid", sar_backscatter_arguments.options.get("elev_geoid"))
                 if sar_backscatter_arguments.options.get("elev_default"):
@@ -583,8 +623,8 @@ class _S1BackscatterOrfeo:
                 extract_roi.SetParameterInputImage("in", ortho_rect.GetParameterOutputImage("io.out"))
                 extract_roi.SetParameterString("mode", "extent")
                 extract_roi.SetParameterString("mode.extent.unit", "phy")
-                for p, v in extract_roi_extent.items():
-                    extract_roi.SetParameterFloat("mode.extent.%s" % p, v)
+                for k, j in [("xmin", "ulx"), ("ymin", "uly"), ("xmax", "lrx"), ("ymax", "lry")]:
+                    extract_roi.SetParameterFloat(f"mode.extent.{j}", key_extent[k])
                 extract_roi.Execute()
 
                 # TODO: extract numpy array directly (instead of through on disk files)
@@ -606,22 +646,7 @@ class _S1BackscatterOrfeo:
                     nodata = ds.nodata
 
             logger.info(log_prefix + f"Data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
-
-            if sar_backscatter_arguments.options.get("to_db", False):
-                logger.info(log_prefix + "Converting backscatter intensity to decibel")
-                data = 10 * numpy.log10(data)
-
-            # TODO EP-3694: properly reproject data instead of stupid padding/cropping?
-            pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
-            data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
-            logger.info(log_prefix + "Pad {p} + crop to shape {s}".format(p=pad_width, s=data.shape))
-            if result_dtype:
-                data = data.astype(result_dtype)
-
-            key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
-            cell_type = geopyspark.CellType(data.dtype.name)
-            tile = geopyspark.Tile(data, cell_type, no_data_value=nodata)
-            return key, tile
+            return data, nodata
 
         tile_rdd = feature_pyrdd.map(process_feature)
         if result_dtype:
@@ -640,7 +665,7 @@ class _S1BackscatterOrfeo:
             dem_tile_size: int = 512, dem_path_tpl: str = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
     ) -> tempfile.TemporaryDirectory:
         """
-        Create subset of CREODIAS DEM symlinks covering the given lon-lat bbox to pass to Orfeo
+        Create subset of Creodias DEM symlinks covering the given lon-lat bbox to pass to Orfeo
 
         :return: tempfile.TemporaryDirectory to be used as context manager (for automatic cleanup)
         """
