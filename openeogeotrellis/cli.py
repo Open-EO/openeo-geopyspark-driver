@@ -85,7 +85,7 @@ def handle_cli(argv=None) -> Tuple[dict, argparse.Namespace]:
         "-o", "--output", default=None, help="Output file name."
     )
     parser.add_argument(
-        "-e", "--edit", metavar="PATH=VALUE", nargs="*", default=[],
+        "-e", "--edit", metavar="PATH=VALUE", action="append", default=[],
         help="Preprocess the process graph before executing it."
              " Specify as `path=value`, with `path` the period separated path in JSON tree"
              " and `value` the new/updated value (in JSON format)."
