@@ -290,15 +290,45 @@ class GeopysparkDataCube(DriverDataCube):
     def _tile_to_datacube(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
                           band_dimension: openeo.metadata.BandDimension, start_times=None):
         from openeo_udf.api.datacube import DataCube
+
         coords = {}
-        dims = ('bands','x', 'y')
+        dims = ('bands','y', 'x')
+        
+        # time coordinates if exists
         if len(bands_numpy.shape) == 4:
             #we have a temporal dimension
             coords = {'t':start_times}
-            dims = ('t' ,'bands','x', 'y')
+            dims = ('t' ,'bands','y', 'x')
+        
+        # band names if exists 
         if band_dimension:
             # TODO: also use the band dimension name (`band_dimension.name`) instead of hardcoded "bands"?
             coords['bands'] = band_dimension.band_names
+        
+        # X and Y coordinates
+        # this is tricky because if apply_neghborhood is used, then extent is the area without overlap
+        # in addition the coordinates are computed to cell center
+        #
+        # VERY IMPORTANT NOTE: building x,y coordinates assumes that extent and bands_numpy is compatible
+        # as if it is conatining an image:
+        #  * spatial dimension order is [y,x] <- row-column order
+        #  * origin is upper left corner
+        #
+        # NOTE.2.: for optimization reasons the y coordinate is computed decreasing instead of flipping the datacube (expensive)
+        # NOTE.3.: if extent is None, no coordinates will be generated (UDF's dominantly don't use x&y)
+        if extent is not None: 
+            gridx=(extent.right-extent.left)/extent.width
+            gridy=(extent.top-extent.bottom)/extent.height
+            xdelta=gridx*0.5*(bands_numpy.shape[-1]-extent.width) 
+            ydelta=gridy*0.5*(bands_numpy.shape[-2]-extent.height)
+            xmin=extent.left   -xdelta 
+            xmax=extent.right  +xdelta 
+            ymin=extent.bottom -ydelta 
+            ymax=extent.top    +ydelta 
+            coords['x']=np.linspace(xmin+0.5*gridx,xmax-0.5*gridx,bands_numpy.shape[-1],dtype=np.float32)
+            coords['y']=np.linspace(ymax-0.5*gridy,ymin+0.5*gridy,bands_numpy.shape[-2],dtype=np.float32)
+
+        # create&wrap the underlying xarray
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return DataCube(the_array)
 
