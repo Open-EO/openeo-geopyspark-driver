@@ -39,3 +39,5 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
 
     subresult = result_array[:input.shape[0], :input.shape[1], :input.shape[2]]
     assert_array_almost_equal(input,subresult)
+    
+
