@@ -505,11 +505,9 @@ class _S1BackscatterOrfeo:
             log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
 
             key_ext = feature["key_extent"]
-            key_bbox = (key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"])
             key_epsg = feature["metadata"]["crs_epsg"]
-
             creo_path = pathlib.Path(feature["feature"]["id"])
-            logger.info(log_prefix + "Feature creo path: {p}".format(p=creo_path))
+            logger.info(log_prefix + f"Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
 
@@ -538,8 +536,9 @@ class _S1BackscatterOrfeo:
 
             if sar_backscatter_arguments.orthorectify:
                 dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset(
-                    bbox=key_bbox, bbox_epsg=key_epsg, zoom=dem_zoom_level,
-                    dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
+                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]),
+                    bbox_epsg=key_epsg,
+                    zoom=dem_zoom_level, dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
                 )
             else:
                 # Context that returns None when entering
@@ -554,13 +553,10 @@ class _S1BackscatterOrfeo:
                         raise OpenEOApiException(f"No tiff for band {band}")
                     data, nodata = orfeo_pipeline(
                         input_tiff=band_tiffs[band.lower()], key_extent=key_ext, key_epsg=key_epsg, dem_dir=dem_dir,
-                        log_prefix=log_prefix.replace(": ", f"-{band}: ")
+                        tile_size=tile_size, log_prefix=log_prefix.replace(": ", f"-{band}: ")
                     )
-                    # TODO EP-3694: investigate why we still have to pad/crop sometimes to fit the result tile.
                     if data.shape != (tile_size, tile_size):
-                        logger.warning(
-                            log_prefix + f"Cropping/padding Orfeo result shape {data.shape} to expected ({tile_size},{tile_size})"
-                        )
+                        logger.warning(log_prefix + f"Crop/pad shape {data.shape} to ({tile_size},{tile_size})")
                         pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
                         data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
 
@@ -577,7 +573,7 @@ class _S1BackscatterOrfeo:
                 return key, tile
 
         def orfeo_pipeline(
-                input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None],
+                input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None], tile_size: int = 512,
                 log_prefix: str = ""
         ):
             logger.info(log_prefix + f"Input tiff {input_tiff}")
@@ -588,6 +584,13 @@ class _S1BackscatterOrfeo:
                 log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=key_extent, u=key_utm_zone, c=key_epsg))
 
             import otbApplication as otb
+
+            def otb_param_dump(app):
+                return {
+                    p: str(v) if app.GetParameterType(p) == otb.ParameterType_Choice else v
+                    for (p, v) in app.GetParameters().items()
+                }
+
             with tempfile.TemporaryDirectory() as temp_dir:
 
                 # SARCalibration
@@ -595,6 +598,7 @@ class _S1BackscatterOrfeo:
                 sar_calibration.SetParameterString("in", str(input_tiff))
                 sar_calibration.SetParameterValue('noise', True)
                 sar_calibration.SetParameterInt('ram', 512)
+                logger.info(log_prefix + f"SARCalibration params: {otb_param_dump(sar_calibration)}")
                 sar_calibration.Execute()
 
                 # OrthoRectification
@@ -613,19 +617,15 @@ class _S1BackscatterOrfeo:
                 ortho_rect.SetParameterValue("map.utm.northhem", key_utm_northhem)
                 ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
                 ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+                ortho_rect.SetParameterInt("outputs.sizex", tile_size)
+                ortho_rect.SetParameterInt("outputs.sizey", tile_size)
+                ortho_rect.SetParameterInt("outputs.ulx", int(key_extent["xmin"]))
+                ortho_rect.SetParameterInt("outputs.uly", int(key_extent["ymax"]))
                 ortho_rect.SetParameterString("interpolator", "nn")
                 ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
                 ortho_rect.SetParameterInt("opt.ram", 512)
+                logger.info(log_prefix + f"OrthoRectification params: {otb_param_dump(ortho_rect)}")
                 ortho_rect.Execute()
-
-                # ExtractROI
-                extract_roi = otb.Registry.CreateApplication("ExtractROI")
-                extract_roi.SetParameterInputImage("in", ortho_rect.GetParameterOutputImage("io.out"))
-                extract_roi.SetParameterString("mode", "extent")
-                extract_roi.SetParameterString("mode.extent.unit", "phy")
-                for k, j in [("xmin", "ulx"), ("ymin", "uly"), ("xmax", "lrx"), ("ymax", "lry")]:
-                    extract_roi.SetParameterFloat(f"mode.extent.{j}", key_extent[k])
-                extract_roi.Execute()
 
                 # TODO: extract numpy array directly (instead of through on disk files)
                 #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
@@ -633,8 +633,8 @@ class _S1BackscatterOrfeo:
                 #       (numpy header files must be available at compile time I guess)
 
                 out_path = os.path.join(temp_dir, "out.tiff")
-                extract_roi.SetParameterString("out", out_path)
-                extract_roi.ExecuteAndWriteOutput()
+                ortho_rect.SetParameterString("io.out", out_path)
+                ortho_rect.ExecuteAndWriteOutput()
 
                 import rasterio
                 logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
