@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pytest
+import rasterio
 import schema
-from openeo.util import deep_get
 
+from openeo.util import deep_get
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
@@ -214,17 +215,19 @@ def test_get_layer_catalog_from_opensearch():
 
 
 @pytest.mark.skipif(not os.environ.get("CREODIAS"), reason="Requires CREODIAS environment.")
-@pytest.mark.parametrize(["spatial_extent", "temporal_extent"], [
+@pytest.mark.parametrize(["spatial_extent", "temporal_extent", "expected_shape"], [
     (
             dict(west=3.1, south=51.27, east=3.3, north=51.37),  # Zeebrugge
             ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
+            (2, 1117, 1392),
     ),
     (
             dict(west=5.5, south=50.13, east=5.65, north=50.23),  # La Roche-en-Ardenne
             ("2020-07-29T00:00:00", "2020-07-29T23:59:59"),
+            (2, 1150, 1033),
     ),
 ])
-def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent):
+def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expected_shape):
     catalog = GeoPySparkLayerCatalog(all_metadata=[{
         "id": "Creodias-S1-Backscatter",
         "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}},
@@ -248,6 +251,8 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent):
 
     filename = tmp_path / "s1backscatter.tiff"
     datacube.save_result(filename, format="GTiff", format_options={'stitch': True})
+    with rasterio.open(filename) as ds:
+        assert ds.read().shape == expected_shape
 
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg"], [
