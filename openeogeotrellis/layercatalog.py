@@ -466,7 +466,6 @@ class _S1BackscatterOrfeo:
             sar_backscatter_arguments: SarBackscatterArgs = SarBackscatterArgs(),
             bands=None,
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
-            tile_size=512,
             result_dtype="float32"
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
@@ -479,6 +478,9 @@ class _S1BackscatterOrfeo:
             raise OpenEOApiException(
                 "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
                     c=sar_backscatter_arguments.backscatter_coefficient))
+
+        # Tile size to use in the TiledRasterLayer.
+        tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
 
         # Build RDD of file metadata from Creodias catalog query.
         # TODO openSearchLinkTitles?
@@ -707,7 +709,6 @@ class _S1BackscatterOrfeo:
             correlation_id: str = "NA",
             # TODO: what to do with zoom? Highest level? lowest level?
             zoom=0,
-            tile_size=256,
     ):
         raise RuntimeError("WIP")
 
