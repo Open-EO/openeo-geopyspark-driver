@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Tuple
 
+from openeo.util import TimingLogger
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.utils import EvalEnv
 from openeo_driver.utils import read_json
@@ -152,13 +153,14 @@ def main(argv=None):
         "require_bounds": True,
         "correlation_id": f"cli-pid{os.getpid()}"
     })
-    result = evaluate(process_graph, env=env)
+
+    with TimingLogger(title="Evaluate process graph", logger=_log):
+        result = evaluate(process_graph, env=env)
 
     if isinstance(result, ImageCollectionResult):
         filename = args.output or f"result.{result.format}"
-        _log.info(f"Saving result to {filename!r}")
-        result.save_result(filename)
-        _log.info(f"Saved result to {filename!r}")
+        with TimingLogger(title=f"Saving result to {filename!r}", logger=_log):
+            result.save_result(filename)
     elif isinstance(result, dict):
         # TODO: support storing JSON result to file
         print(result)
