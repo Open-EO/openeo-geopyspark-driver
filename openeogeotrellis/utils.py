@@ -208,7 +208,10 @@ def download_s3_dir(bucketName, directory):
         bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
 
 
-def lonlat_to_mercator_tile_indices(longitude: float, latitude: float, zoom: int, tile_size: int = 512, flip_y:bool=False):
+def lonlat_to_mercator_tile_indices(
+        longitude: float, latitude: float, zoom: int,
+        tile_size: int = 512, flip_y: bool = False
+):
     """
     Conversion of lon-lat coordinates to (web)Mercator tile indices
     :param longitude:
@@ -232,7 +235,6 @@ def lonlat_to_mercator_tile_indices(longitude: float, latitude: float, zoom: int
     if flip_y:
         ty = (2 ** zoom - 1) - ty
     return tx, ty
-
 
 
 @contextlib.contextmanager

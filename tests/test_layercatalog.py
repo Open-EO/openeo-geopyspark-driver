@@ -1,5 +1,6 @@
 import os
 import unittest.mock as mock
+import zipfile
 from pathlib import Path
 from typing import List, Tuple
 
@@ -259,10 +260,10 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expe
     ((3.1, 51.2, 3.5, 51.3), 4326),
     ((506986, 5672070, 534857, 5683305), 32631),
 ])
-def test_creodias_dem_subset(bbox, bbox_epsg):
+def test_creodias_dem_subset_geotiff(bbox, bbox_epsg):
     dirs = set()
     symlinks = {}
-    with _S1BackscatterOrfeo._creodias_dem_subset(
+    with _S1BackscatterOrfeo._creodias_dem_subset_geotiff(
             bbox=bbox, bbox_epsg=bbox_epsg, zoom=11,
             dem_path_tpl="/path/to/geotiff/{z}/{x}/{y}.tif"
     ) as temp_dir:
@@ -285,3 +286,24 @@ def test_creodias_dem_subset(bbox, bbox_epsg):
         "11/1043/683.tif": "/path/to/geotiff/11/1043/683.tif",
     }
     assert not temp_dir.exists()
+
+
+@pytest.mark.parametrize(["bbox", "bbox_epsg", "expected"], [
+    ((3.1, 51.2, 3.5, 51.3), 4326, {"N51E003.hgt"}),
+    ((506986, 5672070, 534857, 5683305), 32631, {"N51E003.hgt"}),
+    ((3.8, 51.9, 4.2, 52.1), 4326, {"N51E003.hgt", "N51E004.hgt", "N52E003.hgt", "N52E004.hgt", }),
+    ((-3.1, -51.2, -3.5, -51.3), 4326, {"S51W003.hgt"}),
+])
+def test_creodias_dem_subset_srtm_hgt_unzip(bbox, bbox_epsg, expected, tmp_path):
+    # Set up fake zips.
+    for name in ["N51E003", "N51E004", "N52E003", "N52E004", "S51W003"]:
+        with zipfile.ZipFile(tmp_path / f"{name}.SRTMGL1.hgt.zip", mode="w") as z:
+            with z.open(f"{name}.hgt", mode="w") as f:
+                f.write(b"hgt data here")
+
+    # Check _creodias_dem_subset_srtm_hgt_unzip
+    with _S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+            bbox=bbox, bbox_epsg=bbox_epsg, srtm_root=str(tmp_path)
+    ) as temp_dem_dir:
+        temp_dem_dir = Path(temp_dem_dir)
+        assert set(os.listdir(temp_dem_dir)) == expected

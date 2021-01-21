@@ -13,6 +13,8 @@ import geopyspark
 import numpy
 import pyproj
 import pyspark
+import shapely.geometry
+import shapely.ops
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from shapely.geometry import box
 
@@ -526,22 +528,24 @@ class _S1BackscatterOrfeo:
                 raise OpenEOApiException("No tiffs found")
             logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
 
-            if sar_backscatter_arguments.elevation_model is None:
-                dem_tile_size = 512
-                dem_path_tpl = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
-                dem_zoom_level = sar_backscatter_arguments.options.get("dem_zoom_level", 10)
-            else:
-                # TODO: support different kind of elevation models?
-                raise FeatureUnsupportedException(
-                    f"Custom elevation models are not supported: {sar_backscatter_arguments.elevation_model}"
-                )
-
             if sar_backscatter_arguments.orthorectify:
-                dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset(
-                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]),
-                    bbox_epsg=key_epsg,
-                    zoom=dem_zoom_level, dem_tile_size=dem_tile_size, dem_path_tpl=dem_path_tpl
-                )
+                if sar_backscatter_arguments.elevation_model in [None, "SRTMGL1"]:
+                    dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+                        bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
+                        srtm_root="/eodata/auxdata/SRTMGL1/dem",
+                    )
+                elif sar_backscatter_arguments.elevation_model in ["geotiff"]:
+                    dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset_geotiff(
+                        bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
+                        zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
+                        dem_tile_size=512,
+                        dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+                    )
+                else:
+                    raise FeatureUnsupportedException(
+                        f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
+                    )
+
             else:
                 # Context that returns None when entering
                 dem_dir_context = nullcontext()
@@ -666,42 +670,74 @@ class _S1BackscatterOrfeo:
         return {zoom: tile_layer}
 
     @staticmethod
-    def _creodias_dem_subset(
-            bbox: Tuple, bbox_epsg: int = 4326, zoom: int = 5,
+    def _creodias_dem_subset_geotiff(
+            bbox: Tuple, bbox_epsg: int, zoom: int = 5,
             dem_tile_size: int = 512, dem_path_tpl: str = "/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
     ) -> tempfile.TemporaryDirectory:
         """
         Create subset of Creodias DEM symlinks covering the given lon-lat bbox to pass to Orfeo
+        based on the geotiff DEM tiles at /eodata/auxdata/Elevation-Tiles/geotiff/Z/X/Y.tiff
 
         :return: tempfile.TemporaryDirectory to be used as context manager (for automatic cleanup)
         """
         # Get "bounding box" of DEM tiles
-        w, s, e, n = bbox
-        to_lonlat = pyproj.Transformer.from_crs(crs_from=bbox_epsg, crs_to=4326, always_xy=True)
-        corners_lonlat = [to_lonlat.transform(x, y) for (x, y) in [(w, s), (e, s), (e, n), (w, n)]]
-        bbox_tile_indices = [
-            lonlat_to_mercator_tile_indices(lon, lat, zoom=zoom, tile_size=dem_tile_size, flip_y=True)
-            for (lon, lat) in corners_lonlat
-        ]
-        logger.info("DEM tile indices for {b} (epsg {e}) at zoom level {z}: {t}".format(
-            b=bbox, e=bbox_epsg, z=zoom, t=bbox_tile_indices
-        ))
-        xmin, xmax = min(t[0] for t in bbox_tile_indices), max(t[0] for t in bbox_tile_indices)
-        ymin, ymax = min(t[1] for t in bbox_tile_indices), max(t[1] for t in bbox_tile_indices)
+        bbox_lonlat = shapely.ops.transform(
+            pyproj.Transformer.from_crs(crs_from=bbox_epsg, crs_to=4326, always_xy=True).transform,
+            shapely.geometry.box(*bbox)
+        )
+        bbox_indices = shapely.ops.transform(
+            lambda x, y: lonlat_to_mercator_tile_indices(x, y, zoom=zoom, tile_size=dem_tile_size, flip_y=True),
+            bbox_lonlat
+        )
+        xmin, ymin, xmax, ymax = [int(b) for b in bbox_indices.bounds]
 
         # Set up temp symlink tree
-        temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-creodias-dem")
+        temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-dem-geotiff")
         root = pathlib.Path(temp_dir.name)
         logger.info(
-            "Creating temporary DEM tile subset tree {r!s}/{z}/[{xi}:{xa}]/[{yi}:{ya}] ({c} tiles) symlinking to {t}".format(
-                r=root, z=zoom, xi=xmin, xa=xmax, yi=ymin, ya=ymax, c=(xmax - xmin + 1) * (ymax - ymin + 1),
-                t=dem_path_tpl
+            "Creating temporary DEM tile subset tree for {b} (epsg {e}): {r!s}/{z}/[{xi}:{xa}]/[{yi}:{ya}] ({c} tiles) symlinking to {t}".format(
+                b=bbox, e=bbox_epsg, r=root, z=zoom, xi=xmin, xa=xmax, yi=ymin, ya=ymax,
+                c=(xmax - xmin + 1) * (ymax - ymin + 1), t=dem_path_tpl
             ))
         for x in range(xmin, xmax + 1):
             x_dir = (root / str(zoom) / str(x))
             x_dir.mkdir(parents=True, exist_ok=True)
             for y in range(ymin, ymax + 1):
                 (x_dir / ("%d.tif" % y)).symlink_to(dem_path_tpl.format(z=zoom, x=x, y=y))
+
+        return temp_dir
+
+    @staticmethod
+    def _creodias_dem_subset_srtm_hgt_unzip(
+            bbox: Tuple, bbox_epsg: int, srtm_root="/eodata/auxdata/SRTMGL1/dem"
+    ) -> tempfile.TemporaryDirectory:
+        """
+        Create subset of Creodias SRTM hgt files covering the given lon-lat bbox to pass to Orfeo
+        obtained from unzipping the necessary .SRTMGL1.hgt.zip files at /eodata/auxdata/SRTMGL1/dem/
+        (e.g. N50E003.SRTMGL1.hgt.zip)
+
+        :return: tempfile.TemporaryDirectory to be used as context manager (for automatic cleanup)
+        """
+        # Get range of lon-lat tiles to cover
+        to_lonlat = pyproj.Transformer.from_crs(crs_from=bbox_epsg, crs_to=4326, always_xy=True)
+        bbox_lonlat = shapely.ops.transform(to_lonlat.transform, shapely.geometry.box(*bbox)).bounds
+        lon_min, lat_min, lon_max, lat_max = [int(b) for b in bbox_lonlat]
+
+        # Unzip to temp dir
+        temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-dem-srtm")
+        logger.info(f"Unzip SRTM tiles from {srtm_root}"
+                    f" in range lon [{lon_min}:{lon_max}] x lat [{lat_min}:{lat_max}] to {temp_dir}")
+        for lon in range(lon_min, lon_max + 1):
+            for lat in range(lat_min, lat_max + 1):
+                # Something like: N50E003.SRTMGL1.hgt.zip"
+                basename = "{ns}{lat:02d}{ew}{lon:03d}.SRTMGL1.hgt".format(
+                    ew="E" if lon >= 0 else "W", lon=abs(lon),
+                    ns="N" if lat >= 0 else "S", lat=abs(lat)
+                )
+                zip_filename = pathlib.Path(srtm_root) / (basename + '.zip')
+                with zipfile.ZipFile(zip_filename, 'r') as z:
+                    logger.info(f"{zip_filename}: {z.infolist()}")
+                    z.extractall(temp_dir.name)
 
         return temp_dir
 
