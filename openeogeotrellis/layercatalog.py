@@ -651,8 +651,7 @@ class _S1BackscatterOrfeo:
                 logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
                 with rasterio.open(out_path) as ds:
                     logger.info(log_prefix + "Output tiff metadata: {m}, bounds {b}".format(m=ds.meta, b=ds.bounds))
-                    # TODO EP-3612: check band count. make sure we pick the right band.
-                    # TODO EP-3612: also check projection/CRS...?
+                    assert (ds.count, ds.width, ds.height) == (1, tile_size, tile_size)
                     data = ds.read(1)
                     nodata = ds.nodata
 
@@ -741,54 +740,6 @@ class _S1BackscatterOrfeo:
                     z.extractall(temp_dir.name)
 
         return temp_dir
-
-    def oscars(
-            self,
-            from_date: str, to_date: str,
-            projected_polygons,
-            collection_id: str = "urn:eop:VITO:CGS_S1_GRD_L1",
-            correlation_id: str = "NA",
-            # TODO: what to do with zoom? Highest level? lowest level?
-            zoom=0,
-    ):
-        raise RuntimeError("WIP")
-
-        # TODO openSearchLinkTitles?  attributeValues
-        file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.oscars(collection_id, [], {}, correlation_id)
-
-        pyrdd, layer_metadata_sc = self._load_feature_rdd(
-            file_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date, zoom=zoom,
-            tile_size=tile_size
-        )
-
-        def load_data(metadata: str):
-            # Oscars search response (passed as JSON dump)
-            metadata = json.loads(metadata)
-
-            # Get path to GRD zip file on disk
-            grds = [link["href"]["file"] for link in metadata["feature"]["links"] if link["title"] == "GRD"]
-            if len(grds) != 1:
-                # TODO: raise exception?
-                logger.error("One GRD link expected, but got {c}. Metadata: {m}".format(c=len(grds), m=metadata))
-                return None
-            grd_zip_path = grds[0]
-            logger.info("GRD file: {g}".format(g=grd_zip_path))
-
-            # Extract TIFF from zip
-            with tempfile.TemporaryDirectory(suffix=".oeogps-s1bs") as work_dir:
-                logger.info("Working in temp dir {t}".format(t=work_dir))
-
-                with zipfile.ZipFile(grd_zip_path, 'r') as grd_zip:
-                    regex = re.compile(r'.*/measurement/.*tiff?$')
-                    tiffs = [p for p in grd_zip.infolist() if regex.match(p.filename)]
-                    logger.info("{c} TIFF files in zip: {t}".format(c=len(tiffs), t=tiffs))
-                    # TODO: use cube bands: VV/VH
-                    tiff_name = tiffs[0]
-                    with TimingLogger(title="Extract {t} from {z}".format(t=tiff_name, z=grd_zip_path), logger=logger):
-                        tiff_path = grd_zip.extract(tiffs[0], path=work_dir)
-                        raise RuntimeError("WIP")
-
-        tile_layer = pyrdd.map(load_data)
 
 
 def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> GeoPySparkLayerCatalog:
