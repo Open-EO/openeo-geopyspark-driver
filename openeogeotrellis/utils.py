@@ -1,23 +1,23 @@
 import collections
+import contextlib
 import grp
 import logging
 import math
 import os
-from pathlib import Path
 import pwd
-import stat
-from typing import Union
-import contextlib
 import resource
+import stat
+from pathlib import Path
+from typing import Union
 
-from dateutil.parser import parse
-from py4j.java_gateway import JavaGateway
 import pytz
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from dateutil.parser import parse
 from kazoo.client import KazooClient
-from .configparams import ConfigParams
+from py4j.java_gateway import JavaGateway, JVMView
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 from openeo_driver.delayed_vector import DelayedVector
+from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
 
@@ -39,6 +39,15 @@ def log_memory(function):
             ml.stop()
 
     return memory_logging_wrapper
+
+
+def get_jvm() -> JVMView:
+    import geopyspark
+    pysc = geopyspark.get_spark_context()
+    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
+    jvm = gateway.jvm
+    return jvm
+
 
 def kerberos():
     import geopyspark as gps
