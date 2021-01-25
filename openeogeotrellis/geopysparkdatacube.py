@@ -17,6 +17,7 @@ import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
 from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType
+from openeo_driver.datastructs import ResolutionMergeArgs
 from pandas import Series
 from py4j.java_gateway import JVMView
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
@@ -1568,3 +1569,19 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return wv
+
+    def resolution_merge(self, args: ResolutionMergeArgs) -> 'GeopysparkDataCube':
+        high_band_indices = [self.metadata.get_band_index(b) for b in args.high_resolution_bands]
+        low_band_indices = [self.metadata.get_band_index(b) for b in args.low_resolution_bands]
+        #TODO only works for Sentinel-2, throw error otherwise
+        merged = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd,
+                   level: gps.get_spark_context()._jvm.org.openeo.geotrellis.ard.Pansharpening().pansharpen_sentinel2(
+                rdd,
+                high_band_indices,
+                low_band_indices
+
+            )
+        )
+        return merged
+
