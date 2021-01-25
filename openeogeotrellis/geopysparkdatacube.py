@@ -1528,10 +1528,10 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
-    def apply_atmospheric_correction(self) -> 'GeopysparkDataCube':
-        return self.atmospheric_correction()
+    def apply_atmospheric_correction(self, missionID: str) -> 'GeopysparkDataCube':
+        return self.atmospheric_correction(missionID)
 
-    def atmospheric_correction(self) -> 'GeopysparkDataCube':
+    def atmospheric_correction(self, missionID: str) -> 'GeopysparkDataCube':
         # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
@@ -1545,13 +1545,15 @@ class GeopysparkDataCube(DriverDataCube):
                 #sza,vza,raa,gnd,aot,cwv,ozone
                 [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33],
                 # DEM or SRTM
-                "DEM"
+                "DEM",
+                # SENTINEL2 or LANDSAT8 for now
+                missionID
             )
         )
         return atmo_corrected
+    
 
-
-    def water_vapor(self) -> 'GeopysparkDataCube':
+    def water_vapor(self, missionID: str) -> 'GeopysparkDataCube':
         # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
@@ -1562,9 +1564,11 @@ class GeopysparkDataCube(DriverDataCube):
                 "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
                 bandIds,
                 [0.0001,1.0],
-                [np.NaN, np.NaN, np.NaN, np.NaN, 0.1, 0.33]
                 #sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33
                 # sza,saa,vza,vaa angles are fallbacks if no bands provided
+                [np.NaN, np.NaN, np.NaN, np.NaN, 0.1, 0.33],
+                # SENTINEL2 or LANDSAT8 for now
+                missionID
             )
         )
         return wv
