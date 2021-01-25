@@ -1,5 +1,5 @@
-from typing import List, Tuple
 import unittest.mock as mock
+from typing import List, Tuple
 
 import pytest
 import schema

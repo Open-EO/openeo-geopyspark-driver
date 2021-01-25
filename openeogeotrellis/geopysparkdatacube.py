@@ -1,4 +1,3 @@
-import functools
 import json
 import logging
 import math
@@ -6,6 +5,7 @@ import pathlib
 import subprocess
 import tempfile
 from datetime import datetime, date
+from functools import partial
 from typing import Dict, List, Union, Tuple, Iterable, Callable
 
 import geopyspark as gps
@@ -27,6 +27,7 @@ from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
 from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
 from openeo_driver.save_result import AggregatePolygonResult
@@ -379,13 +380,13 @@ class GeopysparkDataCube(DriverDataCube):
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
             floatrdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
-            grouped_by_spatial_key = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
+            spatially_grouped = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
+            numpy_rdd = spatially_grouped.flatMap(
+                log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
+            )
+            metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
+            return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
-            return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME,
-                                                       grouped_by_spatial_key.flatMap(
-                                                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
-                                                       GeopysparkDataCube._transform_metadata(rdd.layer_metadata,cellType=CellType.FLOAT32))
-        from functools import partial
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def reduce_dimension(
@@ -448,13 +449,13 @@ class GeopysparkDataCube(DriverDataCube):
             print(result_array.dims)
             return (key,Tile(result_array.values, geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
-
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
-            return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type,
-                                                rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
-                                                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))),
-                                                GeopysparkDataCube._transform_metadata(rdd.layer_metadata,cellType=CellType.FLOAT32))
-        from functools import partial
+            numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
+                log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
+            )
+            metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
+            return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
+
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
@@ -523,10 +524,9 @@ class GeopysparkDataCube(DriverDataCube):
         """
         def aggregate_temporally(layer):
             grouped_numpy_rdd = layer.to_spatial_layer().convert_data_type(CellType.FLOAT32).to_numpy_rdd().groupByKey()
-
             composite = grouped_numpy_rdd.mapValues(reducer)
-            aggregated_layer = TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, GeopysparkDataCube._transform_metadata(layer.layer_metadata,cellType=CellType.FLOAT32))
-            return aggregated_layer
+            metadata = GeopysparkDataCube._transform_metadata(layer.layer_metadata, cellType=CellType.FLOAT32)
+            return TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPATIAL, composite, metadata)
 
         return self.apply_to_levels(aggregate_temporally)
 
@@ -535,7 +535,7 @@ class GeopysparkDataCube(DriverDataCube):
     def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
         from shapely.ops import transform
 
-        project = functools.partial(
+        project = partial(
             pyproj.transform,
             pyproj.Proj(srs),  # source coordinate system
             pyproj.Proj(dest_srs))  # destination coordinate system
@@ -1035,7 +1035,7 @@ class GeopysparkDataCube(DriverDataCube):
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
         return self._collect_as_xarray(spatial_rdd)
 
-    def save_result(self, filename: str, format: str, format_options: dict = None) -> str:
+    def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
         """
         Save cube to disk
 
@@ -1045,6 +1045,7 @@ class GeopysparkDataCube(DriverDataCube):
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
         """
+        filename = str(filename)
         format = format.upper()
         format_options = format_options or {}
         _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))
@@ -1220,7 +1221,6 @@ class GeopysparkDataCube(DriverDataCube):
 
         # at every date stitch together the layer, still on the workers   
         #mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
-        from functools import partial
         collection=rdd\
             .to_numpy_rdd()\
             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
@@ -1568,3 +1568,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return wv
+
+    def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
+        # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
+        return self
