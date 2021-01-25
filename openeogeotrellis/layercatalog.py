@@ -2,8 +2,7 @@ import logging
 from datetime import datetime, date
 from typing import List, Optional, Callable
 
-from geopyspark import TiledRasterLayer, LayerType
-from py4j.java_gateway import JavaGateway
+import geopyspark
 from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
@@ -12,10 +11,11 @@ from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
+from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch
-from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons
+from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons, get_jvm
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +71,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         experimental = load_params.get("featureflags",{}).get("experimental",False)
 
-        # TODO: avoid local import?
-        import geopyspark as gps
-        pysc = gps.get_spark_context()
+        jvm = get_jvm()
+
         extent = None
-
-        gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
-        jvm = gateway.jvm
-
         spatial_bounds_present = all(b is not None for b in [west, south, east, north])
         if spatial_bounds_present:
             extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
@@ -297,6 +292,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             )
 
+        def file_agera5_pyramid():
+            data_glob = layer_source_info['data_glob']
+            band_file_markers = metadata.band_names
+            date_regex = layer_source_info['date_regex']
+
+            factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory(data_glob, band_file_markers, date_regex)
+
+            return (
+                factory.datacube_seq(projected_polygons, from_date, to_date) if single_level
+                else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
+            )
+
         logger.info("loading pyramid {s}".format(s=layer_source_type))
         if layer_source_type == 's3':
             pyramid = s3_pyramid()
@@ -320,26 +327,39 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = creo_pyramid()
         elif layer_source_type == 'file-cgls':
             pyramid = file_cgls_pyramid()
+        elif layer_source_type == 'file-agera5':
+            pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'creodias-s1-backscatter':
+            pyramid = S1BackscatterOrfeo(jvm=jvm).creodias(
+                projected_polygons=projected_polygons_native_crs,
+                from_date=from_date, to_date=to_date,
+                correlation_id=correlation_id,
+                sar_backscatter_arguments=load_params.sar_backscatter,
+                bands=bands
+            )
         else:
             pyramid = accumulo_pyramid()
 
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        option = jvm.scala.Option
+        if isinstance(pyramid, dict):
+            levels = pyramid
+        else:
+            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+            option = jvm.scala.Option
 
-        levels = {
-            pyramid.apply(index)._1(): TiledRasterLayer(
-                LayerType.SPACETIME,
-                temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
-            )
-            for index in range(0, pyramid.size())
-        }
+            levels = {
+                pyramid.apply(index)._1(): geopyspark.TiledRasterLayer(
+                    geopyspark.LayerType.SPACETIME,
+                    temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())
+                )
+                for index in range(0, pyramid.size())
+            }
 
         if single_level:
             max_zoom = max(levels.keys())
             levels = {max_zoom: levels[max_zoom]}
 
         image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
+            pyramid=geopyspark.Pyramid(levels),
             metadata=metadata
         )
 
@@ -354,6 +374,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             image_collection = image_collection.filter_bands(band_indices)
 
         return image_collection
+
+
 
 
 def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> GeoPySparkLayerCatalog:

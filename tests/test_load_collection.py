@@ -17,12 +17,11 @@ def test_load_collection_bands_missing_required_extent():
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
 
-@mock.patch('openeogeotrellis.layercatalog.JavaGateway', autospec=True)
-def test_load_collection_bands_with_required_extent(javagateway):
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_collection_bands_with_required_extent(get_jvm):
     catalog = get_layer_catalog()
 
-    jvm_mock = MagicMock()
-    javagateway.return_value.jvm = jvm_mock
+    jvm_mock = get_jvm.return_value
     raster_layer = MagicMock()
     jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
     raster_layer.layerMetadata.return_value = '{' \
