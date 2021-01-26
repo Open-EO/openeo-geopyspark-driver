@@ -20,6 +20,7 @@ from py4j.java_gateway import JVMView, JavaObject
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeogeotrellis._utm import utm_zone_from_epsg
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,10 @@ class S1BackscatterOrfeo:
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
+
+        # Geoid for orthorectification: get from options, fallback on config.
+        elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
+        logger.info(f"elev_geoid: {elev_geoid!r}")
 
         # Build RDD of file metadata from Creodias catalog query.
         # TODO openSearchLinkTitles?
@@ -246,9 +251,8 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
                 if dem_dir:
                     ortho_rect.SetParameterString("elev.dem", dem_dir)
-                if sar_backscatter_arguments.options.get("elev_geoid"):
-                    # TODO EP-3705 use a predefined geoid by default
-                    ortho_rect.SetParameterString("elev.geoid", sar_backscatter_arguments.options.get("elev_geoid"))
+                if elev_geoid:
+                    ortho_rect.SetParameterString("elev.geoid", elev_geoid)
                 if sar_backscatter_arguments.options.get("elev_default"):
                     ortho_rect.SetParameterFloat(
                         "elev.default", float(sar_backscatter_arguments.options.get("elev_default"))
