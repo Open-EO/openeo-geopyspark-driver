@@ -10,9 +10,23 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2021-01-26
+### Feature
+Add an experimental resolution_merge for Sentinel-2 based on the implemntation in FORCE.
+
+Support reading Copernicus Global Land NetCDF files.
+
+Support the Sentinelhub batch process API to generate Sentinel-1 backscatter data.
+
+The atmospheric_correction process can now apply iCor on SentinelHub layers.  
+
 ## 2021-01-25
 ### Feature
 - Add implementation of on-the-fly Sentinel1 Backscatter (Sigma0) calculation using Orfeo Toolbox on Creodias (EP-3612)
+
+## 2020-12-06
+### Performance
+Performance improvement for requests with small spatial extents. The backend was loading too much tile metadata. 
 
 ## 2020-11-11
 ### Feature
