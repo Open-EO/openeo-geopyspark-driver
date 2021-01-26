@@ -160,12 +160,12 @@ class S1BackscatterOrfeo:
 
             if sar_backscatter_arguments.orthorectify:
                 if sar_backscatter_arguments.elevation_model in [None, "SRTMGL1"]:
-                    dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+                    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
                         bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
                         srtm_root="/eodata/auxdata/SRTMGL1/dem",
                     )
                 elif sar_backscatter_arguments.elevation_model in ["geotiff"]:
-                    dem_dir_context = _S1BackscatterOrfeo._creodias_dem_subset_geotiff(
+                    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
                         bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
                         zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
                         dem_tile_size=512,
