@@ -1540,7 +1540,6 @@ class GeopysparkDataCube(DriverDataCube):
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
                 gps.get_spark_context()._jsc,
                 rdd,
-                "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
                 bandIds,
                 [0.0001,10000.0],
                 #sza,vza,raa,gnd,aot,cwv,ozone
@@ -1562,7 +1561,6 @@ class GeopysparkDataCube(DriverDataCube):
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.water_vapor.ComputeWaterVapor().correct(
                 gps.get_spark_context()._jsc,
                 rdd,
-                "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",
                 bandIds,
                 [0.0001,1.0],
                 #sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33
