@@ -1534,6 +1534,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def atmospheric_correction(self, missionID: str) -> 'GeopysparkDataCube':
         # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
+        if missionID is None: missionID="SENTINEL2"
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
@@ -1541,7 +1542,6 @@ class GeopysparkDataCube(DriverDataCube):
                 gps.get_spark_context()._jsc,
                 rdd,
                 bandIds,
-                [0.0001,10000.0],
                 #sza,vza,raa,gnd,aot,cwv,ozone
                 [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33],
                 # DEM or SRTM
