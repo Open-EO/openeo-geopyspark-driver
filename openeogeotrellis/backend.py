@@ -1,5 +1,4 @@
 import logging
-import logging
 import os
 import re
 import shutil
@@ -391,6 +390,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 class GpsBatchJobs(backend.BatchJobs):
     _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
+    _OUTPUT_ROOT_DIR = Path("/opt/spark/work-dir") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
 
     def __init__(self, catalog: CollectionCatalog):
         self._catalog = catalog
@@ -557,6 +557,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
                 s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
+                s3_instance.upload_fileobj(file, bucket, "batch_jobs/" + job_specification_file.replace("/opt/spark/work-dir/", ""))
 
                 if api_version:
                     api_version = api_version
@@ -591,10 +592,10 @@ class GpsBatchJobs(backend.BatchJobs):
                 dict = yaml.safe_load(rendered)
 
                 try:
-                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict, pretty=True)
+                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark3-jobs", "sparkapplications", dict, pretty=True)
 
                     time.sleep(5)
-                    status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id))
+                    status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark3-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id))
                     application_id = status_response['status']['sparkApplicationId']
 
                     logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
