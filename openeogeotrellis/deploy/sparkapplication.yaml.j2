@@ -3,14 +3,14 @@ apiVersion: "sparkoperator.k8s.io/v1beta2"
 kind: SparkApplication
 metadata:
   name: {{ job_name }}
-  namespace: spark-jobs
+  namespace: spark3-jobs
 spec:
   type: Python
   pythonVersion: "3"
   mode: cluster
   image: {{ image_name }}
   imagePullPolicy: Always
-  mainApplicationFile: local:///usr/local/lib/python3.7/dist-packages/openeogeotrellis/deploy/batch_job.py
+  mainApplicationFile: local:///usr/local/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py
   arguments:
     - "{{ job_specification }}"
     - "{{ output_dir }}"
@@ -29,7 +29,7 @@ spec:
     "spark.speculation": "true"
     "spark.speculation.interval": "5000ms"
     "spark.speculation.multiplier": "4"
-  sparkVersion: "2.4.5"
+  sparkVersion: "3.0.1"
   restartPolicy:
     type: OnFailure
     onFailureRetries: 0
@@ -55,14 +55,12 @@ spec:
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.debug=true"
     memory: "{{ driver_memory }}"
     labels:
-      version: 2.4.5
+      version: 3.0.1
       name: {{ job_id }}-driver
     serviceAccount: openeo
     volumeMounts:
       - name: "eodata"
         mountPath: "/eodata"
-      - name: "testdata"
-        mountPath: "/data"
   executor:
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
@@ -83,7 +81,7 @@ spec:
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-2.2.0-SNAPSHOT.jar'
-      - 'local:///opt/geotrellis-backend-assembly-0.4.6-openeo.jar'
+      - 'local:///opt/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar'
     files:
       - 'local:///opt/layercatalog.json'
   monitoring:

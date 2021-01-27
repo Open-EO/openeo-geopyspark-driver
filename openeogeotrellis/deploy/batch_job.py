@@ -212,7 +212,7 @@ def main(argv: List[str]) -> None:
             bucket = os.environ.get('SWIFT_BUCKET')
             s3_instance = s3_client()
 
-            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+            s3_instance.download_file(bucket, 'batch_jobs/' + job_specification_file.replace("/opt/spark/work-dir/", ""), job_specification_file)
 
 
         job_specification = _parse(job_specification_file)
@@ -300,7 +300,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         logger.info("Writing results to object storage")
         for file in os.listdir(job_dir):
             full_path = str(job_dir) + "/" + file
-            s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            s3_instance.upload_file(full_path, bucket, "batch_jobs/" + full_path.replace("/opt/spark/work-dir/", ""))
+
 
 if __name__ == '__main__':
     _setup_app_logging()

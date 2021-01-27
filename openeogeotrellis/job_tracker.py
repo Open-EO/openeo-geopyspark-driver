@@ -145,7 +145,7 @@ class JobTracker:
             status = api_instance.get_namespaced_custom_object(
                     "sparkoperator.k8s.io",
                     "v1beta2",
-                    "spark-jobs",
+                    "spark3-jobs",
                     "sparkapplications",
                     "job-{id}-{user}".format(id=job_id, user=user_id))
 
