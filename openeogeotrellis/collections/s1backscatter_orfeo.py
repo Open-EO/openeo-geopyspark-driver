@@ -3,7 +3,9 @@ import logging
 import os
 import pathlib
 import re
+import sys
 import tempfile
+import types
 import zipfile
 from datetime import datetime
 from typing import Dict, Tuple, Union
@@ -24,6 +26,38 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm
 
 logger = logging.getLogger(__name__)
+
+
+def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
+    """
+    Helper to import Orfeo Toolbox module (`otbApplication`), taking care of incomplete environment setup.
+    """
+    try:
+        import otbApplication as otb
+    except ImportError as e:
+        logger.info(f"Failed to load 'otbApplication' module: {e!r}. Will retry with additional env settings.")
+
+        otb_home = os.environ.get(otb_home_env_var, "").rstrip("/")
+        if not otb_home:
+            raise OpenEOApiException(f"Env var {otb_home_env_var} is not set.")
+
+        if "OTB_APPLICATION_PATH" not in os.environ:
+            otb_application_path = f"{otb_home}/lib/otb/applications"
+            logger.info(f"Setting env var 'OTB_APPLICATION_PATH' to {otb_application_path}")
+            os.environ["OTB_APPLICATION_PATH"] = otb_application_path
+
+        otb_python_wrapper = f"{otb_home}/lib/otb/python"
+        if otb_python_wrapper not in sys.path:
+            logger.info(f"Adding to Python path: {otb_python_wrapper}")
+            sys.path.append(otb_python_wrapper)
+
+        # Note: fixing the dynamic linking search paths for orfeo shared libs (in $OTB_HOME/lib)
+        # can not be done at this point because that should happen before Python process starts
+        # (e.g. with `LD_LIBRARY_PATH` env var or `ldconfig`)
+
+        # Retry importing it
+        import otbApplication as otb
+    return otb
 
 
 class S1BackscatterOrfeo:
@@ -228,7 +262,7 @@ class S1BackscatterOrfeo:
             logger.info(
                 log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=key_extent, u=key_utm_zone, c=key_epsg))
 
-            import otbApplication as otb
+            otb = _import_orfeo_toolbox()
 
             def otb_param_dump(app):
                 return {

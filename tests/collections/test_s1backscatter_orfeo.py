@@ -1,4 +1,7 @@
 import os
+import subprocess
+import sys
+import textwrap
 import zipfile
 from pathlib import Path
 
@@ -8,7 +11,7 @@ import rasterio
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
+from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo, _import_orfeo_toolbox
 from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
 
 
@@ -104,3 +107,36 @@ def test_creodias_dem_subset_srtm_hgt_unzip(bbox, bbox_epsg, expected, tmp_path)
     ) as temp_dem_dir:
         temp_dem_dir = Path(temp_dem_dir)
         assert set(os.listdir(temp_dem_dir)) == expected
+
+
+def test_import_orfeo_toolbox(tmp_path, caplog):
+    try:
+        import otbApplication
+        pytest.skip("`import otbApplication` works directly, so we can't (and don't need to) test the fallback mechanism.")
+    except ImportError:
+        pass
+
+    # Set up fake otbApplication module
+    otb_home = tmp_path / "otb_home"
+    otb_module_path = otb_home / "lib/otb/python"
+    otb_module_path.mkdir(parents=True)
+    otb_module_src = textwrap.dedent("""\
+        import os
+        foo = os.environ["OTB_APPLICATION_PATH"]
+    """)
+    with (otb_module_path / "otbApplication.py").open("w") as f:
+        f.write(otb_module_src)
+
+    # Try importing (in a subprocess with isolated state regarding imported modules)
+    test_script = textwrap.dedent("""
+        from openeogeotrellis.collections.s1backscatter_orfeo import _import_orfeo_toolbox
+        otb = _import_orfeo_toolbox()
+        print(otb.foo)
+    """)
+    env = {**os.environ, **{"OTB_HOME": str(otb_home)}}
+    p = subprocess.run(
+        [sys.executable, "-c", test_script],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+    )
+    expected_stdout = f"{otb_home}/lib/otb/applications\n"
+    assert (p.returncode, p.stdout, p.stderr) == (0, expected_stdout.encode("utf8"), b"")
