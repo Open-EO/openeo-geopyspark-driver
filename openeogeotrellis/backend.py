@@ -556,7 +556,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
-                s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
                 s3_instance.upload_fileobj(file, bucket, "batch_jobs/" + job_specification_file.replace("/opt/spark/work-dir/", ""))
 
                 if api_version:
