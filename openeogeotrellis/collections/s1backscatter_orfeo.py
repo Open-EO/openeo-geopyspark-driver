@@ -48,8 +48,12 @@ def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
 
         otb_python_wrapper = f"{otb_home}/lib/otb/python"
         if otb_python_wrapper not in sys.path:
-            logger.info(f"Adding to Python path: {otb_python_wrapper}")
-            sys.path.append(otb_python_wrapper)
+            # TODO: It would be cleaner to append to sys.path instead of prepending,
+            #   but unfortunately on Jenkins test environment there is currently
+            #   a (broken) otbApplication.py in global `/usr/lib64/python3.8/site-packages`,
+            #   which ruins this fallback mechanism.
+            logger.info(f"Prepending to Python path: {otb_python_wrapper}")
+            sys.path.insert(0, otb_python_wrapper)
 
         # Note: fixing the dynamic linking search paths for orfeo shared libs (in $OTB_HOME/lib)
         # can not be done at this point because that should happen before Python process starts
