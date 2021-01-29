@@ -24,7 +24,7 @@ from openeo.metadata import TemporalDimension, SpatialDimension
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog)
+                                   CollectionCatalog, AssetMetadata)
 from openeo_driver.dummy.dummy_backend import DummyDataCube
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException, ServiceUnsupportedException)
@@ -754,16 +754,22 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return False
 
-    def get_results(self, job_id: str, user_id: str) -> Dict[str, str]:
+    def get_results(self, job_id: str, user_id: str) -> Dict[str, AssetMetadata]:
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
-        job_dir=self._get_job_output_dir(job_id=job_id)
-        results_dict= {
-            "out": str(job_dir)
+        job_dir = self._get_job_output_dir(job_id=job_id)
+        results_dict = {
+            "out": AssetMetadata(
+                output_dir=str(job_dir),
+                media_type="application/octet-stream"  # TODO: replace with a more specific one
+            )
         }
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
-            results_dict['profile_dumps.tar.gz']=str(job_dir)
+            results_dict['profile_dumps.tar.gz'] = AssetMetadata(
+                output_dir=str(job_dir),
+                media_type="application/gzip"
+            )
         return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
