@@ -6,7 +6,7 @@ import stat
 import sys
 import uuid
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -114,7 +114,9 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
 
-    return {  # FIXME: dedicated type?
+    # TODO: dedicated type?
+    # TODO: match STAC format?
+    return {
         'geometry': geometry,
         'bbox': bbox,
         'start_datetime': start_date,
@@ -122,8 +124,21 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, metadata_file: Path) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: Path, metadata_file: Path) -> None:
     metadata = extract_result_metadata(tracer)
+
+    if isinstance(result, GeopysparkDataCube):
+        bands = result.metadata.bands
+    elif isinstance(result, ImageCollectionResult):
+        bands = result.cube.metadata.bands
+    else:
+        bands = []
+
+    metadata['assets'] = {
+        output_file.name: {
+            'bands': bands
+        }
+    }
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -253,7 +268,7 @@ def run_job(job_specification, output_file, metadata_file, api_version, job_dir,
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote JSON result to %s" % output_file)
 
-    _export_result_metadata(tracer=tracer, metadata_file=metadata_file)
+    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 
     if ConfigParams().is_kube_deploy:
         import boto3

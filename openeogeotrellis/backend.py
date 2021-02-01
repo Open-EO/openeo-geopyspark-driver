@@ -20,11 +20,11 @@ from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import TemporalDimension, SpatialDimension
+from openeo.metadata import TemporalDimension, SpatialDimension, Band
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog, AssetMetadata)
+                                   CollectionCatalog)
 from openeo_driver.dummy.dummy_backend import DummyDataCube
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException, ServiceUnsupportedException)
@@ -754,22 +754,26 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return False
 
-    def get_results(self, job_id: str, user_id: str) -> Dict[str, AssetMetadata]:
+    def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
         job_dir = self._get_job_output_dir(job_id=job_id)
+        bands = [Band(*properties) for properties in
+                 self.get_results_metadata(job_id, user_id).get("assets", {}).get("out", {}).get("bands", [])]
+
         results_dict = {
-            "out": AssetMetadata(
-                output_dir=str(job_dir),
-                media_type="application/octet-stream"  # TODO: replace with a more specific one
-            )
+            "out": {
+                "output_dir": str(job_dir),
+                "media_type": "application/octet-stream",  # TODO: replace with a more specific one (SaveResult has them based on "format")
+                "bands": bands
+            }
         }
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
-            results_dict['profile_dumps.tar.gz'] = AssetMetadata(
-                output_dir=str(job_dir),
-                media_type="application/gzip"
-            )
+            results_dict['profile_dumps.tar.gz'] = {
+                "output_dir": str(job_dir),
+                "media_type": "application/gzip"
+            }
         return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
