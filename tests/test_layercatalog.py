@@ -111,10 +111,12 @@ def test_get_layer_catalog_from_opensearch():
                     },
                     "acquisitionInformation": [
                         {
-                            "acquisitionParameters": {"beginningDateTime": "2014-10-23T00:00:00Z"}
+                            "acquisitionParameters": {"beginningDateTime": "2014-10-23T00:00:00Z"},
+                            "instrument": {"instrumentShortName": "MSI"}
                         },
                         {
-                            "acquisitionParameters": {"beginningDateTime": "2014-10-24T00:00:00Z"}
+                            "acquisitionParameters": {"beginningDateTime": "2014-10-24T00:00:00Z"},
+                            "instrument": {"instrumentShortName": "MSI"}
                         }
                     ],
                     "bands": [
@@ -182,7 +184,8 @@ def test_get_layer_catalog_from_opensearch():
                         "bitPerValue": 32,
                         "name": "VH"
                     }
-                ]
+                ],
+                "instruments": ["MSI"]
             }
         },
         {

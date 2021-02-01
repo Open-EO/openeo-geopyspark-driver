@@ -465,6 +465,12 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
 
             bands = collection["properties"].get("bands")
 
+            def instruments() -> List[str]:
+                instruments_short_names = [info.get("instrument", {}).get("instrumentShortName") for info in
+                    collection["properties"]["acquisitionInformation"]]
+
+                return list(set([name for name in instruments_short_names if name]))
+
             return {
                 "title": collection["properties"]["title"],
                 "description": collection["properties"]["abstract"],
@@ -483,7 +489,8 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
                     }
                 },
                 "summaries": {
-                    "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None
+                    "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None,
+                    "instruments": instruments()
                 }
             }
 
