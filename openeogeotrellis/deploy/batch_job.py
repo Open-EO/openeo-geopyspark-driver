@@ -129,14 +129,20 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: 
 
     if isinstance(result, GeopysparkDataCube):
         bands = result.metadata.bands
+        max_level = result.pyramid.levels[result.pyramid.max_zoom]
+        nodata = max_level.layer_metadata.no_data_value
     elif isinstance(result, ImageCollectionResult):
         bands = result.cube.metadata.bands
+        max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]  # TODO: assert GeopysparkDataCube?
+        nodata = max_level.layer_metadata.no_data_value
     else:
         bands = []
+        nodata = None
 
     metadata['assets'] = {
         output_file.name: {
-            'bands': bands
+            'bands': bands,
+            'nodata': nodata
         }
     }
 

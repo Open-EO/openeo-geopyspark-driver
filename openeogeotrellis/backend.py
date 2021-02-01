@@ -759,14 +759,17 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status != 'finished':
             raise JobNotFinishedException
         job_dir = self._get_job_output_dir(job_id=job_id)
-        bands = [Band(*properties) for properties in
-                 self.get_results_metadata(job_id, user_id).get("assets", {}).get("out", {}).get("bands", [])]
+
+        out_metadata = self.get_results_metadata(job_id, user_id).get("assets", {}).get("out", {})
+        bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
+        nodata = out_metadata.get("nodata", None)
 
         results_dict = {
             "out": {
                 "output_dir": str(job_dir),
                 "media_type": "application/octet-stream",  # TODO: replace with a more specific one (SaveResult has them based on "format")
-                "bands": bands
+                "bands": bands,
+                "nodata": nodata
             }
         }
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
