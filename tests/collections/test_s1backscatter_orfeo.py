@@ -12,7 +12,8 @@ import rasterio
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo, _import_orfeo_toolbox
+from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo, _import_orfeo_toolbox, \
+    _instant_ms_to_day
 from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
 
 
@@ -144,4 +145,4 @@ def test_import_orfeo_toolbox(tmp_path, caplog):
 
 
 def test_instant_ms_to_day():
-    assert S1BackscatterOrfeo._instant_ms_to_day(1479249799770) == datetime.datetime(2016, 11, 15)
+    assert _instant_ms_to_day(1479249799770) == datetime.datetime(2016, 11, 15)
