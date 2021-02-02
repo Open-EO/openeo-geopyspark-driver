@@ -79,7 +79,8 @@ class JobRegistry:
             bbox=job_info.get("bbox"),
             start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
             end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
-            instruments=job_info.get("instruments", [])
+            instruments=job_info.get("instruments", []),
+            epsg=job_info.get("epsg")
         )
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:

@@ -6,7 +6,7 @@ import stat
 import sys
 import uuid
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -22,7 +22,7 @@ from openeo_driver.save_result import ImageCollectionResult, JSONResult, Multipl
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
 from openeogeotrellis.configparams import ConfigParams
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
@@ -127,19 +127,26 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
 def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: Path, metadata_file: Path) -> None:
     metadata = extract_result_metadata(tracer)
 
+    def epsg_code(gps_crs) -> Optional[int]:
+        crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(gps_crs)
+        return crs.epsgCode().getOrElse(None) if crs.isDefined() else None
+
     if isinstance(result, GeopysparkDataCube):
         bands = result.metadata.bands
         max_level = result.pyramid.levels[result.pyramid.max_zoom]
         nodata = max_level.layer_metadata.no_data_value
+        epsg = epsg_code(max_level.layer_metadata.crs)
         instruments = result.metadata.get("summaries", "instruments", default=[])
     elif isinstance(result, ImageCollectionResult):
         bands = result.cube.metadata.bands
         max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]  # TODO: assert GeopysparkDataCube?
         nodata = max_level.layer_metadata.no_data_value
+        epsg = epsg_code(max_level.layer_metadata.crs)
         instruments = result.cube.metadata.get("summaries", "instruments", default=[])
     else:
         bands = []
         nodata = None
+        epsg = None
         instruments = []
 
     metadata['assets'] = {
@@ -149,6 +156,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: 
         }
     }
 
+    metadata['epsg'] = epsg
     metadata['instruments'] = instruments
 
     with open(metadata_file, 'w') as f:
