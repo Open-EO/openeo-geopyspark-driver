@@ -129,7 +129,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: 
 
     def epsg_code(gps_crs) -> Optional[int]:
         crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(gps_crs)
-        return crs.epsgCode().getOrElse(None) if crs.isDefined() else None
+        return crs.get().epsgCode().getOrElse(None) if crs.isDefined() else None
 
     if isinstance(result, GeopysparkDataCube):
         bands = result.metadata.bands
