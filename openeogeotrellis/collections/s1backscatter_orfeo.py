@@ -99,7 +99,7 @@ class S1BackscatterOrfeo:
         def convert_key(key_sc: JavaObject) -> geopyspark.SpaceTimeKey:
             return geopyspark.SpaceTimeKey(
                 col=key_sc.col(), row=key_sc.row(),
-                instant=datetime.utcfromtimestamp(key_sc.instant() // 1000)
+                instant=self._instant_ms_to_day(key_sc.instant())
             )
 
         bounds_sc = metadata_sc.bounds()
@@ -125,6 +125,16 @@ class S1BackscatterOrfeo:
             bounds=bounds_py, crs=crs_py, cell_type=cell_type_py,
             extent=extent_py, layout_definition=layout_definition_py
         )
+
+    @classmethod
+    def _instant_ms_to_day(self, instant: int) -> datetime:
+        """
+        Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
+        rounded down to day resolution (UTC time 00:00:00), a convention used in other places
+        of our openEO backend implementation and necessary to follow, for example
+        to ensure that timeseries related data joins work properly.
+        """
+        return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:3]))
 
     def creodias(
             self,
@@ -249,7 +259,7 @@ class S1BackscatterOrfeo:
                     logger.info(log_prefix + "Converting backscatter intensity to decibel")
                     tile_data = 10 * numpy.log10(tile_data)
 
-                key = geopyspark.SpaceTimeKey(row=row, col=col, instant=datetime.utcfromtimestamp(instant // 1000))
+                key = geopyspark.SpaceTimeKey(row=row, col=col, instant=self._instant_ms_to_day(instant))
                 cell_type = geopyspark.CellType(tile_data.dtype.name)
                 logger.info(log_prefix + f"Create Tile for key {key} from {tile_data.shape}")
                 tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)

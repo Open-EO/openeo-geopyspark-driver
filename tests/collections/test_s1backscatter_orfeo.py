@@ -1,3 +1,4 @@
+import datetime
 import os
 import subprocess
 import sys
@@ -140,3 +141,7 @@ def test_import_orfeo_toolbox(tmp_path, caplog):
     )
     expected_stdout = f"{otb_home}/lib/otb/applications\n"
     assert (p.returncode, p.stdout, p.stderr) == (0, expected_stdout.encode("utf8"), b"")
+
+
+def test_instant_ms_to_day():
+    assert S1BackscatterOrfeo._instant_ms_to_day(1479249799770) == datetime.datetime(2016, 11, 15)
