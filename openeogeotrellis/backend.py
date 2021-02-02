@@ -763,11 +763,12 @@ class GpsBatchJobs(backend.BatchJobs):
         out_metadata = self.get_results_metadata(job_id, user_id).get("assets", {}).get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
         nodata = out_metadata.get("nodata", None)
+        media_type = out_metadata.get("media_type", "application/octet-stream")
 
         results_dict = {
             "out": {
                 "output_dir": str(job_dir),
-                "media_type": "application/octet-stream",  # TODO: replace with a more specific one (SaveResult has them based on "format")
+                "media_type": media_type,
                 "bands": bands,
                 "nodata": nodata
             }

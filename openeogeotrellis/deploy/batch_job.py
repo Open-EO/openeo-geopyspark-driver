@@ -6,7 +6,7 @@ import stat
 import sys
 import uuid
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -18,7 +18,7 @@ from openeo.util import TimingLogger, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -124,7 +124,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: Path, metadata_file: Path) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -137,9 +137,9 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: 
         nodata = max_level.layer_metadata.no_data_value
         epsg = epsg_code(max_level.layer_metadata.crs)
         instruments = result.metadata.get("summaries", "instruments", default=[])
-    elif isinstance(result, ImageCollectionResult):
+    elif isinstance(result, ImageCollectionResult) and isinstance(result.cube, GeopysparkDataCube):
         bands = result.cube.metadata.bands
-        max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]  # TODO: assert GeopysparkDataCube?
+        max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]
         nodata = max_level.layer_metadata.no_data_value
         epsg = epsg_code(max_level.layer_metadata.crs)
         instruments = result.cube.metadata.get("summaries", "instruments", default=[])
@@ -152,7 +152,8 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: Any, output_file: 
     metadata['assets'] = {
         output_file.name: {
             'bands': bands,
-            'nodata': nodata
+            'nodata': nodata,
+            'media_type': result.get_mimetype()
         }
     }
 
@@ -266,10 +267,12 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     if isinstance(result, GeopysparkDataCube):
         format_options = job_specification.get('output', {})
         format = format_options.pop("format")
-        result.save_result(filename=output_file, format=format, format_options=format_options)
-        _add_permissions(output_file, stat.S_IWGRP)
-        logger.info("wrote image collection to %s" % output_file)
-    elif isinstance(result, ImageCollectionResult):
+        result = ImageCollectionResult(cube=result, format=format, options=format_options)
+
+    if not isinstance(result, SaveResult):  # Assume generic JSON result
+        result = JSONResult(result)
+
+    if isinstance(result, ImageCollectionResult):
         result.save_result(filename=str(output_file))
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
@@ -283,10 +286,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("reduced %d files to %s" % (len(result.files), output_file))
     else:
-        with open(output_file, 'w') as f:
-            json.dump(result, f)
-        _add_permissions(output_file, stat.S_IWGRP)
-        logger.info("wrote JSON result to %s" % output_file)
+        raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 
