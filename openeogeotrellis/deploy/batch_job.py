@@ -64,7 +64,7 @@ def _create_job_dir(job_dir: Path):
     _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
 
-def _add_permissions(path, mode: int):
+def _add_permissions(path: Path, mode: int):
     # FIXME: maybe umask is a better/cleaner option
     current_permission_bits = os.stat(path).st_mode
     os.chmod(path, current_permission_bits | mode)
@@ -188,7 +188,7 @@ def main(argv: List[str]) -> None:
 
     job_specification_file = argv[1]
     job_dir = Path(argv[2])
-    output_file = str(job_dir / argv[3])
+    output_file = job_dir / argv[3]
     log_file = job_dir / argv[4]
     metadata_file = job_dir / argv[5]
     api_version = argv[6] if len(argv) >= 7 else None
@@ -247,7 +247,7 @@ def main(argv: List[str]) -> None:
         raise e
 
 @log_memory
-def run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies: dict):
+def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict):
     process_graph = job_specification['process_graph']
     env = EvalEnv({
         'version': api_version or "1.0.0",
@@ -262,6 +262,7 @@ def run_job(job_specification, output_file, metadata_file, api_version, job_dir,
     if isinstance(result, DelayedVector):
         geojsons = (mapping(geometry) for geometry in result.geometries)
         result = JSONResult(geojsons)
+
     if isinstance(result, GeopysparkDataCube):
         format_options = job_specification.get('output', {})
         format = format_options.pop("format")
@@ -269,7 +270,7 @@ def run_job(job_specification, output_file, metadata_file, api_version, job_dir,
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
     elif isinstance(result, ImageCollectionResult):
-        result.save_result(filename=output_file)
+        result.save_result(filename=str(output_file))
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
     elif isinstance(result, JSONResult):
