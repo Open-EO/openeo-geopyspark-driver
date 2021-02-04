@@ -1529,12 +1529,21 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
-    def apply_atmospheric_correction(self, missionID: str) -> 'GeopysparkDataCube':
-        return self.atmospheric_correction(missionID)
+    def apply_atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
+        return self.atmospheric_correction(missionID     , sza       , vza       , raa       , gnd       , aot       , cwv       , appendDebugBands      )
 
-    def atmospheric_correction(self, missionID: str) -> 'GeopysparkDataCube':
-        # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
+    def atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
         if missionID is None: missionID="SENTINEL2"
+        if sza is None: sza=np.NaN
+        if vza is None: vza=np.NaN
+        if raa is None: raa=np.NaN
+        if gnd is None: gnd=np.NaN
+        if aot is None: aot=np.NaN
+        if cwv is None: cwv=np.NaN
+        if appendDebugBands is not None: 
+            if appendDebugBands==1: appendDebugBands=True
+            else: appendDebugBands=False
+        else: appendDebugBands=False
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
@@ -1542,19 +1551,20 @@ class GeopysparkDataCube(DriverDataCube):
                 gps.get_spark_context()._jsc,
                 rdd,
                 bandIds,
-                #sza,vza,raa,gnd,aot,cwv,ozone
-                [29.0, 5.0, 130.0, 1.0, 0.28, 2.64, 0.33],
+                #[29.0, 5.0, 130.0, nodefault, nodefault, nodefault, 0.33],
+                [sza, vza, raa, gnd, aot, cwv, 0.33],
                 # DEM or SRTM
                 "DEM",
                 # SENTINEL2 or LANDSAT8 for now
-                missionID
+                missionID,
+                appendDebugBands
             )
         )
         return atmo_corrected
     
 
     def water_vapor(self, missionID: str) -> 'GeopysparkDataCube':
-        # TODO: in the future the lookuptables have to be converted and it should contain the band mappings by name, not by int id
+        # TODO: this is getting deprecated since water vapor is part of sentinel atmospheric correction and can be obtained by enabling debug bands
         bandIds=self.metadata.band_names
         _log.info("Bandids: "+str(bandIds))
         wv = self._apply_to_levels_geotrellis_rdd(
