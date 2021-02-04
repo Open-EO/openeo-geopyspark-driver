@@ -1,5 +1,4 @@
 import logging
-import logging
 import os
 import re
 import shutil
@@ -25,7 +24,7 @@ from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
                                    CollectionCatalog)
-from openeo_driver.dummy.dummy_backend import DummyDataCube
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
                                   OpenEOApiException, InternalException, ServiceUnsupportedException)
 from openeo_driver.utils import EvalEnv
@@ -729,6 +728,23 @@ class GpsBatchJobs(backend.BatchJobs):
                         ConfigParams().sentinel_hub_batch_bucket,
                         layer_source_info['client_id'], layer_source_info['client_secret'])
 
+                    sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
+
+                    if sar_backscatter_arguments.backscatter_coefficient == "sigma0":
+                        backscatter_coefficient = "SIGMA0_ELLIPSOID"
+                    elif sar_backscatter_arguments.backscatter_coefficient == "gamma0":
+                        backscatter_coefficient = "GAMMA0_ELLIPSOID"
+                    else:
+                        raise OpenEOApiException(
+                            "Unsupported backscatter coefficient {c!r} (only 'gamma0' and 'sigma0' are supported)."
+                                .format(c=sar_backscatter_arguments.backscatter_coefficient))
+
+                    processing_options = dict_no_none(
+                        backCoeff=backscatter_coefficient,
+                        orthorectify=sar_backscatter_arguments.orthorectify,
+                        demInstance=sar_backscatter_arguments.elevation_model
+                    )
+
                     batch_request_id = batch_processing_service.start_batch_process(
                         layer_source_info['collection_id'],
                         layer_source_info['dataset_id'],
@@ -737,7 +753,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         from_date,
                         to_date,
                         constraints['bands'],
-                        sample_type
+                        sample_type,
+                        processing_options
                     )
 
                     logger.info("scheduled Sentinel Hub batch process {b} for batch job {j}".format(b=batch_request_id,

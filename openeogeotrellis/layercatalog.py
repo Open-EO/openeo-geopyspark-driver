@@ -7,7 +7,7 @@ from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
-from openeo_driver.errors import ProcessGraphComplexityException
+from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
@@ -257,12 +257,34 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                     layer_source_info.get('sample_type', 'UINT16'))
 
-                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(dataset_id, client_id, client_secret,
-                                                                                      sample_type)
+                sar_backscatter_arguments = load_params.sar_backscatter
+
+                if sar_backscatter_arguments.backscatter_coefficient == "sigma0":
+                    backscatter_coefficient = "SIGMA0_ELLIPSOID"
+                elif sar_backscatter_arguments.backscatter_coefficient == "gamma0":
+                    backscatter_coefficient = "GAMMA0_ELLIPSOID"
+                else:
+                    raise OpenEOApiException(
+                        "Unsupported backscatter coefficient {c!r} (only 'gamma0' and 'sigma0' are supported).".format(
+                            c=sar_backscatter_arguments.backscatter_coefficient))
+
+                processing_options = dict_no_none(
+                    backCoeff=backscatter_coefficient,
+                    orthorectify=sar_backscatter_arguments.orthorectify,
+                    demInstance=sar_backscatter_arguments.elevation_model
+                )
+
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
+                    dataset_id,
+                    client_id,
+                    client_secret,
+                    processing_options,
+                    sample_type
+                )
 
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
-                                                 to_date,metadata.band_names) if single_level
+                                                 to_date, metadata.band_names) if single_level
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
 
         def creo_pyramid():
