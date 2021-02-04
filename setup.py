@@ -43,7 +43,7 @@ setup(
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.6+openeo',
         'py4j',
-        'numpy>=1.17.0',
+        'numpy>=1.17.0,<1.19.0',
         'pandas>=0.24.2',
         'matplotlib==3.3.3',
         'geopandas~=0.7.0',
