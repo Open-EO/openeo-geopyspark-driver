@@ -15,6 +15,7 @@ class OpenSearchClient(OpenSearch):
 
     def get_collections(self) -> List[dict]:
         resp = requests.get(url=self.endpoint + "/collections")
+        resp.raise_for_status()
         return resp.json()["features"]
 
     def __repr__(self):
