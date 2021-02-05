@@ -1,10 +1,10 @@
 [
   {
-    "id": "XIP",
-    "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
+    "id": "WUQ",
     "_vito": {
       "data_source": {
-        "opensearch_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+        "opensearch_endpoint": "https://finder.creodias.test",
+        "opensearch_collection_id": "Sentinel1"
       }
     },
     "cube:dimensions": {

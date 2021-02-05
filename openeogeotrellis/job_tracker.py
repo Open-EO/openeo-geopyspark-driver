@@ -35,7 +35,7 @@ class JobTracker:
         self._principal = principal
         self._keytab = keytab
         self._track_interval = 60  # seconds
-        self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(get_opensearch=None))
+        self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(opensearch_enrich=False))
 
     def update_statuses(self) -> None:
         try:

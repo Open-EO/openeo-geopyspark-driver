@@ -5,6 +5,7 @@ import pytest
 import schema
 
 from openeo.util import deep_get
+from openeo_driver.utils import read_json
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
@@ -72,73 +73,25 @@ def skip_sentinelhub_layer():
     datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
 
 
-def test_get_layer_catalog_from_opensearch():
+def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             "tests/data/layercatalog01.json",
             "tests/data/layercatalog02.json",
-            "tests/data/layercatalog03.json"
+            "tests/data/layercatalog03_oscars.json"
         ]
 
-        opensearch = mock.MagicMock()
-        opensearch.get_collections.return_value = [
-            {
-                "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
-                "bbox": [-1.05893, 47.66031, 11.6781, 53.67487],
-                "properties": {
-                    "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
-                    "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by "
-                                "Sentinel-1 is reflected back to the sensor...",
-                    "links": {
-                        "describedby": [
-                            {
-                                "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
-                                "type": "text/html",
-                                "title": "Online User Documentation"
-                            },
-                            {
-                                "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
-                                "type": "text/html"
-                            }
-                        ],
-                        "search": [
-                            {
-                                "href": "http://oscars-01.vgt.vito.be:8080/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
-                                "type": "application/geo+json",
-                                "title": "OpenSearch entry point"
-                            }
-                        ]
-                    },
-                    "acquisitionInformation": [
-                        {
-                            "acquisitionParameters": {"beginningDateTime": "2014-10-23T00:00:00Z"},
-                            "instrument": {"instrumentShortName": "MSI"}
-                        },
-                        {
-                            "acquisitionParameters": {"beginningDateTime": "2014-10-24T00:00:00Z"},
-                            "instrument": {"instrumentShortName": "MSI"}
-                        }
-                    ],
-                    "bands": [
-                        {
-                            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
-                            "type": "VH",
-                            "title": "VH",
-                            "resolution": 10,
-                            "bitPerValue": 32
-                        }
-                    ]
-                }
-            }
-        ]
+        collections_response = read_json("tests/data/collections_oscars01.json")
+        requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
-        all_metadata = get_layer_catalog(lambda _: opensearch).get_all_metadata()
+        all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
 
     assert all_metadata == [
         {
             "id": "XIP",
             "_vito": {
                 "data_source": {
+                    "opensearch_endpoint": "https://services.terrascope.test/catalogue",
                     "opensearch_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
                 }
             },
@@ -166,13 +119,13 @@ def test_get_layer_catalog_from_opensearch():
                 }
             ],
             "cube:dimensions": {
-              "x": {"type": "spatial", "axis": "x"},
-              "y": {"type": "spatial", "axis": "y"},
-              "t": {"type": "temporal"},
-              "bands": {
-                "type": "bands",
-                "values": ["VH"]
-              }
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
+                "t": {"type": "temporal"},
+                "bands": {
+                    "type": "bands",
+                    "values": ["VH"]
+                }
             },
             "summaries": {
                 "eo:bands": [
@@ -208,4 +161,39 @@ def test_get_layer_catalog_from_opensearch():
         {
             "id": "QUU"
         }
+    ]
+
+
+def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock):
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "tests/data/layercatalog01.json",
+            "tests/data/layercatalog04_creodias.json"
+        ]
+        collections_response = read_json("tests/data/collections_creodias01.json")
+        requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
+
+        all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
+
+    assert all_metadata == [
+        {
+            "id": "WUQ",
+            "title": "Sentinel-1 Collection",
+            "description": "Sentinel-1 Collection",
+            "keywords": ["esa", "sentinel", "sentinel1", "s1", "radar"],
+            "_vito": {
+                "data_source": {
+                    "opensearch_collection_id": "Sentinel1",
+                    "opensearch_endpoint": "https://finder.creodias.test"
+                }
+            },
+            "cube:dimensions": {
+                "t": {"type": "temporal"},
+                "x": {"axis": "x", "type": "spatial"},
+                "y": {"axis": "y", "type": "spatial"}
+            },
+        },
+        {"id": "FOO", "license": "mit"},
+        {"id": "BAR", "description": "bar",  "links": ["example.com/bar"]},
+        {"id": "BZZ"}
     ]

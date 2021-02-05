@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 def remove_batch_jobs_before(upper: datetime) -> None:
     _log.info("removing batch jobs before {d}...".format(d=upper))
 
-    batch_jobs = GpsBatchJobs(get_layer_catalog(get_opensearch=None))
+    batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=False))
     batch_jobs.delete_jobs_before(upper)
 
 

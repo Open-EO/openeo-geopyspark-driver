@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime, date
-from typing import List, Optional, Callable, Dict
+from datetime import datetime
+from typing import List, Dict
 
 import geopyspark
 from shapely.geometry import box
 
-from openeo.util import TimingLogger, dict_no_none, Rfc3339, deep_get
+from openeo.util import TimingLogger, dict_no_none, deep_get
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
@@ -15,7 +15,7 @@ from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.opensearch import OpenSearch
+from openeogeotrellis.opensearch import OpenSearchOscars, OpenSearchCreodias
 from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons, get_jvm
 
 logger = logging.getLogger(__name__)
@@ -405,9 +405,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return image_collection
 
 
-
-
-def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
@@ -421,103 +419,7 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
         logger.info(f"Reading layer catalog metadata from {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
 
-    if get_opensearch:
-        opensearch_collections_cache = {}
-
-        def get_opensearch_collections(endpoint: str) -> List[dict]:
-            opensearch_collections = opensearch_collections_cache.get(endpoint)
-
-            if opensearch_collections is None:
-                opensearch = get_opensearch(endpoint)
-                logger.info("Updating layer catalog metadata from {o!r}".format(o=opensearch))
-
-                opensearch_collections = opensearch.get_collections()
-                opensearch_collections_cache[endpoint] = opensearch_collections
-
-            return opensearch_collections
-
-        def derive_from_opensearch_collection_metadata(endpoint: str, collection_id: str) -> dict:
-            rfc3339 = Rfc3339(propagate_none=True)
-            collection = next((c for c in get_opensearch_collections(endpoint) if c["id"] == collection_id), None)
-
-            if not collection:
-                raise ValueError("unknown OSCARS collection {cid}".format(cid=collection_id))
-
-            def transform_link(opensearch_link: dict) -> dict:
-                return dict_no_none(
-                    rel="alternate",
-                    href=opensearch_link["href"],
-                    title=opensearch_link.get("title")
-                )
-
-            def search_link(opensearch_link: dict) -> dict:
-                from urllib.parse import urlparse, urlunparse
-
-                def replace_endpoint(url: str) -> str:
-                    components = urlparse(url)
-
-                    return urlunparse(components._replace(
-                        scheme="https",
-                        netloc="services.terrascope.be",
-                        path="/catalogue" + components.path
-                    ))
-
-                return dict_no_none(
-                    rel="alternate",
-                    href=replace_endpoint(opensearch_link["href"]),
-                    title=opensearch_link.get("title")
-                )
-
-            def date_bounds() -> (date, Optional[date]):
-                acquisition_information = collection["properties"]["acquisitionInformation"]
-                earliest_start_date = None
-                latest_end_date = None
-
-                for info in acquisition_information:
-                    start_datetime = rfc3339.parse_datetime(info["acquisitionParameters"]["beginningDateTime"])
-                    end_datetime = rfc3339.parse_datetime(info["acquisitionParameters"].get("endingDateTime"))
-
-                    if not earliest_start_date or start_datetime.date() < earliest_start_date:
-                        earliest_start_date = start_datetime.date()
-
-                    if end_datetime and (not latest_end_date or end_datetime.date() > latest_end_date):
-                        latest_end_date = end_datetime.date()
-
-                return earliest_start_date, latest_end_date
-
-            earliest_start_date, latest_end_date = date_bounds()
-
-            bands = collection["properties"].get("bands")
-
-            def instruments() -> List[str]:
-                instruments_short_names = [info.get("instrument", {}).get("instrumentShortName") for info in
-                    collection["properties"]["acquisitionInformation"]]
-
-                return list(set([name for name in instruments_short_names if name]))
-
-            return {
-                "title": collection["properties"]["title"],
-                "description": collection["properties"]["abstract"],
-                "extent": {
-                    "spatial": {"bbox": [collection["bbox"]]},
-                    "temporal": {"interval": [
-                        [earliest_start_date.isoformat(), latest_end_date.isoformat() if latest_end_date else None]
-                    ]}
-                },
-                "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]] +
-                         [search_link(l) for l in collection["properties"]["links"].get("search", [])],
-                "cube:dimensions": {
-                    "bands": {
-                        "type": "bands",
-                        "values": [band["title"] for band in bands] if bands else None
-                    }
-                },
-                "summaries": {
-                    "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None,
-                    "instruments": instruments()
-                }
-            }
-
+    if opensearch_enrich:
         opensearch_metadata = {}
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
@@ -525,9 +427,14 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
             if os_cid:
                 os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
                 logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
-                opensearch_metadata[cid] = derive_from_opensearch_collection_metadata(
-                    endpoint=os_endpoint, collection_id=os_cid
-                )
+                # TODO: move this to a OpenSearch factory?
+                if "oscars" in os_endpoint.lower() or "terrascope" in os_endpoint.lower():
+                    opensearch = OpenSearchOscars(endpoint=os_endpoint)
+                elif "creodias" in os_endpoint.lower():
+                    opensearch = OpenSearchCreodias(endpoint=os_endpoint)
+                else:
+                    raise ValueError(os_endpoint)
+                opensearch_metadata[cid] = opensearch.get_metadata(collection_id=os_cid)
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
 
