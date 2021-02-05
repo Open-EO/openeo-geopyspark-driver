@@ -1,11 +1,11 @@
 import logging
 from datetime import datetime, date
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Dict
 
 import geopyspark
 from shapely.geometry import box
 
-from openeo.util import TimingLogger, dict_no_none, Rfc3339
+from openeo.util import TimingLogger, dict_no_none, Rfc3339, deep_get
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
@@ -411,20 +411,15 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
     """
     Get layer catalog (from JSON files)
     """
+    metadata: Dict[str, dict] = {}
+
+    def read_catalog_file(catalog_file) -> Dict[str, dict]:
+        return {coll["id"]: coll for coll in read_json(catalog_file)}
+
     catalog_files = ConfigParams().layer_catalog_metadata_files
-    logger.info("Reading layer catalog metadata from {f!r}".format(f=catalog_files[0]))
-    local_metadata = read_json(catalog_files[0])
-
-    if len(catalog_files) > 1:
-        # Merge local metadata recursively
-        metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
-
-        for path in catalog_files[1:]:
-            logger.info("Updating layer catalog metadata from {f!r}".format(f=path))
-            updates_by_layer_id = {layer["id"]: layer for layer in read_json(path)}
-            metadata_by_layer_id = dict_merge_recursive(metadata_by_layer_id, updates_by_layer_id, overwrite=True)
-
-        local_metadata = list(metadata_by_layer_id.values())
+    for path in catalog_files:
+        logger.info(f"Reading layer catalog metadata from {path}")
+        metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
 
     if get_opensearch:
         opensearch_collections_cache = {}
@@ -523,24 +518,19 @@ def get_layer_catalog(get_opensearch: Callable[[str], OpenSearch] = None) -> Geo
                 }
             }
 
-        opensearch_collection_sources = \
-            {layer_id: collection_source for layer_id, collection_source in
-             {l["id"]: l.get("_vito", {}).get("data_source", {}) for l in local_metadata}.items()
-             if "opensearch_collection_id" in collection_source}
+        opensearch_metadata = {}
+        for cid, collection_metadata in metadata.items():
+            data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
+            os_cid = data_source.get("opensearch_collection_id")
+            if os_cid:
+                os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
+                logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
+                opensearch_metadata[cid] = derive_from_opensearch_collection_metadata(
+                    endpoint=os_endpoint, collection_id=os_cid
+                )
+        if opensearch_metadata:
+            metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
 
-        opensearch_metadata_by_layer_id = {layer_id: derive_from_opensearch_collection_metadata(
-            collection_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint,
-            collection_source["opensearch_collection_id"])
-            for layer_id, collection_source in opensearch_collection_sources.items()}
-    else:
-        opensearch_metadata_by_layer_id = {}
+    return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()))
 
-    local_metadata_by_layer_id = {layer["id"]: layer for layer in local_metadata}
 
-    return GeoPySparkLayerCatalog(
-        all_metadata=list(dict_merge_recursive(
-            opensearch_metadata_by_layer_id,
-            local_metadata_by_layer_id,
-            overwrite=True
-        ).values()),
-    )
