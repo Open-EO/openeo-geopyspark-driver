@@ -7,6 +7,7 @@ from shapely.geometry import box
 
 from openeo.util import TimingLogger, dict_no_none, Rfc3339
 from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
@@ -30,12 +31,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
 
+        metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
+        layer_source_info = metadata.get("_vito", "data_source", default={})
+
+        if load_params.sar_backscatter is not None and not layer_source_info.get("sar_backscatter_compatible", False):
+            raise OpenEOApiException("""Process "sar_backscatter" is not applicable for collection {c}."""
+                                     .format(c=collection_id))
+
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()
 
-        metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
-        layer_source_info = metadata.get("_vito", "data_source", default={})
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
+
         native_crs = layer_source_info.get("native_crs","UTM")
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -257,7 +264,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                     layer_source_info.get('sample_type', 'UINT16'))
 
-                sar_backscatter_arguments = load_params.sar_backscatter
+                sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
 
                 if sar_backscatter_arguments.backscatter_coefficient == "sigma0":
                     backscatter_coefficient = "SIGMA0_ELLIPSOID"
@@ -356,7 +363,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 projected_polygons=projected_polygons_native_crs,
                 from_date=from_date, to_date=to_date,
                 correlation_id=correlation_id,
-                sar_backscatter_arguments=load_params.sar_backscatter,
+                sar_backscatter_arguments=load_params.sar_backscatter or SarBackscatterArgs(),
                 bands=bands
             )
         else:

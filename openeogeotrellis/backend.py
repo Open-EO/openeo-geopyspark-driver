@@ -709,6 +709,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
                 layer_source_info = metadata.get("_vito", "data_source")
 
+                if (constraints.get("sar_backscatter") is not None and
+                        not layer_source_info.get("sar_backscatter_compatible", False)):
+                    raise OpenEOApiException("""Process "sar_backscatter" is not applicable for collection {c}."""
+                                             .format(c=collection_id))
+
                 if layer_source_info['type'] == 'sentinel-hub':
                     jvm = gps.get_spark_context()._gateway.jvm
 
