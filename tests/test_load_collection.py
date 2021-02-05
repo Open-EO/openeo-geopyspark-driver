@@ -5,8 +5,10 @@ from mock import MagicMock
 from openeo_driver.backend import LoadParameters
 from openeo_driver.errors import ProcessGraphComplexityException
 from openeo_driver.utils import EvalEnv
+from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.layercatalog import get_layer_catalog
+import geopyspark as gps
 
 
 def test_load_collection_bands_missing_required_extent():
@@ -16,6 +18,13 @@ def test_load_collection_bands_missing_required_extent():
     with pytest.raises(ProcessGraphComplexityException):
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
+def test_create_params():
+    pysc = gps.get_spark_context()
+    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
+    jvm = gateway.jvm
+    datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+    datacubeParams.tileSize = 256
+    assert datacubeParams.tileSize == 256
 
 @mock.patch('openeogeotrellis.layercatalog.get_jvm')
 def test_load_collection_bands_with_required_extent(get_jvm):

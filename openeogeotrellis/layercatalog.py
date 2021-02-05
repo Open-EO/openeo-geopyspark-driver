@@ -77,6 +77,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         experimental = load_params.get("featureflags",{}).get("experimental",False)
+        tilesize = load_params.get("featureflags",{}).get("tilesize",256)
 
         jvm = get_jvm()
 
@@ -217,8 +218,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
             if single_level:
+                datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+                datacubeParams.tileSize = tilesize
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
-                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id)
+                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id,datacubeParams)
             else:
                 if polygons:
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
