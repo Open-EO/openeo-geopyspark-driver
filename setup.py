@@ -60,6 +60,8 @@ setup(
         'xarray~=0.16.2',
         'Shapely',
         'epsel~=1.0.0',
+        'numbagg==0.1',
+        'Bottleneck==1.3.2'
     ],
     extras_require={
         "dev": tests_require,
