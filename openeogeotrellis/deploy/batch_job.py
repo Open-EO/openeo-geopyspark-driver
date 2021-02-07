@@ -131,14 +131,17 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(gps_crs)
         return crs.get().epsgCode().getOrElse(None) if crs.isDefined() else None
 
+    bands = []
     if isinstance(result, GeopysparkDataCube):
-        bands = result.metadata.bands
+        if result.cube.metadata.has_band_dimension():
+            bands = result.metadata.bands
         max_level = result.pyramid.levels[result.pyramid.max_zoom]
         nodata = max_level.layer_metadata.no_data_value
         epsg = epsg_code(max_level.layer_metadata.crs)
         instruments = result.metadata.get("summaries", "instruments", default=[])
     elif isinstance(result, ImageCollectionResult) and isinstance(result.cube, GeopysparkDataCube):
-        bands = result.cube.metadata.bands
+        if result.cube.metadata.has_band_dimension():
+            bands = result.cube.metadata.bands
         max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]
         nodata = max_level.layer_metadata.no_data_value
         epsg = epsg_code(max_level.layer_metadata.crs)
