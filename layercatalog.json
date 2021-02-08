@@ -1220,7 +1220,8 @@
         "dataset_id": "S1GRD",
         "client_id": "???",
         "client_secret": "!!!",
-        "sample_type": "FLOAT32"
+        "sample_type": "FLOAT32",
+        "sar_backscatter_compatible": true
       }
     },
     "providers": [{"name": "SentinelHub"}],

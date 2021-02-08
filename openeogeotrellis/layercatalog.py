@@ -35,8 +35,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         layer_source_info = metadata.get("_vito", "data_source", default={})
 
         if load_params.sar_backscatter is not None and not layer_source_info.get("sar_backscatter_compatible", False):
-            raise OpenEOApiException("""Process "sar_backscatter" is not applicable for collection {c}."""
-                                     .format(c=collection_id))
+            raise OpenEOApiException(message="""Process "sar_backscatter" is not applicable for collection {c}."""
+                                     .format(c=collection_id), status_code=400)
 
         # TODO is it necessary to do this kerberos stuff here?
         kerberos()

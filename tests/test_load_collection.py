@@ -3,7 +3,8 @@ import pytest
 from mock import MagicMock
 
 from openeo_driver.backend import LoadParameters
-from openeo_driver.errors import ProcessGraphComplexityException
+from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
 
@@ -17,6 +18,26 @@ def test_load_collection_bands_missing_required_extent():
     env = EvalEnv({'require_bounds': True})
     with pytest.raises(ProcessGraphComplexityException):
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
+
+
+def test_load_collection_sar_backscatter_compatible():
+    catalog = get_layer_catalog()
+    load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
+                                 spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
+                                 sar_backscatter=SarBackscatterArgs())
+    catalog.load_collection('SENTINEL1_GAMMA0_SENTINELHUB', load_params=load_params, env=EvalEnv())
+
+
+def test_load_collection_sar_backscatter_incompatible():
+    catalog = get_layer_catalog()
+    load_params = LoadParameters(sar_backscatter=SarBackscatterArgs())
+    with pytest.raises(OpenEOApiException) as exc_info:
+        catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
+
+    assert exc_info.value.status_code == 400
+    assert (exc_info.value.args[0] ==
+            """Process "sar_backscatter" is not applicable for collection TERRASCOPE_S2_TOC_V2.""")
+
 
 def test_create_params():
     pysc = gps.get_spark_context()
