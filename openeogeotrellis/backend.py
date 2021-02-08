@@ -710,8 +710,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 if (constraints.get("sar_backscatter") is not None and
                         not layer_source_info.get("sar_backscatter_compatible", False)):
-                    raise OpenEOApiException("""Process "sar_backscatter" is not applicable for collection {c}."""
-                                             .format(c=collection_id))
+                    raise OpenEOApiException(message=
+                                             """Process "sar_backscatter" is not applicable for collection {c}."""
+                                             .format(c=collection_id), status_code=400)
 
                 if layer_source_info['type'] == 'sentinel-hub':
                     jvm = gps.get_spark_context()._gateway.jvm
@@ -756,7 +757,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         spatial_extent['crs'],
                         from_date,
                         to_date,
-                        constraints['bands'],
+                        constraints.get('bands') or metadata.band_names,
                         sample_type,
                         processing_options
                     )
