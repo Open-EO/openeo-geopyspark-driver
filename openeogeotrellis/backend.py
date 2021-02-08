@@ -757,7 +757,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         spatial_extent['crs'],
                         from_date,
                         to_date,
-                        constraints['bands'],
+                        constraints.get('bands') or metadata.band_names,
                         sample_type,
                         processing_options
                     )
