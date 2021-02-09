@@ -22,6 +22,7 @@ from py4j.java_gateway import JVMView, JavaObject
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
+from openeo_driver.utils import smart_bool
 from openeogeotrellis._utm import utm_zone_from_epsg
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm
@@ -191,7 +192,18 @@ class S1BackscatterOrfeo:
         )
         layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
 
+        if smart_bool(sar_backscatter_arguments.options.get("debug")):
+            with TimingLogger(title="Collect RDD info", logger=logger):
+                record_count = feature_pyrdd.count()
+                key_ranges = {
+                    k: feature_pyrdd.map(lambda f: f["key"][k]).distinct().collect()
+                    for k in ["col", "row", "instant"]
+                }
+                paths = feature_pyrdd.map(lambda f: f["feature"]["id"]).distinct().count()
+                logger.info(f"RDD info: {record_count} records, {paths} creo paths, key_ranges: {key_ranges}")
+
         @epsel.ensure_info_logging
+        @TimingLogger(title="process_feature", logger=logger)
         def process_feature(feature):
 
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
@@ -204,18 +216,19 @@ class S1BackscatterOrfeo:
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
 
-            # We expect the desired geotiff files under `creo_path` at location like
-            #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
-            # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
-            band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
-            band_tiffs = {}
-            for tiff in creo_path.glob("measurement/*.tiff"):
-                match = band_regex.match(tiff.name)
-                if match:
-                    band_tiffs[match.group(1).lower()] = tiff
-            if not band_tiffs:
-                raise OpenEOApiException("No tiffs found")
-            logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
+            with TimingLogger(title=f"{log_prefix} scan {creo_path}", logger=logger):
+                # We expect the desired geotiff files under `creo_path` at location like
+                #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
+                # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
+                band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
+                band_tiffs = {}
+                for tiff in creo_path.glob("measurement/*.tiff"):
+                    match = band_regex.match(tiff.name)
+                    if match:
+                        band_tiffs[match.group(1).lower()] = tiff
+                if not band_tiffs:
+                    raise OpenEOApiException("No tiffs found")
+                logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
 
             logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
             if sar_backscatter_arguments.orthorectify:
@@ -275,6 +288,7 @@ class S1BackscatterOrfeo:
                 tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                 return key, tile
 
+        @TimingLogger(title="orfeo_pipeline", logger=logger)
         def orfeo_pipeline(
                 input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None], tile_size: int = 512,
                 log_prefix: str = ""
