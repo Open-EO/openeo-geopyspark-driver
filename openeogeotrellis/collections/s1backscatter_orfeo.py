@@ -19,6 +19,7 @@ import shapely.geometry
 import shapely.ops
 from py4j.java_gateway import JVMView, JavaObject
 
+from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeogeotrellis._utm import utm_zone_from_epsg
@@ -233,7 +234,8 @@ class S1BackscatterOrfeo:
                 # Context that returns None when entering
                 dem_dir_context = nullcontext()
 
-            with dem_dir_context as dem_dir:
+            msg = f"{log_prefix}Process {creo_path} and load into geopyspark Tile"
+            with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
                 tile_data = numpy.zeros((len(bands), tile_size, tile_size), dtype=result_dtype)
 
@@ -284,7 +286,8 @@ class S1BackscatterOrfeo:
                     for (p, v) in app.GetParameters().items()
                 }
 
-            with tempfile.TemporaryDirectory() as temp_dir:
+            msg = f"{log_prefix}Orfeo processing pipeline on {input_tiff}"
+            with tempfile.TemporaryDirectory() as temp_dir, TimingLogger(title=msg, logger=logger):
 
                 # SARCalibration
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
@@ -330,8 +333,8 @@ class S1BackscatterOrfeo:
                 ortho_rect.ExecuteAndWriteOutput()
 
                 import rasterio
-                logger.info(log_prefix + "Reading orfeo output tiff: {p}".format(p=out_path))
-                with rasterio.open(out_path) as ds:
+                msg = f"{log_prefix}Reading orfeo output tiff: {out_path}"
+                with TimingLogger(title=msg, logger=logger), rasterio.open(out_path) as ds:
                     logger.info(log_prefix + "Output tiff metadata: {m}, bounds {b}".format(m=ds.meta, b=ds.bounds))
                     assert (ds.count, ds.width, ds.height) == (1, tile_size, tile_size)
                     data = ds.read(1)
@@ -407,18 +410,18 @@ class S1BackscatterOrfeo:
 
         # Unzip to temp dir
         temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-dem-srtm")
-        logger.info(f"Unzip SRTM tiles from {srtm_root}"
-                    f" in range lon [{lon_min}:{lon_max}] x lat [{lat_min}:{lat_max}] to {temp_dir}")
-        for lon in range(lon_min, lon_max + 1):
-            for lat in range(lat_min, lat_max + 1):
-                # Something like: N50E003.SRTMGL1.hgt.zip"
-                basename = "{ns}{lat:02d}{ew}{lon:03d}.SRTMGL1.hgt".format(
-                    ew="E" if lon >= 0 else "W", lon=abs(lon),
-                    ns="N" if lat >= 0 else "S", lat=abs(lat)
-                )
-                zip_filename = pathlib.Path(srtm_root) / (basename + '.zip')
-                with zipfile.ZipFile(zip_filename, 'r') as z:
-                    logger.info(f"{zip_filename}: {z.infolist()}")
-                    z.extractall(temp_dir.name)
+        msg = f"Unzip SRTM tiles from {srtm_root} in range lon [{lon_min}:{lon_max}] x lat [{lat_min}:{lat_max}] to {temp_dir}"
+        with TimingLogger(title=msg, logger=logger):
+            for lon in range(lon_min, lon_max + 1):
+                for lat in range(lat_min, lat_max + 1):
+                    # Something like: N50E003.SRTMGL1.hgt.zip"
+                    basename = "{ns}{lat:02d}{ew}{lon:03d}.SRTMGL1.hgt".format(
+                        ew="E" if lon >= 0 else "W", lon=abs(lon),
+                        ns="N" if lat >= 0 else "S", lat=abs(lat)
+                    )
+                    zip_filename = pathlib.Path(srtm_root) / (basename + '.zip')
+                    with zipfile.ZipFile(zip_filename, 'r') as z:
+                        logger.info(f"{zip_filename}: {z.infolist()}")
+                        z.extractall(temp_dir.name)
 
         return temp_dir
