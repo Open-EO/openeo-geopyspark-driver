@@ -184,8 +184,6 @@ class S1BackscatterOrfeo:
 
         @epsel.ensure_info_logging
         def process_feature(feature):
-            if not logging.root.handlers:
-                logging.basicConfig(level=logging.INFO)
 
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
             log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
