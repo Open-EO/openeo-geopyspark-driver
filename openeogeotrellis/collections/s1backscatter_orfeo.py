@@ -182,8 +182,6 @@ class S1BackscatterOrfeo:
         )
         layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
 
-        # TODO EP-3704 eliminate input duplication (diff input files on same col+row+instant key) in feature_pyrdd
-
         @epsel.ensure_info_logging
         def process_feature(feature):
             if not logging.root.handlers:
