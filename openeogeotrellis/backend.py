@@ -682,7 +682,8 @@ class GpsBatchJobs(backend.BatchJobs):
                                                job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
-        from openeo_driver.ProcessGraphDeserializer import convert_node, _expand_macros, ENV_DRY_RUN_TRACER
+        from openeo_driver.macros import expand_macros
+        from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
         from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
         env = EvalEnv()
@@ -690,7 +691,7 @@ class GpsBatchJobs(backend.BatchJobs):
         if api_version:
             env = env.push({"version": api_version})
 
-        preprocessed_process_graph = _expand_macros(process_graph)
+        preprocessed_process_graph = expand_macros(process_graph)
         top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(preprocessed_process_graph)
         result_node = preprocessed_process_graph[top_level_node]
 
@@ -705,7 +706,12 @@ class GpsBatchJobs(backend.BatchJobs):
         for (process, arguments), constraints in source_constraints.items():
             if process == 'load_collection':
                 collection_id, = arguments
+                band_names = constraints.get('bands')
+
                 metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
+                if band_names:
+                    metadata = metadata.filter_bands(band_names)
+
                 layer_source_info = metadata.get("_vito", "data_source")
 
                 if (constraints.get("sar_backscatter") is not None and
@@ -744,6 +750,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             "Unsupported backscatter coefficient {c!r} (only 'gamma0' and 'sigma0' are supported)."
                                 .format(c=sar_backscatter_arguments.backscatter_coefficient))
 
+                    # FIXME: translate additional properties in sar_backscatter_arguments to SHub processing options
                     processing_options = dict_no_none(
                         backCoeff=backscatter_coefficient,
                         orthorectify=sar_backscatter_arguments.orthorectify,
@@ -757,7 +764,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         spatial_extent['crs'],
                         from_date,
                         to_date,
-                        constraints.get('bands') or metadata.band_names,
+                        metadata.band_names,
                         sample_type,
                         processing_options
                     )

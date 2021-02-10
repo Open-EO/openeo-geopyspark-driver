@@ -278,6 +278,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         "Unsupported backscatter coefficient {c!r} (only 'gamma0' and 'sigma0' are supported).".format(
                             c=sar_backscatter_arguments.backscatter_coefficient))
 
+                # FIXME: translate additional properties in sar_backscatter_arguments to SHub processing options
                 processing_options = dict_no_none(
                     backCoeff=backscatter_coefficient,
                     orthorectify=sar_backscatter_arguments.orthorectify,
