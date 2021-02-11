@@ -287,6 +287,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "JSON": {
                     "gis_data_types": ["raster"],
                     "parameters": {},
+                },
+                "CSV": {
+                    "title": "Comma Separated Values",
+                    "gis_data_types": ["raster"],
+                    "parameters": {}
                 }
             }
         }
