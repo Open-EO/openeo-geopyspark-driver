@@ -154,16 +154,25 @@ class S1BackscatterOrfeo:
         # Initial argument checking
         bands = bands or ["VH", "VV"]
 
-        if sar_backscatter_arguments.backscatter_coefficient != "sigma0":
-            raise OpenEOApiException(
-                "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
-                    c=sar_backscatter_arguments.backscatter_coefficient))
+        if sar_backscatter_arguments.rtc:
+            raise FeatureUnsupportedException("sar_backscatter: rtc is not supported")
+        if sar_backscatter_arguments.mask:
+            raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
+        if sar_backscatter_arguments.contributing_area:
+            raise FeatureUnsupportedException("sar_backscatter: contributing_area band is not supported")
+        if sar_backscatter_arguments.local_incidence_angle:
+            raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported")
+        if sar_backscatter_arguments.ellipsoid_incidence_angle:
+            raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
+        if sar_backscatter_arguments.noise_removal:
+            raise FeatureUnsupportedException("sar_backscatter: noise_removal band is not supported")
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
 
         # Geoid for orthorectification: get from options, fallback on config.
         elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
+        elev_default = sar_backscatter_arguments.options.get("elev_default")
         logger.info(f"elev_geoid: {elev_geoid!r}")
 
         # Build RDD of file metadata from Creodias catalog query.
@@ -208,6 +217,7 @@ class S1BackscatterOrfeo:
                 raise OpenEOApiException("No tiffs found")
             logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
 
+            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
             if sar_backscatter_arguments.orthorectify:
                 if sar_backscatter_arguments.elevation_model in [None, "SRTMGL1"]:
                     dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
@@ -254,6 +264,8 @@ class S1BackscatterOrfeo:
                     tile_data[b] = data
 
                 if sar_backscatter_arguments.options.get("to_db", False):
+                    # TODO: keep this "to_db" shortcut feature or drop it
+                    #       and require user to use standard openEO functionality (`apply` based conversion)?
                     logger.info(log_prefix + "Converting backscatter intensity to decibel")
                     tile_data = 10 * numpy.log10(tile_data)
 
@@ -268,7 +280,6 @@ class S1BackscatterOrfeo:
                 log_prefix: str = ""
         ):
             logger.info(log_prefix + f"Input tiff {input_tiff}")
-            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
 
             key_utm_zone, key_utm_northhem = utm_zone_from_epsg(key_epsg)
             logger.info(
@@ -300,10 +311,8 @@ class S1BackscatterOrfeo:
                     ortho_rect.SetParameterString("elev.dem", dem_dir)
                 if elev_geoid:
                     ortho_rect.SetParameterString("elev.geoid", elev_geoid)
-                if sar_backscatter_arguments.options.get("elev_default"):
-                    ortho_rect.SetParameterFloat(
-                        "elev.default", float(sar_backscatter_arguments.options.get("elev_default"))
-                    )
+                if elev_default is not None:
+                    ortho_rect.SetParameterFloat("elev.default", float(elev_default))
                 ortho_rect.SetParameterString("map", "utm")
                 ortho_rect.SetParameterInt("map.utm.zone", key_utm_zone)
                 ortho_rect.SetParameterValue("map.utm.northhem", key_utm_northhem)
