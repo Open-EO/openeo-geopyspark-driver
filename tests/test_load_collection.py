@@ -39,6 +39,21 @@ def test_load_collection_sar_backscatter_incompatible():
             """Process "sar_backscatter" is not applicable for collection TERRASCOPE_S2_TOC_V2.""")
 
 
+def test_load_collection_old_and_new_band_names():
+    catalog = get_layer_catalog()
+
+    temporal_extent = ('2019-01-01', '2019-01-01')
+    spatial_extent = {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
+
+    for bands in [['TOC-B03_10M'], ['B03']]:
+        load_params = LoadParameters(temporal_extent=temporal_extent, bands=bands, spatial_extent=spatial_extent)
+        collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
+
+        print(collection.metadata)
+        assert len(collection.metadata.bands) == 1
+        assert collection.metadata.bands[0].name == 'B03'
+
+
 def test_create_params():
     pysc = gps.get_spark_context()
     gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
