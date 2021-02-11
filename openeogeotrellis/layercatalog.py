@@ -8,7 +8,7 @@ from shapely.geometry import box
 from openeo.util import TimingLogger, dict_no_none, deep_get
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
+from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
@@ -269,16 +269,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
 
-                if sar_backscatter_arguments.backscatter_coefficient == "sigma0":
-                    backscatter_coefficient = "SIGMA0_ELLIPSOID"
-                elif sar_backscatter_arguments.backscatter_coefficient == "gamma0":
-                    backscatter_coefficient = "GAMMA0_ELLIPSOID"
-                else:
-                    raise OpenEOApiException(
-                        "Unsupported backscatter coefficient {c!r} (only 'gamma0' and 'sigma0' are supported).".format(
-                            c=sar_backscatter_arguments.backscatter_coefficient))
+                if sar_backscatter_arguments.rtc:
+                    if not sar_backscatter_arguments.orthorectify:
+                        raise OpenEOApiException("sar_backscatter: rtc requires orthorectify")
 
-                # FIXME: translate additional properties in sar_backscatter_arguments to SHub processing options
+                    backscatter_coefficient = "GAMMA0_TERRAIN"
+                else:
+                    raise FeatureUnsupportedException("sar_backscatter: only rtc is supported")
+
+                if not sar_backscatter_arguments.noise_removal:
+                    raise FeatureUnsupportedException("sar_backscatter: only noise_removal is supported")
+
+                # FIXME: support mask, contributing_area, local_incidence_angle and ellipsoid_incidence_angle
                 processing_options = dict_no_none(
                     backCoeff=backscatter_coefficient,
                     orthorectify=sar_backscatter_arguments.orthorectify,
