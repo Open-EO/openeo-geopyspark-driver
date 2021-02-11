@@ -175,7 +175,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
                                                         ConfigParams().default_opensearch_endpoint)
             opensearch_collection_id = layer_source_info['opensearch_collection_id']
-            opensearch_link_titles = metadata.band_names
+            opensearch_link_titles = metadata.internal_band_names
             root_path = layer_source_info['root_path']
 
             def extract_literal_match(condition) -> (str, object):
