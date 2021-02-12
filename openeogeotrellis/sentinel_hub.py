@@ -10,7 +10,7 @@ def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
 
         backscatter_coefficient = "GAMMA0_TERRAIN"
     else:
-        raise FeatureUnsupportedException("sar_backscatter: only rtc is supported")
+        backscatter_coefficient = "GAMMA0_ELLIPSOID"
 
     if not sar_backscatter_arguments.noise_removal:
         raise FeatureUnsupportedException("sar_backscatter: only noise_removal is supported")
