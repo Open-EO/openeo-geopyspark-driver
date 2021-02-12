@@ -6,16 +6,15 @@ from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     if sar_backscatter_arguments.rtc:
         if not sar_backscatter_arguments.orthorectify:
-            raise OpenEOApiException("sar_backscatter: rtc requires orthorectify")
+            raise OpenEOApiException("sar_backscatter: orthorectify must be enabled for rtc")
 
         backscatter_coefficient = "GAMMA0_TERRAIN"
     else:
         backscatter_coefficient = "GAMMA0_ELLIPSOID"
 
     if not sar_backscatter_arguments.noise_removal:
-        raise FeatureUnsupportedException("sar_backscatter: only noise_removal is supported")
+        raise FeatureUnsupportedException("sar_backscatter: noise_removal must be enabled")
 
-    # FIXME: support mask, contributing_area, local_incidence_angle and ellipsoid_incidence_angle
     return dict_no_none(
         backCoeff=backscatter_coefficient,
         orthorectify=sar_backscatter_arguments.orthorectify,
