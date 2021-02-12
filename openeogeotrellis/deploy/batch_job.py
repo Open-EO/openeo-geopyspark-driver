@@ -88,18 +88,21 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     temporal_extent = temporal_extent_union(*[
         sc["temporal_extent"] for sc in source_constraints.values() if "temporal_extent" in sc
     ])
-    spatial_extent = spatial_extent_union(*[
-        sc["spatial_extent"] for sc in source_constraints.values() if "spatial_extent" in sc
-    ])
-
-    start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
-
-    bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
-    if all(b is not None for b in bbox):
-        geometry = mapping(Polygon.from_bounds(*bbox))
+    extents = [sc["spatial_extent"] for sc in source_constraints.values() if "spatial_extent" in sc]
+    if(len(extents) > 0):
+        spatial_extent = spatial_extent_union(*extents)
+        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        if all(b is not None for b in bbox):
+            geometry = mapping(Polygon.from_bounds(*bbox))
+        else:
+            bbox = None
+            geometry = None
     else:
         bbox = None
         geometry = None
+
+
+    start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
     aggregate_spatial_geometries = tracer.get_geometries()
     if aggregate_spatial_geometries:
