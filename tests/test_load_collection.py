@@ -49,7 +49,6 @@ def test_load_collection_old_and_new_band_names():
         load_params = LoadParameters(temporal_extent=temporal_extent, bands=bands, spatial_extent=spatial_extent)
         collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
 
-        print(collection.metadata)
         assert len(collection.metadata.bands) == 1
         assert collection.metadata.bands[0].name == 'B03'
 
