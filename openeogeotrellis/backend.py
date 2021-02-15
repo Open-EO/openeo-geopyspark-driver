@@ -747,6 +747,16 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
 
+                    shub_band_names = metadata.band_names
+
+                    if sar_backscatter_arguments.mask:
+                        shub_band_names.append('mask')
+
+                    if sar_backscatter_arguments.local_incidence_angle:
+                        shub_band_names.append('localIncidenceAngle')
+
+                    # FIXME: support contributing_area (under investigation by Anze)
+
                     batch_request_id = batch_processing_service.start_batch_process(
                         layer_source_info['collection_id'],
                         layer_source_info['dataset_id'],
@@ -754,7 +764,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         spatial_extent['crs'],
                         from_date,
                         to_date,
-                        metadata.band_names,
+                        shub_band_names,
                         sample_type,
                         sentinel_hub.processing_options(sar_backscatter_arguments)
                     )

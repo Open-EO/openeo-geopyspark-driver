@@ -6,6 +6,7 @@ import geopyspark
 from openeogeotrellis import sentinel_hub
 from shapely.geometry import box
 
+from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -240,6 +241,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date)
 
         def sentinel_hub_pyramid():
+            # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
+            nonlocal metadata
+
             dependencies = env.get('dependencies', {})
 
             logger.info("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
@@ -259,6 +263,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     interpret_as_cell_type
                 )
 
+                sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+
+                if sar_backscatter_arguments.mask:
+                    metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
+
+                if sar_backscatter_arguments.local_incidence_angle:
+                    metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
+                                                         wavelength_um=None))
+
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, None, None))
             else:
@@ -270,6 +283,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
 
+                shub_band_names = metadata.band_names
+
+                if sar_backscatter_arguments.mask:
+                    metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
+                    shub_band_names.append('dataMask')
+
+                if sar_backscatter_arguments.local_incidence_angle:
+                    metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
+                                                         wavelength_um=None))
+                    shub_band_names.append('localIncidenceAngle')
+
+                # FIXME: support contributing_area (under investigation by Anze)
+
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
                     dataset_id,
                     client_id,
@@ -279,9 +305,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
 
                 return (
-                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
-                                                 to_date, metadata.band_names) if single_level
-                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
+                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
+                                                 projected_polygons_native_crs.crs(), from_date, to_date,
+                                                 shub_band_names) if single_level
+                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
