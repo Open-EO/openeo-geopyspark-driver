@@ -750,7 +750,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     shub_band_names = metadata.band_names
 
                     if sar_backscatter_arguments.mask:
-                        shub_band_names.append('mask')
+                        shub_band_names.append('dataMask')
 
                     if sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
