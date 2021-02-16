@@ -1218,6 +1218,7 @@
       "data_source": {
         "type": "sentinel-hub",
         "dataset_id": "S1GRD",
+        "collection_id": "sentinel-1-grd",
         "client_id": "???",
         "client_secret": "!!!",
         "sample_type": "FLOAT32",
