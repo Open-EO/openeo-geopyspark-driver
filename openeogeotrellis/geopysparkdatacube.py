@@ -1566,9 +1566,6 @@ class GeopysparkDataCube(DriverDataCube):
         )
         return atmo_corrected
 
-    def atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
-        return self.atmospheric_correction(None,None,missionID,sza,vza,raa,gnd,aot,cwv,appendDebugBands)
-    
 
     def water_vapor(self, missionID: str) -> 'GeopysparkDataCube':
         # TODO: this is getting deprecated since water vapor is part of sentinel atmospheric correction and can be obtained by enabling debug bands
