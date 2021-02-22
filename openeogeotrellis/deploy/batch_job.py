@@ -174,7 +174,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> batch_request_id
+def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> request_group_id
     if not arg or arg == 'no_dependencies':  # TODO: clean this up
         return {}
 

@@ -246,17 +246,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             dependencies = env.get('dependencies', {})
 
-            logger.info("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
-
             if dependencies:
-                batch_request_id = dependencies[collection_id]
+                request_group_id = dependencies[collection_id]
+                logger.info("Sentinel Hub pyramid from request group ID {g}".format(g=request_group_id))
+
                 key_regex = r".*\.tif"
                 date_regex = r".*_(\d{4})(\d{2})(\d{2}).tif"
                 recursive = True
                 interpret_as_cell_type = "float32ud0"
 
                 pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                    "s3://{b}/{i}/".format(b=ConfigParams().sentinel_hub_batch_bucket, i=batch_request_id),
+                    "s3://{b}/{g}/".format(b=ConfigParams().sentinel_hub_batch_bucket, g=request_group_id),
                     key_regex,
                     date_regex,
                     recursive,

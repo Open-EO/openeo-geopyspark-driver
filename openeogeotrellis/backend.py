@@ -1,4 +1,5 @@
 import logging
+import operator
 import os
 import re
 import shutil
@@ -8,6 +9,7 @@ import tempfile
 import traceback
 import uuid
 from datetime import datetime
+from functools import reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Dict
@@ -437,7 +439,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return registry.job_info_to_metadata(job_info)
 
     def _poll_sentinelhub_batch_processes(self, job_id: str, user_id: str, job_info: dict):
-        def status(batch_process_dependency: dict) -> str:
+        def statuses(batch_process_dependency: dict) -> List[str]:
             collection_id = batch_process_dependency['collection_id']
 
             metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
@@ -450,11 +452,13 @@ class GpsBatchJobs(backend.BatchJobs):
             batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                 ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
 
-            batch_request_id = batch_process_dependency['batch_request_id']
-            return batch_processing_service.get_batch_process_status(batch_request_id)
+            batch_request_ids = batch_process_dependency.get('batch_request_ids',
+                                                             [batch_process_dependency['batch_request_id']])
+
+            return [batch_processing_service.get_batch_process_status(request_id) for request_id in batch_request_ids]
 
         dependencies = job_info.get('dependencies', [])
-        statuses = set((status(batch_process) for batch_process in dependencies))
+        statuses = set(reduce(operator.add, (statuses(batch_process) for batch_process in dependencies)))
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
 
@@ -508,7 +512,9 @@ class GpsBatchJobs(backend.BatchJobs):
             if (batch_process_dependencies is None and extra_options.get('sentinel-hub-batch', False)
                     and job_info.get('dependency_status') not in ['awaiting', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id)):
+                                                                    user_id, job_id,
+                                                                    card4l=
+                                                                    extra_options['sentinel-hub-batch'] == 'card4l')):
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return
@@ -528,7 +534,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up
 
-                pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['batch_request_id'])
+                pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['request_group_id'])
                          for dependency in dependencies]
 
                 return ",".join(pairs)
@@ -685,7 +691,8 @@ class GpsBatchJobs(backend.BatchJobs):
             raise _BatchJobError(stream)
 
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
+                                               job_registry: JobRegistry, user_id: str, job_id: str,
+                                               card4l: bool) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.macros import expand_macros
@@ -757,24 +764,45 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     # FIXME: support contributing_area (under investigation by Anze)
 
-                    batch_request_id = batch_processing_service.start_batch_process(
-                        layer_source_info['collection_id'],
-                        layer_source_info['dataset_id'],
-                        bbox,
-                        spatial_extent['crs'],
-                        from_date,
-                        to_date,
-                        shub_band_names,
-                        sample_type,
-                        sentinel_hub.processing_options(sar_backscatter_arguments)
-                    )
+                    # cannot be the batch job ID because results for multiple collections would end up in
+                    #  the same S3 dir
+                    request_group_id = str(uuid.uuid4())
 
-                    logger.info("scheduled Sentinel Hub batch process {b} for batch job {j}".format(b=batch_request_id,
-                                                                                                    j=job_id))
+                    if card4l:
+                        subfolder = request_group_id
+
+                        # return type py4j.java_collections.JavaList is not JSON serializable
+                        batch_request_ids = list(batch_processing_service.start_card4l_batch_processes(
+                            layer_source_info['collection_id'],
+                            layer_source_info['dataset_id'],
+                            bbox,
+                            spatial_extent['crs'],
+                            from_date,
+                            to_date,
+                            shub_band_names,
+                            subfolder,
+                            request_group_id)
+                        )
+                    else:
+                        batch_request_ids = [batch_processing_service.start_batch_process(
+                            layer_source_info['collection_id'],
+                            layer_source_info['dataset_id'],
+                            bbox,
+                            spatial_extent['crs'],
+                            from_date,
+                            to_date,
+                            shub_band_names,
+                            sample_type,
+                            sentinel_hub.processing_options(sar_backscatter_arguments)
+                        )]
+
+                    logger.info("scheduled Sentinel Hub batch process(es) {bs} for batch job {j} (CARD4L {c})"
+                                .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"))
 
                     batch_process_dependencies.append({
                         'collection_id': collection_id,
-                        'batch_request_id': batch_request_id
+                        'batch_request_ids': batch_request_ids,  # to poll SHub
+                        'request_group_id': request_group_id  # doubles as the S3 output folder
                     })
 
         if batch_process_dependencies:
