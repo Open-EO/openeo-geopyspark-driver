@@ -106,10 +106,8 @@ class JobTracker:
 
                                             if new_status == 'finished':
                                                 def request_ids(dependency) -> List[str]:
-                                                    batch_request_ids = dependency.get('batch_request_ids')
-                                                    if batch_request_ids is None:
-                                                        batch_request_ids = [dependency['batch_request_id']]
-                                                    return batch_request_ids
+                                                    return (dependency.get('batch_request_ids') or
+                                                            [dependency['batch_request_id']])
 
                                                 all_request_ids = [batch_request_id
                                                                    for dependency in job.get('dependencies', [])

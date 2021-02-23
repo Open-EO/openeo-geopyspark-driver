@@ -250,8 +250,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 request_group_id = dependencies[collection_id]
                 logger.info("Sentinel Hub pyramid from request group ID {g}".format(g=request_group_id))
 
-                key_regex = r".*\.tif"
-                date_regex = r".*_(\d{4})(\d{2})(\d{2}).tif"
+                key_regex = r".+\.tif"
+                # support original _20210223.tif as well as CARD4L s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
+                date_regex = r".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
                 recursive = True
                 interpret_as_cell_type = "float32ud0"
 
