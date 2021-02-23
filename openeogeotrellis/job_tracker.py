@@ -1,7 +1,6 @@
 import logging
 import subprocess
 from subprocess import CalledProcessError
-import json
 from typing import Callable, Union, List
 import traceback
 import sys
@@ -123,7 +122,7 @@ class JobTracker:
                 except Exception:
                     traceback.print_exc(file=sys.stderr)
 
-                time.sleep(self._track_interval)
+                time.sleep(secs=self._track_interval)
 
                 i += 1
         except KeyboardInterrupt:

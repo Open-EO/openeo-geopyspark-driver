@@ -830,11 +830,20 @@ class GpsBatchJobs(backend.BatchJobs):
                 "nodata": nodata
             }
         }
+
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
             results_dict['profile_dumps.tar.gz'] = {
                 "output_dir": str(job_dir),
                 "media_type": "application/gzip"
             }
+
+        for file_name in os.listdir(job_dir):
+            if file_name.endswith("_metadata.json"):
+                results_dict[file_name] = {
+                    "output_dir": str(job_dir),
+                    "media_type": "application/json"
+                }
+
         return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:

@@ -4,6 +4,7 @@ import os
 import shutil
 import stat
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -13,8 +14,7 @@ from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from openeo.util import Rfc3339
-from openeo.util import TimingLogger, ensure_dir
+from openeo.util import deep_get, ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -293,6 +293,22 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         logger.info("reduced %d files to %s" % (len(result.files), output_file))
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
+
+    card4l = dependencies and deep_get(job_specification, 'job_options', 'sentinel-hub-batch', default=None) == 'card4l'
+
+    if card4l:
+        # FIXME: make delay more intelligent, e.g. list the output .tifs and await the sibling _metadata.jsons
+        logger.debug("awaiting Sentinel Hub CARD4L metadata...")
+        time.sleep(secs=5 * 60)
+
+        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
+        bucket_name = ConfigParams().sentinel_hub_batch_bucket
+
+        for collection_id, request_group_id in dependencies.items():
+            # FIXME: incorporate collection_id to make sure the files don't clash
+            s3_service.download_stac_metadata(bucket_name, request_group_id, str(job_dir))
+            logger.info("downloaded CARD4L metadata in {b}/{g} to {d}"
+                        .format(b=bucket_name, g=request_group_id, d=job_dir))
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 
