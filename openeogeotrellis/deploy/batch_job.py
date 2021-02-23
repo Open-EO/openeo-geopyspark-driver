@@ -4,7 +4,6 @@ import os
 import shutil
 import stat
 import sys
-import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -297,16 +296,18 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     card4l = dependencies and deep_get(job_specification, 'job_options', 'sentinel-hub-batch', default=None) == 'card4l'
 
     if card4l:
-        # FIXME: make delay more intelligent, e.g. list the output .tifs and await the sibling _metadata.jsons
         logger.debug("awaiting Sentinel Hub CARD4L metadata...")
-        time.sleep(5 * 60)
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
+        poll_interval_secs = 10
+        max_delay_secs = 600
+
         for collection_id, request_group_id in dependencies.items():
             # FIXME: incorporate collection_id to make sure the files don't clash
-            s3_service.download_stac_metadata(bucket_name, request_group_id, str(job_dir))
+            s3_service.download_stac_metadata(bucket_name, request_group_id, str(job_dir),
+                                              poll_interval_secs, max_delay_secs)
             logger.info("downloaded CARD4L metadata in {b}/{g} to {d}"
                         .format(b=bucket_name, g=request_group_id, d=job_dir))
 
