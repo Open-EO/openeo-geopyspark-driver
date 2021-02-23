@@ -122,7 +122,7 @@ class JobTracker:
                 except Exception:
                     traceback.print_exc(file=sys.stderr)
 
-                time.sleep(secs=self._track_interval)
+                time.sleep(self._track_interval)
 
                 i += 1
         except KeyboardInterrupt:

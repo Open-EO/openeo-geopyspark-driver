@@ -299,7 +299,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     if card4l:
         # FIXME: make delay more intelligent, e.g. list the output .tifs and await the sibling _metadata.jsons
         logger.debug("awaiting Sentinel Hub CARD4L metadata...")
-        time.sleep(secs=5 * 60)
+        time.sleep(5 * 60)
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
