@@ -106,14 +106,16 @@ class JobTracker:
 
                                             if new_status == 'finished':
                                                 def request_ids(dependency) -> List[str]:
-                                                    return dependency.get('batch_request_ids',
-                                                                          [dependency['batch_request_id']])
+                                                    batch_request_ids = dependency.get('batch_request_ids')
+                                                    if batch_request_ids is None:
+                                                        batch_request_ids = [dependency['batch_request_id']]
+                                                    return batch_request_ids
 
-                                                batch_request_ids = [batch_request_id
-                                                                     for dependency in job.get('dependencies', [])
-                                                                     for batch_request_id in request_ids(dependency)]
+                                                all_request_ids = [batch_request_id
+                                                                   for dependency in job.get('dependencies', [])
+                                                                   for batch_request_id in request_ids(dependency)]
 
-                                                JobTracker._delete_batch_process_results(batch_request_ids)
+                                                JobTracker._delete_batch_process_results(all_request_ids)
                                                 registry.remove_dependencies(job_id, user_id)
 
                                             registry.mark_done(job_id, user_id)

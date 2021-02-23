@@ -452,8 +452,9 @@ class GpsBatchJobs(backend.BatchJobs):
             batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                 ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
 
-            batch_request_ids = batch_process_dependency.get('batch_request_ids',
-                                                             [batch_process_dependency['batch_request_id']])
+            batch_request_ids = batch_process_dependency.get('batch_request_ids')
+            if batch_request_ids is None:
+                batch_request_ids = [batch_process_dependency['batch_request_id']]
 
             return [batch_processing_service.get_batch_process_status(request_id) for request_id in batch_request_ids]
 
