@@ -12,7 +12,7 @@ from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_D
 from openeo_driver.views import app
 
 import openeogeotrellis.job_registry
-from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
 from .data import TEST_DATA_ROOT
 
@@ -250,7 +250,7 @@ class TestBatchJobs:
             job_dir = (tmp_path / job_id)
             job_output = (job_dir / "out")
             job_log = (job_dir / "log")
-            job_metadata = (job_dir / "metadata")
+            job_metadata = (job_dir / JOB_METADATA_FILENAME)
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
@@ -348,7 +348,7 @@ class TestBatchJobs:
             job_dir = (tmp_path / job_id)
             job_output = (job_dir / "out")
             job_log = (job_dir / "log")
-            job_metadata = (job_dir / "metadata")
+            job_metadata = (job_dir / JOB_METADATA_FILENAME)
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
