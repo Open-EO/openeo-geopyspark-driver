@@ -247,17 +247,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             dependencies = env.get('dependencies', {})
 
             if dependencies:
-                request_group_id = dependencies[collection_id]
-                logger.info("Sentinel Hub pyramid from request group ID {g}".format(g=request_group_id))
+                subfolder = dependencies[collection_id]
 
+                s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder),
                 key_regex = r".+\.tif"
                 # support original _20210223.tif as well as CARD4L s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
                 date_regex = r".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
                 recursive = True
                 interpret_as_cell_type = "float32ud0"
 
+                logger.info("Sentinel Hub pyramid from {u}".format(u=s3_uri))
+
                 pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                    "s3://{b}/{g}/".format(b=ConfigParams().sentinel_hub_batch_bucket, g=request_group_id),
+                    s3_uri,
                     key_regex,
                     date_regex,
                     recursive,

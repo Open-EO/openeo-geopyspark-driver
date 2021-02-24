@@ -534,7 +534,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up
 
-                pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['request_group_id'])
+                pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['subfolder'])
                          for dependency in dependencies]
 
                 return ",".join(pairs)
@@ -764,11 +764,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     # FIXME: support contributing_area (under investigation by Anze)
 
-                    # cannot be the batch job ID because results for multiple collections would end up in
-                    #  the same S3 dir
-                    request_group_id = str(uuid.uuid4())
-
                     if card4l:
+                        # cannot be the batch job ID because results for multiple collections would end up in
+                        #  the same S3 dir
+                        request_group_id = str(uuid.uuid4())
                         subfolder = request_group_id
 
                         # return type py4j.java_collections.JavaList is not JSON serializable
@@ -784,6 +783,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             request_group_id)
                         )
                     else:
+                        # TODO: pass subfolder explicitly (also a random UUID) instead of implicit batch request ID?
                         batch_request_ids = [batch_processing_service.start_batch_process(
                             layer_source_info['collection_id'],
                             layer_source_info['dataset_id'],
@@ -796,13 +796,15 @@ class GpsBatchJobs(backend.BatchJobs):
                             sentinel_hub.processing_options(sar_backscatter_arguments)
                         )]
 
+                        subfolder = batch_request_ids[0]
+
                     logger.info("scheduled Sentinel Hub batch process(es) {bs} for batch job {j} (CARD4L {c})"
                                 .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"))
 
                     batch_process_dependencies.append({
                         'collection_id': collection_id,
                         'batch_request_ids': batch_request_ids,  # to poll SHub
-                        'request_group_id': request_group_id  # doubles as the S3 output folder
+                        'subfolder': subfolder  # where load_collection gets its data
                     })
 
         if batch_process_dependencies:
