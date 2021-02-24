@@ -2,6 +2,7 @@ import datetime
 import math
 from typing import List
 from unittest import TestCase
+import pytest
 
 import geopyspark as gps
 import numpy as np
@@ -9,6 +10,7 @@ import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from openeo_driver.errors import OpenEOApiException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
@@ -539,6 +541,18 @@ class TestApplyProcess(TestCase):
         stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
         assert stitched.cells.shape[0] == 1
         np.testing.assert_array_equal(red_ramp + nir_ramp, stitched.cells[0, 0:4, 0:4])
+
+    def test_merge_cubes_exception_if_levels_do_not_match(self):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
+        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
+        metadata = _build_metadata(bands=["the_band"])
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({14: layer2}), metadata=metadata)
+        with pytest.raises(OpenEOApiException) as excinfo:
+            res = cube1.merge_cubes(cube2, 'sum')
+
+
         
     def test_merge_cubes_into_separate_bands(self):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
