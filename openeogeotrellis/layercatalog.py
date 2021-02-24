@@ -249,7 +249,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if dependencies:
                 subfolder = dependencies[collection_id]
 
-                s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder),
+                s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder)
                 key_regex = r".+\.tif"
                 # support original _20210223.tif as well as CARD4L s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
                 date_regex = r".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
