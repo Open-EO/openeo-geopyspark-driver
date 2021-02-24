@@ -41,6 +41,8 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import normalize_date, kerberos, zk_client
 
+JOB_METADATA_FILENAME = "job_metadata.json"
+
 logger = logging.getLogger(__name__)
 
 
@@ -580,7 +582,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     output_dir=output_dir,
                     output_file="out",
                     log_file="log",
-                    metadata_file="metadata",
+                    metadata_file=JOB_METADATA_FILENAME,
                     job_id=job_id,
                     driver_cores=driver_cores,
                     driver_memory=driver_memory,
@@ -633,7 +635,8 @@ class GpsBatchJobs(backend.BatchJobs):
                             str(self._get_job_output_dir(job_id)),
                             "out",  # TODO: how support multiple output files?
                             "log",
-                            "metadata"]
+                            JOB_METADATA_FILENAME,
+                            ]
 
                     if principal is not None and key_tab is not None:
                         args.append(principal)
@@ -825,6 +828,7 @@ class GpsBatchJobs(backend.BatchJobs):
         media_type = out_metadata.get("media_type", "application/octet-stream")
 
         results_dict = {
+            # TODO: give meaningful filename and extension
             "out": {
                 "output_dir": str(job_dir),
                 "media_type": media_type,
@@ -849,7 +853,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
-        metadata_file = self._get_job_output_dir(job_id) / "metadata"
+        metadata_file = self._get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
         try:
             with open(metadata_file) as f:
