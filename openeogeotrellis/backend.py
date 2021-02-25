@@ -869,7 +869,7 @@ class GpsBatchJobs(backend.BatchJobs):
             }
 
         for file_name in os.listdir(job_dir):
-            if file_name.endswith("_metadata.json"):
+            if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME:
                 results_dict[file_name] = {
                     "output_dir": str(job_dir),
                     "media_type": "application/json"
