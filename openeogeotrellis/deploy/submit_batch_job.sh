@@ -104,8 +104,9 @@ spark-submit \
  --conf spark.dynamicAllocation.minExecutors=5 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
- --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
+ --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
+--conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
