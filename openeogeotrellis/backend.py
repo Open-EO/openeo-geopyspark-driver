@@ -29,7 +29,8 @@ from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvid
                                    CollectionCatalog)
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
-                                  OpenEOApiException, InternalException, ServiceUnsupportedException)
+                                  OpenEOApiException, InternalException, ServiceUnsupportedException,
+                                  FeatureUnsupportedException)
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -756,6 +757,30 @@ class GpsBatchJobs(backend.BatchJobs):
                         layer_source_info['client_id'], layer_source_info['client_secret'])
 
                     sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
+
+                    # make sure that request is compliant with parameters currently required for SHub CARD4L output
+                    if card4l:
+                        if not sar_backscatter_arguments.orthorectify:
+                            raise FeatureUnsupportedException("CARD4L: orthorectify must be enabled")
+                        if (sar_backscatter_arguments.elevation_model
+                                and sar_backscatter_arguments.elevation_model != 'COPERNICUS_30'):
+                            raise FeatureUnsupportedException(
+                                "CARD4L: elevation_model must be COPERNICUS_30 or empty")
+                        if not sar_backscatter_arguments.rtc:
+                            raise FeatureUnsupportedException("CARD4L: rtc must be enabled")
+                        if sar_backscatter_arguments.mask:
+                            raise FeatureUnsupportedException("CARD4L: mask is not supported")
+                        if sar_backscatter_arguments.contributing_area:
+                            raise FeatureUnsupportedException(
+                                "CARD4L: contributing_area is not supported")
+                        if sar_backscatter_arguments.local_incidence_angle:
+                            raise FeatureUnsupportedException(
+                                "CARD4L: local_incidence_angle is not supported")
+                        if sar_backscatter_arguments.ellipsoid_incidence_angle:
+                            raise FeatureUnsupportedException(
+                                "CARD4L: ellipsoid_incidence_angle is not supported")
+                        if not sar_backscatter_arguments.noise_removal:
+                            raise FeatureUnsupportedException("CARD4L: noise_removal must be enabled")
 
                     shub_band_names = metadata.band_names
 
