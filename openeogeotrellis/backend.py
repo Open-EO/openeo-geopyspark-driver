@@ -852,15 +852,16 @@ class GpsBatchJobs(backend.BatchJobs):
         nodata = out_metadata.get("nodata", None)
         media_type = out_metadata.get("media_type", "application/octet-stream")
 
-        results_dict = {
-            # TODO: give meaningful filename and extension
-            "out": {
+        results_dict = {}
+
+        if os.path.isfile(job_dir / 'out'):
+            results_dict['out'] = {
+                # TODO: give meaningful filename and extension
                 "output_dir": str(job_dir),
                 "media_type": media_type,
                 "bands": bands,
                 "nodata": nodata
             }
-        }
 
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
             results_dict['profile_dumps.tar.gz'] = {

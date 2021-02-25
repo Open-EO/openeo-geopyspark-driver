@@ -17,7 +17,7 @@ from openeo.util import deep_get, ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, nothing
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -154,13 +154,14 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         epsg = None
         instruments = []
 
-    metadata['assets'] = {
-        output_file.name: {
-            'bands': bands,
-            'nodata': nodata,
-            'media_type': result.get_mimetype()
+    if result != nothing:
+        metadata['assets'] = {
+            output_file.name: {
+                'bands': bands,
+                'nodata': nodata,
+                'media_type': result.get_mimetype()
+            }
         }
-    }
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments
@@ -290,6 +291,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         result.reduce(output_file, delete_originals=True)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("reduced %d files to %s" % (len(result.files), output_file))
+    elif result == nothing:
+        logger.info("skipping output file %s" % output_file)
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
