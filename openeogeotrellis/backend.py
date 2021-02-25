@@ -537,7 +537,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up
 
-                pairs = ["{c}:{b}".format(c=dependency['collection_id'], b=dependency['subfolder'])
+                pairs = ["{c}:{b}".format(c=dependency['collection_id'],
+                                          b=dependency.get('subfolder') or dependency['batch_request_id'])
                          for dependency in dependencies]
 
                 return ",".join(pairs)

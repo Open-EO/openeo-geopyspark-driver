@@ -104,15 +104,11 @@ class JobTracker:
                                             registry.patch(job_id, user_id, **result_metadata)
 
                                             if new_status == 'finished':
-                                                def request_ids(dependency) -> List[str]:
-                                                    return (dependency.get('batch_request_ids') or
-                                                            [dependency['batch_request_id']])
+                                                subfolders = [dependency.get('subfolder')
+                                                              or dependency['batch_request_id']
+                                                              for dependency in job.get('dependencies', [])]
 
-                                                all_request_ids = [batch_request_id
-                                                                   for dependency in job.get('dependencies', [])
-                                                                   for batch_request_id in request_ids(dependency)]
-
-                                                JobTracker._delete_batch_process_results(all_request_ids)
+                                                JobTracker._delete_batch_process_results(job_id, subfolders)
                                                 registry.remove_dependencies(job_id, user_id)
 
                                             registry.mark_done(job_id, user_id)
@@ -253,15 +249,15 @@ class JobTracker:
             _log.warning("No Kerberos principal/keytab: will not refresh TGT")
 
     @staticmethod
-    def _delete_batch_process_results(batch_request_ids: List[str]):
+    def _delete_batch_process_results(job_id: str, subfolders: List[str]):
         jvm = gps.get_spark_context()._gateway.jvm
         s3_service = jvm.org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
-        for batch_request_id in batch_request_ids:
-            s3_service.delete_batch_process_results(bucket_name, batch_request_id)
+        for subfolder in subfolders:
+            s3_service.delete_batch_process_results(bucket_name, subfolder)
 
-        _log.info("deleted results for batch processes {bs}".format(bs=batch_request_ids))
+        _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id))
 
 
 if __name__ == '__main__':
