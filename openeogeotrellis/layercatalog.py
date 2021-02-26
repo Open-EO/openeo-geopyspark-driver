@@ -222,6 +222,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if single_level:
                 datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
                 datacubeParams.tileSize = tilesize
+                datacubeParams.maskingStrategyParameters = load_params.custom_mask
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id,datacubeParams)
             else:
