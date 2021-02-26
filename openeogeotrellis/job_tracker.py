@@ -51,6 +51,7 @@ class JobTracker:
                         jobs_to_track = registry.get_running_jobs()
 
                         for job in jobs_to_track:
+                            # FIXME (EP-3745): don't let a failing update of one job prevent the updates of other jobs
                             job_id, user_id = job['job_id'], job['user_id']
                             application_id, current_status = job['application_id'], job['status']
 
