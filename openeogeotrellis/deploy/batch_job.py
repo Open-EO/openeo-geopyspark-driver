@@ -23,6 +23,7 @@ from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis._version import __version__
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -127,7 +128,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path, job_specification:Dict = None) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -166,6 +167,10 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments
+    metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
+    metadata['processing:software'] = 'openeo-geotrellis-' + __version__
+    metadata['processing:lineage'] = job_specification
+
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -315,7 +320,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             logger.info("downloaded CARD4L metadata in {b}/{g} to {d}"
                         .format(b=bucket_name, g=request_group_id, d=job_dir))
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
+    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file, job_specification=job_specification)
 
     if ConfigParams().is_kube_deploy:
         import boto3
