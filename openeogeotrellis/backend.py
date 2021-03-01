@@ -700,7 +700,6 @@ class GpsBatchJobs(backend.BatchJobs):
                                                card4l: bool) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
-        from openeo_driver.macros import expand_macros
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
         from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
@@ -709,9 +708,8 @@ class GpsBatchJobs(backend.BatchJobs):
         if api_version:
             env = env.push({"version": api_version})
 
-        preprocessed_process_graph = expand_macros(process_graph)
-        top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(preprocessed_process_graph)
-        result_node = preprocessed_process_graph[top_level_node]
+        top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(process_graph)
+        result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
         convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer}))
