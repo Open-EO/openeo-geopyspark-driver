@@ -111,6 +111,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
         datacubeParams.tileSize = tilesize
         datacubeParams.maskingStrategyParameters = load_params.custom_mask
+        if single_level:
+            datacubeParams.layoutScheme = "FloatingLayoutScheme"
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
