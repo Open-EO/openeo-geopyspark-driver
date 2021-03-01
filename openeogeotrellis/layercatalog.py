@@ -108,7 +108,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
-        single_level = env.get('pyramid_levels', 'all') != 'all'
+        datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+        datacubeParams.tileSize = tilesize
+        datacubeParams.maskingStrategyParameters = load_params.custom_mask
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
@@ -220,9 +222,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
             if single_level:
-                datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
-                datacubeParams.tileSize = tilesize
-                datacubeParams.maskingStrategyParameters = load_params.custom_mask
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id,datacubeParams)
             else:
@@ -349,7 +348,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory(data_glob, band_file_markers, date_regex)
 
             return (
-                factory.datacube_seq(projected_polygons, from_date, to_date) if single_level
+                factory.datacube_seq(projected_polygons, from_date, to_date,{},"",datacubeParams) if single_level
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             )
 
