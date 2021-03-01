@@ -101,6 +101,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         else:
             projected_polygons = to_projected_polygons(jvm, polygons)
 
+        single_level = env.get('pyramid_levels', 'all') != 'all'
         if spatial_bounds_present:
             if( native_crs == 'UTM'):
                 target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
