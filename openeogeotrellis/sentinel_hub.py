@@ -6,7 +6,7 @@ from openeo_driver.errors import FeatureUnsupportedException
 def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     """As a side-effect, also validates the arguments."""
 
-    if sar_backscatter_arguments.coefficient in [None, "gamma0-terrain"]:
+    if sar_backscatter_arguments.coefficient == "gamma0-terrain":
         backscatter_coefficient = "GAMMA0_TERRAIN"
     elif sar_backscatter_arguments.coefficient == "beta0":
         backscatter_coefficient = "BETA0"
