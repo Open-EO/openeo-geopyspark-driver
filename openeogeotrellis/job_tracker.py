@@ -51,73 +51,77 @@ class JobTracker:
                         jobs_to_track = registry.get_running_jobs()
 
                         for job in jobs_to_track:
-                            # FIXME (EP-3745): don't let a failing update of one job prevent the updates of other jobs
-                            job_id, user_id = job['job_id'], job['user_id']
-                            application_id, current_status = job['application_id'], job['status']
+                            try:
+                                job_id, user_id = job['job_id'], job['user_id']
+                                application_id, current_status = job['application_id'], job['status']
 
-                            if application_id:
-                                try:
-                                    if ConfigParams().is_kube_deploy:
-                                        from openeogeotrellis.utils import s3_client, download_s3_dir
-                                        state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
+                                if application_id:
+                                    try:
+                                        if ConfigParams().is_kube_deploy:
+                                            from openeogeotrellis.utils import s3_client, download_s3_dir
+                                            state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
 
-                                        new_status = JobTracker._kube_status_parser(state)
+                                            new_status = JobTracker._kube_status_parser(state)
 
-                                        registry.patch(job_id, user_id,
-                                                       status=new_status,
-                                                       started=start_time,
-                                                       finished=finish_time)
+                                            registry.patch(job_id, user_id,
+                                                           status=new_status,
+                                                           started=start_time,
+                                                           finished=finish_time)
 
-                                        if current_status != new_status:
-                                            print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+                                            if current_status != new_status:
+                                                print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
-                                        if state == "COMPLETED":
-                                            # FIXME: do we support SHub batch processes in this environment? The AWS
-                                            #  credentials conflict.
-                                            download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
+                                            if state == "COMPLETED":
+                                                # FIXME: do we support SHub batch processes in this environment? The AWS
+                                                #  credentials conflict.
+                                                download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
 
-                                            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                            registry.patch(job_id, user_id, **result_metadata)
+                                                result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                                registry.patch(job_id, user_id, **result_metadata)
 
-                                            registry.mark_done(job_id, user_id)
-                                            print("marked %s as done" % job_id)
-                                    else:
-                                        state, final_state, start_time, finish_time, aggregate_resource_allocation =\
-                                            JobTracker._yarn_status(application_id)
+                                                registry.mark_done(job_id, user_id)
+                                                print("marked %s as done" % job_id)
+                                        else:
+                                            state, final_state, start_time, finish_time, aggregate_resource_allocation =\
+                                                JobTracker._yarn_status(application_id)
 
-                                        memory_time_megabyte_seconds, cpu_time_seconds =\
-                                            JobTracker._parse_resource_allocation(aggregate_resource_allocation)
+                                            memory_time_megabyte_seconds, cpu_time_seconds =\
+                                                JobTracker._parse_resource_allocation(aggregate_resource_allocation)
 
-                                        new_status = JobTracker._to_openeo_status(state, final_state)
+                                            new_status = JobTracker._to_openeo_status(state, final_state)
 
-                                        registry.patch(job_id, user_id,
-                                                       status=new_status,
-                                                       started=JobTracker._to_serializable_datetime(start_time),
-                                                       finished=JobTracker._to_serializable_datetime(finish_time),
-                                                       memory_time_megabyte_seconds=memory_time_megabyte_seconds,
-                                                       cpu_time_seconds=cpu_time_seconds)
+                                            registry.patch(job_id, user_id,
+                                                           status=new_status,
+                                                           started=JobTracker._to_serializable_datetime(start_time),
+                                                           finished=JobTracker._to_serializable_datetime(finish_time),
+                                                           memory_time_megabyte_seconds=memory_time_megabyte_seconds,
+                                                           cpu_time_seconds=cpu_time_seconds)
 
-                                        if current_status != new_status:
-                                            print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+                                            if current_status != new_status:
+                                                print("changed job %s status from %s to %s" % (job_id, current_status, new_status))
 
-                                        if final_state != "UNDEFINED":
-                                            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                            registry.patch(job_id, user_id, **result_metadata)
+                                            if final_state != "UNDEFINED":
+                                                result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                                registry.patch(job_id, user_id, **result_metadata)
 
-                                            if new_status == 'finished':
-                                                subfolders = [dependency.get('subfolder')
-                                                              or dependency['batch_request_id']
-                                                              for dependency in job.get('dependencies', [])]
+                                                if new_status == 'finished':
+                                                    subfolders = [dependency.get('subfolder')
+                                                                  or dependency['batch_request_id']
+                                                                  for dependency in job.get('dependencies', [])]
 
-                                                JobTracker._delete_batch_process_results(job_id, subfolders)
-                                                registry.remove_dependencies(job_id, user_id)
+                                                    JobTracker._delete_batch_process_results(job_id, subfolders)
+                                                    registry.remove_dependencies(job_id, user_id)
 
-                                            registry.mark_done(job_id, user_id)
-                                            print("marked %s as done" % job_id)
-                                except JobTracker._UnknownApplicationIdException:
-                                    registry.mark_done(job_id, user_id)
+                                                registry.mark_done(job_id, user_id)
+                                                print("marked %s as done" % job_id)
+                                    except JobTracker._UnknownApplicationIdException:
+                                        registry.mark_done(job_id, user_id)
+                            except Exception:
+                                _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
+                                      .format(j=job_id, e=traceback.format_exc()))
                 except Exception:
-                    traceback.print_exc(file=sys.stderr)
+                    _log.warning("scheduling new run after failing to track batch jobs:\n{e}"
+                                 .format(e=traceback.format_exc()))
 
                 time.sleep(self._track_interval)
 
