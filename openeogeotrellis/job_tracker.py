@@ -118,7 +118,8 @@ class JobTracker:
                                         registry.mark_done(job_id, user_id)
                             except Exception:
                                 _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
-                                      .format(j=job_id, e=traceback.format_exc()))
+                                             .format(j=job_id, e=traceback.format_exc()))
+                                # TODO: mark it as done to keep it from being considered further?
                 except Exception:
                     _log.warning("scheduling new run after failing to track batch jobs:\n{e}"
                                  .format(e=traceback.format_exc()))
