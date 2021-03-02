@@ -1535,6 +1535,8 @@ class GeopysparkDataCube(DriverDataCube):
     def atmospheric_correction(self,method:str,elevation_model:str, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float,
                                cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
         if missionID is None: missionID = "SENTINEL2"
+        if method is None: method = "ICOR"
+        if elevation_model is None: elevation_model = "DEM"
         if sza is None: sza = np.NaN
         if vza is None: vza = np.NaN
         if raa is None: raa = np.NaN
@@ -1552,13 +1554,15 @@ class GeopysparkDataCube(DriverDataCube):
         _log.info("Bandids: " + str(bandIds))
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
+                # ICOR or SMAC
+                method,
                 gps.get_spark_context()._jsc,
                 rdd,
                 bandIds,
                 # [29.0, 5.0, 130.0, nodefault, nodefault, nodefault, 0.33],
                 [sza, vza, raa, gnd, aot, cwv, 0.33],
                 # DEM or SRTM
-                "DEM",
+                elevation_model,
                 # SENTINEL2 or LANDSAT8 for now
                 missionID,
                 appendDebugBands
