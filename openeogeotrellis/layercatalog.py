@@ -101,6 +101,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         else:
             projected_polygons = to_projected_polygons(jvm, polygons)
 
+        single_level = env.get('pyramid_levels', 'all') != 'all'
         if spatial_bounds_present:
             if( native_crs == 'UTM'):
                 target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
@@ -108,7 +109,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
-        single_level = env.get('pyramid_levels', 'all') != 'all'
+        datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+        datacubeParams.tileSize = tilesize
+        datacubeParams.maskingStrategyParameters = load_params.custom_mask
+        if single_level:
+            datacubeParams.layoutScheme = "FloatingLayoutScheme"
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
@@ -220,8 +225,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
             if single_level:
-                datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
-                datacubeParams.tileSize = tilesize
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id,datacubeParams)
             else:
@@ -247,17 +250,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             dependencies = env.get('dependencies', {})
 
             if dependencies:
-                request_group_id = dependencies[collection_id]
-                logger.info("Sentinel Hub pyramid from request group ID {g}".format(g=request_group_id))
+                subfolder = dependencies[collection_id]
 
+                s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder)
                 key_regex = r".+\.tif"
                 # support original _20210223.tif as well as CARD4L s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
                 date_regex = r".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
                 recursive = True
                 interpret_as_cell_type = "float32ud0"
 
+                logger.info("Sentinel Hub pyramid from {u}".format(u=s3_uri))
+
                 pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                    "s3://{b}/{g}/".format(b=ConfigParams().sentinel_hub_batch_bucket, g=request_group_id),
+                    s3_uri,
                     key_regex,
                     date_regex,
                     recursive,
@@ -346,7 +351,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory(data_glob, band_file_markers, date_regex)
 
             return (
-                factory.datacube_seq(projected_polygons, from_date, to_date) if single_level
+                factory.datacube_seq(projected_polygons, from_date, to_date,{},"",datacubeParams) if single_level
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             )
 

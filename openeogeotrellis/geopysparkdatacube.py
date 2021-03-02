@@ -554,6 +554,10 @@ class GeopysparkDataCube(DriverDataCube):
                 str(other.metadata.has_band_dimension())
             ))
 
+        if other.pyramid.levels.keys() != self.pyramid.levels.keys():
+            raise OpenEOApiException(message="Trying to merge two cubes with different levels, perhaps you had to use 'resample_cube_spatial'? Levels of this cube: " + str(self.pyramid.levels.keys()) +
+                                             " are merged with %s" % str(other.pyramid.levels.keys()))
+
         # TODO properly combine bbox and temporal extents in metadata?
 
         if self._is_spatial() and other._is_spatial():

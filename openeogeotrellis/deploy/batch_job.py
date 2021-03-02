@@ -4,7 +4,6 @@ import os
 import shutil
 import stat
 import sys
-import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -18,12 +17,13 @@ from openeo.util import deep_get, ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis._version import __version__
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -35,6 +35,7 @@ def _setup_app_logging() -> None:
     console_handler = logging.StreamHandler(stream=sys.stdout)
     console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 
+    # TODO: logs show up twice in the output
     logger.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
 
@@ -127,7 +128,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path, job_specification:Dict = None) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -155,16 +156,21 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         epsg = None
         instruments = []
 
-    metadata['assets'] = {
-        output_file.name: {
-            'bands': bands,
-            'nodata': nodata,
-            'media_type': result.get_mimetype()
+    if result != null:
+        metadata['assets'] = {
+            output_file.name: {
+                'bands': bands,
+                'nodata': nodata,
+                'media_type': result.get_mimetype()
+            }
         }
-    }
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments
+    metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
+    metadata['processing:software'] = 'openeo-geotrellis-' + __version__
+    metadata['processing:lineage'] = job_specification
+
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -291,26 +297,30 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         result.reduce(output_file, delete_originals=True)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("reduced %d files to %s" % (len(result.files), output_file))
+    elif result == null:
+        logger.info("skipping output file %s" % output_file)
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
     card4l = dependencies and deep_get(job_specification, 'job_options', 'sentinel-hub-batch', default=None) == 'card4l'
 
     if card4l:
-        # FIXME: make delay more intelligent, e.g. list the output .tifs and await the sibling _metadata.jsons
         logger.debug("awaiting Sentinel Hub CARD4L metadata...")
-        time.sleep(secs=5 * 60)
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
+        poll_interval_secs = 10
+        max_delay_secs = 600
+
         for collection_id, request_group_id in dependencies.items():
             # FIXME: incorporate collection_id to make sure the files don't clash
-            s3_service.download_stac_metadata(bucket_name, request_group_id, str(job_dir))
+            s3_service.download_stac_metadata(bucket_name, request_group_id, str(job_dir),
+                                              poll_interval_secs, max_delay_secs)
             logger.info("downloaded CARD4L metadata in {b}/{g} to {d}"
                         .format(b=bucket_name, g=request_group_id, d=job_dir))
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
+    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file, job_specification=job_specification)
 
     if ConfigParams().is_kube_deploy:
         import boto3

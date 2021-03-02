@@ -155,8 +155,10 @@ class S1BackscatterOrfeo:
         # Initial argument checking
         bands = bands or ["VH", "VV"]
 
-        if sar_backscatter_arguments.rtc:
-            raise FeatureUnsupportedException("sar_backscatter: rtc is not supported")
+        if sar_backscatter_arguments.coefficient != "sigma0-ellipsoid":
+            raise OpenEOApiException(
+                "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
+                    c=sar_backscatter_arguments.coefficient))
         if sar_backscatter_arguments.mask:
             raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
         if sar_backscatter_arguments.contributing_area:

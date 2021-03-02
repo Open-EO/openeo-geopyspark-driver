@@ -339,90 +339,6 @@
       }
     ]
   },
-
-  {
-    "id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
-    "name": "CGS_SENTINEL2_RADIOMETRY_V102_001",
-    "product_id": "CGS_SENTINEL2_RADIOMETRY_V102_001",
-    "title": "Sentinel 2 Bottom-of-atmosphere reflectances.",
-    "_vito": {
-      "data_source": {
-        "type": "Accumulo",
-        "data_id": "CGS_SENTINEL2_RADIOMETRY_V102_EARLY"
-      }
-    },
-    "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry, provided by Terrascope.",
-    "providers": [{"name": "Terrascope/VITO"}],
-    "license": "free",
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["2", "3", "4", "8"]
-      }
-    },
-    "summaries": {
-      "eo:bands": [
-        {
-          "name": "2",
-          "common_name": "blue",
-          "center_wavelength": 0.4966,
-          "wavelength_nm": 496.6,
-          "res_m": 10,
-          "scale": 0.0001,
-          "offset": 0,
-          "type": "int16",
-          "unit": "1"
-        },
-        {
-          "name": "3",
-          "common_name": "green",
-          "center_wavelength": 0.560,
-          "wavelength_nm": 560,
-          "res_m": 10,
-          "scale": 0.0001,
-          "offset": 0,
-          "type": "int16",
-          "unit": "1"
-        },
-        {
-          "name": "4",
-          "common_name": "red",
-          "center_wavelength": 0.6645,
-          "wavelength_nm": 664.5,
-          "res_m": 10,
-          "scale": 0.0001,
-          "offset": 0,
-          "type": "int16",
-          "unit": "1"
-        },
-        {
-          "name": "8",
-          "common_name": "nir",
-          "center_wavelength": 0.8351,
-          "wavelength_nm": 835.1,
-          "res_m": 10,
-          "scale": 0.0001,
-          "offset": 0,
-          "type": "int16",
-          "unit": "1"
-        }
-      ]
-    },
-    "links": [
-      {
-        "rel": "alternate",
-        "href": "https://terrascope.be/en/products",
-        "title": "Product web page."
-      }
-    ]
-  },
   {
     "id":"S2_FAPAR_V102_WEBMERCATOR2",
     "name":"S2_FAPAR_V102_WEBMERCATOR2",
@@ -461,65 +377,6 @@
       }
     ]
   },
-  {
-    "id":"SENTINEL2_FCOVER_TERRASCOPE",
-    "name":"SENTINEL2_FCOVER_TERRASCOPE",
-    "product_id":"SENTINEL2_FCOVER_TERRASCOPE",
-    "title": "Sentinel 2 based fCover",
-    "_vito": {
-      "data_source": {
-        "type": "Accumulo",
-        "data_id": "S2_FCOVER_PYRAMID_EARLY"
-      }
-    },
-    "description": "Sentinel 2 Level-3: fCOVER, web mercator projection, with overviews.",
-    "providers": [{"name": "Terrascope/VITO"}],
-    "license": "free",
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": [
-          "fcover"
-        ]
-      }
-    },
-    "links":[]
-  },
-  {
-    "id": "SENTINEL2_NDVI_TERRASCOPE",
-    "name": "SENTINEL2_NDVI_TERRASCOPE",
-    "_vito": {
-      "data_source": {
-        "type": "Accumulo",
-        "data_id": "S2_NDVI_PYRAMID_EARLY"
-      }
-    },
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    }
-  },
-  {
-    "id": "SENTINEL2_LAI_TERRASCOPE",
-    "name": "SENTINEL2_LAI_TERRASCOPE",
-    "_vito": {
-      "data_source": {
-        "type": "Accumulo",
-        "data_id": "S2_LAI_PYRAMID_20190625"
-      }
-    },
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    }
-  },
  {
     "id": "TERRASCOPE_S2_NDVI_V2",
     "name": "TERRASCOPE_S2_NDVI_V2",
@@ -555,8 +412,8 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -611,8 +468,8 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -650,8 +507,8 @@
       "temporal": {"interval": [["2014-01-01", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 0.002976190476190, "reference_system": 4326},
+      "y": {"type": "spatial", "axis": "y", "step": 0.002976190476190, "reference_system": 4326},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -674,85 +531,6 @@
     ]
   },
   {
-    "id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
-    "name":"S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
-    "product_id": "S2_FAPAR_SCENECLASSIFICATION_V102_PYRAMID",
-    "title": "Sen2Cor Scene Classification layer",
-    "description": "Sen2Cor Scene Classification layer, from Sentinel 2 data.",
-    "_vito": {
-      "data_source": {
-        "type": "Accumulo",
-        "data_id": "S2_SCENECLASSIFICATION_PYRAMID_20200407"
-      }
-    },
-    "providers": [{"name": "Terrascope/VITO"}],
-    "license": "free",
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": [
-          "classification"
-        ]
-      }
-    },
-    "summaries": {
-      "eo:bands": [
-        {
-          "band_id": "classification",
-          "name": "classification",
-          "res_m": 20,
-          "type": "int8",
-          "unit": "1"
-        }
-      ]
-    },
-    "links": [
-      {
-        "rel": "alternate",
-        "href": "https://terrascope.be/en/products",
-        "title": "Product web page."
-      }
-    ]
-  },
-  {
-    "id": "S2_NDVI_S3",
-    "name": "S2_NDVI_S3",
-    "title": "TerraScope test dataset on SoblooDias",
-    "description": "NDVI",
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": [
-          "ndvi"
-        ]
-      }
-    },
-    "_vito": {
-      "data_source": {
-        "type": "S3",
-        "endpoint": "http://oss.eu-west-0.prod-cloud-ocb.orange-business.com",
-        "region": "eu-west-0",
-        "bucket_name": "s2-ndvi"
-      }
-    },
-    "product_id":"S2_NDVI_S3",
-    "license": "free",
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    }
-  },
-  {
     "id": "TERRASCOPE_S2_FAPAR_V2",
     "name": "TERRASCOPE_S2_FAPAR_V2",
     "extent": {
@@ -760,8 +538,8 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -789,8 +567,8 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -818,8 +596,8 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -847,8 +625,8 @@
       "temporal": {"interval": [["2015-07-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -1046,8 +824,8 @@
       ]
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -1172,44 +950,6 @@
     ]
   },
   {
-    "id": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
-    "name": "CGS_SENTINEL2_RADIOMETRY_V102_FILE",
-    "_vito": {
-      "data_source": {
-        "type": "file"
-      }
-    },
-    "extent": {
-      "spatial": {"bbox": [[-180, -56, 180, 83]]},
-      "temporal": {"interval": [["2015-07-06", null]]}
-    },
-
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["1", "2", "3", "4", "5", "6", "7", "8", "11", "12", "8A"]
-      }
-    },
-    "summaries": {
-      "eo:bands": [
-        {"name": "1"},
-        {"name": "2"},
-        {"name": "3"},
-        {"name": "4"},
-        {"name": "5"},
-        {"name": "6"},
-        {"name": "7"},
-        {"name": "8"},
-        {"name": "11"},
-        {"name": "12"},
-        {"name": "8A"}
-      ]
-    }
-  },
-  {
     "id": "SENTINEL1_GAMMA0_SENTINELHUB",
     "name": "SENTINEL1_GAMMA0_SENTINELHUB",
     "title": "Sentinel 1 Gamma0, 10m resolution, provided by SentinelHub",
@@ -1232,8 +972,8 @@
       "temporal": {"interval": [["2014-10-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
