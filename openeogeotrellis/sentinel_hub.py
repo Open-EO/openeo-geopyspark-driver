@@ -1,29 +1,28 @@
 from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
+from openeo_driver.errors import FeatureUnsupportedException
 
 
 def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     """As a side-effect, also validates the arguments."""
 
-    if sar_backscatter_arguments.elevation_model is not None and not sar_backscatter_arguments.orthorectify:
-        raise OpenEOApiException(message="sar_backscatter: elevation_model is only used when orthorectify is enabled",
-                                 status_code=400)
-
-    if sar_backscatter_arguments.rtc:
-        if not sar_backscatter_arguments.orthorectify:
-            raise OpenEOApiException(message="sar_backscatter: orthorectify must be enabled for rtc", status_code=400)
-
+    if sar_backscatter_arguments.coefficient in [None, "gamma0-terrain"]:
         backscatter_coefficient = "GAMMA0_TERRAIN"
-    else:
+    elif sar_backscatter_arguments.coefficient == "beta0":
+        backscatter_coefficient = "BETA0"
+    elif sar_backscatter_arguments.coefficient == "sigma0-ellipsoid":
+        backscatter_coefficient = "SIGMA0_ELLIPSOID"
+    elif sar_backscatter_arguments.coefficient == "gamma0-ellipsoid":
         backscatter_coefficient = "GAMMA0_ELLIPSOID"
+    else:
+        raise FeatureUnsupportedException("sar_backscatter: coefficient {c} is not supported"
+                                          .format(c=sar_backscatter_arguments.coefficient))
+
+    rtc = backscatter_coefficient == "GAMMA0_TERRAIN"
+    orthorectify = rtc or sar_backscatter_arguments.local_incidence_angle
 
     # FIXME: support contributing_area because it is required by ard_normalized_radar_backscatter (under investigation
     #  by Anze)
-
-    if sar_backscatter_arguments.local_incidence_angle and not sar_backscatter_arguments.orthorectify:
-        raise OpenEOApiException(message="sar_backscatter: orthorectify must be enabled for local_incidence_angle",
-                                 status_code=400)
 
     if sar_backscatter_arguments.ellipsoid_incidence_angle:
         raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle is not supported")
@@ -33,6 +32,6 @@ def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
 
     return dict_no_none(
         backCoeff=backscatter_coefficient,
-        orthorectify=sar_backscatter_arguments.orthorectify,
+        orthorectify=orthorectify,
         demInstance=sar_backscatter_arguments.elevation_model
     )
