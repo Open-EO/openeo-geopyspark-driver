@@ -460,7 +460,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             return [batch_processing_service.get_batch_process_status(request_id) for request_id in batch_request_ids]
 
-        dependencies = job_info.get('dependencies', [])
+        dependencies = job_info.get('dependencies') or []
         statuses = set(reduce(operator.add, (statuses(batch_process) for batch_process in dependencies)))
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
@@ -532,7 +532,7 @@ class GpsBatchJobs(backend.BatchJobs):
             profile = extra_options.get("profile", "false")
 
             def serialize_dependencies():
-                dependencies = batch_process_dependencies or job_info.get('dependencies', [])
+                dependencies = batch_process_dependencies or job_info.get('dependencies') or []
 
                 if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up

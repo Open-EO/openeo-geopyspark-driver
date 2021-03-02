@@ -107,7 +107,7 @@ class JobTracker:
                                                 if new_status == 'finished':
                                                     subfolders = [dependency.get('subfolder')
                                                                   or dependency['batch_request_id']
-                                                                  for dependency in job.get('dependencies', [])]
+                                                                  for dependency in job.get('dependencies') or []]
 
                                                     JobTracker._delete_batch_process_results(job_id, subfolders)
                                                     registry.remove_dependencies(job_id, user_id)
