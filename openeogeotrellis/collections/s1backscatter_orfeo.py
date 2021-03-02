@@ -157,7 +157,7 @@ class S1BackscatterOrfeo:
 
         if sar_backscatter_arguments.coefficient != "sigma0-ellipsoid":
             raise OpenEOApiException(
-                "Unsupported backscatter coefficient {c!r} (only 'sigma0' is supported).".format(
+                "Unsupported backscatter coefficient {c!r} (only 'sigma0-ellipsoid' is supported).".format(
                     c=sar_backscatter_arguments.coefficient))
         if sar_backscatter_arguments.mask:
             raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
@@ -233,27 +233,29 @@ class S1BackscatterOrfeo:
                 logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
 
             logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
-            if sar_backscatter_arguments.orthorectify:
-                if sar_backscatter_arguments.elevation_model in [None, "SRTMGL1"]:
-                    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
-                        bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
-                        srtm_root="/eodata/auxdata/SRTMGL1/dem",
-                    )
-                elif sar_backscatter_arguments.elevation_model in ["geotiff"]:
-                    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
-                        bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
-                        zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
-                        dem_tile_size=512,
-                        dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
-                    )
-                else:
-                    raise FeatureUnsupportedException(
-                        f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
-                    )
 
-            else:
+            elevation_model = sar_backscatter_arguments.elevation_model
+            if elevation_model:
+                elevation_model = elevation_model.lower()
+            if elevation_model in [None, "srtmgl1"]:
+                dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
+                    srtm_root="/eodata/auxdata/SRTMGL1/dem",
+                )
+            elif elevation_model in ["geotiff", "mapzen"]:
+                dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
+                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
+                    zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
+                    dem_tile_size=512,
+                    dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+                )
+            elif elevation_model in ["off"]:
                 # Context that returns None when entering
                 dem_dir_context = nullcontext()
+            else:
+                raise FeatureUnsupportedException(
+                    f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
+                )
 
             msg = f"{log_prefix}Process {creo_path} and load into geopyspark Tile"
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
