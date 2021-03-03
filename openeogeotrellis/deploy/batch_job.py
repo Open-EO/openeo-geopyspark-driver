@@ -128,7 +128,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path, job_specification:Dict = None) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -169,8 +169,6 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata['instruments'] = instruments
     metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
     metadata['processing:software'] = 'openeo-geotrellis-' + __version__
-    metadata['processing:lineage'] = job_specification
-
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
