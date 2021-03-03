@@ -89,7 +89,7 @@ spark-submit \
  --driver-java-options "${sparkDriverJavaOptions}" \
  --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
- --conf spark.kryoserializer.buffer.max=512m \
+ --conf spark.kryoserializer.buffer.max=2G \
  --conf spark.rpc.message.maxSize=200 \
  --conf spark.rdd.compress=true \
  --conf spark.driver.cores=${drivercores} \
