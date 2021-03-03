@@ -3,18 +3,19 @@ import subprocess
 from subprocess import CalledProcessError
 from typing import Callable, Union, List
 import traceback
-import sys
 import time
 from collections import namedtuple
 from datetime import datetime
 from openeo.util import date_to_rfc3339
 import re
 import geopyspark as gps
+from py4j.protocol import Py4JJavaError
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.utils import get_jvm
 
 _log = logging.getLogger(__name__)
 
@@ -257,12 +258,21 @@ class JobTracker:
 
     @staticmethod
     def _delete_batch_process_results(job_id: str, subfolders: List[str]):
-        jvm = gps.get_spark_context()._gateway.jvm
-        s3_service = jvm.org.openeo.geotrellissentinelhub.S3Service()
+        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
         for subfolder in subfolders:
-            s3_service.delete_batch_process_results(bucket_name, subfolder)
+            try:
+                s3_service.delete_batch_process_results(bucket_name, subfolder)
+            except Py4JJavaError as e:
+                java_exception = e.java_exception
+
+                if (java_exception.getClass().getName() ==
+                        'org.openeo.geotrellissentinelhub.S3Service$UnknownFolderException'):
+                    _log.warning("could not delete unknown result folder s3://{b}/{f}"
+                                 .format(b=bucket_name, f=subfolder))
+                else:
+                    raise e
 
         _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id))
 
