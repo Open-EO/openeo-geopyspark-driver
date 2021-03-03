@@ -110,10 +110,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
         datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
-        datacubeParams.tileSize = tilesize
+        #WTF simple assignment to a var in a scala class doesn't work??
+        getattr(datacubeParams, "tileSize_$eq")(tilesize)
         datacubeParams.maskingStrategyParameters = load_params.custom_mask
         if single_level:
-            datacubeParams.layoutScheme = "FloatingLayoutScheme"
+            getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
