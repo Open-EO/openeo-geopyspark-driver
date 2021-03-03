@@ -759,14 +759,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     # make sure that request is compliant with parameters currently required for SHub CARD4L output
                     if card4l:
-                        if not sar_backscatter_arguments.orthorectify:
-                            raise FeatureUnsupportedException("CARD4L: orthorectify must be enabled")
+                        if sar_backscatter_arguments.coefficient != "gamma0-terrain":
+                            raise FeatureUnsupportedException("CARD4L: coefficient must be gamma0-terrain")
                         if (sar_backscatter_arguments.elevation_model
                                 and sar_backscatter_arguments.elevation_model != 'COPERNICUS_30'):
                             raise FeatureUnsupportedException(
                                 "CARD4L: elevation_model must be COPERNICUS_30 or empty")
-                        if not sar_backscatter_arguments.rtc:
-                            raise FeatureUnsupportedException("CARD4L: rtc must be enabled")
                         if sar_backscatter_arguments.mask:
                             raise FeatureUnsupportedException("CARD4L: mask is not supported")
                         if sar_backscatter_arguments.contributing_area:
