@@ -130,5 +130,6 @@ def test_load_collection_data_cube_params(get_jvm):
 
     factory_mock.assert_called_once_with('/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif', ['temperature-mean'], '.+_(\\d{4})(\\d{2})(\\d{2})\\.tif')
     factory_mock.return_value.datacube_seq.assert_called_once_with(projected_polys, '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '',datacubeParams)
-    assert datacubeParams.tileSize == 1
-    assert datacubeParams.layoutScheme == 'FloatingLayoutScheme'
+    getattr(datacubeParams,'tileSize_$eq').assert_called_once_with(1)
+    getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')
+
