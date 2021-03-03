@@ -318,7 +318,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             logger.info("downloaded CARD4L metadata in {b}/{g} to {d}"
                         .format(b=bucket_name, g=request_group_id, d=job_dir))
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file, job_specification=job_specification)
+    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 
     if ConfigParams().is_kube_deploy:
         import boto3
