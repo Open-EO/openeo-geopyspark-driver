@@ -765,14 +765,6 @@ class GpsBatchJobs(backend.BatchJobs):
                                 and sar_backscatter_arguments.elevation_model != 'COPERNICUS_30'):
                             raise FeatureUnsupportedException(
                                 "CARD4L: elevation_model must be COPERNICUS_30 or empty")
-                        if sar_backscatter_arguments.mask:
-                            raise FeatureUnsupportedException("CARD4L: mask is not supported")
-                        if sar_backscatter_arguments.contributing_area:
-                            raise FeatureUnsupportedException(
-                                "CARD4L: contributing_area is not supported")
-                        if sar_backscatter_arguments.local_incidence_angle:
-                            raise FeatureUnsupportedException(
-                                "CARD4L: local_incidence_angle is not supported")
                         if sar_backscatter_arguments.ellipsoid_incidence_angle:
                             raise FeatureUnsupportedException(
                                 "CARD4L: ellipsoid_incidence_angle is not supported")
