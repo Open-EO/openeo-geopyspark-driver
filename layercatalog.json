@@ -995,5 +995,87 @@
         "title": "Product web page."
       }
     ]
+  },
+  {
+  "id": "AGERA5",
+  "name": "AGERA5",
+  "title": "AGERA5",
+  "description": "EXPERIMENTAL - This dataset provides daily surface meteorological data at 0.1°x0.1° spatial resolution for the period from 2015 to present as input for agro-ecological studies. This dataset is based on the hourly ECMWF ERA5 data at surface level and is referred to as AgERA5. Acquisition and pre-processing of the original ERA5 data is a complex and specialized job. By providing the AgERA5 dataset, users are freed from this work and can directly start with meaningful input for their analyses and modelling. To this end, the variables provided in this dataset match the input needs of most agro-ecological models.\n\nData were aggregated to daily time steps at the local time zone and corrected towards a finer topography at a 0.1° spatial resolution. The correction to the 0.1° grid was realized by applying grid and variable-specific regression equations to the ERA5 dataset interpolated at 0.1° grid. The equations were trained on ECMWF's operational high-resolution atmospheric model (HRES) at a 0.1° resolution. This way the data is tuned to the finer topography, finer land use pattern and finer land-sea delineation of the ECMWF HRES model.\n\nThe data was produced on behalf of the Copernicus Climate Change Service.\n\nThis dataset is marked as experimental because the integration in this backend has not yet been fully validated. Use with caution.",
+  "extent": {
+    "spatial": {"bbox": [[-180.0500000, -90.0500000, 179.9499939, 90.0500000]]},
+    "temporal": {"interval": [["2015-01-01", null]]}
+  },
+  "links": [
+      {
+        "rel": "alternate",
+        "href": "https://cds.climate.copernicus.eu/cdsapp#!/dataset/sis-agrometeorological-indicators",
+        "title": "Product web page."
+      }
+    ],
+  "summaries": {
+      "eo:bands": [
+        {
+          "name": "dewpoint-temperature",
+          "description": "Mean dewpoint temperature at a height of 2 metres above the surface over the period 00h-24h local time. The dew point is the temperature to which air must be cooled to become saturated with water vapor. In combination with the air temperature it is used to assess relative humidity.",
+          "unit": "K"
+        },
+        {
+          "name": "precipitation-flux",
+          "description": "Total volume of liquid water (mm3) precipitated over the period 00h-24h local time per unit of area (mm2), per day.",
+          "unit": "mm/day"
+        },
+        {
+          "name": "solar-radiation-flux",
+          "description": "Total amount of energy provided by solar radiation at the surface over the period 00-24h local time per unit area and time.",
+          "unit": "j/m²day"
+        },
+        { "name": "temperature-max",
+          "description": "Maximum air temperature at 2m height (daily maximum)",
+          "unit": "K"
+         },
+        { "name": "temperature-mean",
+          "description": "Mean air temperature at 2m height (daily mean)",
+          "unit": "K"
+         },
+        { "name": "temperature-min",
+          "description": "Minimum air temperature at 2m height (daily minimum)",
+          "unit": "K"
+         },
+        { "name": "vapour-pressure",
+          "description": "Contribution to the total atmospheric pressure provided by the water vapour over the period 00-24h local time per unit of time.",
+          "unit": "hPa"
+         },
+        { "name": "wind-speed",
+          "description": "Mean wind speed at a height of 10 metres above the surface over the period 00h-24h local time.",
+          "unit": "m/s"
+         }
+      ]
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": 4326, "step": 0.1},
+      "y": {"type": "spatial", "axis": "y", "reference_system": 4326, "step": 0.1},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": [
+          "dewpoint-temperature",
+          "precipitation-flux",
+          "solar-radiation-flux",
+          "temperature-max",
+          "temperature-mean",
+          "temperature-min",
+          "vapour-pressure",
+          "wind-speed"
+        ]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-agera5",
+        "data_glob": "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif",
+        "native_crs": "EPSG:4326"
+      }
+    }
   }
 ]
