@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
@@ -303,7 +304,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     card4l = dependencies and deep_get(job_specification, 'job_options', 'sentinel-hub-batch', default=None) == 'card4l'
 
     if card4l:
-        logger.debug("awaiting Sentinel Hub CARD4L metadata...")
+        logger.debug("awaiting Sentinel Hub CARD4L data...")
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
@@ -312,11 +313,21 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         max_delay_secs = 600
 
         for collection_id, request_group_id in dependencies.items():
-            # FIXME: incorporate collection_id to make sure the files don't clash
-            s3_service.download_stac_metadata(bucket_name, request_group_id, str(job_dir),
-                                              poll_interval_secs, max_delay_secs)
-            logger.info("downloaded CARD4L metadata in {b}/{g} to {d}"
-                        .format(b=bucket_name, g=request_group_id, d=job_dir))
+            try:
+                # FIXME: incorporate collection_id to make sure the files don't clash
+                s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir),
+                                                  poll_interval_secs, max_delay_secs)
+                logger.info("downloaded CARD4L data in {b}/{g} to {d}"
+                            .format(b=bucket_name, g=request_group_id, d=job_dir))
+            except Py4JJavaError as e:
+                java_exception = e.java_exception
+
+                if (java_exception.getClass().getName() ==
+                        'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
+                    logger.warning("could not find STAC metadata to download from s3://{b}/{r} after {d}s"
+                                   .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
+                else:
+                    raise e
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 
