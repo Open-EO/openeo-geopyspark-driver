@@ -123,7 +123,7 @@ def test_load_collection_data_cube_params(get_jvm):
     assert collection.metadata.bands[0].name=='temperature-mean'
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory
-    projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.reproject.return_value
+    projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
     datacubeParams = jvm_mock.org.openeo.geotrellis.file.DataCubeParameters.return_value
 
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
