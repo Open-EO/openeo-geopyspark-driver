@@ -757,8 +757,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
 
-                    # make sure that request is compliant with parameters currently required for SHub CARD4L output
+                    shub_band_names = metadata.band_names
+
+                    if sar_backscatter_arguments.mask:
+                        shub_band_names.append('dataMask')
+
+                    if sar_backscatter_arguments.local_incidence_angle:
+                        shub_band_names.append('localIncidenceAngle')
+
+                    # FIXME: support contributing_area (under investigation by Anze)
+
                     if card4l:
+                        # make sure that request is compliant with parameters currently required for SHub CARD4L output:
                         if sar_backscatter_arguments.coefficient != "gamma0-terrain":
                             raise FeatureUnsupportedException("CARD4L: coefficient must be gamma0-terrain")
                         if (sar_backscatter_arguments.elevation_model
@@ -771,17 +781,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         if not sar_backscatter_arguments.noise_removal:
                             raise FeatureUnsupportedException("CARD4L: noise_removal must be enabled")
 
-                    shub_band_names = metadata.band_names
-
-                    if sar_backscatter_arguments.mask:
-                        shub_band_names.append('dataMask')
-
-                    if sar_backscatter_arguments.local_incidence_angle:
-                        shub_band_names.append('localIncidenceAngle')
-
-                    # FIXME: support contributing_area (under investigation by Anze)
-
-                    if card4l:
                         # cannot be the batch job ID because results for multiple collections would end up in
                         #  the same S3 dir
                         request_group_id = str(uuid.uuid4())
@@ -863,6 +862,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 results_dict[file_name] = {
                     "output_dir": str(job_dir),
                     "media_type": "application/json"
+                }
+            elif file_name.endswith("_MULTIBAND.tif"):
+                results_dict[file_name] = {
+                    "output_dir": str(job_dir),
+                    "media_type": "image/tiff; application=geotiff"
                 }
 
         return results_dict
