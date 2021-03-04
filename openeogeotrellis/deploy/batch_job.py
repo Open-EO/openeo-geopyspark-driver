@@ -4,6 +4,7 @@ import os
 import shutil
 import stat
 import sys
+from urllib.parse import urlparse
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -20,6 +21,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
@@ -319,6 +321,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
                                                   poll_interval_secs, max_delay_secs)
                 logger.info("downloaded CARD4L data in {b}/{g} to {d}"
                             .format(b=bucket_name, g=request_group_id, d=job_dir))
+                _transform_stac_metadata(job_dir)
             except Py4JJavaError as e:
                 java_exception = e.java_exception
 
@@ -342,6 +345,35 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         for file in os.listdir(job_dir):
             full_path = str(job_dir) + "/" + file
             s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+
+
+def _transform_stac_metadata(job_dir: Path):
+    def relativize(assets: dict) -> dict:
+        def relativize_href(asset: dict) -> dict:
+            absolute_href = asset['href']
+            relative_path = urlparse(absolute_href).path.split("/")[-1]
+            return dict(asset, href=relative_path)
+
+        return {asset_name: relativize_href(asset) for asset_name, asset in assets.items()}
+
+    def drop_links(metadata: dict) -> dict:
+        result = metadata.copy()
+        result.pop('links', None)
+        return result
+
+    stac_metadata_files = [job_dir / file_name for file_name in os.listdir(job_dir) if
+                           file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME]
+
+    for stac_metadata_file in stac_metadata_files:
+        with open(stac_metadata_file, 'rt', encoding='utf-8') as f:
+            stac_metadata = json.load(f)
+
+        relative_assets = relativize(stac_metadata.get('assets', {}))
+        transformed = dict(drop_links(stac_metadata), assets=relative_assets)
+
+        with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
+            json.dump(transformed, f, indent=2)
+
 
 if __name__ == '__main__':
     _setup_app_logging()
