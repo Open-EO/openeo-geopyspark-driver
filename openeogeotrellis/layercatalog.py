@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Union
 
 import geopyspark
 from openeogeotrellis import sentinel_hub
@@ -199,7 +199,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         super().__init__()
                         self.property_value = None
 
-                    def enterProcess(self, process_id: str, arguments: dict):
+                    def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
                         if process_id != 'eq':
                             raise NotImplementedError("process %s is not supported" % process_id)
 
