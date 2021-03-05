@@ -167,8 +167,8 @@ class S1BackscatterOrfeo:
             raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported")
         if sar_backscatter_arguments.ellipsoid_incidence_angle:
             raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
-        if sar_backscatter_arguments.noise_removal:
-            raise FeatureUnsupportedException("sar_backscatter: noise_removal band is not supported")
+
+        noise_removal = bool(sar_backscatter_arguments.noise_removal)
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
@@ -317,7 +317,7 @@ class S1BackscatterOrfeo:
                 # SARCalibration
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
                 sar_calibration.SetParameterString("in", str(input_tiff))
-                sar_calibration.SetParameterValue('noise', True)
+                sar_calibration.SetParameterValue('noise', noise_removal)
                 sar_calibration.SetParameterInt('ram', 512)
                 logger.info(log_prefix + f"SARCalibration params: {otb_param_dump(sar_calibration)}")
                 sar_calibration.Execute()
