@@ -4,26 +4,29 @@ import os
 import shutil
 import stat
 import sys
+from urllib.parse import urlparse
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from openeo.util import Rfc3339
-from openeo.util import TimingLogger, ensure_dir
+from openeo.util import deep_get, ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis._version import __version__
 
 LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
@@ -35,6 +38,7 @@ def _setup_app_logging() -> None:
     console_handler = logging.StreamHandler(stream=sys.stdout)
     console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 
+    # TODO: logs show up twice in the output
     logger.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
 
@@ -88,18 +92,21 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     temporal_extent = temporal_extent_union(*[
         sc["temporal_extent"] for sc in source_constraints.values() if "temporal_extent" in sc
     ])
-    spatial_extent = spatial_extent_union(*[
-        sc["spatial_extent"] for sc in source_constraints.values() if "spatial_extent" in sc
-    ])
-
-    start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
-
-    bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
-    if all(b is not None for b in bbox):
-        geometry = mapping(Polygon.from_bounds(*bbox))
+    extents = [sc["spatial_extent"] for sc in source_constraints.values() if "spatial_extent" in sc]
+    if(len(extents) > 0):
+        spatial_extent = spatial_extent_union(*extents)
+        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        if all(b is not None for b in bbox):
+            geometry = mapping(Polygon.from_bounds(*bbox))
+        else:
+            bbox = None
+            geometry = None
     else:
         bbox = None
         geometry = None
+
+
+    start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
     aggregate_spatial_geometries = tracer.get_geometries()
     if aggregate_spatial_geometries:
@@ -152,16 +159,19 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         epsg = None
         instruments = []
 
-    metadata['assets'] = {
-        output_file.name: {
-            'bands': bands,
-            'nodata': nodata,
-            'media_type': result.get_mimetype()
+    if result != null:
+        metadata['assets'] = {
+            output_file.name: {
+                'bands': bands,
+                'nodata': nodata,
+                'media_type': result.get_mimetype()
+            }
         }
-    }
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments
+    metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
+    metadata['processing:software'] = 'openeo-geotrellis-' + __version__
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -171,7 +181,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> batch_request_id
+def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> request_group_id
     if not arg or arg == 'no_dependencies':  # TODO: clean this up
         return {}
 
@@ -288,8 +298,39 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         result.reduce(output_file, delete_originals=True)
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("reduced %d files to %s" % (len(result.files), output_file))
+    elif result == null:
+        logger.info("skipping output file %s" % output_file)
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
+
+    card4l = dependencies and deep_get(job_specification, 'job_options', 'sentinel-hub-batch', default=None) == 'card4l'
+
+    if card4l:
+        logger.debug("awaiting Sentinel Hub CARD4L data...")
+
+        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
+        bucket_name = ConfigParams().sentinel_hub_batch_bucket
+
+        poll_interval_secs = 10
+        max_delay_secs = 600
+
+        for collection_id, request_group_id in dependencies.items():
+            try:
+                # FIXME: incorporate collection_id to make sure the files don't clash
+                s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir),
+                                                  poll_interval_secs, max_delay_secs)
+                logger.info("downloaded CARD4L data in {b}/{g} to {d}"
+                            .format(b=bucket_name, g=request_group_id, d=job_dir))
+                _transform_stac_metadata(job_dir)
+            except Py4JJavaError as e:
+                java_exception = e.java_exception
+
+                if (java_exception.getClass().getName() ==
+                        'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
+                    logger.warning("could not find STAC metadata to download from s3://{b}/{r} after {d}s"
+                                   .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
+                else:
+                    raise e
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 
@@ -304,6 +345,35 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         for file in os.listdir(job_dir):
             full_path = str(job_dir) + "/" + file
             s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+
+
+def _transform_stac_metadata(job_dir: Path):
+    def relativize(assets: dict) -> dict:
+        def relativize_href(asset: dict) -> dict:
+            absolute_href = asset['href']
+            relative_path = urlparse(absolute_href).path.split("/")[-1]
+            return dict(asset, href=relative_path)
+
+        return {asset_name: relativize_href(asset) for asset_name, asset in assets.items()}
+
+    def drop_links(metadata: dict) -> dict:
+        result = metadata.copy()
+        result.pop('links', None)
+        return result
+
+    stac_metadata_files = [job_dir / file_name for file_name in os.listdir(job_dir) if
+                           file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME]
+
+    for stac_metadata_file in stac_metadata_files:
+        with open(stac_metadata_file, 'rt', encoding='utf-8') as f:
+            stac_metadata = json.load(f)
+
+        relative_assets = relativize(stac_metadata.get('assets', {}))
+        transformed = dict(drop_links(stac_metadata), assets=relative_assets)
+
+        with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
+            json.dump(transformed, f, indent=2)
+
 
 if __name__ == '__main__':
     _setup_app_logging()

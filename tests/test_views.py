@@ -12,7 +12,7 @@ from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_D
 from openeo_driver.views import app
 
 import openeogeotrellis.job_registry
-from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
 from .data import TEST_DATA_ROOT
 
@@ -65,44 +65,207 @@ class TestCollections:
             assert 'links' in collections
 
     def test_collections_s2_radiometry(self, api):
-        resp = api.get('/collections/CGS_SENTINEL2_RADIOMETRY_V102_001').assert_status_code(200).json
-        assert resp['id'] == "CGS_SENTINEL2_RADIOMETRY_V102_001"
-        assert "Sentinel 2" in resp['description']
-        eo_bands = [
-            {"name": "2", "common_name": "blue", "center_wavelength": 0.4966},
-            {"name": "3", "common_name": "green", "center_wavelength": 0.560},
-            {"name": "4", "common_name": "red", "center_wavelength": 0.6645},
-            {"name": "8", "common_name": "nir", "center_wavelength": 0.8351}
-        ]
+        resp = api.get('/collections/TERRASCOPE_S2_TOC_V2').assert_status_code(200).json
+        assert resp['id'] == "TERRASCOPE_S2_TOC_V2"
+        assert "Sentinel-2" in resp['description']
+        eo_bands =  [
+                    {
+                      "name": "TOC-B01_60M",
+                      "common_name": "coastal aerosol",
+                      "wavelength_nm": 442.7,
+                      "gsd": 60,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B02_10M",
+                      "common_name": "blue",
+                      "center_wavelength": 0.4966,
+                      "wavelength_nm": 496.6,
+                      "gsd": 10,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B03_10M",
+                      "common_name": "green",
+                      "center_wavelength": 0.560,
+                      "wavelength_nm": 560,
+                      "gsd": 10,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B04_10M",
+                      "common_name": "red",
+                      "center_wavelength": 0.6645,
+                      "wavelength_nm": 664.5,
+                      "gsd": 10,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B05_20M",
+                      "common_name": "nir",
+                      "wavelength_nm": 704.1,
+                      "gsd": 20,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B06_20M",
+                      "wavelength_nm": 740.5,
+                      "gsd": 20,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B07_20M",
+                      "wavelength_nm": 782.8,
+                      "gsd": 20,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B08_10M",
+                      "common_name": "nir",
+                      "center_wavelength": 0.8351,
+                      "wavelength_nm": 835.1,
+                      "gsd": 10,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B8A_20M",
+                      "wavelength_nm": 864.7,
+                      "gsd": 20,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B11_20M",
+                      "common_name": "swir",
+                      "wavelength_nm": 1613.7,
+                      "gsd": 20,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "TOC-B12_20M",
+                      "common_name": "swir",
+                      "wavelength_nm": 2202.4,
+                      "gsd": 20,
+                      "scale": 0.0001,
+                      "offset": 0,
+                      "type": "int16",
+                      "unit": "1"
+                    },
+                    {
+                      "name": "SCENECLASSIFICATION_20M",
+                      "gsd": 20
+                    },
+                    {
+                      "name": "RAA_60M",
+                      "gsd": 60
+                    },
+                    {
+                      "name": "SZA_60M",
+                      "gsd": 60
+                    },
+                    {
+                      "name": "VZA_60M",
+                      "gsd": 60
+                    }
+                  ]
         if api.api_version_compare.at_least("1.0.0"):
             assert resp['stac_version'] == "0.9.0"
             assert resp['extent'] == {
                 "spatial": {"bbox": [[-180, -56, 180, 83]]},
                 "temporal": {"interval": [["2015-07-06T00:00:00Z", None]]},
             }
-            assert resp['cube:dimensions'] == {
-                'x': {'type': 'spatial', 'axis': 'x', 'extent': [-180, 180]},
-                'y': {'type': 'spatial', 'axis': 'y', 'extent': [-56, 83]},
-                't': {'type': 'temporal', 'extent': ["2015-07-06T00:00:00Z", None]},
-                'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
-            }
+            assert resp['cube:dimensions'] == {'bands': {'type': 'bands',
+                                                       'values': ['TOC-B01_60M',
+                                                                  'TOC-B02_10M',
+                                                                  'TOC-B03_10M',
+                                                                  'TOC-B04_10M',
+                                                                  'TOC-B05_20M',
+                                                                  'TOC-B06_20M',
+                                                                  'TOC-B07_20M',
+                                                                  'TOC-B08_10M',
+                                                                  'TOC-B8A_20M',
+                                                                  'TOC-B11_20M',
+                                                                  'TOC-B12_20M',
+                                                                  'SCENECLASSIFICATION_20M',
+                                                                  'RAA_60M',
+                                                                  'SZA_60M',
+                                                                  'VZA_60M']},
+                                             't': {'extent': ['2015-07-06T00:00:00Z', None], 'type': 'temporal'},
+                                             'x': {'axis': 'x',
+                                                   'extent': [-180, 180],
+                                                   'reference_system': 'AUTO:42001',
+                                                   'step': 10,
+                                                   'type': 'spatial'},
+                                             'y': {'axis': 'y',
+                                                   'extent': [-56, 83],
+                                                   'reference_system': 'AUTO:42001',
+                                                   'step': 10,
+                                                   'type': 'spatial'}}
             for f in eo_bands[0].keys():
-                assert [b[f] for b in resp['summaries']['eo:bands']] == [b[f] for b in eo_bands]
+                assert [b[f] for b in resp['summaries']['eo:bands'] if f in b] == [b[f] for b in eo_bands if f in b]
         else:
             assert resp['stac_version'] == "0.6.2"
             assert resp['extent'] == {
                 "spatial": [-180, -56, 180, 83],
                 "temporal": ["2015-07-06T00:00:00Z", None]
             }
-            assert resp["properties"]['cube:dimensions'] == {
-                'x': {'type': 'spatial', 'axis': 'x'},
-                'y': {'type': 'spatial', 'axis': 'y'},
-                't': {'type': 'temporal'},
-                'bands': {'type': 'bands', 'values': ['2', '3', '4', '8']}
-            }
+            assert resp["properties"]['cube:dimensions'] == {'bands': {'type': 'bands',
+                                                               'values': ['TOC-B01_60M',
+                                                                          'TOC-B02_10M',
+                                                                          'TOC-B03_10M',
+                                                                          'TOC-B04_10M',
+                                                                          'TOC-B05_20M',
+                                                                          'TOC-B06_20M',
+                                                                          'TOC-B07_20M',
+                                                                          'TOC-B08_10M',
+                                                                          'TOC-B8A_20M',
+                                                                          'TOC-B11_20M',
+                                                                          'TOC-B12_20M',
+                                                                          'SCENECLASSIFICATION_20M',
+                                                                          'RAA_60M',
+                                                                          'SZA_60M',
+                                                                          'VZA_60M']},
+                                                     't': {'type': 'temporal'},
+                                                     'x': {'axis': 'x',
+                                                           'reference_system': 'AUTO:42001',
+                                                           'step': 10,
+                                                           'type': 'spatial'},
+                                                     'y': {'axis': 'y',
+                                                           'reference_system': 'AUTO:42001',
+                                                           'step': 10,
+                                                           'type': 'spatial'}}
 
             for f in eo_bands[0].keys():
-                assert [b[f] for b in resp['properties']["eo:bands"]] == [b[f] for b in eo_bands]
+                assert [b[f] for b in resp['summaries']['eo:bands'] if f in b] == [b[f] for b in eo_bands if f in b]
 
 
 class TestBatchJobs:
@@ -250,7 +413,7 @@ class TestBatchJobs:
             job_dir = (tmp_path / job_id)
             job_output = (job_dir / "out")
             job_log = (job_dir / "log")
-            job_metadata = (job_dir / "metadata")
+            job_metadata = (job_dir / JOB_METADATA_FILENAME)
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
@@ -348,7 +511,7 @@ class TestBatchJobs:
             job_dir = (tmp_path / job_id)
             job_output = (job_dir / "out")
             job_log = (job_dir / "log")
-            job_metadata = (job_dir / "metadata")
+            job_metadata = (job_dir / JOB_METADATA_FILENAME)
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name

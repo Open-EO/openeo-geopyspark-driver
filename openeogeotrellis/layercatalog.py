@@ -6,6 +6,7 @@ import geopyspark
 from openeogeotrellis import sentinel_hub
 from shapely.geometry import box
 
+from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -100,6 +101,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         else:
             projected_polygons = to_projected_polygons(jvm, polygons)
 
+        single_level = env.get('pyramid_levels', 'all') != 'all'
         if spatial_bounds_present:
             if( native_crs == 'UTM'):
                 target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
@@ -107,7 +109,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
-        single_level = env.get('pyramid_levels', 'all') != 'all'
+        datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+        #WTF simple assignment to a var in a scala class doesn't work??
+        getattr(datacubeParams, "tileSize_$eq")(tilesize)
+        datacubeParams.maskingStrategyParameters = load_params.custom_mask
+        if single_level:
+            getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
@@ -219,8 +226,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
             if single_level:
-                datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
-                datacubeParams.tileSize = tilesize
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id,datacubeParams)
             else:
@@ -240,24 +245,39 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date)
 
         def sentinel_hub_pyramid():
+            # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
+            nonlocal metadata
+
             dependencies = env.get('dependencies', {})
 
-            logger.info("Sentinel Hub pyramid from dependencies {ds}".format(ds=dependencies))
-
             if dependencies:
-                batch_request_id = dependencies[collection_id]
-                key_regex = r".*\.tif"
-                date_regex = r".*_(\d{4})(\d{2})(\d{2}).tif"
+                subfolder = dependencies[collection_id]
+
+                s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder)
+                key_regex = r".+\.tif"
+                # support original _20210223.tif as well as CARD4L s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
+                date_regex = r".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
                 recursive = True
                 interpret_as_cell_type = "float32ud0"
 
+                logger.info("Sentinel Hub pyramid from {u}".format(u=s3_uri))
+
                 pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                    "s3://{b}/{i}/".format(b=ConfigParams().sentinel_hub_batch_bucket, i=batch_request_id),
+                    s3_uri,
                     key_regex,
                     date_regex,
                     recursive,
                     interpret_as_cell_type
                 )
+
+                sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+
+                if sar_backscatter_arguments.mask:
+                    metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
+
+                if sar_backscatter_arguments.local_incidence_angle:
+                    metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
+                                                         wavelength_um=None))
 
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, None, None))
@@ -270,6 +290,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
 
+                shub_band_names = metadata.band_names
+
+                if sar_backscatter_arguments.mask:
+                    metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
+                    shub_band_names.append('dataMask')
+
+                if sar_backscatter_arguments.local_incidence_angle:
+                    metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
+                                                         wavelength_um=None))
+                    shub_band_names.append('localIncidenceAngle')
+
+                # FIXME: support contributing_area (under investigation by Anze)
+
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
                     dataset_id,
                     client_id,
@@ -279,9 +312,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
 
                 return (
-                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(), projected_polygons_native_crs.crs(), from_date,
-                                                 to_date, metadata.band_names) if single_level
-                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, metadata.band_names))
+                    pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
+                                                 projected_polygons_native_crs.crs(), from_date, to_date,
+                                                 shub_band_names) if single_level
+                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
@@ -318,7 +352,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory(data_glob, band_file_markers, date_regex)
 
             return (
-                factory.datacube_seq(projected_polygons, from_date, to_date) if single_level
+                factory.datacube_seq(projected_polygons, from_date, to_date,{},"",datacubeParams) if single_level
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             )
 

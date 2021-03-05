@@ -26,6 +26,7 @@ dictConfig({
         'werkzeug': {'level': 'DEBUG'},
         'flask': {'level': 'DEBUG'},
         'openeo': {'level': 'DEBUG'},
+        'openeogeotrellis': {'level': 'INFO'}
     }
 })
 
@@ -34,7 +35,7 @@ from openeo_driver import server
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
 
-log = logging.getLogger("openeo-geopyspark-driver.kubernetes")
+log = logging.getLogger("openeogeotrellis.deploy.kubernetes")
 
 def main():
     from pyspark import SparkContext

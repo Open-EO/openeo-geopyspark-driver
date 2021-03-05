@@ -38,7 +38,7 @@ from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
 
 
-log = logging.getLogger("openeo-geopyspark-driver.probav-mep")
+log = logging.getLogger("openeogeotrellis.deploy.probav-mep")
 
 
 def main():

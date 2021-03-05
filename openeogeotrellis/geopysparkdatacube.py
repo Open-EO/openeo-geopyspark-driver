@@ -554,6 +554,10 @@ class GeopysparkDataCube(DriverDataCube):
                 str(other.metadata.has_band_dimension())
             ))
 
+        if other.pyramid.levels.keys() != self.pyramid.levels.keys():
+            raise OpenEOApiException(message="Trying to merge two cubes with different levels, perhaps you had to use 'resample_cube_spatial'? Levels of this cube: " + str(self.pyramid.levels.keys()) +
+                                             " are merged with %s" % str(other.pyramid.levels.keys()))
+
         # TODO properly combine bbox and temporal extents in metadata?
 
         if self._is_spatial() and other._is_spatial():
@@ -1532,36 +1536,44 @@ class GeopysparkDataCube(DriverDataCube):
     def apply_atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
         return self.atmospheric_correction(missionID     , sza       , vza       , raa       , gnd       , aot       , cwv       , appendDebugBands      )
 
-    def atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
-        if missionID is None: missionID="SENTINEL2"
-        if sza is None: sza=np.NaN
-        if vza is None: vza=np.NaN
-        if raa is None: raa=np.NaN
-        if gnd is None: gnd=np.NaN
-        if aot is None: aot=np.NaN
-        if cwv is None: cwv=np.NaN
-        if appendDebugBands is not None: 
-            if appendDebugBands==1: appendDebugBands=True
-            else: appendDebugBands=False
-        else: appendDebugBands=False
-        bandIds=self.metadata.band_names
-        _log.info("Bandids: "+str(bandIds))
+    def atmospheric_correction(self,method:str,elevation_model:str, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float,
+                               cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
+        if missionID is None: missionID = "SENTINEL2"
+        if method is None: method = "ICOR"
+        if elevation_model is None: elevation_model = "DEM"
+        if sza is None: sza = np.NaN
+        if vza is None: vza = np.NaN
+        if raa is None: raa = np.NaN
+        if gnd is None: gnd = np.NaN
+        if aot is None: aot = np.NaN
+        if cwv is None: cwv = np.NaN
+        if appendDebugBands is not None:
+            if appendDebugBands == 1:
+                appendDebugBands = True
+            else:
+                appendDebugBands = False
+        else:
+            appendDebugBands = False
+        bandIds = self.metadata.band_names
+        _log.info("Bandids: " + str(bandIds))
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
+                # ICOR or SMAC
+                method,
                 gps.get_spark_context()._jsc,
                 rdd,
                 bandIds,
-                #[29.0, 5.0, 130.0, nodefault, nodefault, nodefault, 0.33],
+                # [29.0, 5.0, 130.0, nodefault, nodefault, nodefault, 0.33],
                 [sza, vza, raa, gnd, aot, cwv, 0.33],
                 # DEM or SRTM
-                "DEM",
+                elevation_model,
                 # SENTINEL2 or LANDSAT8 for now
                 missionID,
                 appendDebugBands
             )
         )
         return atmo_corrected
-    
+
 
     def water_vapor(self, missionID: str) -> 'GeopysparkDataCube':
         # TODO: this is getting deprecated since water vapor is part of sentinel atmospheric correction and can be obtained by enabling debug bands
