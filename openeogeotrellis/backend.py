@@ -251,14 +251,32 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return 'Health check: ' + str(count)
 
     def oidc_providers(self) -> List[OidcProvider]:
+        # TODO Move these providers to config or bootstrap script?
         return [
             OidcProvider(
                 id="keycloak",
-                # TODO EP-3377: move this to config or bootstrap script?
                 issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
                 scopes=["openid"],
                 title="VITO Keycloak",
             ),
+            OidcProvider(
+                id="egi-dev",
+                issuer="https://aai-dev.egi.eu/oidc/",
+                scopes=["openid"],
+                title="EGI Check-in (dev)"
+            ),
+            # OidcProvider(
+            #     id="egi-demo",
+            #     issuer="https://aai-demo.egi.eu/oidc/",
+            #     scopes=["openid"],
+            #     title="EGI Check-in (demo)"
+            # ),
+            # OidcProvider(
+            #     id="egi",
+            #     issuer="https://aai.egi.eu/oidc/",
+            #     scopes=["openid"],
+            #     title="EGI Check-in"
+            # ),
         ]
 
     def file_formats(self) -> dict:
