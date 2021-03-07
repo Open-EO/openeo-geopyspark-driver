@@ -112,7 +112,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
         getattr(datacubeParams, "tileSize_$eq")(tilesize)
-        datacubeParams.maskingStrategyParameters = load_params.custom_mask
+        getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
