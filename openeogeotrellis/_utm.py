@@ -1,4 +1,5 @@
 import math
+from functools import partial
 from typing import Tuple
 
 import pyproj
@@ -68,3 +69,18 @@ def geometry_to_crs(geometry, crs_from, crs_to):
 
     # And apply to all coordinates in the geometry
     return shapely.ops.transform(project, geometry)
+
+
+def area_in_meters(geometry, crs):
+    geometry_area = shapely.ops.transform(
+        partial(
+            pyproj.transform,
+            pyproj.Proj(init=crs),
+            pyproj.Proj(
+                proj='aea',
+                lat_1=geometry.bounds[1],
+                lat_2=geometry.bounds[3])
+        ),
+        geometry)
+
+    return geometry_area.area

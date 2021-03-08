@@ -4,6 +4,7 @@ from openeo_driver.errors import FeatureUnsupportedException
 
 
 def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
+    # TODO: split off validation so it can be used for CARD4L flow
     """As a side-effect, also validates the arguments."""
 
     if sar_backscatter_arguments.coefficient == "gamma0-terrain":

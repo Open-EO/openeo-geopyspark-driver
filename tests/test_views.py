@@ -270,9 +270,12 @@ class TestCollections:
 
 class TestBatchJobs:
     DUMMY_PROCESS_GRAPH = {
-        "foo": {
-            "process_id": "foo",
-            "arguments": {}
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "BIOPAR_FAPAR_V1_GLOBAL"
+            },
+            "result": True
         }
     }
 
@@ -346,7 +349,8 @@ class TestBatchJobs:
                 'api_version': '0.4.0',
                 'application_id': None,
                 'job_id': job_id,
-                'specification': '{"process_graph": {"foo": {"process_id": "foo", "arguments": {}}},'
+                'specification': '{"process_graph": {"loadcollection1": {"process_id": "load_collection","arguments":'
+                                 '{"id": "BIOPAR_FAPAR_V1_GLOBAL"}, "result": true}},'
                                  '"title": null, "description": null, "plan": null, "budget": null}',
                 'status': 'submitted',
                 'user_id': TEST_USER

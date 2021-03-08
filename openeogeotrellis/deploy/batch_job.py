@@ -181,12 +181,12 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> request_group_id
+def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> (request_group_id, card4l)
     if not arg or arg == 'no_dependencies':  # TODO: clean this up
         return {}
 
-    pairs = [pair.split(":") for pair in arg.split(",")]
-    return {pair[0]: pair[1] for pair in pairs}
+    triples = [triple.split(":") for triple in arg.split(",")]
+    return {triple[0]: (triple[1], triple[2]) for triple in triples}
 
 
 def main(argv: List[str]) -> None:
@@ -303,7 +303,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
-    card4l = dependencies and deep_get(job_specification, 'job_options', 'sentinel-hub-batch', default=None) == 'card4l'
+    # TODO: clean this up
+    card4l = any(card4l for _, card4l in dependencies.values())
 
     if card4l:
         logger.debug("awaiting Sentinel Hub CARD4L data...")
@@ -314,11 +315,14 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         poll_interval_secs = 10
         max_delay_secs = 600
 
-        for collection_id, request_group_id in dependencies.items():
+        card4l_dependencies = [(collection_id, request_group_id) for
+                               collection_id, (request_group_id, card4l) in dependencies.items() if card4l]
+
+        for collection_id, request_group_id in card4l_dependencies:
             try:
                 # FIXME: incorporate collection_id to make sure the files don't clash
-                s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir),
-                                                  poll_interval_secs, max_delay_secs)
+                s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
+                                              max_delay_secs)
                 logger.info("downloaded CARD4L data in {b}/{g} to {d}"
                             .format(b=bucket_name, g=request_group_id, d=job_dir))
                 _transform_stac_metadata(job_dir)
@@ -327,7 +331,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
                 if (java_exception.getClass().getName() ==
                         'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
-                    logger.warning("could not find STAC metadata to download from s3://{b}/{r} after {d}s"
+                    logger.warning("could not find CARD4L metadata to download from s3://{b}/{r} after {d}s"
                                    .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
                 else:
                     raise e
