@@ -799,6 +799,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         if not sar_backscatter_arguments.noise_removal:
                             raise FeatureUnsupportedException("CARD4L: noise_removal must be enabled")
 
+                        dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments)['demInstance']
+
                         # cannot be the batch job ID because results for multiple collections would end up in
                         #  the same S3 dir
                         request_group_id = str(uuid.uuid4())
@@ -813,6 +815,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             from_date,
                             to_date,
                             shub_band_names,
+                            dem_instance,
                             subfolder,
                             request_group_id)
                         )
