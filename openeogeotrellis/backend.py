@@ -492,6 +492,7 @@ class GpsBatchJobs(backend.BatchJobs):
             self._start_job(job_id, user_id, dependencies)  # resume batch job with now available data
         elif "FAILED" in statuses:
             with JobRegistry() as registry:
+                registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
 
