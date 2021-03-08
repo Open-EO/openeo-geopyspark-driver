@@ -803,7 +803,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     # FIXME: support contributing_area (under investigation by Anze)
 
                     if card4l:
-                        dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments)['demInstance']
+                        # TODO: not obvious but this does the validation as well
+                        dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
 
                         # cannot be the batch job ID because results for multiple collections would end up in
                         #  the same S3 dir
