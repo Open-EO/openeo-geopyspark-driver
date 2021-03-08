@@ -15,7 +15,7 @@ from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from openeo.util import deep_get, ensure_dir, Rfc3339, TimingLogger
+from openeo.util import ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -181,7 +181,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> (request_group_id, card4l)
+def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> (subfolder, card4l)
     if not arg or arg == 'no_dependencies':  # TODO: clean this up
         return {}
 
@@ -267,7 +267,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
         'correlation_id': str(uuid.uuid4()),
-        'dependencies': dependencies
+        'dependencies': {collection_id: subfolder for collection_id, (subfolder, _) in dependencies.items()}
     })
     tracer = DryRunDataTracer()
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
