@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Union
 
 import geopyspark
 from openeogeotrellis import sentinel_hub
@@ -112,7 +112,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
         getattr(datacubeParams, "tileSize_$eq")(tilesize)
-        datacubeParams.maskingStrategyParameters = load_params.custom_mask
+        getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
@@ -199,7 +199,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         super().__init__()
                         self.property_value = None
 
-                    def enterProcess(self, process_id: str, arguments: dict):
+                    def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
                         if process_id != 'eq':
                             raise NotImplementedError("process %s is not supported" % process_id)
 

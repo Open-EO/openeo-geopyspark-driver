@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 from functools import reduce
 from pathlib import Path
+from shapely.geometry.polygon import Polygon
 from subprocess import CalledProcessError
 from typing import Dict
 
@@ -41,6 +42,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import normalize_date, kerberos, zk_client
+from openeogeotrellis._utm import area_in_square_meters
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -251,14 +253,32 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return 'Health check: ' + str(count)
 
     def oidc_providers(self) -> List[OidcProvider]:
+        # TODO Move these providers to config or bootstrap script?
         return [
             OidcProvider(
                 id="keycloak",
-                # TODO EP-3377: move this to config or bootstrap script?
                 issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
                 scopes=["openid"],
                 title="VITO Keycloak",
             ),
+            OidcProvider(
+                id="egi-dev",
+                issuer="https://aai-dev.egi.eu/oidc/",
+                scopes=["openid"],
+                title="EGI Check-in (dev)"
+            ),
+            # OidcProvider(
+            #     id="egi-demo",
+            #     issuer="https://aai-demo.egi.eu/oidc/",
+            #     scopes=["openid"],
+            #     title="EGI Check-in (demo)"
+            # ),
+            # OidcProvider(
+            #     id="egi",
+            #     issuer="https://aai.egi.eu/oidc/",
+            #     scopes=["openid"],
+            #     title="EGI Check-in"
+            # ),
         ]
 
     def file_formats(self) -> dict:
@@ -472,6 +492,7 @@ class GpsBatchJobs(backend.BatchJobs):
             self._start_job(job_id, user_id, dependencies)  # resume batch job with now available data
         elif "FAILED" in statuses:
             with JobRegistry() as registry:
+                registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
 
@@ -511,13 +532,10 @@ class GpsBatchJobs(backend.BatchJobs):
             spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
 
-            # currently the scope of the "sentinel-hub-batch" flag is the entire batch job (not load_collection)
-            if (batch_process_dependencies is None and extra_options.get('sentinel-hub-batch', False)
+            if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id,
-                                                                    card4l=
-                                                                    extra_options['sentinel-hub-batch'] == 'card4l')):
+                                                                    user_id, job_id)):
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return
@@ -537,8 +555,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up
 
-                pairs = ["{c}:{b}".format(c=dependency['collection_id'],
-                                          b=dependency.get('subfolder') or dependency['batch_request_id'])
+                pairs = ["{c}:{f}:{m}".format(c=dependency['collection_id'],
+                                              f=dependency.get('subfolder') or dependency['batch_request_id'],
+                                              m=dependency.get('card4l', False))
                          for dependency in dependencies]
 
                 return ",".join(pairs)
@@ -696,8 +715,7 @@ class GpsBatchJobs(backend.BatchJobs):
             raise _BatchJobError(stream)
 
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: JobRegistry, user_id: str, job_id: str,
-                                               card4l: bool) -> bool:
+                                               job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -730,19 +748,39 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 layer_source_info = metadata.get("_vito", "data_source")
 
-                if (constraints.get("sar_backscatter") is not None and
-                        not layer_source_info.get("sar_backscatter_compatible", False)):
+                if ("sar_backscatter" in constraints
+                        and not layer_source_info.get("sar_backscatter_compatible", False)):
                     raise OpenEOApiException(message=
                                              """Process "sar_backscatter" is not applicable for collection {c}."""
                                              .format(c=collection_id), status_code=400)
 
                 if layer_source_info['type'] == 'sentinel-hub':
+                    sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
+
+                    card4l = (sar_backscatter_arguments.coefficient == "gamma0-terrain"
+                              and sar_backscatter_arguments.mask
+                              and sar_backscatter_arguments.contributing_area
+                              and sar_backscatter_arguments.local_incidence_angle)
+
+                    spatial_extent = constraints['spatial_extent']
+
+                    def area():
+                        geom = Polygon.from_bounds(
+                            xmin=spatial_extent['west'],
+                            ymin=spatial_extent['south'],
+                            xmax=spatial_extent['east'],
+                            ymax=spatial_extent['north'])
+
+                        return area_in_square_meters(geom, spatial_extent['crs'])
+
+                    if not card4l and area() < 50 * 1000 * 50 * 1000:  # 50x50 km
+                        continue  # skip SHub batch process and use sync approach instead
+
                     jvm = gps.get_spark_context()._gateway.jvm
 
                     sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                         layer_source_info.get('sample_type', 'UINT16'))
 
-                    spatial_extent = constraints['spatial_extent']
                     from_date, to_date = [normalize_date(d) for d in constraints['temporal_extent']]
 
                     west = spatial_extent['west']
@@ -755,8 +793,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         ConfigParams().sentinel_hub_batch_bucket,
                         layer_source_info['client_id'], layer_source_info['client_secret'])
 
-                    sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
-
                     shub_band_names = metadata.band_names
 
                     if sar_backscatter_arguments.mask:
@@ -768,18 +804,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     # FIXME: support contributing_area (under investigation by Anze)
 
                     if card4l:
-                        # make sure that request is compliant with parameters currently required for SHub CARD4L output:
-                        if sar_backscatter_arguments.coefficient != "gamma0-terrain":
-                            raise FeatureUnsupportedException("CARD4L: coefficient must be gamma0-terrain")
-                        if (sar_backscatter_arguments.elevation_model
-                                and sar_backscatter_arguments.elevation_model != 'COPERNICUS_30'):
-                            raise FeatureUnsupportedException(
-                                "CARD4L: elevation_model must be COPERNICUS_30 or empty")
-                        if sar_backscatter_arguments.ellipsoid_incidence_angle:
-                            raise FeatureUnsupportedException(
-                                "CARD4L: ellipsoid_incidence_angle is not supported")
-                        if not sar_backscatter_arguments.noise_removal:
-                            raise FeatureUnsupportedException("CARD4L: noise_removal must be enabled")
+                        # TODO: not obvious but this does the validation as well
+                        dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
 
                         # cannot be the batch job ID because results for multiple collections would end up in
                         #  the same S3 dir
@@ -795,6 +821,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             from_date,
                             to_date,
                             shub_band_names,
+                            dem_instance,
                             subfolder,
                             request_group_id)
                         )
@@ -820,7 +847,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     batch_process_dependencies.append({
                         'collection_id': collection_id,
                         'batch_request_ids': batch_request_ids,  # to poll SHub
-                        'subfolder': subfolder  # where load_collection gets its data
+                        'subfolder': subfolder,  # where load_collection gets its data
+                        'card4l': card4l  # should the batch job expect CARD4L metadata?
                     })
 
         if batch_process_dependencies:

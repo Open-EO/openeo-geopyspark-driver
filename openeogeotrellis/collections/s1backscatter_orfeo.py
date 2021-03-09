@@ -155,10 +155,20 @@ class S1BackscatterOrfeo:
         # Initial argument checking
         bands = bands or ["VH", "VV"]
 
-        if sar_backscatter_arguments.coefficient != "sigma0-ellipsoid":
+        # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
+        coefficient_mapping = {
+            "beta0": "beta",
+            "sigma0-ellipsoid": "sigma",
+            "gamma0-ellipsoid": "gamma",
+        }
+
+        if sar_backscatter_arguments.coefficient in coefficient_mapping:
+            sar_calibration_lut = coefficient_mapping[sar_backscatter_arguments.coefficient]
+        else:
             raise OpenEOApiException(
-                "Unsupported backscatter coefficient {c!r} (only 'sigma0-ellipsoid' is supported).".format(
-                    c=sar_backscatter_arguments.coefficient))
+                f"Backscatter coefficient {sar_backscatter_arguments.coefficient!r} is not supported. "
+                f"Use one of {list(coefficient_mapping.keys())}.")
+
         if sar_backscatter_arguments.mask:
             raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
         if sar_backscatter_arguments.contributing_area:
@@ -167,8 +177,8 @@ class S1BackscatterOrfeo:
             raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported")
         if sar_backscatter_arguments.ellipsoid_incidence_angle:
             raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
-        if sar_backscatter_arguments.noise_removal:
-            raise FeatureUnsupportedException("sar_backscatter: noise_removal band is not supported")
+
+        noise_removal = bool(sar_backscatter_arguments.noise_removal)
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
@@ -317,7 +327,8 @@ class S1BackscatterOrfeo:
                 # SARCalibration
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
                 sar_calibration.SetParameterString("in", str(input_tiff))
-                sar_calibration.SetParameterValue('noise', True)
+                sar_calibration.SetParameterString("lut", sar_calibration_lut)
+                sar_calibration.SetParameterValue('noise', noise_removal)
                 sar_calibration.SetParameterInt('ram', 512)
                 logger.info(log_prefix + f"SARCalibration params: {otb_param_dump(sar_calibration)}")
                 sar_calibration.Execute()
