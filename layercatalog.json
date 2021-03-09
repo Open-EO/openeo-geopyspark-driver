@@ -706,13 +706,12 @@
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["FAPAR_10M","FAPAR_20M","SCENECLASSIFICATION_20M"]
+        "values": ["FAPAR_10M","SCENECLASSIFICATION_20M"]
       }
     },
     "summaries": {
       "eo:bands": [
         {"name": "FAPAR_10M"},
-        {"name": "FAPAR_20M"},
         {"name": "SCENECLASSIFICATION_20M"}
       ]
     },
@@ -721,6 +720,22 @@
         "type": "file-s2",
         "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
+      },
+      "properties": {
+        "resolution": {
+          "process_graph": {
+            "asc": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "10"
+              },
+              "result": true
+            }
+          }
+        }
       }
     }
   },
