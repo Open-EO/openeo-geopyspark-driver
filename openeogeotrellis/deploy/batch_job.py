@@ -303,10 +303,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
-    # TODO: clean this up
-    card4l = any(card4l for _, card4l in dependencies.values())
-
-    if card4l:
+    if any(card4l for _, card4l in dependencies.values()):  # TODO: clean this up
         logger.debug("awaiting Sentinel Hub CARD4L data...")
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
@@ -325,7 +322,6 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
                                               max_delay_secs)
                 logger.info("downloaded CARD4L data in {b}/{g} to {d}"
                             .format(b=bucket_name, g=request_group_id, d=job_dir))
-                _transform_stac_metadata(job_dir)
             except Py4JJavaError as e:
                 java_exception = e.java_exception
 
@@ -335,6 +331,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
                                    .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
                 else:
                     raise e
+
+        _transform_stac_metadata(job_dir)
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
 

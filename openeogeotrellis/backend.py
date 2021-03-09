@@ -42,7 +42,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import *
 from openeogeotrellis.utils import normalize_date, kerberos, zk_client
-from openeogeotrellis._utm import area_in_meters
+from openeogeotrellis._utm import area_in_square_meters
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -771,7 +771,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             xmax=spatial_extent['east'],
                             ymax=spatial_extent['north'])
 
-                        return area_in_meters(geom, spatial_extent['crs'])
+                        return area_in_square_meters(geom, spatial_extent['crs'])
 
                     if not card4l and area() < 50 * 1000 * 50 * 1000:  # 50x50 km
                         continue  # skip SHub batch process and use sync approach instead

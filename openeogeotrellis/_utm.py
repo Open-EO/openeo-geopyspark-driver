@@ -71,7 +71,7 @@ def geometry_to_crs(geometry, crs_from, crs_to):
     return shapely.ops.transform(project, geometry)
 
 
-def area_in_meters(geometry, crs):
+def area_in_square_meters(geometry, crs):
     geometry_area = shapely.ops.transform(
         partial(
             pyproj.transform,
