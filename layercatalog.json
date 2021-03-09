@@ -706,12 +706,14 @@
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["FAPAR_10M"]
+        "values": ["FAPAR_10M","FAPAR_20M","SCENECLASSIFICATION_20M"]
       }
     },
     "summaries": {
       "eo:bands": [
-        {"name": "FAPAR_10M"}
+        {"name": "FAPAR_10M"},
+        {"name": "FAPAR_20M"},
+        {"name": "SCENECLASSIFICATION_20M"}
       ]
     },
     "_vito": {
