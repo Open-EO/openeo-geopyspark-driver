@@ -93,6 +93,12 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def temporal_extent(self) -> tuple:
         return self._temporal_extent
 
+    @property
+    def opensearch_link_titles(self) -> List[str]:
+        """Get opensearch_link_titles from band dimension"""
+        names_with_aliases = zip(self.band_dimension.band_names, self.band_dimension.band_aliases)
+        return [n[1][0] if n[1] else n[0] for n in names_with_aliases]
+
 
 class GeopysparkDataCube(DriverDataCube):
 
