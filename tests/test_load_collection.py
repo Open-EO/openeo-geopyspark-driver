@@ -89,7 +89,7 @@ def test_load_collection_bands_with_required_extent(get_jvm):
 
     print(collection.metadata)
     assert len(collection.metadata.bands)==1
-    assert collection.metadata.bands[0].name=='TOC-B03_10M'
+    assert collection.metadata.bands[0].name=='B03'
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
