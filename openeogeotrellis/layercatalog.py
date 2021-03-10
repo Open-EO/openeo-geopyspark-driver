@@ -68,6 +68,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             metadata = metadata.filter_bands(bands)
+            metadata = metadata.rename_labels(metadata.band_dimension.name,bands)
         else:
             band_indices = None
         logger.info("band_indices: {b!r}".format(b=band_indices))
