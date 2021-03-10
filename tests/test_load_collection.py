@@ -65,7 +65,7 @@ def test_load_collection_old_and_new_band_names(get_jvm):
         collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
 
         assert len(collection.metadata.bands) == 1
-        assert collection.metadata.bands[0].name == 'B03'
+        assert collection.metadata.bands[0].name == bands[0]
 
 
 def test_create_params():
@@ -104,7 +104,7 @@ def test_load_collection_bands_with_required_extent(get_jvm):
 
     print(collection.metadata)
     assert len(collection.metadata.bands)==1
-    assert collection.metadata.bands[0].name=='B03'
+    assert collection.metadata.bands[0].name=='TOC-B03_10M'
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
