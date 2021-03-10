@@ -39,6 +39,35 @@ def test_load_collection_sar_backscatter_incompatible():
             """Process "sar_backscatter" is not applicable for collection TERRASCOPE_S2_TOC_V2.""")
 
 
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_collection_old_and_new_band_names(get_jvm):
+    catalog = get_layer_catalog()
+
+    jvm_mock = get_jvm.return_value
+    raster_layer = MagicMock()
+    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+    raster_layer.layerMetadata.return_value = '{' \
+                                              '"crs":"EPSG:4326",\n' \
+                                              '"cellType":"uint8",\n' \
+                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
+                                              '"layoutDefinition":{\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
+                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
+                                              '}' \
+                                              '}'
+
+    temporal_extent = ('2019-01-01', '2019-01-01')
+    spatial_extent = {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
+
+    for bands in [['TOC-B03_10M'], ['B03']]:
+        load_params = LoadParameters(temporal_extent=temporal_extent, bands=bands, spatial_extent=spatial_extent)
+        collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
+
+        assert len(collection.metadata.bands) == 1
+        assert collection.metadata.bands[0].name == 'B03'
+
+
 def test_create_params():
     pysc = gps.get_spark_context()
     gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
@@ -75,7 +104,7 @@ def test_load_collection_bands_with_required_extent(get_jvm):
 
     print(collection.metadata)
     assert len(collection.metadata.bands)==1
-    assert collection.metadata.bands[0].name=='TOC-B03_10M'
+    assert collection.metadata.bands[0].name=='B03'
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
