@@ -876,7 +876,7 @@
 
         {
           "name": "B01",
-          "internal_name": "TOC-B01_60M",
+          "aliases": ["TOC-B01_60M"],
           "common_name": "coastal aerosol",
           "wavelength_nm": 442.7,
           "gsd": 60,
@@ -887,7 +887,7 @@
         },
         {
           "name": "B02",
-          "internal_name": "TOC-B02_10M",
+          "aliases": ["TOC-B02_10M"],
           "common_name": "blue",
           "center_wavelength": 0.4966,
           "wavelength_nm": 496.6,
@@ -899,7 +899,7 @@
         },
         {
           "name": "B03",
-          "internal_name": "TOC-B03_10M",
+          "aliases": ["TOC-B03_10M"],
           "common_name": "green",
           "center_wavelength": 0.560,
           "wavelength_nm": 560,
@@ -911,7 +911,7 @@
         },
         {
           "name": "B04",
-          "internal_name": "TOC-B04_10M",
+          "aliases": ["TOC-B04_10M"],
           "common_name": "red",
           "center_wavelength": 0.6645,
           "wavelength_nm": 664.5,
@@ -923,7 +923,7 @@
         },
         {
           "name": "B05",
-          "internal_name": "TOC-B05_20M",
+          "aliases": ["TOC-B05_20M"],
           "common_name": "nir",
           "wavelength_nm": 704.1,
           "gsd": 20,
@@ -934,7 +934,7 @@
         },
         {
           "name": "B06",
-          "internal_name": "TOC-B06_20M",
+          "aliases": ["TOC-B06_20M"],
           "wavelength_nm": 740.5,
           "gsd": 20,
           "scale": 0.0001,
@@ -944,7 +944,7 @@
         },
         {
           "name": "B07",
-          "internal_name": "TOC-B07_20M",
+          "aliases": ["TOC-B07_20M"],
           "wavelength_nm": 782.8,
           "gsd": 20,
           "scale": 0.0001,
@@ -954,7 +954,7 @@
         },
         {
           "name": "B08",
-          "internal_name": "TOC-B08_10M",
+          "aliases": ["TOC-B08_10M"],
           "common_name": "nir",
           "center_wavelength": 0.8351,
           "wavelength_nm": 835.1,
@@ -966,7 +966,7 @@
         },
         {
           "name": "B8A",
-          "internal_name": "TOC-B8A_20M",
+          "aliases": ["TOC-B8A_20M"],
           "wavelength_nm": 864.7,
           "gsd": 20,
           "scale": 0.0001,
@@ -976,7 +976,7 @@
         },
         {
           "name": "B11",
-          "internal_name": "TOC-B11_20M",
+          "aliases": ["TOC-B11_20M"],
           "common_name": "swir",
           "wavelength_nm": 1613.7,
           "gsd": 20,
@@ -987,7 +987,7 @@
         },
         {
           "name": "B12",
-          "internal_name": "TOC-B12_20M",
+          "aliases": ["TOC-B12_20M"],
           "common_name": "swir",
           "wavelength_nm": 2202.4,
           "gsd": 20,
@@ -998,22 +998,22 @@
         },
         {
           "name": "SCENECLASSIFICATION",
-          "internal_name": "SCENECLASSIFICATION_20M",
+          "aliases": ["SCENECLASSIFICATION_20M"],
           "gsd": 20
         },
         {
           "name": "RAA",
-          "internal_name": "RAA_60M",
+          "aliases": ["RAA_60M"],
           "gsd": 60
         },
         {
           "name": "SZA",
-          "internal_name": "SZA_60M",
+          "aliases": ["SZA_60M"],
           "gsd": 60
         },
         {
           "name": "VZA",
-          "internal_name": "VZA_60M",
+          "aliases": ["VZA_60M"],
           "gsd": 60
         }
       ]
