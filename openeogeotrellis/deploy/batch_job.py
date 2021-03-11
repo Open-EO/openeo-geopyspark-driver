@@ -20,6 +20,7 @@ from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
+from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy import load_custom_processes
@@ -207,6 +208,7 @@ def main(argv: List[str]) -> None:
     metadata_file = job_dir / argv[5]
     api_version = argv[6] if len(argv) >= 7 else None
     dependencies = _deserialize_dependencies(argv[7]) if len(argv) >= 8 else {}
+    user_id = argv[8] if len(argv) >= 9 else None
 
     _create_job_dir(job_dir)
 
@@ -240,7 +242,10 @@ def main(argv: List[str]) -> None:
             kerberos()
             
             def run_driver(): 
-                run_job(job_specification, output_file, metadata_file, api_version, job_dir, dependencies)
+                run_job(
+                    job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
+                    api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id
+                )
             
             if sc.getConf().get('spark.python.profile', 'false').lower()=='true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
@@ -261,11 +266,12 @@ def main(argv: List[str]) -> None:
         raise e
 
 @log_memory
-def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict):
+def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict, user_id:str=None):
     process_graph = job_specification['process_graph']
     env = EvalEnv({
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
+        'user': User(user_id=user_id),
         'correlation_id': str(uuid.uuid4()),
         'dependencies': {collection_id: subfolder for collection_id, (subfolder, _) in dependencies.items()}
     })
