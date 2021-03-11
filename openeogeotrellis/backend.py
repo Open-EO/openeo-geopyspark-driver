@@ -763,7 +763,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     card4l = (sar_backscatter_arguments.coefficient == "gamma0-terrain"
                               and sar_backscatter_arguments.mask
-                              and sar_backscatter_arguments.contributing_area
                               and sar_backscatter_arguments.local_incidence_angle)
 
                     spatial_extent = constraints['spatial_extent']
@@ -804,8 +803,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
-
-                    # FIXME: support contributing_area (under investigation by Anze)
 
                     if card4l:
                         # TODO: not obvious but this does the validation as well

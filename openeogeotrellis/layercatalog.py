@@ -302,8 +302,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
 
-                # FIXME: support contributing_area (under investigation by Anze)
-
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
                     dataset_id,
                     client_id,

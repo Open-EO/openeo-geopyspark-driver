@@ -22,8 +22,8 @@ def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     rtc = backscatter_coefficient == "GAMMA0_TERRAIN"
     orthorectify = rtc or sar_backscatter_arguments.local_incidence_angle
 
-    # FIXME: support contributing_area because it is required by ard_normalized_radar_backscatter (under investigation
-    #  by Anze)
+    if sar_backscatter_arguments.contributing_area:
+        raise FeatureUnsupportedException("sar_backscatter: contributing_area is not supported")
 
     if sar_backscatter_arguments.ellipsoid_incidence_angle:
         raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle is not supported")
