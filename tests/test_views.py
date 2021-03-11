@@ -407,13 +407,18 @@ class TestBatchJobs:
                 "links": []
             }
 
-    def test_create_and_start_and_download(self, api, tmp_path):
-        custom_processes_py = tmp_path / "custom_processes.py"
-        custom_processes_py.touch()
+    def test_create_and_start_and_download(self, api, tmp_path, monkeypatch):
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
-                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": str(custom_processes_py)}):
+                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
+
+            openeo_flask_dir = tmp_path / "openeo-flask"
+            openeo_flask_dir.mkdir()
+            (openeo_flask_dir / "foolib.whl").touch()
+            (openeo_flask_dir / "__pyfiles__").mkdir()
+            (openeo_flask_dir / "__pyfiles__" / "custom_processes.py").touch()
+            monkeypatch.chdir(openeo_flask_dir)
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
@@ -444,7 +449,10 @@ class TestBatchJobs:
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
             assert batch_job_args[11:17] == ['12G', '2G', '2G', '5', '2', '2G']
-            assert batch_job_args[17:] == ['default', 'false', 'no_dependencies', str(custom_processes_py)]
+            assert batch_job_args[17:] == [
+                'default', 'false', 'no_dependencies',
+                "__pyfiles__/custom_processes.py,foolib.whl"
+            ]
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -508,13 +516,18 @@ class TestBatchJobs:
             ).assert_status_code(200).json
             assert res["logs"] == [{"id": "0", "level": "error", "message": "[INFO] Hello world"}]
 
-    def test_create_and_start_job_options(self, api, tmp_path):
-        custom_processes_py = tmp_path / "custom_processes.py"
-        custom_processes_py.touch()
+    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch):
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
-                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": str(custom_processes_py)}):
+                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
+
+            openeo_flask_dir = tmp_path / "openeo-flask"
+            openeo_flask_dir.mkdir()
+            (openeo_flask_dir / "foolib.whl").touch()
+            (openeo_flask_dir / "__pyfiles__").mkdir()
+            (openeo_flask_dir / "__pyfiles__" / "custom_processes.py").touch()
+            monkeypatch.chdir(openeo_flask_dir)
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
@@ -545,7 +558,10 @@ class TestBatchJobs:
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
             assert batch_job_args[11:17] == ['3g', '11g', '2G', '5', '4', '10000G']
-            assert batch_job_args[17:] == ['somequeue', 'false', 'no_dependencies', str(custom_processes_py)]
+            assert batch_job_args[17:] == [
+                'somequeue', 'false', 'no_dependencies',
+                "__pyfiles__/custom_processes.py,foolib.whl"
+            ]
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:
