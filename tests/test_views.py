@@ -408,8 +408,11 @@ class TestBatchJobs:
             }
 
     def test_create_and_start_and_download(self, api, tmp_path):
+        custom_processes_py = tmp_path / "custom_processes.py"
+        custom_processes_py.touch()
         with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un:
+                self._mock_utcnow() as un, \
+                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": str(custom_processes_py)}):
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
@@ -440,8 +443,8 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:] == ['12G', '2G', '2G', '5', '2', '2G', 'default', 'false', 'no_dependencies']
-            
+            assert batch_job_args[11:17] == ['12G', '2G', '2G', '5', '2', '2G']
+            assert batch_job_args[17:] == ['default', 'false', 'no_dependencies', str(custom_processes_py)]
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -506,8 +509,11 @@ class TestBatchJobs:
             assert res["logs"] == [{"id": "0", "level": "error", "message": "[INFO] Hello world"}]
 
     def test_create_and_start_job_options(self, api, tmp_path):
+        custom_processes_py = tmp_path / "custom_processes.py"
+        custom_processes_py.touch()
         with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un:
+                self._mock_utcnow() as un, \
+                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": str(custom_processes_py)}):
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # Create job
@@ -538,8 +544,8 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:] == ['3g', '11g', '2G', '5', '4', '10000G', 'somequeue', 'false',
-                                           'no_dependencies']
+            assert batch_job_args[11:17] == ['3g', '11g', '2G', '5', '4', '10000G']
+            assert batch_job_args[17:] == ['somequeue', 'false', 'no_dependencies', str(custom_processes_py)]
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:
