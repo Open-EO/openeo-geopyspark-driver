@@ -510,6 +510,24 @@ class GpsBatchJobs(backend.BatchJobs):
     def _get_job_output_dir(self, job_id: str) -> Path:
         return GpsBatchJobs._OUTPUT_ROOT_DIR / job_id
 
+    @staticmethod
+    def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".") -> str:
+        """Get `-py-files` for batch job submit (e.g. based on how flask app was submitted)."""
+        py_files = (env or os.environ).get("OPENEO_SPARK_SUBMIT_PY_FILES", "")
+        cwd = Path(cwd)
+        if py_files:
+            found = []
+            for filename in py_files.split(","):
+                if (cwd / filename).exists():
+                    found.append(filename)
+                elif (cwd / "__pyfiles__" / filename).exists():
+                    # Spark-submit moves `.py` files into __pyfiles__ folder
+                    found.append("__pyfiles__/" + filename)
+                else:
+                    logger.warning(f"Could not find 'py-file' {filename}: skipping")
+            py_files = ",".join(found)
+        return py_files
+
     def start_job(self, job_id: str, user_id: str):
         self._start_job(job_id, user_id)
 
@@ -684,6 +702,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(queue)
                     args.append(profile)
                     args.append(serialize_dependencies())
+                    args.append(self.get_submit_py_files())
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args))

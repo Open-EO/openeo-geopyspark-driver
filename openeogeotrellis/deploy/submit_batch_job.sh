@@ -40,6 +40,7 @@ drivermemoryoverhead=${16-8G}
 queue=${17-default}
 profile=${18-false}
 dependencies=${19-"no_dependencies"}
+pyfiles=${20}
 
 pysparkPython="venv/bin/python"
 
@@ -57,11 +58,6 @@ extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar
-fi
-
-pyfiles="--py-files cropsar*.whl"
-if [ -f __pyfiles__/custom_processes.py ]; then
-   pyfiles=${pyfiles},__pyfiles__/custom_processes.py
 fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
