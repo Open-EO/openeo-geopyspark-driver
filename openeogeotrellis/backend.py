@@ -18,6 +18,8 @@ from typing import Dict
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
+
+from openeo_driver.users import User
 from openeogeotrellis import sentinel_hub
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
@@ -721,7 +723,9 @@ class GpsBatchJobs(backend.BatchJobs):
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
         from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
-        env = EvalEnv()
+        env = EvalEnv({
+            "user": User(user_id)
+        })
 
         if api_version:
             env = env.push({"version": api_version})
