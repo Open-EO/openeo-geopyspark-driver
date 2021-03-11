@@ -96,6 +96,17 @@ def test_get_submit_py_files_basic(tmp_path):
     assert py_files == "__pyfiles__/stuff.py,lib.whl"
 
 
+def test_get_submit_py_files_deep_paths(tmp_path):
+    # Originally submitted py-files
+    env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/stuff.py,data/deps/lib.whl"}
+    # Resources of flask app job.
+    (tmp_path / "lib.whl").touch()
+    (tmp_path / "__pyfiles__").mkdir()
+    (tmp_path / "__pyfiles__" / "stuff.py").touch()
+    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    assert py_files == "__pyfiles__/stuff.py,lib.whl"
+
+
 def test_get_submit_py_files_no_env(tmp_path):
     py_files = GpsBatchJobs.get_submit_py_files(env={}, cwd=tmp_path)
     assert py_files == ""
