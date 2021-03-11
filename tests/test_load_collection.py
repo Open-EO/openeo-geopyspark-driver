@@ -66,6 +66,7 @@ def test_load_collection_old_and_new_band_names(get_jvm):
 
         assert len(collection.metadata.bands) == 1
         assert collection.metadata.bands[0].name == bands[0]
+        assert collection.metadata.bands[0].aliases == ['TOC-B03_10M']
 
 
 def test_create_params():
