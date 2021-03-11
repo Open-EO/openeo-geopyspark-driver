@@ -86,7 +86,7 @@ def test_extract_application_id():
     assert GpsBatchJobs._extract_application_id(yarn_log) == "application_1562328661428_5542"
 
 
-def test_get_submit_py_files_basic(tmp_path):
+def test_get_submit_py_files_basic(tmp_path, caplog):
     (tmp_path / "lib.whl").touch()
     (tmp_path / "zop.zip").touch()
     (tmp_path / "__pyfiles__").mkdir()
@@ -94,9 +94,11 @@ def test_get_submit_py_files_basic(tmp_path):
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "stuff.py,lib.whl,foo.py"}
     py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
     assert py_files == "__pyfiles__/stuff.py,lib.whl"
+    warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert warn_logs == ["Could not find 'py-file' foo.py: skipping"]
 
 
-def test_get_submit_py_files_deep_paths(tmp_path):
+def test_get_submit_py_files_deep_paths(tmp_path, caplog):
     # Originally submitted py-files
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/stuff.py,data/deps/lib.whl"}
     # Resources of flask app job.
@@ -105,6 +107,8 @@ def test_get_submit_py_files_deep_paths(tmp_path):
     (tmp_path / "__pyfiles__" / "stuff.py").touch()
     py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
     assert py_files == "__pyfiles__/stuff.py,lib.whl"
+    warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert warn_logs == []
 
 
 def test_get_submit_py_files_no_env(tmp_path):

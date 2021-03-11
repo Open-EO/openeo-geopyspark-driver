@@ -520,10 +520,10 @@ class GpsBatchJobs(backend.BatchJobs):
             # Spark-submit moves `py-files` directly into job folder (`cwd`),
             # or under __pyfiles__ subfolder in case of *.py, regardless of original path.
             for filename in (Path(p).name for p in py_files.split(",")):
-                for candidate in [filename, "__pyfiles__/" + filename]:
-                    if (cwd/candidate).exists():
-                        found.append(candidate)
-                        continue
+                if (cwd / filename).exists():
+                    found.append(filename)
+                elif (cwd / "__pyfiles__" / filename).exists():
+                    found.append("__pyfiles__/" + filename)
                 else:
                     logger.warning(f"Could not find 'py-file' {filename}: skipping")
             py_files = ",".join(found)
