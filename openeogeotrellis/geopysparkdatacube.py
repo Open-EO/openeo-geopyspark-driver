@@ -541,13 +541,9 @@ class GeopysparkDataCube(DriverDataCube):
     @classmethod
     def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
         from shapely.ops import transform
+        from pyproj import Transformer
+        return transform(Transformer.from_crs(srs, dest_srs, always_xy=True).transform, polygon)  # apply projection
 
-        project = partial(
-            pyproj.transform,
-            pyproj.Proj(srs),  # source coordinate system
-            pyproj.Proj(dest_srs))  # destination coordinate system
-
-        return transform(project, polygon)  # apply projection
 
     def merge_cubes(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
