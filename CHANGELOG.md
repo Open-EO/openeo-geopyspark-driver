@@ -10,6 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2021-03-12
+
+- Fix support for UDPs in batch jobs (EP-3754)
+- Fix support for custom processes in batch jobs (EP-3771)
+
 ## 2021-01-26
 ### Feature
 Add an experimental resolution_merge for Sentinel-2 based on the implemntation in FORCE.
