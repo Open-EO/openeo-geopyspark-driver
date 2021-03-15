@@ -117,6 +117,45 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
+        def metadata_properties() -> Dict[str, object]:
+            def extract_literal_match(condition) -> (str, object):
+                # in reality, each of these conditions should be evaluated against elements (products) of this
+                # collection = evaluated with the product's "value" parameter in the environment, to true (include)
+                # or false (exclude)
+                # however, this would require evaluating in the Sentinel2FileLayerProvider, because this is the one
+                # that has access to this value (callers only get a MultibandTileLayerRDD[SpaceTimeKey])
+
+                from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+
+                class LiteralMatchExtractingGraphVisitor(ProcessGraphVisitor):
+                    def __init__(self):
+                        super().__init__()
+                        self.property_value = None
+
+                    def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
+                        if process_id != 'eq':
+                            raise NotImplementedError("process %s is not supported" % process_id)
+
+                    def enterArgument(self, argument_id: str, value):
+                        assert value['from_parameter'] == 'value'
+
+                    def constantArgument(self, argument_id: str, value):
+                        if argument_id in ['x', 'y']:
+                            self.property_value = value
+
+                if isinstance(condition, dict) and 'process_graph' in condition:
+                    predicate = condition['process_graph']
+                    property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
+                    return property_value
+                else:
+                    return condition
+
+            layer_properties = metadata.get("_vito", "properties", default={})
+            custom_properties = load_params.properties
+
+            return {property_name: extract_literal_match(condition)
+                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
+
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
                                                                               ','.join(ConfigParams().zookeepernodes))
@@ -186,55 +225,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             opensearch_link_titles = metadata.opensearch_link_titles
             root_path = layer_source_info['root_path']
 
-            def extract_literal_match(condition) -> (str, object):
-                # in reality, each of these conditions should be evaluated against elements (products) of this
-                # collection = evaluated with the product's "value" parameter in the environment, to true (include)
-                # or false (exclude)
-                # however, this would require evaluating in the Sentinel2FileLayerProvider, because this is the one
-                # that has access to this value (callers only get a MultibandTileLayerRDD[SpaceTimeKey])
-
-                from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-
-                class LiteralMatchExtractingGraphVisitor(ProcessGraphVisitor):
-                    def __init__(self):
-                        super().__init__()
-                        self.property_value = None
-
-                    def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
-                        if process_id != 'eq':
-                            raise NotImplementedError("process %s is not supported" % process_id)
-
-                    def enterArgument(self, argument_id: str, value):
-                        assert value['from_parameter'] == 'value'
-
-                    def constantArgument(self, argument_id: str, value):
-                        if argument_id in ['x', 'y']:
-                            self.property_value = value
-
-                if isinstance(condition, dict) and 'process_graph' in condition:
-                    predicate = condition['process_graph']
-                    property_value = LiteralMatchExtractingGraphVisitor().accept_process_graph(predicate).property_value
-                    return property_value
-                else:
-                    return condition
-
-            layer_properties = metadata.get("_vito", "properties", default={})
-            custom_properties = load_params.properties
-
-            metadata_properties = {property_name: extract_literal_match(condition)
-                                   for property_name, condition in {**layer_properties, **custom_properties}.items()}
-
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
             if single_level:
                 #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
-                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties, correlation_id,datacubeParams)
+                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties(),
+                                            correlation_id,datacubeParams)
             else:
                 if polygons:
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
-                                               to_date, metadata_properties, correlation_id)
+                                               to_date, metadata_properties(), correlation_id)
                 else:
-                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties, correlation_id)
+                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties(), correlation_id)
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
@@ -313,8 +315,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
                                                  projected_polygons_native_crs.crs(), from_date, to_date,
-                                                 shub_band_names) if single_level
-                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names))
+                                                 shub_band_names, metadata_properties()) if single_level
+                    else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
+                                                     metadata_properties()))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
