@@ -187,7 +187,7 @@ def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> (subfolder,
         return {}
 
     triples = [triple.split(":") for triple in arg.split(",")]
-    return {triple[0]: (triple[1], triple[2]) for triple in triples}
+    return {triple[0]: (triple[1], triple[2] == "True") for triple in triples}
 
 
 def main(argv: List[str]) -> None:
