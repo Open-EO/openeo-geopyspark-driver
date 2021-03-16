@@ -825,6 +825,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     if sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
 
+                    def metadata_properties() -> Dict[str, object]:
+                        layer_properties = metadata.get("_vito", "properties", default={})
+                        custom_properties = constraints.get("properties", {})
+
+                        return {property_name: filter_properties.extract_literal_match(condition)
+                                for property_name, condition in {**layer_properties, **custom_properties}.items()}
+
                     if card4l:
                         # TODO: not obvious but this does the validation as well
                         dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
@@ -844,17 +851,11 @@ class GpsBatchJobs(backend.BatchJobs):
                             to_date,
                             shub_band_names,
                             dem_instance,
+                            metadata_properties(),
                             subfolder,
                             request_group_id)
                         )
                     else:
-                        def metadata_properties() -> Dict[str, object]:
-                            layer_properties = metadata.get("_vito", "properties", default={})
-                            custom_properties = constraints.get("properties", {})
-
-                            return {property_name: filter_properties.extract_literal_match(condition)
-                                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
-
                         # TODO: pass subfolder explicitly (also a random UUID) instead of implicit batch request ID?
                         batch_request_ids = [batch_processing_service.start_batch_process(
                             layer_source_info['collection_id'],
