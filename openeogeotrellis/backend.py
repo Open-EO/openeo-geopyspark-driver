@@ -797,7 +797,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
                         return area_in_square_meters(geom, spatial_extent['crs'])
 
-                    if not card4l and area() < 50 * 1000 * 50 * 1000:  # 50x50 km
+                    if card4l:
+                        logger.info("deemed batch job {j} CARD4L compliant ({s})".format(j=job_id,
+                                                                                         s=sar_backscatter_arguments))
+                    elif area() >= 50 * 1000 * 50 * 1000:  # 50x50 km
+                        logger.info("deemed batch job {j} AOI large enough ({a} m²)".format(j=job_id, a=area()))
+                    else:
                         continue  # skip SHub batch process and use sync approach instead
 
                     jvm = gps.get_spark_context()._gateway.jvm
