@@ -122,13 +122,15 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
 
+    links = tracer.get_metadata_links()
     # TODO: dedicated type?
     # TODO: match STAC format?
     return {
         'geometry': geometry,
         'bbox': bbox,
         'start_datetime': start_date,
-        'end_datetime': end_date
+        'end_datetime': end_date,
+        'links':links
     }
 
 
