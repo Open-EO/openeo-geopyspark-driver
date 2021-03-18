@@ -973,20 +973,25 @@ class GpsBatchJobs(backend.BatchJobs):
 
         application_id = job_info['application_id']
 
-        if application_id:
-            kill_spark_job = subprocess.run(
-                ["yarn", "application", "-kill", application_id],
-                timeout=20,
-                check=True,
-                universal_newlines=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
-            )
+        try:
+            if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
+                kill_spark_job = subprocess.run(
+                    ["yarn", "application", "-kill", application_id],
+                    timeout=20,
+                    check=True,
+                    universal_newlines=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
+                )
 
+                logger.debug("Killed corresponding Spark job {s} for job {j}: {a!r}".format(s=application_id, j=job_id,
+                                                                                            a=kill_spark_job.args))
+        except CalledProcessError as e:
+            logger.warning("Could not kill corresponding Spark job {s} for job {j}".format(s=application_id, j=job_id),
+                           exc_info=e)
+        finally:
             with JobRegistry() as registry:
                 registry.set_status(job_id, user_id, 'canceled')
-            logger.debug("Killed corresponding Spark job for job {j}: {a!r}".format(j=job_id, a=kill_spark_job.args))
-        else:
-            raise InternalException("Application ID unknown for job {j}".format(j=job_id))
+                registry.remove_dependencies(job_id, user_id)
 
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)
