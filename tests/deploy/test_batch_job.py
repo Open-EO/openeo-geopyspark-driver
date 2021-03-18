@@ -17,9 +17,10 @@ def test_extract_result_metadata():
     metadata = extract_result_metadata(tracer)
     expected = {
         "bbox": [4, 51, 5, 52],
-        "geometry": {"type": "Polygon", "coordinates": (((4, 51), (4, 52), (5, 52), (5, 51), (4, 51)),)},
+        "geometry": {"type": "Polygon", "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),)},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
+        "links":[]
     }
     assert metadata == expected
 
@@ -46,6 +47,7 @@ def test_extract_result_metadata_aggregate_spatial():
         },
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
+        "links": []
     }
     assert metadata == expected
 
@@ -68,5 +70,6 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         },
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
+        "links": []
     }
     assert metadata == expected

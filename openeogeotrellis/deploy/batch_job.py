@@ -123,6 +123,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             geometry = mapping(Polygon.from_bounds(*bbox))
 
     links = tracer.get_metadata_links()
+    links = [ link for k,v in links.items() for link in v ]
     # TODO: dedicated type?
     # TODO: match STAC format?
     return {
