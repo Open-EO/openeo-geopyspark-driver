@@ -973,8 +973,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         application_id = job_info['application_id']
 
-        try:
-            if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
+        if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
+            try:
                 kill_spark_job = subprocess.run(
                     ["yarn", "application", "-kill", application_id],
                     timeout=20,
@@ -985,13 +985,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 logger.debug("Killed corresponding Spark job {s} for job {j}: {a!r}".format(s=application_id, j=job_id,
                                                                                             a=kill_spark_job.args))
-        except CalledProcessError as e:
-            logger.warning("Could not kill corresponding Spark job {s} for job {j}".format(s=application_id, j=job_id),
-                           exc_info=e)
-        finally:
+            except CalledProcessError as e:
+                logger.warning(
+                    "Could not kill corresponding Spark job {s} for job {j}".format(s=application_id, j=job_id),
+                    exc_info=e)
+            finally:
+                with JobRegistry() as registry:
+                    registry.set_status(job_id, user_id, 'canceled')
+        else:
             with JobRegistry() as registry:
-                registry.set_status(job_id, user_id, 'canceled')
                 registry.remove_dependencies(job_id, user_id)
+                registry.set_status(job_id, user_id, 'canceled')
+                registry.mark_done(job_id, user_id)
 
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)
