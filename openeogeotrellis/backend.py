@@ -568,7 +568,7 @@ class GpsBatchJobs(backend.BatchJobs):
             driver_memory = extra_options.get("driver-memory", "12G")
             driver_memory_overhead = extra_options.get("driver-memoryOverhead", "2G")
             executor_memory = extra_options.get("executor-memory", "2G")
-            executor_memory_overhead = extra_options.get("executor-memoryOverhead", "2G")
+            executor_memory_overhead = extra_options.get("executor-memoryOverhead", "3G")
             driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
             queue = extra_options.get("queue", "default")
