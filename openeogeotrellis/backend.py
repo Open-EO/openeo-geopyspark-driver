@@ -264,24 +264,27 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 scopes=["openid"],
                 title="VITO Keycloak",
             ),
+            # TODO: provide only one EGI Check-in variation?
             OidcProvider(
                 id="egi-dev",
                 issuer="https://aai-dev.egi.eu/oidc/",
                 scopes=["openid"],
-                title="EGI Check-in (dev)"
+                title="EGI Check-in (dev)",
+                # Experimental "default client". See https://github.com/Open-EO/openeo-api/pull/366
+                default_client={"id": "4e18a664-f85d-4495-850e-5a6c0ed0603d"}
             ),
-            # OidcProvider(
-            #     id="egi-demo",
-            #     issuer="https://aai-demo.egi.eu/oidc/",
-            #     scopes=["openid"],
-            #     title="EGI Check-in (demo)"
-            # ),
-            # OidcProvider(
-            #     id="egi",
-            #     issuer="https://aai.egi.eu/oidc/",
-            #     scopes=["openid"],
-            #     title="EGI Check-in"
-            # ),
+            OidcProvider(
+                id="egi-demo",
+                issuer="https://aai-demo.egi.eu/oidc/",
+                scopes=["openid"],
+                title="EGI Check-in (demo)"
+            ),
+            OidcProvider(
+                id="egi",
+                issuer="https://aai.egi.eu/oidc/",
+                scopes=["openid"],
+                title="EGI Check-in"
+            ),
         ]
 
     def file_formats(self) -> dict:
