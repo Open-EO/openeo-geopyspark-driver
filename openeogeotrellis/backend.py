@@ -271,7 +271,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 scopes=["openid"],
                 title="EGI Check-in (dev)",
                 # Experimental "default client". See https://github.com/Open-EO/openeo-api/pull/366
-                default_client={"id": "4e18a664-f85d-4495-850e-5a6c0ed0603d"}
+                default_client={"id": "vito-default-client"}
             ),
             OidcProvider(
                 id="egi",
