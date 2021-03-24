@@ -274,12 +274,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 default_client={"id": "4e18a664-f85d-4495-850e-5a6c0ed0603d"}
             ),
             OidcProvider(
-                id="egi-demo",
-                issuer="https://aai-demo.egi.eu/oidc/",
-                scopes=["openid"],
-                title="EGI Check-in (demo)"
-            ),
-            OidcProvider(
                 id="egi",
                 issuer="https://aai.egi.eu/oidc/",
                 scopes=["openid"],
