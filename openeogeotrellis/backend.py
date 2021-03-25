@@ -264,20 +264,22 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 scopes=["openid"],
                 title="VITO Keycloak",
             ),
-            # TODO: provide only one EGI Check-in variation?
+            # TODO: provide only one EGI Check-in variation? Or only include EGI Check-in dev instance on openeo-dev?
             OidcProvider(
                 id="egi-dev",
                 issuer="https://aai-dev.egi.eu/oidc/",
                 scopes=["openid"],
                 title="EGI Check-in (dev)",
                 # Experimental "default client". See https://github.com/Open-EO/openeo-api/pull/366
-                default_client={"id": "vito-default-client"}
+                default_client={"id": "vito-default-client"},
             ),
             OidcProvider(
                 id="egi",
                 issuer="https://aai.egi.eu/oidc/",
                 scopes=["openid"],
-                title="EGI Check-in"
+                title="EGI Check-in",
+                # Experimental "default client". See https://github.com/Open-EO/openeo-api/pull/366
+                default_client={"id": "vito-default-client"},
             ),
         ]
 
