@@ -1274,6 +1274,15 @@ class GeopysparkDataCube(DriverDataCube):
             # TODO: crs seems to be recognized when saving to netcdf and loading with gdalinfo/qgis, but yet projection is incorrect https://github.com/pydata/xarray/issues/2288
             crs=rdd.layer_metadata.crs
         ))
+
+        projCRS = pyproj.CRS.from_proj4(rdd.layer_metadata.crs)
+        # Some things we need to do to make GDAL
+        # and other software recognize the CRS
+        # cfr: https://github.com/pydata/xarray/issues/2288
+        result.coords['spatial_ref'] = 0
+        result.coords['spatial_ref'].attrs['spatial_ref'] = projCRS.to_wkt()
+        result.coords['spatial_ref'].attrs['crs_wkt'] = projCRS.to_wkt()
+        result.attrs['grid_mapping'] = 'spatial_ref'
         
         return result
 
