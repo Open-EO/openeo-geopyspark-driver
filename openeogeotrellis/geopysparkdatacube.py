@@ -1084,7 +1084,8 @@ class GeopysparkDataCube(DriverDataCube):
         catalog = format_options.get("parameters", {}).get("catalog", False)
 
         if format in ["GTIFF", "PNG"]:
-            if spatial_rdd.layer_type != gps.LayerType.SPATIAL:
+            batch_mode = format_options.get("batch_mode", False)
+            if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch) :
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
             if format == "GTIFF":
@@ -1104,7 +1105,13 @@ class GeopysparkDataCube(DriverDataCube):
                         crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
                     else:
                         crop_extent = None
-                    self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+                    if batch_mode:
+                        self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
+                                                                                      pathlib.Path(filename).parent, zlevel,
+                                                                                      self._get_jvm().scala.Option.apply(
+                                                                                          crop_extent))
+                    else:
+                        self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
             else:
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)

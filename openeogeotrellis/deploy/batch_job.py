@@ -288,6 +288,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
     if isinstance(result, GeopysparkDataCube):
         format_options = job_specification.get('output', {})
+        format_options["batch_mode"] = True
         format = format_options.pop("format")
         result = ImageCollectionResult(cube=result, format=format, options=format_options)
 
