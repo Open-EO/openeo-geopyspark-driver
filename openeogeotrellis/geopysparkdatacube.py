@@ -1107,7 +1107,7 @@ class GeopysparkDataCube(DriverDataCube):
                         crop_extent = None
                     if batch_mode:
                         self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
-                                                                                      pathlib.Path(filename).parent, zlevel,
+                                                                                      str(pathlib.Path(filename).parent), zlevel,
                                                                                       self._get_jvm().scala.Option.apply(
                                                                                           crop_extent))
                     else:
