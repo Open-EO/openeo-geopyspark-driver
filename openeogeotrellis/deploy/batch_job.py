@@ -71,8 +71,13 @@ def _create_job_dir(job_dir: Path):
 
 def _add_permissions(path: Path, mode: int):
     # FIXME: maybe umask is a better/cleaner option
-    current_permission_bits = os.stat(path).st_mode
-    os.chmod(path, current_permission_bits | mode)
+    if path.exists():
+        current_permission_bits = os.stat(path).st_mode
+        os.chmod(path, current_permission_bits | mode)
+    else:
+        for p in path.parent.glob('*'):
+            current_permission_bits = os.stat(p).st_mode
+            p.chmod(current_permission_bits | mode)
 
 
 def _parse(job_specification_file: str) -> Dict:
