@@ -1084,7 +1084,7 @@ class GeopysparkDataCube(DriverDataCube):
         catalog = format_options.get("parameters", {}).get("catalog", False)
 
         if format in ["GTIFF", "PNG"]:
-            batch_mode = format_options.get("batch_mode", False)
+            batch_mode = format_options.get("batch_mode", False) and format_options.get("multidate", False)
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch) :
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
@@ -1106,8 +1106,9 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         crop_extent = None
                     if batch_mode:
+                        filename = str(pathlib.Path(filename).parent)
                         self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
-                                                                                      str(pathlib.Path(filename).parent), zlevel,
+                                                                                      filename, zlevel,
                                                                                       self._get_jvm().scala.Option.apply(
                                                                                           crop_extent))
                     else:
