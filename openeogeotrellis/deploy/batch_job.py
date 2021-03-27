@@ -140,7 +140,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,asset_metadata:Dict = None) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -169,13 +169,18 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         instruments = []
 
     if result != null:
-        metadata['assets'] = {
-            output_file.name: {
-                'bands': bands,
-                'nodata': nodata,
-                'media_type': result.get_mimetype()
+        if asset_metadata == None:
+            #old approach: need to construct metadata ourselves, from inspecting SaveResult
+            metadata['assets'] = {
+                output_file.name: {
+                    'bands': bands,
+                    'nodata': nodata,
+                    'media_type': result.get_mimetype()
+                }
             }
-        }
+        else:
+            #new approach: SaveResult has generated metadata already for us
+            metadata['assets'] = asset_metadata
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments
@@ -300,7 +305,15 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     if not isinstance(result, SaveResult):  # Assume generic JSON result
         result = JSONResult(result)
 
-    if isinstance(result, ImageCollectionResult):
+    assets_metadata = None
+    if('write_assets' in dir(result) and result.options.get("multidate",False)):
+        result.options["batch_mode"] = True
+        assets_metadata = result.write_assets(filename=str(output_file))
+        for name,asset in assets_metadata.items():
+            _add_permissions(Path(asset["href"]), stat.S_IWGRP)
+        logger.info("wrote image collection to %s" % output_file)
+
+    elif isinstance(result, ImageCollectionResult):
         result.options["batch_mode"] = True
         result.save_result(filename=str(output_file))
         _add_permissions(output_file, stat.S_IWGRP)
@@ -350,7 +363,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
         _transform_stac_metadata(job_dir)
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file)
+    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,asset_metadata=assets_metadata)
 
     if ConfigParams().is_kube_deploy:
         import boto3

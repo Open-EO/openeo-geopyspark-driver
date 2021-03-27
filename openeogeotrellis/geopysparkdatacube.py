@@ -1043,6 +1043,10 @@ class GeopysparkDataCube(DriverDataCube):
         return self._collect_as_xarray(spatial_rdd)
 
     def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
+        result = self.write_assets(filename, format, format_options)
+        return result.popitem()[1]['href']
+
+    def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict:
         """
         Save cube to disk
 
@@ -1051,6 +1055,8 @@ class GeopysparkDataCube(DriverDataCube):
         * PNG: 8-bit grayscale or RGB raster with the limitation that it only export bands at a single (random) date
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
+
+        :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
         filename = str(filename)
         format = format.upper()
@@ -1106,11 +1112,28 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         crop_extent = None
                     if batch_mode:
-                        filename = str(pathlib.Path(filename).parent)
+                        directory = pathlib.Path(filename).parent
+                        filename = str(directory)
                         self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
                                                                                       filename, zlevel,
                                                                                       self._get_jvm().scala.Option.apply(
                                                                                           crop_extent))
+                        assets = {}
+                        if self.metadata.has_band_dimension():
+                            bands = self.metadata.bands
+                        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+                        nodata = max_level.layer_metadata.no_data_value
+
+                        for p in directory.glob('openEO*.tif'):
+                            assets[p.name] = {
+                                "href":str(p),
+                                "type":"image/tiff; application=geotiff",
+                                "roles":["data"],
+                                'bands': bands,
+                                'nodata': nodata,
+                            }
+                        return assets
+
                     else:
                         self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
             else:
@@ -1143,7 +1166,7 @@ class GeopysparkDataCube(DriverDataCube):
                 message="Format {f!r} is not supported".format(f=format),
                 code="FormatUnsupported", status_code=400
             )
-        return filename
+        return {"filename":{"href":filename}}
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
             
