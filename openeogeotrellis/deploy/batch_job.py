@@ -308,7 +308,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     assets_metadata = None
     if('write_assets' in dir(result) and result.options.get("multidate",False)):
         result.options["batch_mode"] = True
-        assets_metadata = result.write_assets(filename=str(output_file))
+        assets_metadata = result.write_assets(str(output_file))
         for name,asset in assets_metadata.items():
             _add_permissions(Path(asset["href"]), stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
