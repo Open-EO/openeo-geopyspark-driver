@@ -898,7 +898,8 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
         job_dir = self._get_job_output_dir(job_id=job_id)
 
-        out_metadata = self.get_results_metadata(job_id, user_id).get("assets", {}).get("out", {})
+        out_assets = self.get_results_metadata(job_id, user_id).get("assets", {})
+        out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
         nodata = out_metadata.get("nodata", None)
         media_type = out_metadata.get("media_type", "application/octet-stream")
@@ -931,6 +932,14 @@ class GpsBatchJobs(backend.BatchJobs):
                     "output_dir": str(job_dir),
                     "media_type": "image/tiff; application=geotiff"
                 }
+
+        #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
+        #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
+        for title,asset in out_assets.items():
+            if title not in results_dict:
+                asset["output_dir"] = str(job_dir)
+                results_dict[title] = asset
+
 
         return results_dict
 
