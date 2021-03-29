@@ -1148,7 +1148,11 @@ class GeopysparkDataCube(DriverDataCube):
                 result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             else:
                 result=self._collect_as_xarray(spatial_rdd)
-            
+
+            batch_mode = format_options.get("batch_mode", False) and format_options.get("multidate", False)
+            if batch_mode:
+                directory = pathlib.Path(filename).parent
+                filename = directory / "openEO.nc"
             _save_DataArray_to_NetCDF(filename,result)
 
         elif format == "JSON":
