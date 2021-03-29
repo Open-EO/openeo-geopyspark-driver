@@ -1120,7 +1120,7 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                           crop_extent))
                         assets = {}
                         if self.metadata.has_band_dimension():
-                            bands = self.metadata.bands
+                            bands = [b._asdict() for b in self.metadata.bands]
                         max_level = self.pyramid.levels[self.pyramid.max_zoom]
                         nodata = max_level.layer_metadata.no_data_value
 
