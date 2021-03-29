@@ -1,0 +1,55 @@
+{
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          2.0,
+          51.0
+        ],
+        [
+          2.0,
+          52.0
+        ],
+        [
+          3.0,
+          52.0
+        ],
+        [
+          3.0,
+          51.0
+        ],
+        [
+          2.0,
+          51.0
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    2,
+    51,
+    3,
+    52
+  ],
+  "start_datetime": "2017-11-21T00:00:00Z",
+  "end_datetime": "2017-11-21T00:00:00Z",
+  "links": [],
+  "assets": {
+    "openEO_2017-11-21Z.tif": {
+      "href": "/data/projects/OpenEO/6d11e901-bb5d-4589-b600-8dfb50524740/openEO_2017-11-21Z.tif",
+      "type": "image/tiff; application=geotiff",
+      "roles": [
+        "data"
+      ],
+      "bands": [
+        {"name": "ndvi", "common_name": null, "wavelength_um": null}
+      ],
+      "nodata": 255
+    }
+  },
+  "epsg": 4326,
+  "instruments": [],
+  "processing:facility": "VITO - SPARK",
+  "processing:software": "openeo-geotrellis-0.3.3a1"
+}

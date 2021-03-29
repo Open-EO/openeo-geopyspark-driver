@@ -493,6 +493,10 @@ class TestBatchJobs:
                 f.write(TIFF_DUMMY_DATA)
             with job_log.open('w') as f:
                 f.write("[INFO] Hello world")
+            with job_metadata.open('w') as f:
+                metadata = api.load_json(JOB_METADATA_FILENAME)
+                json.dump(metadata,f)
+
             with openeogeotrellis.job_registry.JobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -504,8 +508,11 @@ class TestBatchJobs:
             ).assert_status_code(200).json
             if api.api_version_compare.at_least("1.0.0"):
                 download_url = res["assets"]["out"]["href"]
+                assert "openEO_2017-11-21Z.tif" in res["assets"]
+                assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
             else:
                 download_url = res["links"][0]["href"]
+
             res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
             assert res.status_code == 200
             assert res.data == TIFF_DUMMY_DATA
