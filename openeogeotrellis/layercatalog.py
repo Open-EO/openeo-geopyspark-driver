@@ -254,6 +254,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, None, None))
             else:
+                endpoint = layer_source_info['endpoint']
                 dataset_id = layer_source_info['dataset_id']
                 client_id = layer_source_info['client_id']
                 client_secret = layer_source_info['client_secret']
@@ -274,6 +275,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_band_names.append('localIncidenceAngle')
 
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
+                    endpoint,
                     dataset_id,
                     client_id,
                     client_secret,

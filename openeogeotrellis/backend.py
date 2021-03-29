@@ -470,12 +470,13 @@ class GpsBatchJobs(backend.BatchJobs):
             metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
             layer_source_info = metadata.get("_vito", "data_source", default={})
 
+            endpoint = layer_source_info['endpoint']
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
 
             jvm = gps.get_spark_context()._gateway.jvm
             batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
+                endpoint, ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
                                  [batch_process_dependency['batch_request_id']])
@@ -818,6 +819,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     bbox = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
 
                     batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+                        layer_source_info['endpoint'],
                         ConfigParams().sentinel_hub_batch_bucket,
                         layer_source_info['client_id'], layer_source_info['client_secret'])
 
