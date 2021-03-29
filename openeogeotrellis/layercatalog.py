@@ -176,6 +176,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        experimental
                                                                                        ))
 
+        def file_oscars_pyramid():
+            return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
+                                jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
+                                                                                       opensearch_collection_id,
+                                                                                       opensearch_link_titles,
+                                                                                       root_path,
+                                                                                       jvm.geotrellis.raster.CellSize(
+                                                                                           30.0,
+                                                                                           30.0),
+                                                                                       experimental
+                                                                                       ))
+
         def file_s5p_pyramid():
             return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel5PPyramidFactory)
 
@@ -352,6 +364,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'file-oscars':
+            pyramid = file_oscars_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             pyramid = S1BackscatterOrfeo(jvm=jvm).creodias(
                 projected_polygons=projected_polygons_native_crs,
