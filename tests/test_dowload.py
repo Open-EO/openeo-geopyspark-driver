@@ -176,6 +176,27 @@ class TestDownload(TestCase):
     def test_download_masked_json_reproject(self):
         self.download_masked_reproject('json')
 
+    def test_write_assets(self):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'GTiff'
+
+        res = imagecollection.write_assets(str(self.temp_folder / "test_download_result.") + format, format=format,format_options={
+            "multidate":True,
+            "batch_mode":True
+        })
+        assert 1 == len(res)
+        name,asset = res.popitem()
+        file = asset['href']
+        assert asset['nodata'] == -1
+        assert asset['roles'] == ['data']
+        assert 2 == len(asset['bands'])
+        assert 'image/tiff; application=geotiff' == asset['type']
+
+
+
 
     #skipped because gdal_merge.py is not available on jenkins and Travis
     @skip
