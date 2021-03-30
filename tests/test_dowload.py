@@ -99,14 +99,15 @@ class TestDownload(TestCase):
         res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
         print(res)
 
-    def download_no_args(self,format):
+    def download_no_args(self,format, format_options={}):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
-        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
+        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format, format_options=format_options)
         print(res)
+        return res
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
     def download_masked(self,format):
@@ -154,6 +155,10 @@ class TestDownload(TestCase):
 
     def test_download_netcdf_no_args(self):
         self.download_no_args('netcdf')
+
+    def test_download_netcdf_no_args_batch(self):
+        res = self.download_no_args('netcdf',{"batch_mode":True, "multidate":True})
+        print(res)
 
     def test_download_json_no_args(self):
         self.download_no_args('json')

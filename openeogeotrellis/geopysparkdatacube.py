@@ -1152,8 +1152,18 @@ class GeopysparkDataCube(DriverDataCube):
             batch_mode = format_options.get("batch_mode", False) and format_options.get("multidate", False)
             if batch_mode:
                 directory = pathlib.Path(filename).parent
-                filename = directory / "openEO.nc"
+                filename = str(directory / "openEO.nc")
             _save_DataArray_to_NetCDF(filename,result)
+            if batch_mode:
+                asset = {
+                    "href": filename,
+                    "roles": ["data"],
+                    "type": "application/x-netcdf"
+                }
+                if self.metadata.has_band_dimension():
+                    bands = [b._asdict() for b in self.metadata.bands]
+                    asset["bands"] = bands
+                return { "openEO.nc": asset}
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
