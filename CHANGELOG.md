@@ -10,6 +10,13 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2021-03-30
+### Feature
+- Add support for Sentinelhub layers on different endpoints (e.g. Landsat-8, MODIS)
+- In batch jobs, write one geotiff per date as opposed to reducing all dates into a single pixel
+- Improved CARD4L metadata generation for atmospheric_correction
+
+
 ## 2021-03-12
 
 - Fix support for UDPs in batch jobs (EP-3754)
