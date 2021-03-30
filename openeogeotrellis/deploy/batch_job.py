@@ -306,7 +306,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         result = JSONResult(result)
 
     assets_metadata = None
-    if('write_assets' in dir(result) and result.options.get("multidate",False)):
+    if('write_assets' in dir(result)):
         result.options["batch_mode"] = True
         assets_metadata = result.write_assets(str(output_file))
         for name,asset in assets_metadata.items():

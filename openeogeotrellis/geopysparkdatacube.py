@@ -1090,7 +1090,7 @@ class GeopysparkDataCube(DriverDataCube):
         catalog = format_options.get("parameters", {}).get("catalog", False)
 
         if format in ["GTIFF", "PNG"]:
-            batch_mode = format_options.get("batch_mode", False) and format_options.get("multidate", False)
+            batch_mode = format_options.get("batch_mode", False)
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch) :
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
