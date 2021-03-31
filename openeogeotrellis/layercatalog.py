@@ -111,7 +111,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
-        datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
         getattr(datacubeParams, "tileSize_$eq")(tilesize)
         getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
@@ -286,7 +286,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
                                                  projected_polygons_native_crs.crs(), from_date, to_date,
-                                                 shub_band_names, metadata_properties()) if single_level
+                                                 shub_band_names, metadata_properties(), datacubeParams) if single_level
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
                                                      metadata_properties()))
 
