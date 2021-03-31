@@ -1221,7 +1221,7 @@
       "bands": {
         "type": "bands",
         "values": ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10", "BQA", "QA_RADSAT", "SR_QA_AEROSOL", "ST_QA",
-          "ST_TRAD", "ST_URAD", "ST_DRAD", "ST_ATRAN", "ST_EMIS", "ST_EMSD", "ST_CDIST", "datamask"]
+          "ST_TRAD", "ST_URAD", "ST_DRAD", "ST_ATRAN", "ST_EMIS", "ST_EMSD", "ST_CDIST", "dataMask"]
       }
     },
     "summaries": {
