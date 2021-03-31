@@ -1149,7 +1149,7 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 result=self._collect_as_xarray(spatial_rdd)
 
-            batch_mode = format_options.get("batch_mode", False) and format_options.get("multidate", False)
+            batch_mode = format_options.get("batch_mode", False)
             if batch_mode:
                 directory = pathlib.Path(filename).parent
                 filename = str(directory / "openEO.nc")
