@@ -1274,9 +1274,9 @@
     }
   },
   {
-    "id": "COP_DEM_GLO_30M_COG",
-    "name": "COP_DEM_GLO_30M_COG",
-    "title": "Copernicus DEM 30M COG",
+    "id": "COPERNICUS_30",
+    "name": "COPERNICUS_30",
+    "title": "Copernicus Global 30 meter Digital Elevation Model dataset.",
     "description": "Copernicus Global 30 meter Digital Elevation Model dataset in COG format.",
     "license": "proprietary",
     "providers": [
