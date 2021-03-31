@@ -1306,12 +1306,15 @@
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
-        "values": ["Copernicus_DSM_COG_10"]
+        "values": ["DEM"]
       }
     },
     "summaries": {
       "eo:bands": [
-        {"name": "Copernicus_DSM_COG_10"}
+        {
+          "name": "DEM",
+          "aliases": ["Copernicus_DSM_COG_10"]
+        }
       ]
     },
     "_vito": {
