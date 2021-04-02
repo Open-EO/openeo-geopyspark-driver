@@ -1616,26 +1616,6 @@ class GeopysparkDataCube(DriverDataCube):
         )
         return atmo_corrected
 
-
-    def water_vapor(self, missionID: str) -> 'GeopysparkDataCube':
-        # TODO: this is getting deprecated since water vapor is part of sentinel atmospheric correction and can be obtained by enabling debug bands
-        bandIds=self.metadata.band_names
-        _log.info("Bandids: "+str(bandIds))
-        wv = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.water_vapor.ComputeWaterVapor().correct(
-                gps.get_spark_context()._jsc,
-                rdd,
-                bandIds,
-                [0.0001,1.0],
-                #sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33
-                # sza,saa,vza,vaa angles are fallbacks if no bands provided
-                [np.NaN, np.NaN, np.NaN, np.NaN, 0.1, 0.33],
-                # SENTINEL2 or LANDSAT8 for now
-                missionID
-            )
-        )
-        return wv
-
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
         return self
