@@ -1,9 +1,15 @@
+from pathlib import Path
+from unittest import mock
+
+from mock import MagicMock
+from openeo_driver.save_result import ImageCollectionResult
 from shapely.geometry import shape
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.utils import read_json
-from openeogeotrellis.deploy.batch_job import extract_result_metadata
+from openeogeotrellis.deploy.batch_job import extract_result_metadata,run_job
+from openeogeotrellis._version import __version__
 from tests.data import get_test_data_file
 
 
@@ -73,3 +79,28 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         "links": []
     }
     assert metadata == expected
+
+@mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
+def test_run_job(evaluate,tmp_path):
+    cube_mock = MagicMock()
+    asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
+    run_job(
+        job_specification={'process_graph':{}}, output_file=tmp_path /"out", metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins"
+    )
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path/"metadata.json")
+    assert {'assets': asset_meta,
+            'bbox': None,
+            'end_datetime': None,
+            'epsg': None,
+            'geometry': None,
+            'instruments': [],
+            'links': [],
+            'processing:facility': 'VITO - SPARK',
+            'processing:software': 'openeo-geotrellis-' + __version__,
+            'start_datetime': None} == metadata_result
+
+

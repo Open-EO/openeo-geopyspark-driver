@@ -73,7 +73,7 @@ def test_create_params():
     pysc = gps.get_spark_context()
     gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
     jvm = gateway.jvm
-    datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+    datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
     datacubeParams.tileSize = 256
     assert datacubeParams.tileSize == 256
 
@@ -154,7 +154,7 @@ def test_load_collection_data_cube_params(get_jvm):
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory
     projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
-    datacubeParams = jvm_mock.org.openeo.geotrellis.file.DataCubeParameters.return_value
+    datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
 
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 

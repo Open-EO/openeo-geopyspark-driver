@@ -1152,6 +1152,7 @@
     "_vito": {
       "data_source": {
         "type": "sentinel-hub",
+        "endpoint": "https://services.sentinel-hub.com",
         "dataset_id": "S1GRD",
         "collection_id": "sentinel-1-grd",
         "client_id": "???",
@@ -1187,6 +1188,130 @@
       {
         "rel": "alternate",
         "href": "https://www.sentinel-hub.com/develop/documentation/eo_products/Sentinel1EOproducts",
+        "title": "Product web page."
+      }
+    ]
+  },
+  {
+    "id": "LANDSAT-8_L2_SENTINELHUB",
+    "name": "LANDSAT-8_L2_SENTINELHUB",
+    "title": "Landsat-8 L2, 30m resolution, provided by SentinelHub",
+    "description": "Global Landsat-8 L2, provided by SentinelHub.",
+    "_vito": {
+      "data_source": {
+        "type": "sentinel-hub",
+        "endpoint": "https://services-uswest2.sentinel-hub.com",
+        "dataset_id": "LOTL2",
+        "collection_id": "landsat-8",
+        "client_id": "???",
+        "client_secret": "!!!",
+        "sample_type": "FLOAT32"
+      }
+    },
+    "providers": [{"name": "SentinelHub"}],
+    "license": "free",
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2013-02-01", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B10", "BQA", "QA_RADSAT", "SR_QA_AEROSOL", "ST_QA",
+          "ST_TRAD", "ST_URAD", "ST_DRAD", "ST_ATRAN", "ST_EMIS", "ST_EMSD", "ST_CDIST", "dataMask"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B01",
+          "description": "Ultra Blue (443 nm)"
+        },
+        {
+          "name": "B02",
+          "description": "Blue (482 nm)"
+        },
+        {
+          "name": "B03",
+          "description": "Green (561.5 nm)"
+        },
+        {
+          "name": "B04",
+          "description": "Red (654.5 nm)"
+        },
+        {
+          "name": "B05",
+          "description": "Near Infrared (NIR) (865 nm)"
+        },
+        {
+          "name": "B06",
+          "description": "Shortwave Infrared (SWIR) 1 (1608.5 nm)"
+        },
+        {
+          "name": "B07",
+          "description": "Shortwave Infrared (SWIR) 2 (2200.5 nm)"
+        },
+        {
+          "name": "B10",
+          "description": "Thermal Infrared (TIRS) 1(10895 nm)"
+        },
+        {
+          "name": "BQA",
+          "description": "Quality Assessment band (QA)"
+        },
+        {
+          "name": "QA_RADSAT",
+          "description": "Radiometric Saturation and Terrain Occlusion QA Band"
+        },
+        {
+          "name": "SR_QA_AEROSOL",
+          "description": "SR Aerosol QA"
+        },
+        {
+          "name": "ST_QA",
+          "description": "Surface Temperature QA"
+        },
+        {
+          "name": "ST_TRAD",
+          "description": "Thermal band converted to radiance"
+        },
+        {
+          "name": "ST_URAD",
+          "description": "Upwelled Radiance"
+        },
+        {
+          "name": "ST_DRAD",
+          "description": "Downwelled Radiance"
+        },
+        {
+          "name": "ST_ATRAN",
+          "description": "Atmospheric Transmittance"
+        },
+        {
+          "name": "ST_EMIS",
+          "description": "Emissivity of Band 10 estimated from ASTER GED"
+        },
+        {
+          "name": "ST_EMSD",
+          "description": "Emissivity standard deviation"
+        },
+        {
+          "name": "ST_CDIST",
+          "description": "Pixel distance to cloud"
+        },
+        {
+          "name": "dataMask",
+          "description": "The mask of data/no data pixels."
+        }
+      ]
+    },
+    "links": [
+      {
+        "rel": "alternate",
+        "href": "https://docs.sentinel-hub.com/api/latest/data/landsat-8-l2",
         "title": "Product web page."
       }
     ]
@@ -1269,6 +1394,60 @@
         "type": "file-agera5",
         "data_glob": "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif",
         "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif",
+        "native_crs": "EPSG:4326"
+      }
+    }
+  },
+  {
+    "id": "COPERNICUS_30",
+    "name": "COPERNICUS_30",
+    "title": "Copernicus Global 30 meter Digital Elevation Model dataset.",
+    "description": "Copernicus Global 30 meter Digital Elevation Model dataset in COG format.",
+    "license": "proprietary",
+    "providers": [
+      {
+          "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+          "roles":
+          [
+              "producer",
+              "licensor"
+          ],
+          "url": "https://terrascope.be"
+      }
+      ],
+    "links": [
+      {
+        "rel": "license",
+        "href": "https://spacedata.copernicus.eu/documents/20126/0/CSCDA_ESA_Mission-specific+Annex.pdf"
+      }
+    ],
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2010-12-12", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "step": 0.002777777777777778, "reference_system": "EPSG:4326"},
+      "y": {"type": "spatial", "axis": "y", "step": 0.002777777777777778, "reference_system": "EPSG:4326"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["DEM"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "DEM",
+          "aliases": ["Copernicus_DSM_COG_10"]
+        }
+      ]
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-oscars",
+        "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_30M_COG",
+        "opensearch_endpoint": "http://oscars-dev.vgt.vito.be",
+        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG",
         "native_crs": "EPSG:4326"
       }
     }

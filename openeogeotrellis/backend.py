@@ -470,12 +470,13 @@ class GpsBatchJobs(backend.BatchJobs):
             metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
             layer_source_info = metadata.get("_vito", "data_source", default={})
 
+            endpoint = layer_source_info['endpoint']
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
 
             jvm = gps.get_spark_context()._gateway.jvm
             batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
+                endpoint, ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
                                  [batch_process_dependency['batch_request_id']])
@@ -796,6 +797,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
                         return area_in_square_meters(geom, spatial_extent['crs'])
 
+                    maximum_area = 1e+12  # 1 million km²
+
+                    if area() >= maximum_area:
+                        raise OpenEOApiException(message=
+                                                 "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
+                                                 .format(a=area(), c=collection_id, m=maximum_area), status_code=400)
+
                     if card4l:
                         logger.info("deemed batch job {j} CARD4L compliant ({s})".format(j=job_id,
                                                                                          s=sar_backscatter_arguments))
@@ -818,6 +826,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     bbox = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
 
                     batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+                        layer_source_info['endpoint'],
                         ConfigParams().sentinel_hub_batch_bucket,
                         layer_source_info['client_id'], layer_source_info['client_secret'])
 
@@ -898,7 +907,8 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
         job_dir = self._get_job_output_dir(job_id=job_id)
 
-        out_metadata = self.get_results_metadata(job_id, user_id).get("assets", {}).get("out", {})
+        out_assets = self.get_results_metadata(job_id, user_id).get("assets", {})
+        out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
         nodata = out_metadata.get("nodata", None)
         media_type = out_metadata.get("media_type", "application/octet-stream")
@@ -931,6 +941,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     "output_dir": str(job_dir),
                     "media_type": "image/tiff; application=geotiff"
                 }
+
+        #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
+        #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
+        for title,asset in out_assets.items():
+            if title not in results_dict:
+                asset["output_dir"] = str(job_dir)
+                asset["bands"] = [Band(**b) for b in asset["bands"]]
+                results_dict[title] = asset
+
 
         return results_dict
 

@@ -1090,7 +1090,7 @@ class GeopysparkDataCube(DriverDataCube):
         catalog = format_options.get("parameters", {}).get("catalog", False)
 
         if format in ["GTIFF", "PNG"]:
-            batch_mode = format_options.get("batch_mode", False) and format_options.get("multidate", False)
+            batch_mode = format_options.get("batch_mode", False)
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch) :
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
@@ -1120,7 +1120,7 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                           crop_extent))
                         assets = {}
                         if self.metadata.has_band_dimension():
-                            bands = self.metadata.bands
+                            bands = [b._asdict() for b in self.metadata.bands]
                         max_level = self.pyramid.levels[self.pyramid.max_zoom]
                         nodata = max_level.layer_metadata.no_data_value
 
@@ -1148,8 +1148,22 @@ class GeopysparkDataCube(DriverDataCube):
                 result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
             else:
                 result=self._collect_as_xarray(spatial_rdd)
-            
+
+            batch_mode = format_options.get("batch_mode", False)
+            if batch_mode:
+                directory = pathlib.Path(filename).parent
+                filename = str(directory / "openEO.nc")
             _save_DataArray_to_NetCDF(filename,result)
+            if batch_mode:
+                asset = {
+                    "href": filename,
+                    "roles": ["data"],
+                    "type": "application/x-netcdf"
+                }
+                if self.metadata.has_band_dimension():
+                    bands = [b._asdict() for b in self.metadata.bands]
+                    asset["bands"] = bands
+                return { "openEO.nc": asset}
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory

@@ -111,7 +111,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
-        datacubeParams = jvm.org.openeo.geotrellis.file.DataCubeParameters()
+        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
         getattr(datacubeParams, "tileSize_$eq")(tilesize)
         getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
@@ -173,6 +173,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        jvm.geotrellis.raster.CellSize(
                                                                                            10.0,
                                                                                            10.0),
+                                                                                       experimental
+                                                                                       ))
+
+        def file_oscars_pyramid():
+            return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
+                                jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
+                                                                                       opensearch_collection_id,
+                                                                                       opensearch_link_titles,
+                                                                                       root_path,
+                                                                                       jvm.geotrellis.raster.CellSize(
+                                                                                           30.0,
+                                                                                           30.0),
                                                                                        experimental
                                                                                        ))
 
@@ -254,6 +266,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, None, None))
             else:
+                endpoint = layer_source_info['endpoint']
                 dataset_id = layer_source_info['dataset_id']
                 client_id = layer_source_info['client_id']
                 client_secret = layer_source_info['client_secret']
@@ -274,6 +287,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_band_names.append('localIncidenceAngle')
 
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
+                    endpoint,
                     dataset_id,
                     client_id,
                     client_secret,
@@ -284,7 +298,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
                                                  projected_polygons_native_crs.crs(), from_date, to_date,
-                                                 shub_band_names, metadata_properties()) if single_level
+                                                 shub_band_names, metadata_properties(), datacubeParams) if single_level
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
                                                      metadata_properties()))
 
@@ -352,6 +366,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'file-oscars':
+            pyramid = file_oscars_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             pyramid = S1BackscatterOrfeo(jvm=jvm).creodias(
                 projected_polygons=projected_polygons_native_crs,
