@@ -1,3 +1,4 @@
+# TODO: remove this in favor of the one in openeo_driver
 from typing import Union
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor

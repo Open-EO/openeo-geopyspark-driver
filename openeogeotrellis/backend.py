@@ -577,12 +577,17 @@ class GpsBatchJobs(backend.BatchJobs):
                 if not dependencies:
                     return 'no_dependencies'  # TODO: clean this up
 
-                pairs = ["{c}:{f}:{m}".format(c=dependency['collection_id'],
-                                              f=dependency.get('subfolder') or dependency['batch_request_id'],
-                                              m=dependency.get('card4l', False))
-                         for dependency in dependencies]
+                def serialize_properties(metadata_properties: dict) -> str:
+                    pairs = [f"{property_name}={value}" for property_name, value in metadata_properties.items()]
+                    return "&".join(pairs)
 
-                return ",".join(pairs)
+                tuples = ["{c}:{ps}:{f}:{m}".format(c=dependency['collection_id'],
+                                                    ps=serialize_properties(dependency.get('metadata_properties', {})),
+                                                    f=dependency.get('subfolder') or dependency['batch_request_id'],
+                                                    m=dependency.get('card4l', False))
+                          for dependency in dependencies]
+
+                return ",".join(tuples)
 
             if not ConfigParams().is_kube_deploy:
                 kerberos()
@@ -643,10 +648,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 api_instance = kube_client()
 
-                dict = yaml.safe_load(rendered)
+                dict_ = yaml.safe_load(rendered)
 
                 try:
-                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict, pretty=True)
+                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
 
                     time.sleep(5)
                     status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id))
@@ -764,7 +769,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for (process, arguments), constraints in source_constraints.items():
             if process == 'load_collection':
-                collection_id, = arguments
+                collection_id, exact_property_matches = arguments
+
                 band_names = constraints.get('bands')
 
                 metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
@@ -799,7 +805,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     maximum_area = 1e+12  # 1 million km²
 
-                    if area() >= maximum_area:
+                    if area() > maximum_area:
                         raise OpenEOApiException(message=
                                                  "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
                                                  .format(a=area(), c=collection_id, m=maximum_area), status_code=400)
@@ -839,11 +845,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         shub_band_names.append('localIncidenceAngle')
 
                     def metadata_properties() -> Dict[str, object]:
-                        layer_properties = metadata.get("_vito", "properties", default={})
-                        custom_properties = constraints.get("properties", {})
-
-                        return {property_name: filter_properties.extract_literal_match(condition)
-                                for property_name, condition in {**layer_properties, **custom_properties}.items()}
+                        return {property_name: value for property_name, value in exact_property_matches}
 
                     if card4l:
                         # TODO: not obvious but this does the validation as well
@@ -890,6 +892,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     batch_process_dependencies.append({
                         'collection_id': collection_id,
+                        'metadata_properties': metadata_properties(),
                         'batch_request_ids': batch_request_ids,  # to poll SHub
                         'subfolder': subfolder,  # where load_collection gets its data
                         'card4l': card4l  # should the batch job expect CARD4L metadata?

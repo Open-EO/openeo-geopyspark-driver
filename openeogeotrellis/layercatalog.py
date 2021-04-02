@@ -12,7 +12,7 @@ from openeo.util import TimingLogger, deep_get
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
-from openeo_driver.utils import read_json, EvalEnv
+from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
@@ -235,7 +235,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             dependencies = env.get('dependencies', {})
 
             if dependencies:
-                subfolder = dependencies[collection_id]
+                subfolder = dependencies[(collection_id, to_hashable(metadata_properties()))]
 
                 s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder)
                 key_regex = r".+\.tif"

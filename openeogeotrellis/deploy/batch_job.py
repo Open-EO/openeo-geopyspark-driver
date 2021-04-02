@@ -21,7 +21,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
 from openeo_driver.users import User
-from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
+from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union, to_hashable
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -195,12 +195,18 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # collection_id -> (subfolder, card4l)
+def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (subfolder, card4l)
     if not arg or arg == 'no_dependencies':  # TODO: clean this up
         return {}
 
-    triples = [triple.split(":") for triple in arg.split(",")]
-    return {triple[0]: (triple[1], triple[2] == "True") for triple in triples}
+    def deserialize_properties(s: str) -> List[tuple]:
+        def deserialize_property(p: str) -> tuple:
+            return tuple(p.split("="))
+
+        return [deserialize_property(p) for p in s.split("&")]
+
+    tuples = [t.split(":") for t in arg.split(",")]
+    return {(t[0], to_hashable(deserialize_properties(t[1]))): (t[2], t[3] == "True") for t in tuples}
 
 
 def main(argv: List[str]) -> None:
@@ -286,7 +292,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'pyramid_levels': 'highest',
         'user': User(user_id=user_id),
         'correlation_id': str(uuid.uuid4()),
-        'dependencies': {collection_id: subfolder for collection_id, (subfolder, _) in dependencies.items()}
+        'dependencies': {(collection_id, metadata_properties): subfolder for
+                         (collection_id, metadata_properties), (subfolder, _) in dependencies.items()}
     })
     tracer = DryRunDataTracer()
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
@@ -342,11 +349,12 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         max_delay_secs = 600
 
         card4l_dependencies = [(collection_id, request_group_id) for
-                               collection_id, (request_group_id, card4l) in dependencies.items() if card4l]
+                               (collection_id, metadata_properties), (request_group_id, card4l)
+                               in dependencies.items() if card4l]
 
         for collection_id, request_group_id in card4l_dependencies:
             try:
-                # FIXME: incorporate collection_id to make sure the files don't clash
+                # FIXME: incorporate collection_id and metadata_properties to make sure the files don't clash
                 s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
                                               max_delay_secs)
                 logger.info("downloaded CARD4L data in {b}/{g} to {d}"
