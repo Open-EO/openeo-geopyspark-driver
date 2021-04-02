@@ -797,6 +797,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
                         return area_in_square_meters(geom, spatial_extent['crs'])
 
+                    maximum_area = 1e+12  # 1 million km²
+
+                    if area() >= maximum_area:
+                        raise OpenEOApiException(message=
+                                                 "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
+                                                 .format(a=area(), c=collection_id, m=maximum_area), status_code=400)
+
                     if card4l:
                         logger.info("deemed batch job {j} CARD4L compliant ({s})".format(j=job_id,
                                                                                          s=sar_backscatter_arguments))
