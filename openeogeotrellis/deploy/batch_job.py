@@ -200,6 +200,9 @@ def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_pro
         return {}
 
     def deserialize_properties(s: str) -> List[tuple]:
+        if not s:
+            return []
+
         def deserialize_property(p: str) -> tuple:
             return tuple(p.split("="))
 
