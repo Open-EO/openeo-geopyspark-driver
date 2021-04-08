@@ -257,6 +257,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def oidc_providers(self) -> List[OidcProvider]:
         # TODO Move these providers to config or bootstrap script?
+        default_client_egi = {
+            "id": "vito-default-client",
+            "grant_types": [
+                "urn:ietf:params:oauth:grant-type:device_code+pkce",
+                "refresh_token",
+            ]
+        }
         return [
             OidcProvider(
                 id="keycloak",
@@ -270,16 +277,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 issuer="https://aai-dev.egi.eu/oidc/",
                 scopes=["openid"],
                 title="EGI Check-in (dev)",
-                # Experimental "default client". See https://github.com/Open-EO/openeo-api/pull/366
-                default_client={"id": "vito-default-client"},
+                default_client=default_client_egi,   # TODO: remove this legacy experimental field
+                default_clients=[default_client_egi],
             ),
             OidcProvider(
                 id="egi",
                 issuer="https://aai.egi.eu/oidc/",
                 scopes=["openid"],
                 title="EGI Check-in",
-                # Experimental "default client". See https://github.com/Open-EO/openeo-api/pull/366
-                default_client={"id": "vito-default-client"},
+                default_client=default_client_egi,   # TODO: remove this legacy experimental field
+                default_clients=[default_client_egi],
             ),
         ]
 
