@@ -932,6 +932,7 @@ class GeopysparkDataCube(DriverDataCube):
                 timeseries=self._as_python(stats),
                 # TODO: regions can also be a string (path to vector file) instead of geometry object
                 regions=regions if multiple_geometries else GeometryCollection([regions]),
+                metadata=self.metadata
             )
         elif func == "mean":
             if multiple_geometries:
@@ -957,11 +958,13 @@ class GeopysparkDataCube(DriverDataCube):
                     timeseries=timeseries,
                     # TODO: regions can also be a string (path to vector file) instead of geometry object
                     regions=regions,
+                    metadata=self.metadata
                 )
             else:
                 return AggregatePolygonResult(
                     timeseries=self.polygonal_mean_timeseries(regions),
                     regions=GeometryCollection([regions]),
+                    metadata=self.metadata
                 )
         else:
             raise ValueError(func)
