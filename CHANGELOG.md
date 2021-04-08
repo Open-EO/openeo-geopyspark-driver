@@ -10,6 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2021-04-8
+
+### Feature
+- Add support for (multiple) default OIDC clients (for EGI Check-in OIDC provider) (EP-3700, [Open-EO/openeo-api#366](https://github.com/Open-EO/openeo-api/pull/366))
+
 ## 2021-03-30
 ### Feature
 - Add support for Sentinelhub layers on different endpoints (e.g. Landsat-8, MODIS)
