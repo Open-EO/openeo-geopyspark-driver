@@ -957,8 +957,9 @@ class GpsBatchJobs(backend.BatchJobs):
         for title,asset in out_assets.items():
             if title not in results_dict:
                 asset["output_dir"] = str(job_dir)
-                asset["bands"] = [Band(**b) for b in asset["bands"]]
-                results_dict[title] = asset
+                if "bands" in asset:
+                    asset["bands"] = [Band(**b) for b in asset["bands"]]
+                    results_dict[title] = asset
 
 
         return results_dict
