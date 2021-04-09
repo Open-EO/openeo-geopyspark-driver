@@ -295,8 +295,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'pyramid_levels': 'highest',
         'user': User(user_id=user_id),
         'correlation_id': str(uuid.uuid4()),
-        'dependencies': {(collection_id, metadata_properties): subfolder for
-                         (collection_id, metadata_properties), (subfolder, _) in dependencies.items()}
+        'dependencies': dependencies
     })
     tracer = DryRunDataTracer()
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)

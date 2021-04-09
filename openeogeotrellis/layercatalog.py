@@ -235,7 +235,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             dependencies = env.get('dependencies', {})
 
             if dependencies:
-                subfolder = dependencies[(collection_id, to_hashable(metadata_properties()))]
+                subfolder, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
 
                 s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder)
                 key_regex = r".+\.tif"
@@ -243,6 +243,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 date_regex = r".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
                 recursive = True
                 interpret_as_cell_type = "float32ud0"
+                lat_lon = card4l
 
                 logger.info("Sentinel Hub pyramid from {u}".format(u=s3_uri))
 
@@ -251,7 +252,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     key_regex,
                     date_regex,
                     recursive,
-                    interpret_as_cell_type
+                    interpret_as_cell_type,
+                    lat_lon
                 )
 
                 sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
