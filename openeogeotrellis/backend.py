@@ -774,7 +774,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         batch_process_dependencies = []
 
-        for (process, arguments), constraints in source_constraints.items():
+        for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
                 collection_id, exact_property_matches = arguments
 

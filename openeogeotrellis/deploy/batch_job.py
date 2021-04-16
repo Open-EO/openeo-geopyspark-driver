@@ -96,9 +96,9 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
 
     # Take union of extents
     temporal_extent = temporal_extent_union(*[
-        sc["temporal_extent"] for sc in source_constraints.values() if "temporal_extent" in sc
+        sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc
     ])
-    extents = [sc["spatial_extent"] for sc in source_constraints.values() if "spatial_extent" in sc]
+    extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
         bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
