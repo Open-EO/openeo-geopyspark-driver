@@ -1114,7 +1114,7 @@ class GeopysparkDataCube(DriverDataCube):
                         crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
                     else:
                         crop_extent = None
-                    if batch_mode:
+                    if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                         directory = pathlib.Path(filename).parent
                         filename = str(directory)
                         self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
