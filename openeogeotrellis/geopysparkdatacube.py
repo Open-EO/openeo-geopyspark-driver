@@ -1140,6 +1140,13 @@ class GeopysparkDataCube(DriverDataCube):
 
                     else:
                         self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+                        return {
+                            str(pathlib.Path(filename).name): {
+                                "href": filename,
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"]
+                            }
+                        }
             else:
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
@@ -1184,7 +1191,7 @@ class GeopysparkDataCube(DriverDataCube):
                 message="Format {f!r} is not supported".format(f=format),
                 code="FormatUnsupported", status_code=400
             )
-        return {"filename":{"href":filename}}
+        return {str(pathlib.Path(filename).name):{"href":filename}}
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
             
