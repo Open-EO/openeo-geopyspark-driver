@@ -268,7 +268,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             OidcProvider(
                 id="egi",
                 issuer="https://aai.egi.eu/oidc/",
-                scopes=["openid"],
+                scopes=["openid", "email"],
                 title="EGI Check-in",
                 default_client=default_client_egi,  # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
@@ -277,7 +277,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             OidcProvider(
                 id="egi-dev",
                 issuer="https://aai-dev.egi.eu/oidc/",
-                scopes=["openid"],
+                scopes=["openid", "email"],
                 title="EGI Check-in (dev)",
                 default_client=default_client_egi,   # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
@@ -285,7 +285,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             OidcProvider(
                 id="keycloak",
                 issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
-                scopes=["openid"],
+                scopes=["openid", "email"],
                 title="VITO Keycloak",
             ),
         ]
