@@ -266,10 +266,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         }
         return [
             OidcProvider(
-                id="keycloak",
-                issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
+                id="egi",
+                issuer="https://aai.egi.eu/oidc/",
                 scopes=["openid"],
-                title="VITO Keycloak",
+                title="EGI Check-in",
+                default_client=default_client_egi,  # TODO: remove this legacy experimental field
+                default_clients=[default_client_egi],
             ),
             # TODO: provide only one EGI Check-in variation? Or only include EGI Check-in dev instance on openeo-dev?
             OidcProvider(
@@ -281,12 +283,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 default_clients=[default_client_egi],
             ),
             OidcProvider(
-                id="egi",
-                issuer="https://aai.egi.eu/oidc/",
+                id="keycloak",
+                issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
                 scopes=["openid"],
-                title="EGI Check-in",
-                default_client=default_client_egi,   # TODO: remove this legacy experimental field
-                default_clients=[default_client_egi],
+                title="VITO Keycloak",
             ),
         ]
 
