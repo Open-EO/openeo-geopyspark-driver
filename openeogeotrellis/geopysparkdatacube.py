@@ -25,7 +25,7 @@ from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import openeo.metadata
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
-from openeo.rest.conversions import _save_DataArray_to_JSON, _save_DataArray_to_NetCDF
+from openeo.udf.xarraydatacube import XarrayIO
 from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -1164,7 +1164,7 @@ class GeopysparkDataCube(DriverDataCube):
             if batch_mode:
                 directory = pathlib.Path(filename).parent
                 filename = str(directory / "openEO.nc")
-            _save_DataArray_to_NetCDF(filename,result)
+            XarrayIO.to_netcdf_file(array=result, path=filename)
             if batch_mode:
                 asset = {
                     "href": filename,
@@ -1184,7 +1184,7 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 result=self._collect_as_xarray(spatial_rdd)
                 
-            _save_DataArray_to_JSON(filename,result)
+            XarrayIO.to_json_file(array=result, path=filename)
 
         else:
             raise OpenEOApiException(
