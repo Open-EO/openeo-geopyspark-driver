@@ -1,4 +1,5 @@
 import logging
+import traceback
 from datetime import datetime
 from typing import List, Dict, Union
 
@@ -446,7 +447,11 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                     opensearch = OpenSearchCreodias(endpoint=os_endpoint)
                 else:
                     raise ValueError(os_endpoint)
-                opensearch_metadata[cid] = opensearch.get_metadata(collection_id=os_cid)
+                try:
+                    opensearch_metadata[cid] = opensearch.get_metadata(collection_id=os_cid)
+                except Exception as e:
+                    logger.error(traceback.format_exc())
+
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
 

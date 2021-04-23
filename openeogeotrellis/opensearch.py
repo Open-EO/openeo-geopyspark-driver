@@ -63,8 +63,8 @@ class OpenSearchOscars(OpenSearch):
             latest_end_date = None
 
             for info in acquisition_information:
-                start_datetime = rfc3339.parse_datetime(info["acquisitionParameters"]["beginningDateTime"])
-                end_datetime = rfc3339.parse_datetime(info["acquisitionParameters"].get("endingDateTime"))
+                start_datetime = rfc3339.parse_datetime(rfc3339.normalize(info["acquisitionParameters"]["beginningDateTime"]))
+                end_datetime = rfc3339.parse_datetime(rfc3339.normalize(info["acquisitionParameters"].get("endingDateTime")))
 
                 if not earliest_start_date or start_datetime.date() < earliest_start_date:
                     earliest_start_date = start_datetime.date()
