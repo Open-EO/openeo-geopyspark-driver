@@ -597,3 +597,9 @@ class TestBatchJobs:
                 run.assert_called_once()
                 command = run.call_args[0][0]
                 assert command == ["yarn", "application", "-kill", 'application_1587387643572_0842']
+
+
+def test_execute_math_basic(api100):
+    res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
+    assert res.json == 8
+
