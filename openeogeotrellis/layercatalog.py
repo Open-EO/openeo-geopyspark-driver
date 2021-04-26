@@ -17,6 +17,7 @@ from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis._utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
+from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearchOscars, OpenSearchCreodias
@@ -379,8 +380,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sar_backscatter_arguments=load_params.sar_backscatter or SarBackscatterArgs(),
                 bands=bands
             )
-        else:
+        elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
+        elif layer_source_type == 'testing':
+            pyramid = load_test_collection(
+                collection_id=collection_id, collection_metadata=metadata,
+                extent=extent, srs=srs,
+                from_date=from_date, to_date=to_date,
+                bands=bands,
+                correlation_id=correlation_id
+            )
+        else:
+            raise OpenEOApiException(message="Invalid layer source type {t!r}".format(t=layer_source_type))
 
         if isinstance(pyramid, dict):
             levels = pyramid
