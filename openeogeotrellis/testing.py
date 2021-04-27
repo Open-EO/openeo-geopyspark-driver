@@ -1,12 +1,17 @@
 """
 Reusable helpers, functions, classes, fixtures for testing purposes
 """
-
+import uuid
 from pathlib import Path
 from typing import List, Tuple, Union, Dict, Iterator
 
 import kazoo
 import kazoo.exceptions
+
+
+def random_name(prefix: str = "") -> str:
+    """Generate random name (with given prefix)"""
+    return '{p}{r}'.format(p=prefix, r=uuid.uuid4().hex[:8])
 
 
 class _ZNodeStat:
