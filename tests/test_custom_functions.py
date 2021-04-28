@@ -12,6 +12,7 @@ from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
 import openeo_udf.functions
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from .data import get_test_data_file
@@ -101,7 +102,8 @@ class TestCustomFunctions(TestCase):
                 },
             })
 
-        transformed_collection = self.imagecollection_with_two_bands_and_one_date.reduce_dimension(dimension="bands", reducer = reducer)
+        env = EvalEnv()
+        transformed_collection = self.imagecollection_with_two_bands_and_one_date.reduce_dimension(dimension="bands", reducer = reducer, env=env)
 
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)

@@ -14,6 +14,7 @@ from pyspark import SparkContext
 from shapely.geometry import Point
 
 from openeo_driver.errors import FeatureUnsupportedException
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.numpy_aggregators import max_composite
 
@@ -145,35 +146,36 @@ class TestMultipleDates(TestCase):
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        env = EvalEnv()
 
 
-        stitched = imagecollection.reduce_dimension(dimension="t", reducer=reducer("max")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t", reducer=reducer("max"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(2.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("min")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("min"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(1.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("sum")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("sum"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(4.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("mean")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("variance"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(0.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(0.2222222, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("sd"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(0.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(0.4714045, stitched.cells[0][0][1])
@@ -184,24 +186,24 @@ class TestMultipleDates(TestCase):
             datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
         })})
 
-        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-
-        stitched = imagecollection.reduce_dimension(reducer=reducer("min"), dimension="t").pyramid.levels[0].stitch()
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        env = EvalEnv()
+        stitched = cube.reduce_dimension(reducer=reducer("min"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(1.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("max"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("max"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("sum"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("sum"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(6.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("mean"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("mean"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(3.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("variance"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(4.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("sd"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(2.0, stitched.cells[0][0][0], delta=0.001)
 
     def test_reduce_some_nodata(self):
@@ -329,9 +331,10 @@ class TestMultipleDates(TestCase):
     def test_min_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })
 
-        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-        min_time = imagecollection.reduce_dimension(reducer=reducer('min'), dimension='t')
-        max_time = imagecollection.reduce_dimension(reducer=reducer('max'), dimension='t')
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        env = EvalEnv()
+        min_time = cube.reduce_dimension(reducer=reducer('min'), dimension='t', env=env)
+        max_time = cube.reduce_dimension(reducer=reducer('max'), dimension='t', env=env)
 
         stitched = min_time.pyramid.levels[0].stitch()
         print(stitched)
@@ -341,7 +344,7 @@ class TestMultipleDates(TestCase):
         for p in self.points[1:3]:
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
-            print(imagecollection.timeseries(p.x,p.y,srs="EPSG:3857"))
+            print(cube.timeseries(p.x,p.y,srs="EPSG:3857"))
             max_result = max_time.timeseries(p.x, p.y,srs="EPSG:3857")
             self.assertEqual(1.0,result['NoDate'])
             self.assertEqual(2.0,max_result['NoDate'])

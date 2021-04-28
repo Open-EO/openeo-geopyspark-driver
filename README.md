@@ -55,7 +55,15 @@ This will package the application and it's dependencies from source, and submit 
 ### Running the unit tests
 
 The unit tests expect that environment variable `SPARK_HOME` is set,
-which can easily be done from within you development virtual environment as follows:
+which can easily be done from within your development virtual environment as follows:
 
     export SPARK_HOME=$(find_spark_home.py)
     pytest
+
+Run specific test or subset of test: use `-k` option, e.g. run all tests with "udp" in function name:
+
+    pytest -k udp
+
+To disable capturing of `print` and logging, use something like this:
+
+    pytest --capture=no --log-cli-level=INFO

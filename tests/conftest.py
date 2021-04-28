@@ -9,7 +9,10 @@ from .data import get_test_data_file
 from openeogeotrellis.user_defined_process_repository import (UserDefinedProcessRepository,
                                                               InMemoryUserDefinedProcessRepository)
 from openeogeotrellis.backend import UserDefinedProcesses
+
+
 os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
+os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent.parent / "layercatalog.json")
 
 
 @pytest.hookimpl(trylast=True)
