@@ -32,6 +32,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
 from openeo_driver.save_result import AggregatePolygonResult
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.run_udf import run_user_code
@@ -397,7 +398,8 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def reduce_dimension(
-            self, dimension: str, reducer: Union[ProcessGraphVisitor, Dict], binary=False, context=None
+            self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
+            binary=False, context=None,
     ) -> 'GeopysparkDataCube':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
         if isinstance(reducer,dict):
@@ -407,6 +409,12 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             context = reducer.udf_args.get('context', {})
+            # TODO: using "_parameters" to flag that this experimental and not standardized yet.
+            context["_parameters"] = {
+                k: v
+                for (k, v) in env.collect_parameters().items()
+                if not isinstance(v, (DriverDataCube,))
+            }
             if not isinstance(udf,str):
                 raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
             if dimension == self.metadata.temporal_dimension.name:

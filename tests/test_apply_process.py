@@ -14,6 +14,7 @@ from openeo_driver.errors import OpenEOApiException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
@@ -249,7 +250,7 @@ class TestApplyProcess(TestCase):
             }
         }
         visitor.accept_process_graph(graph)
-        stitched = imagecollection.reduce_dimension('my_bands',visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        stitched = imagecollection.reduce_dimension(dimension='my_bands', reducer=visitor, env=EvalEnv()).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
 

@@ -5,6 +5,7 @@ import numpy as np
 from geopyspark import Tile, TiledRasterLayer
 from numpy.testing import assert_array_almost_equal
 
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 
@@ -42,7 +43,8 @@ def test_reduce_bands(imagecollection_with_two_bands_and_three_dates):
     assert set(t.cells.shape for t in ts.values()) == {(2, 8, 8)}
 
     reducer = _simple_reducer("sum")
-    cube = cube.reduce_dimension(dimension="bands", reducer=reducer)
+    env = EvalEnv()
+    cube = cube.reduce_dimension(dimension="bands", reducer=reducer, env=env)
     ts = _timeseries_stitch(cube)
     assert len(ts) == 2
     expected = np.full((1, 8, 8), 3.0)
@@ -57,12 +59,13 @@ def test_reduce_bands_reduce_time(imagecollection_with_two_bands_and_three_dates
     assert set(t.cells.shape for t in ts.values()) == {(2, 8, 8)}
 
     reducer = _simple_reducer("sum")
-    cube = cube.reduce_dimension(dimension="bands", reducer=reducer)
+    env = EvalEnv()
+    cube = cube.reduce_dimension(dimension="bands", reducer=reducer, env=env)
     ts = _timeseries_stitch(cube)
     assert len(ts) == 2
     assert set(t.cells.shape for t in ts.values()) == {(1, 8, 8)}
 
-    cube = cube.reduce_dimension(dimension='t', reducer=udf_noop)
+    cube = cube.reduce_dimension(dimension='t', reducer=udf_noop, env=env)
     stiched = _stitch(cube)
     assert stiched.cells.shape == (1, 8, 8)
     expected = np.full((1, 8, 8), 3.0)
