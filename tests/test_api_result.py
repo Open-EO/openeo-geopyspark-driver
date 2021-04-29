@@ -237,6 +237,9 @@ def test_udp_udf_reduce_temporal_with_parameter(api100, user_defined_process_reg
     }
     user_defined_process_registry.save(user_id=TEST_USER, process_id=udp_id, spec=udp_spec)
 
+    udp_args = {"data": {"from_node": "lc"}}
+    if set_offset:
+        udp_args["offset"] = 56
     response = api100.check_result({
         "lc": {
             "process_id": "load_collection",
@@ -247,12 +250,7 @@ def test_udp_udf_reduce_temporal_with_parameter(api100, user_defined_process_reg
                 "bands": ["Longitude", "Day"]
             },
         },
-        "udp": {
-            "process_id": udp_id, "arguments": {
-                "data": {"from_node": "lc"},
-                ("offset" if set_offset else "_ignore_me"): 56
-            }
-        },
+        "udp": {"process_id": udp_id, "arguments": udp_args},
         "save": {
             "process_id": "save_result",
             "arguments": {"data": {"from_node": "udp"}, "format": "json"},
@@ -333,9 +331,7 @@ def test_udp_udf_reduce_bands_with_parameter(api100, user_defined_process_regist
                 "bands": ["Longitude", "Day"]
             },
         },
-        "udp": {
-            "process_id": udp_id, "arguments": udp_args
-        },
+        "udp": {"process_id": udp_id, "arguments": udp_args},
         "save": {
             "process_id": "save_result",
             "arguments": {"data": {"from_node": "udp"}, "format": "json"},
