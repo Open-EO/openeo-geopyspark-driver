@@ -467,7 +467,7 @@ class GeopysparkDataCube(DriverDataCube):
             if len(cubes)!=1:
                 raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
             result_array:xr.DataArray = cubes[0].array
-            print(result_array.dims)
+            _log.info(f"apply_tiles tilefunction result dims: {result_array.dims}")
             return (key,Tile(result_array.values, geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
