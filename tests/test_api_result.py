@@ -358,3 +358,97 @@ def test_udp_udf_reduce_bands_with_parameter(api100, user_defined_process_regist
         ])
 
     assert_equal(data, expected)
+
+
+def test_apply_square_pixels(api100):
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "apply": {
+            "process_id": "apply",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {"process_graph": {"udf": {
+                    "process_id": "multiply",
+                    "arguments": {"x": {"from_parameter": "x"}, "y": {"from_parameter": "x"}},
+                    "result": True
+                }}}
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "apply"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+    expected = np.array([
+        [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=5 ** 2)],
+        [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=15 ** 2)],
+        [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=25 ** 2)],
+    ])
+    assert_equal(data, expected)
+
+
+def test_apply_udf_square_pixels(api100):
+    udf_code = textwrap.dedent("""
+        # TODO EP-3856 convert to XarrayDataCube usage
+        from openeo_udf.api.datacube import DataCube
+        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
+            array = cube.get_array()
+            return DataCube(array * array) 
+    """)
+
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "apply": {
+            "process_id": "apply",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {"process_graph": {"udf": {
+                    "process_id": "run_udf",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "udf": udf_code,
+                        "runtime": "Python",
+                    },
+                    "result": True
+                }}}
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "apply"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+    expected = np.array([
+        [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=5 ** 2)],
+        [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=15 ** 2)],
+        [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=25 ** 2)],
+    ])
+    assert_equal(data, expected)

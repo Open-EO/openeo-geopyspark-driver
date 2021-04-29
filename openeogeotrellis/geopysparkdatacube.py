@@ -190,26 +190,29 @@ class GeopysparkDataCube(DriverDataCube):
     def apply(self, process: str, arguments: dict = {}) -> 'GeopysparkDataCube':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
-            apply_callback = GeoPySparkBackendImplementation.accept_process_graph(process)
-            #apply should leave metadata intact, so can do a simple call?
-            return self.reduce_bands(apply_callback)
+            process = GeoPySparkBackendImplementation.accept_process_graph(process)
 
-        result_collection = None
+        if isinstance(process, GeotrellisTileProcessGraphVisitor):
+            #apply should leave metadata intact, so can do a simple call?
+            # Note: It's not obvious from its name, but `reduce_bands` not only supports reduce operations,
+            # also `apply` style local unary mapping operations.
+            return self.reduce_bands(process)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf = process.udf_args.get('udf', None)
             context = process.udf_args.get('context', {})
             if not isinstance(udf, str):
                 raise ValueError(
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
-            self.apply_tiles(udf,context)
-
-        if isinstance(process,str):
+            return self.apply_tiles(udf,context)
+        elif isinstance(process,str):
             #old 04x code path
             if 'y' in arguments:
                 raise NotImplementedError("Apply only supports unary operators,"
                                           " but got {p!r} with {a!r}".format(p=process, a=arguments))
             applyProcess = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess
             return self._apply_to_levels_geotrellis_rdd(lambda rdd, k: applyProcess(rdd, process))
+        else:
+            raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
     def reduce(self, reducer: str, dimension: str) -> 'GeopysparkDataCube':
         # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
