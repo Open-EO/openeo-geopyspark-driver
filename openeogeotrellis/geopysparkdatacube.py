@@ -313,6 +313,12 @@ class GeopysparkDataCube(DriverDataCube):
         if band_dimension:
             # TODO: also use the band dimension name (`band_dimension.name`) instead of hardcoded "bands"?
             coords['bands'] = band_dimension.band_names
+            band_count = bands_numpy.shape[dims.index('bands')]
+            if band_count != len(band_dimension.band_names):
+                raise OpenEOApiException(status_code=400,message=
+                """In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels. 
+                These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct."""
+                                         .format(b=band_count, len_dim = len(band_dimension.band_names), labels=str(band_dimension.band_names)))
         
         # X and Y coordinates
         # this is tricky because if apply_neghborhood is used, then extent is the area without overlap
