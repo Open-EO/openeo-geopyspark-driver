@@ -415,12 +415,10 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             context = reducer.udf_args.get('context', {})
-            # TODO: using "_parameters" to flag that this experimental and not standardized yet.
-            context["_parameters"] = {
-                k: v
-                for (k, v) in env.collect_parameters().items()
-                if not isinstance(v, (DriverDataCube,))
-            }
+            # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
+            from openeo_driver.ProcessGraphDeserializer import convert_node
+            # Resolve "from_parameter" references in context object
+            context = convert_node(context, env=env)
             if not isinstance(udf,str):
                 raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
             if dimension == self.metadata.temporal_dimension.name:

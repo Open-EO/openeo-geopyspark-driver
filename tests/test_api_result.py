@@ -203,7 +203,7 @@ def test_udp_udf_reduce_with_parameter(api100, user_defined_process_registry, se
         # TODO EP-3856 convert to XarrayDataCube usage
         from openeo_udf.api.datacube import DataCube
         def apply_datacube(cube: DataCube, context: dict) -> DataCube:
-            offset = context.get("_parameters", {}).get("offset", 34)
+            offset = context.get("offset", 34)
             return DataCube(cube.get_array().max("t") + offset) 
     """)
     udp_id = random_name("udp")
@@ -225,6 +225,7 @@ def test_udp_udf_reduce_with_parameter(api100, user_defined_process_registry, se
                             "data": {"from_parameter": "data"},
                             "udf": udf_code,
                             "runtime": "Python",
+                            "context": {"offset": {"from_parameter": "offset"}}
                         },
                         "result": True
                     }}}
