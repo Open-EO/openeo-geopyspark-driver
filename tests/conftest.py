@@ -6,10 +6,6 @@ import pytest
 from _pytest.terminal import TerminalReporter
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
 from .data import get_test_data_file
-from openeogeotrellis.user_defined_process_repository import (UserDefinedProcessRepository,
-                                                              InMemoryUserDefinedProcessRepository)
-from openeogeotrellis.backend import UserDefinedProcesses
-
 
 os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent.parent / "layercatalog.json")
@@ -92,17 +88,19 @@ def api_version(request):
 
 
 @pytest.fixture
-def udp_repository() -> UserDefinedProcessRepository:
+def udp_repository() -> 'UserDefinedProcessRepository':
+    from openeogeotrellis.user_defined_process_repository import InMemoryUserDefinedProcessRepository
     return InMemoryUserDefinedProcessRepository()
 
 
 @pytest.fixture
-def udps(udp_repository) -> UserDefinedProcesses:
+def udps(udp_repository) -> 'UserDefinedProcesses':
+    from openeogeotrellis.backend import UserDefinedProcesses
     return UserDefinedProcesses(udp_repository)
+
 
 @pytest.fixture
 def udf_noop():
-
     file_name = get_test_data_file("udf_noop.py")
     with open(file_name, "r")  as f:
         udf_code = f.read()
