@@ -426,13 +426,15 @@ class GeopysparkDataCube(DriverDataCube):
                 result_collection = self.apply_tiles_spatiotemporal(udf,context)
             elif dimension == self.metadata.band_dimension.name:
                 result_collection = self.apply_tiles(udf,context)
-
+            else:
+                FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self.reduce_bands(reducer)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
             result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
         else:
-            raise ValueError("Unsupported combination of reducer %s and dimension %s."%(reducer,dimension))
+            raise FeatureUnsupportedException(
+                "Unsupported combination of reducer %s and dimension %s." % (reducer, dimension))
         if result_collection is not None:
             result_collection.metadata = result_collection.metadata.reduce_dimension(dimension)
             if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
