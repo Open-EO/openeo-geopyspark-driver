@@ -1,6 +1,7 @@
+import contextlib
+import logging
 import textwrap
 
-import logging
 import numpy as np
 import pytest
 from numpy.testing import assert_equal
@@ -9,6 +10,7 @@ from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProces
 from openeo_driver.testing import ApiTester, TEST_USER
 from openeo_driver.views import app
 from openeogeotrellis.testing import random_name
+from openeogeotrellis.utils import get_jvm
 from .data import TEST_DATA_ROOT
 
 _log = logging.getLogger(__name__)
@@ -40,6 +42,24 @@ def api(api_version, client) -> ApiTester:
 @pytest.fixture
 def api100(client) -> ApiTester:
     return ApiTester(api_version="1.0.0", client=client, data_root=TEST_DATA_ROOT)
+
+
+@contextlib.contextmanager
+def set_jvm_system_properties(properties: dict):
+    """Context manager to temporary set jvm System properties."""
+    jvm_system = get_jvm().System
+    orig_properties = {k: jvm_system.getProperty(k) for k in properties.keys()}
+
+    def set_all(properties: dict):
+        for k, v in properties.items():
+            if v:
+                jvm_system.setProperty(k, str(v))
+            else:
+                jvm_system.clearProperty(k)
+
+    set_all(properties)
+    yield
+    set_all(orig_properties)
 
 
 def test_execute_math_basic(api100):
@@ -452,3 +472,72 @@ def test_apply_udf_square_pixels(api100):
         [np.array([[0, 0.25 ** 2, 0.5 ** 2, 0.75 ** 2]] * 4).T, np.full((4, 4), fill_value=25 ** 2)],
     ])
     assert_equal(data, expected)
+
+
+@pytest.mark.parametrize("geometries", [
+    {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+    {"type": "MultiPolygon", "coordinates": [[[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]]},
+    {
+        "type": "GeometryCollection",
+        "geometries": [{"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]}],
+    },
+    {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+    },
+    {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+        }]
+    }
+])
+@pytest.mark.parametrize("pixels_threshold", [0, 10000])
+@pytest.mark.parametrize("reducer", ["mean", "median"])
+def test_ep3718_aggregate_spatial_geometries(api100, geometries, pixels_threshold, reducer):
+    """EP-3718: different results when doing aggregate_spatial with Polygon or GeometryCollection"""
+
+    with set_jvm_system_properties({"pixels.treshold": pixels_threshold}):
+        response = api100.check_result({
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-01", "2021-02-20"],
+                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 2.0, "north": 2.0},
+                    "bands": ["Flat:1", "Month", "Day"]
+                },
+            },
+            "aggregate": {
+                "process_id": "aggregate_spatial",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "geometries": geometries,
+                    "reducer": {"process_graph": {
+                        reducer: {
+                            "process_id": reducer, "arguments": {"data": {"from_parameter": "data"}}, "result": True
+                        }
+                    }}
+                }
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "aggregate"}, "format": "json"},
+                "result": True,
+            }
+        })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    # Strip out empty entries
+    result = {k: v for (k, v) in result.items() if v != [[]]}
+
+    expected = {
+        "2021-01-05T00:00:00Z": [[1.0, 1.0, 5.0]],
+        "2021-01-15T00:00:00Z": [[1.0, 1.0, 15.0]],
+        "2021-01-25T00:00:00Z": [[1.0, 1.0, 25.0]],
+        "2021-02-05T00:00:00Z": [[1.0, 2.0, 5.0]],
+        "2021-02-15T00:00:00Z": [[1.0, 2.0, 15.0]],
+    }
+    assert result == expected
