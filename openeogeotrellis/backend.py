@@ -13,7 +13,7 @@ from functools import reduce
 from pathlib import Path
 from shapely.geometry.polygon import Polygon
 from subprocess import CalledProcessError
-from typing import Dict
+from typing import Callable, Dict, Optional
 
 import geopyspark as gps
 import pkg_resources
@@ -431,6 +431,7 @@ class GpsBatchJobs(backend.BatchJobs):
     _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
 
     def __init__(self, catalog: CollectionCatalog):
+        super().__init__()
         self._catalog = catalog
 
     def create_job(
@@ -457,20 +458,27 @@ class GpsBatchJobs(backend.BatchJobs):
             title=title, description=description,
         )
 
-    def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
+    def get_job_info(self, job_id: str, user: User) -> BatchJobMetadata:
         with JobRegistry() as registry:
-            job_info = registry.get_job(job_id, user_id)
+            job_info = registry.get_job(job_id, user.user_id)
 
         # FIXME: for now, the assumption is that the client will call this on a regular basis
         # an external process can poll SHub, schedule a Spark job if all DONE and stop -> no unnecessary invocations
         # but this one has to keep state somewhere to prevent it from doing this
-        # TODO: don't do this if called internally
         if job_info.get('dependency_status') == 'awaiting':
-            self._poll_sentinelhub_batch_processes(job_id, user_id, job_info)
+            self._poll_sentinelhub_batch_processes(job_id, user, job_info)
 
-        return registry.job_info_to_metadata(job_info)
+        return JobRegistry.job_info_to_metadata(job_info)
 
-    def _poll_sentinelhub_batch_processes(self, job_id: str, user_id: str, job_info: dict):
+    def _get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
+        with JobRegistry() as registry:
+            job_info = registry.get_job(job_id, user_id)
+
+        return JobRegistry.job_info_to_metadata(job_info)
+
+    def _poll_sentinelhub_batch_processes(self, job_id: str, user: User, job_info: dict):
+        user_id = user.user_id
+
         def statuses(batch_process_dependency: dict) -> List[str]:
             collection_id = batch_process_dependency['collection_id']
 
@@ -499,7 +507,7 @@ class GpsBatchJobs(backend.BatchJobs):
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'available')
 
-            self._start_job(job_id, user_id, dependencies)  # resume batch job with now available data
+            self._start_job(job_id, user, dependencies)  # resume batch job with now available data
         elif "FAILED" in statuses:
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
@@ -537,11 +545,13 @@ class GpsBatchJobs(backend.BatchJobs):
             py_files = ",".join(found)
         return py_files
 
-    def start_job(self, job_id: str, user_id: str):
-        self._start_job(job_id, user_id)
+    def start_job(self, job_id: str, user: User):
+        self._start_job(job_id, user)
 
-    def _start_job(self, job_id: str, user_id: str, batch_process_dependencies: Union[list, None] = None):
+    def _start_job(self, job_id: str, user: User, batch_process_dependencies: Union[list, None] = None):
         from pyspark import SparkContext
+
+        user_id = user.user_id
 
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
@@ -700,7 +710,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         args.append("no_principal")
                         args.append("no_keytab")
 
-                    args.append(user_id)
+                    args.append(self.get_proxy_user(user) or user_id)
 
                     if api_version:
                         args.append(api_version)
@@ -912,7 +922,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return False
 
     def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
-        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
+        job_info = self._get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
         job_dir = self._get_job_output_dir(job_id=job_id)
@@ -977,7 +987,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def get_log_entries(self, job_id: str, user_id: str, offset: str) -> List[dict]:
         # will throw if job doesn't match user
-        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
+        job_info = self._get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in ['created', 'queued']:
             return []
 

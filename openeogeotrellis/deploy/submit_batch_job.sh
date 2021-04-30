@@ -29,7 +29,7 @@ userLogFileName=$5
 metadataFileName=$6
 principal=$7
 keyTab=$8
-openEoUser=$9
+proxyUser=$9
 apiVersion=${10}
 drivermemory=${11-22G}
 executormemory=${12-4G}
@@ -69,8 +69,8 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
 
 sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
-if PYTHONPATH= ipa -v user-find --login "${openEoUser}"; then
-  run_as="--proxy-user ${openEoUser}"
+if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
+  run_as="--proxy-user ${proxyUser}"
 else
   run_as="--principal ${principal} --keytab ${keyTab}"
 fi
@@ -115,4 +115,4 @@ spark-submit \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${openEoUser}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${proxyUser}"
