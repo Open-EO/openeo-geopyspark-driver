@@ -918,8 +918,8 @@ class GeopysparkDataCube(DriverDataCube):
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        from_vector_file = isinstance(regions, str)
-        multiple_geometries = from_vector_file or isinstance(regions, GeometryCollection)
+        if isinstance(regions, (Polygon, MultiPolygon)):
+            regions = GeometryCollection([regions])
 
         if func in ['histogram', 'sd', 'median']:
             highest_level = self.pyramid.levels[self.pyramid.max_zoom]
@@ -947,42 +947,34 @@ class GeopysparkDataCube(DriverDataCube):
 
             return AggregatePolygonResult(
                 timeseries=self._as_python(stats),
-                # TODO: regions can also be a string (path to vector file) instead of geometry object
-                regions=regions if multiple_geometries else GeometryCollection([regions]),
+                regions=regions,
                 metadata=self.metadata
             )
         elif func == "mean":
-            if multiple_geometries:
-                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-                layer_metadata = highest_level.layer_metadata
-                scala_data_cube = highest_level.srdd.rdd()
-                polygons = to_projected_polygons(self._get_jvm(), regions)
-                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+            layer_metadata = highest_level.layer_metadata
+            scala_data_cube = highest_level.srdd.rdd()
+            polygons = to_projected_polygons(self._get_jvm(), regions)
+            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-                with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                    self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                        scala_data_cube,
-                        polygons,
-                        from_date.isoformat(),
-                        to_date.isoformat(),
-                        0,
-                        temp_file.name
-                    )
-                    with open(temp_file.name, encoding='utf-8') as f:
-                        timeseries = json.load(f)
-                return AggregatePolygonResult(
-                    timeseries=timeseries,
-                    # TODO: regions can also be a string (path to vector file) instead of geometry object
-                    regions=regions,
-                    metadata=self.metadata
+            with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                    scala_data_cube,
+                    polygons,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    0,
+                    temp_file.name
                 )
-            else:
-                return AggregatePolygonResult(
-                    timeseries=self.polygonal_mean_timeseries(regions),
-                    regions=GeometryCollection([regions]),
-                    metadata=self.metadata
-                )
+                with open(temp_file.name, encoding='utf-8') as f:
+                    timeseries = json.load(f)
+            return AggregatePolygonResult(
+                timeseries=timeseries,
+                # TODO: regions can also be a string (path to vector file) instead of geometry object
+                regions=regions,
+                metadata=self.metadata
+            )
         else:
             raise ValueError(func)
 
@@ -1010,53 +1002,6 @@ class GeopysparkDataCube(DriverDataCube):
             return {self._as_python(key): self._as_python(value) for key, value in dict(java_object).items()}
 
         return java_object
-
-    def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
-        layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = GeopysparkDataCube.__reproject_polygon(polygon, "+init=EPSG:4326", layer_crs)
-
-        #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
-        masked_layer = max_level.mask(reprojected_polygon)
-
-        no_data = masked_layer.layer_metadata.no_data_value
-
-        def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
-            n_bands = len(tile.cells)
-
-            if not acc:
-                acc = [(0, 0)] * n_bands
-
-            for i in range(n_bands):
-                grid = tile.cells[i]
-
-                # special treatment for a UDF layer (NO_DATA is nan so every value, including nan, is not equal to nan)
-                without_no_data = (~np.isnan(grid)) & (grid != no_data)
-
-                sum = grid[without_no_data].sum()
-                count = without_no_data.sum()
-
-                acc[i] = acc[i][0] + sum, acc[i][1] + count
-
-            return acc
-
-        def combine_values(l1: List[Tuple[int, int]], l2: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-            for i in range(len(l2)):
-                l1[i] = l1[i][0] + l2[i][0], l1[i][1] + l2[i][1]
-
-            return l1
-
-        # GeoPySpark uses utcfromtimestamp to convert SpaceTimeKey/ZonedDateTime; it returns a naive datetime ffs
-        polygon_mean_by_timestamp = masked_layer.to_numpy_rdd() \
-            .map(lambda pair: (pair[0].instant, pair[1])) \
-            .aggregateByKey([], combine_cells, combine_values)
-
-        def to_mean(values: Tuple[int, int]) -> float:
-            sum, count = values
-            return sum / count
-
-        collected = polygon_mean_by_timestamp.collect()
-        return {rfc3339.datetime(timestamp): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
     def _to_xarray(self):
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
