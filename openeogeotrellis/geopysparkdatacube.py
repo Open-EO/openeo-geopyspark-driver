@@ -911,7 +911,7 @@ class GeopysparkDataCube(DriverDataCube):
 
 
     def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
-        # TODO: rename to aggregate_polygon?
+        # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
 
@@ -921,43 +921,30 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
 
-        if func in ['histogram', 'sd', 'median']:
-            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-            layer_metadata = highest_level.layer_metadata
-            scala_data_cube = highest_level.srdd.rdd()
-            polygons = to_projected_polygons(self._get_jvm(), regions)
-            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+        highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+        layer_metadata = highest_level.layer_metadata
+        scala_data_cube = highest_level.srdd.rdd()
+        polygons = to_projected_polygons(self._get_jvm(), regions)
+        from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+        to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-            # TODO also add dumping results first to temp json file like with "mean"
-            if func == 'histogram':
-                stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-            elif func == 'sd':
-                stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-            elif func == 'median':
-                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-            else:
-                raise ValueError(func)
-
-            return AggregatePolygonResult(
-                timeseries=self._as_python(stats),
-                regions=regions,
-                metadata=self.metadata
+        # TODO also add dumping results first to temp json file like with "mean"
+        if func == 'histogram':
+            stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
             )
+            timeseries = self._as_python(stats)
+        elif func == 'sd':
+            stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+            )
+            timeseries = self._as_python(stats)
+        elif func == 'median':
+            stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+            )
+            timeseries = self._as_python(stats)
         elif func == "mean":
-            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-            layer_metadata = highest_level.layer_metadata
-            scala_data_cube = highest_level.srdd.rdd()
-            polygons = to_projected_polygons(self._get_jvm(), regions)
-            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-
             with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
                 self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
                     scala_data_cube,
@@ -969,14 +956,15 @@ class GeopysparkDataCube(DriverDataCube):
                 )
                 with open(temp_file.name, encoding='utf-8') as f:
                     timeseries = json.load(f)
-            return AggregatePolygonResult(
-                timeseries=timeseries,
-                # TODO: regions can also be a string (path to vector file) instead of geometry object
-                regions=regions,
-                metadata=self.metadata
-            )
         else:
             raise ValueError(func)
+
+        return AggregatePolygonResult(
+            timeseries=timeseries,
+            # TODO: regions can also be a string (path to vector file) instead of geometry object
+            regions=regions,
+            metadata=self.metadata
+        )
 
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'
