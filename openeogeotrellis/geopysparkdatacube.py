@@ -1108,6 +1108,7 @@ class GeopysparkDataCube(DriverDataCube):
         tiled = format_options.get("tiled", False)
         stitch = format_options.get("stitch", False)
         catalog = format_options.get("parameters", {}).get("catalog", False)
+        tile_grid = format_options.get("tile_grid", "")
 
         if format in ["GTIFF", "PNG"]:
             batch_mode = format_options.get("batch_mode", False)
@@ -1120,8 +1121,13 @@ class GeopysparkDataCube(DriverDataCube):
                     _log.info("save_result (catalog) save_on_executors")
                     self._save_on_executors(spatial_rdd, filename)
                 elif stitch:
-                    _log.info("save_result save_stitched")
-                    self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
+                    if tile_grid:
+                        _log.info("save_result save_stitched_tile_grid")
+                        filenames = self._save_stitched_tile_grid(spatial_rdd, filename, tile_grid, crop_bounds, zlevel=zlevel)
+                        return {str(pathlib.Path(filename).name): {"href": filename} for filename in filenames}
+                    else:
+                        _log.info("save_result save_stitched")
+                        self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
                 else:
                     _log.info("save_result: saveRDD")
                     band_count = -1
@@ -1414,6 +1420,19 @@ class GeopysparkDataCube(DriverDataCube):
                                                                    max_compression)
         else:
             jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
+
+    def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6):
+        jvm = self._get_jvm()
+
+        max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
+
+        if crop_bounds:
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
+                                                                                  tile_grid, crop_bounds._asdict(),
+                                                                                  max_compression)
+        else:
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
+                                                                                  tile_grid, max_compression)
 
     def _save_stitched_tiled(self, spatial_rdd, filename):
         import rasterio as rstr
