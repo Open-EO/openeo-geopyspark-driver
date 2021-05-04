@@ -13,14 +13,13 @@ from functools import reduce
 from pathlib import Path
 from shapely.geometry.polygon import Polygon
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Tuple
 
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 
 from openeo_driver.users import User
-from openeogeotrellis import filter_properties
 from openeogeotrellis import sentinel_hub
 from py4j.java_gateway import JavaGateway
 from py4j.protocol import Py4JJavaError
@@ -465,7 +464,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # FIXME: for now, the assumption is that the client will call this on a regular basis
         # an external process can poll SHub, schedule a Spark job if all DONE and stop -> no unnecessary invocations
         # but this one has to keep state somewhere to prevent it from doing this
-        if job_info.get('dependency_status') == 'awaiting':
+        if job_info.get('dependency_status') in ['awaiting', "awaiting_retry"]:
             self._poll_sentinelhub_batch_processes(job_id, user, job_info)
 
         return JobRegistry.job_info_to_metadata(job_info)
@@ -479,7 +478,8 @@ class GpsBatchJobs(backend.BatchJobs):
     def _poll_sentinelhub_batch_processes(self, job_id: str, user: User, job_info: dict):
         user_id = user.user_id
 
-        def statuses(batch_process_dependency: dict) -> List[str]:
+        def batch_request_statuses(batch_process_dependency: dict) -> List[Tuple[str, Callable[[], None]]]:
+            """returns a (status, retrier) for each batch request ID in the dependency"""
             collection_id = batch_process_dependency['collection_id']
 
             metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
@@ -496,25 +496,45 @@ class GpsBatchJobs(backend.BatchJobs):
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
                                  [batch_process_dependency['batch_request_id']])
 
-            return [batch_processing_service.get_batch_process_status(request_id) for request_id in batch_request_ids]
+            def retrier(request_id: str) -> Callable[[], None]:
+                def retry():
+                    logger.warning(f"retrying Sentinel Hub batch process {request_id} for batch job {job_id}")
+                    batch_processing_service.restart_partially_failed_batch_process(request_id)
+
+                return retry
+
+            return [(batch_processing_service.get_batch_process_status(request_id), retrier(request_id))
+                    for request_id in batch_request_ids]
 
         dependencies = job_info.get('dependencies') or []
-        statuses = set(reduce(operator.add, (statuses(batch_process) for batch_process in dependencies)))
+        statuses = reduce(operator.add, (batch_request_statuses(batch_process) for batch_process in dependencies))
 
-        logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}".format(j=job_id, ss=statuses))
+        logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
+                     .format(j=job_id, ss=[status for status, in statuses]))
 
-        if statuses == {"DONE"}:
-            with JobRegistry() as registry:
-                registry.set_dependency_status(job_id, user_id, 'available')
-
-            self._start_job(job_id, user, dependencies)  # resume batch job with now available data
-        elif "FAILED" in statuses:
+        if any(status == "FAILED" for status, in statuses):  # at least one failed: not recoverable
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
 
             job_info['status'] = 'error'  # TODO: avoid mutation
+        elif all(status == "DONE" for status, in statuses):  # all good: resume batch job with available data
+            with JobRegistry() as registry:
+                registry.set_dependency_status(job_id, user_id, 'available')
+
+            self._start_job(job_id, user, dependencies)
+        elif (all(status in ["DONE", "PARTIAL"] for status, in statuses)  # all done: possible partial retry
+              and job_info.get('dependency_status') != 'awaiting_retry'):
+            with JobRegistry() as registry:
+                registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
+
+            retries = [retry for status, retry in statuses if status == "PARTIAL"]
+
+            for retry in retries:
+                retry()
+        else:  # still some in progress and none FAILED yet: continue polling
+            pass
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with JobRegistry() as registry:
@@ -572,7 +592,7 @@ class GpsBatchJobs(backend.BatchJobs):
             extra_options = spec.get('job_options', {})
 
             if (batch_process_dependencies is None
-                    and job_info.get('dependency_status') not in ['awaiting', 'available']
+                    and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
                                                                     user_id, job_id)):
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
