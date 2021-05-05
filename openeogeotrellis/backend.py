@@ -510,21 +510,21 @@ class GpsBatchJobs(backend.BatchJobs):
         statuses = reduce(operator.add, (batch_request_statuses(batch_process) for batch_process in dependencies))
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
-                     .format(j=job_id, ss=[status for status, in statuses]))
+                     .format(j=job_id, ss=[status for status, _ in statuses]))
 
-        if any(status == "FAILED" for status, in statuses):  # at least one failed: not recoverable
+        if any(status == "FAILED" for status, _ in statuses):  # at least one failed: not recoverable
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
 
             job_info['status'] = 'error'  # TODO: avoid mutation
-        elif all(status == "DONE" for status, in statuses):  # all good: resume batch job with available data
+        elif all(status == "DONE" for status, _ in statuses):  # all good: resume batch job with available data
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'available')
 
             self._start_job(job_id, user, dependencies)
-        elif (all(status in ["DONE", "PARTIAL"] for status, in statuses)  # all done: possible partial retry
+        elif (all(status in ["DONE", "PARTIAL"] for status, _ in statuses)  # all done: possible partial retry
               and job_info.get('dependency_status') != 'awaiting_retry'):
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
