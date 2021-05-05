@@ -524,15 +524,26 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(job_id, user_id, 'available')
 
             self._start_job(job_id, user, dependencies)
-        elif (all(status in ["DONE", "PARTIAL"] for status, _ in statuses)  # all done: possible partial retry
-              and job_info.get('dependency_status') != 'awaiting_retry'):
-            with JobRegistry() as registry:
-                registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
+        elif all(status in ["DONE", "PARTIAL"] for status, _ in statuses):  # all done but some partially failed
+            if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
+                with JobRegistry() as registry:
+                    registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
 
-            retries = [retry for status, retry in statuses if status == "PARTIAL"]
+                retries = [retry for status, retry in statuses if status == "PARTIAL"]
 
-            for retry in retries:
-                retry()
+                for retry in retries:
+                    retry()
+                # TODO: the assumption is that a successful /restartpartial request means that processing has
+                #  effectively restarted and a different status (PROCESSING) is published; otherwise the next poll might
+                #  still see the previous status (PARTIAL), consider it the new status and immediately mark it as
+                #  unrecoverable.
+            else:  # still some PARTIALs after one retry: not recoverable
+                with JobRegistry() as registry:
+                    registry.set_dependency_status(job_id, user_id, 'error')
+                    registry.set_status(job_id, user_id, 'error')
+                    registry.mark_done(job_id, user_id)
+
+                job_info['status'] = 'error'  # TODO: avoid mutation
         else:  # still some in progress and none FAILED yet: continue polling
             pass
 
