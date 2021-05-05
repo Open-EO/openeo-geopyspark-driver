@@ -682,7 +682,7 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
 
-    def apply_neighborhood(self, process: Dict, size: List, overlap: List) -> 'GeopysparkDataCube':
+    def apply_neighborhood(self, process: Dict, size: List, overlap: List, env: EvalEnv) -> 'GeopysparkDataCube':
 
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
@@ -724,6 +724,10 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf = process.udf_args.get('udf', None)
             context = process.udf_args.get('context', {})
+            # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
+            from openeo_driver.ProcessGraphDeserializer import convert_node
+            # Resolve "from_parameter" references in context object
+            context = convert_node(context, env=env)
             if not isinstance(udf, str):
                 raise ValueError(
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)

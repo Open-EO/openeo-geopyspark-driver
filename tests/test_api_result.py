@@ -474,6 +474,87 @@ def test_apply_udf_square_pixels(api100):
     assert_equal(data, expected)
 
 
+@pytest.mark.parametrize("set_parameters", [False, True])
+def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process_registry, set_parameters):
+    """Test calling a UDP with a UDP based reduce operation and fetching a UDP parameter value (EP-3781)"""
+    udf_code = textwrap.dedent("""
+        # TODO EP-3856 convert to XarrayDataCube usage
+        from openeo_udf.api.datacube import DataCube
+        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
+            offset = context.get("offset", 100)
+            return DataCube(cube.get_array() + offset) 
+    """)
+    udp_id = random_name("udp")
+    udp_spec = {
+        "id": udp_id,
+        "parameters": [
+            {"name": "data", "schema": {"type": "object", "subtype": "raster-cube"}},
+            {"name": "offset", "default": 10, "optional": True, "schema": {"type": "number"}},
+        ],
+        "process_graph": {
+            "apply_neighborhood": {
+                "process_id": "apply_neighborhood",
+                "arguments": {
+                    "data": {"from_parameter": "data"},
+                    "process": {"process_graph": {"udf": {
+                        "process_id": "run_udf",
+                        "arguments": {
+                            "data": {"from_parameter": "data"},
+                            "udf": udf_code,
+                            "runtime": "Python",
+                            "context": {
+                                "offset": {"from_parameter": "offset"},
+                            }
+                        },
+                        "result": True
+                    }}},
+                    "size": [{'dimension': 'x', 'unit': 'px', 'value': 32},
+                             {'dimension': 'y', 'unit': 'px', 'value': 32}],
+                    "overlap": [{'dimension': 'x', 'unit': 'px', 'value': 8},
+                                {'dimension': 'y', 'unit': 'px', 'value': 8}],
+                },
+                "result": True
+            }
+        }
+    }
+    user_defined_process_registry.save(user_id=TEST_USER, process_id=udp_id, spec=udp_spec)
+
+    udp_args = {"data": {"from_node": "lc"}}
+    if set_parameters:
+        udp_args["offset"] = 20
+
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "udp": {"process_id": udp_id, "arguments": udp_args},
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "udp"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+
+    expected = np.array([
+        [[[.0] * 4, [.25] * 4, [.5] * 4, [.75] * 4], [[5] * 4] * 4],
+        [[[.0] * 4, [.25] * 4, [.5] * 4, [.75] * 4], [[15] * 4] * 4],
+        [[[.0] * 4, [.25] * 4, [.5] * 4, [.75] * 4], [[25] * 4] * 4],
+    ]) + (20 if set_parameters else 10)
+
+    assert_equal(data, expected)
+
+
 @pytest.mark.parametrize("geometries", [
     {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
     {"type": "MultiPolygon", "coordinates": [[[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]]},

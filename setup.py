@@ -37,7 +37,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         'openeo>=0.7.0a1.*',
-        'openeo_driver>=0.8.0a1.*',
+        'openeo_driver>=0.8.1a1.*',
         'openeo_udf>=1.0.0rc3',
         'pyspark==3.0.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
