@@ -43,7 +43,6 @@ def main():
     sc = SparkContext.getOrCreate()
 
     from openeogeotrellis import get_backend_version, deploy
-    from openeo_driver.views import build_backend_deploy_metadata
 
     host, _ = deploy.get_socket()
     port = 50001 if not 'KUBE_OPENEO_API_PORT' in os.environ else os.environ['KUBE_OPENEO_API_PORT']
@@ -70,7 +69,7 @@ def main():
                 Data is read directly from the CreoDIAS data offer through object storage. Processing is limited by the processing
                 capacity of the Kubernetes cluster running on DIAS. Contact VITO for experiments with higher resource needs.
                 """,
-               deploy_metadata=build_backend_deploy_metadata(
+               deploy_metadata=server.build_backend_deploy_metadata(
                    packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
                     # TODO: add version info about geotrellis-extensions jar?
                 ),

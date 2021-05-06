@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
     setup_local_spark()
 
-    from openeo_driver.views import app, build_backend_deploy_metadata
+    from openeo_driver.views import app
     from openeogeotrellis import get_backend_version
 
     show_log_level(logging.getLogger('openeo'))
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     server.run(
         title="Local GeoPySpark",
         description="Local openEO API using GeoPySpark driver",
-        deploy_metadata=build_backend_deploy_metadata(
+        deploy_metadata=server.build_backend_deploy_metadata(
             packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
         ),
         backend_version=get_backend_version(),

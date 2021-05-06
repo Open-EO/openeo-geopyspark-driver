@@ -52,7 +52,6 @@ def main():
     sc = SparkContext(conf=conf)
 
     from openeogeotrellis import get_backend_version, deploy
-    from openeo_driver.views import build_backend_deploy_metadata
 
     host, port = deploy.get_socket()
 
@@ -77,7 +76,7 @@ def main():
     server.run(title="VITO Remote Sensing openEO API",
                description="OpenEO API to the VITO Remote Sensing product catalog and processing services (using "
                            "GeoPySpark driver).",
-               deploy_metadata=build_backend_deploy_metadata(
+               deploy_metadata=server.build_backend_deploy_metadata(
                    packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
                     # TODO: add version info about geotrellis-extensions jar?
                 ),
