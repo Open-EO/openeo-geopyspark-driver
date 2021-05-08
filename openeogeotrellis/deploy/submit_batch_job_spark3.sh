@@ -60,6 +60,9 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
 fi
 
+curl --retry 3 --connect-timeout 60 -C - -O "${hdfsVenvZip}"
+openeo_zip="$(basename "${hdfsVenvZip}")"
+
 main_py_file='venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
@@ -119,7 +122,7 @@ spark-submit \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro \
  --files layercatalog.json,"${processGraphFile}" \
  --py-files "${pyfiles}" \
- --archives "${OPENEO_VENV_ZIP}#venv" \
+ --archives "${openeo_zip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
