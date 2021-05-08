@@ -60,8 +60,8 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
 fi
 
-curl --retry 3 --connect-timeout 60 -C - -O "${hdfsVenvZip}"
-openeo_zip="$(basename "${hdfsVenvZip}")"
+curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
+openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
 
 main_py_file='venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
 
