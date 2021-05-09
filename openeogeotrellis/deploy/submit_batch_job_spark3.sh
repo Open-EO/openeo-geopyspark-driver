@@ -60,6 +60,7 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
 fi
 
+echo "Downloading ${OPENEO_VENV_ZIP}"
 curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
 openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
 
