@@ -1162,14 +1162,21 @@ class GeopysparkDataCube(DriverDataCube):
                         return assets
 
                     else:
-                        self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
-                        return {
-                            str(pathlib.Path(filename).name): {
-                                "href": filename,
-                                "type": "image/tiff; application=geotiff",
-                                "roles": ["data"]
+                        if tile_grid:
+                            filenames = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTileGrid(
+                                spatial_rdd.srdd.rdd(), band_count, filename, tile_grid, zlevel, self._get_jvm().scala.Option.apply(crop_extent))
+                            return {str(pathlib.Path(filename).name): {"href": filename,
+                                                                       "type": "image/tiff; application=geotiff",
+                                                                       "roles": ["data"]} for filename in filenames}
+                        else:
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+                            return {
+                                str(pathlib.Path(filename).name): {
+                                    "href": filename,
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"]
+                                }
                             }
-                        }
             else:
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
