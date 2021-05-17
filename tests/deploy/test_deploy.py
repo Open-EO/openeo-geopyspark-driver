@@ -4,8 +4,7 @@ import textwrap
 from io import StringIO
 from unittest import mock
 
-from openeo.capabilities import ComparableVersion
-from openeo_driver.ProcessGraphDeserializer import get_process_registry
+from openeo_driver.backend import get_backend_implementation
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.testing import random_name
@@ -58,6 +57,6 @@ def test_load_custom_processes_present(tmp_path, api_version):
     assert "Trying to load {n!r} with PYTHONPATH ['{p!s}".format(n=module_name, p=str(tmp_path)) in logs
     assert "Loaded {n!r}: {p!r}".format(n=module_name, p=str(path)) in logs
 
-    process_registry = get_process_registry(ComparableVersion(api_version))
+    process_registry = get_backend_implementation().processing.get_process_registry(api_version=api_version)
     f = process_registry.get_function(process_name)
     assert f({}, EvalEnv()) == 42

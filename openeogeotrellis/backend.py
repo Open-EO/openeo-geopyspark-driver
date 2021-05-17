@@ -19,6 +19,7 @@ import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 
+from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.users import User
 from openeogeotrellis import sentinel_hub
 from py4j.java_gateway import JavaGateway
@@ -245,7 +246,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=catalog,
             batch_jobs=GpsBatchJobs(catalog),
-            user_defined_processes=UserDefinedProcesses(user_defined_process_repository)
+            user_defined_processes=UserDefinedProcesses(user_defined_process_repository),
+            processing=ConcreteProcessing()
         )
 
     def health_check(self) -> str:
