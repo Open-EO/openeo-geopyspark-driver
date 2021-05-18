@@ -102,7 +102,7 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
---conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
+ --conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
  --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
@@ -113,6 +113,7 @@ spark-submit \
  --py-files "${pyfiles}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
+ --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
  "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${proxyUser}"
