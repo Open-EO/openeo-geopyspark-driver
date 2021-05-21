@@ -1,4 +1,5 @@
 from kazoo.client import KazooClient
+import uuid
 
 
 class Traefik:
@@ -118,10 +119,10 @@ class Traefik:
         self._zk.set(path, value)
 
     def _trigger_configuration_update(self):
-        # https://github.com/containous/traefik/issues/2068
-        # FIXME: Traefik v2 doesn't seem to generate the leader node but it does seem to work with any child of the
-        #  /traefik node: use another one?
-        self._zk.delete(f"/{self._prefix}/leader", recursive=True)
+        # https://github.com/containous/traefik/issues/2068 but seems to work with any child node of /traefik
+        random_child_node = f"/{self._prefix}/{uuid.uuid4()}"
+        self._zk.create(random_child_node)
+        self._zk.delete(random_child_node)
 
     def _backend_id(self, service_id):
         return f"backend{service_id}"
