@@ -2,11 +2,16 @@
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
 """
 
-from openeo_driver import server
-from openeo_driver.server import show_log_level
-
 import logging
+import os
+import sys
+import threading
+from glob import glob
 from logging.config import dictConfig
+
+from openeo_driver.server import show_log_level, run_gunicorn
+from openeo_driver.views import build_app
+from openeogeotrellis.deploy import flask_config
 
 dictConfig({
     'version': 1,
@@ -32,12 +37,7 @@ dictConfig({
     }
 })
 
-import os
-import sys
-import threading
-from glob import glob
-
-_log = logging.getLogger('openeo-geotrellis-local')
+_log = logging.getLogger(__name__)
 
 
 def setup_local_spark(additional_jar_dirs=[]):
@@ -101,21 +101,22 @@ if __name__ == '__main__':
 
     setup_local_spark()
 
-    from openeo_driver.views import app
-    from openeogeotrellis import get_backend_version
+    from openeogeotrellis.backend import GeoPySparkBackendImplementation
+
+    app = build_app(backend_implementation=GeoPySparkBackendImplementation())
+    app.config.from_object(flask_config)
+    app.config.from_mapping(
+        OPENEO_TITLE="Local GeoPySpark",
+        OPENEO_DESCRIPTION="Local openEO API using GeoPySpark driver",
+    )
 
     show_log_level(logging.getLogger('openeo'))
     show_log_level(logging.getLogger('openeo_driver'))
     show_log_level(logging.getLogger('openeogeotrellis'))
     show_log_level(app.logger)
 
-    server.run(
-        title="Local GeoPySpark",
-        description="Local openEO API using GeoPySpark driver",
-        deploy_metadata=server.build_backend_deploy_metadata(
-            packages=["openeo", "openeo_driver", "openeo-geopyspark", "openeo_udf", "geopyspark"]
-        ),
-        backend_version=get_backend_version(),
+    run_gunicorn(
+        app,
         threads=4,
         host="127.0.0.1",
         port=8080,

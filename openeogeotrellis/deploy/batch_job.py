@@ -23,7 +23,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union, to_hashable
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
@@ -254,7 +254,7 @@ def main(argv: List[str]) -> None:
 
 
         job_specification = _parse(job_specification_file)
-        load_custom_processes(logger)
+        load_custom_processes()
 
         conf = (SparkConf()
                 .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -296,7 +296,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'pyramid_levels': 'highest',
         'user': User(user_id=user_id),
         'correlation_id': str(uuid.uuid4()),
-        'dependencies': dependencies
+        'dependencies': dependencies,
+        "backend_implementation": GeoPySparkBackendImplementation(),
     })
     tracer = DryRunDataTracer()
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)

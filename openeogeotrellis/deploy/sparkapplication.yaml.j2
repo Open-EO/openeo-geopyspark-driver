@@ -19,9 +19,7 @@ spec:
     - "{{ metadata_file }}"
     - "{{ api_version }}"
   sparkConf:
-    "spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE": "openeogeotrellis"
     "spark.extraListeners": "org.openeo.sparklisteners.CancelRunawayJobListener"
-    "spark.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE": "openeogeotrellis"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
     "spark.driver.maxResultSize": "5g"
@@ -43,7 +41,6 @@ spec:
         type: DirectoryOrCreate
   driver:
     envVars:
-      DRIVER_IMPLEMENTATION_PACKAGE: "openeogeotrellis"
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}

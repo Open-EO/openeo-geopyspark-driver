@@ -4,7 +4,6 @@ import textwrap
 from io import StringIO
 from unittest import mock
 
-from openeo_driver.backend import get_backend_implementation
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.testing import random_name
@@ -37,7 +36,7 @@ def test_load_custom_processes_absent(tmp_path):
     assert '{n!r} not loaded: ModuleNotFoundError("No module named {n!r}"'.format(n=name) in logs
 
 
-def test_load_custom_processes_present(tmp_path, api_version):
+def test_load_custom_processes_present(tmp_path, api_version, backend_implementation):
     logger, stream = _get_logger()
     process_name = random_name(prefix="my_process")
     module_name = random_name(prefix="custom_processes")
@@ -57,6 +56,6 @@ def test_load_custom_processes_present(tmp_path, api_version):
     assert "Trying to load {n!r} with PYTHONPATH ['{p!s}".format(n=module_name, p=str(tmp_path)) in logs
     assert "Loaded {n!r}: {p!r}".format(n=module_name, p=str(path)) in logs
 
-    process_registry = get_backend_implementation().processing.get_process_registry(api_version=api_version)
+    process_registry = backend_implementation.processing.get_process_registry(api_version=api_version)
     f = process_registry.get_function(process_name)
     assert f({}, EvalEnv()) == 42

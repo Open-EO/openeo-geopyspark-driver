@@ -2,12 +2,17 @@ import os
 import sys
 from pathlib import Path
 
+import flask
 import pytest
 from _pytest.terminal import TerminalReporter
-from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
-from .data import get_test_data_file
 
-os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
+from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
+from openeo_driver.testing import ApiTester
+from openeo_driver.views import build_app
+from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
+    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
+from .data import get_test_data_file, TEST_DATA_ROOT
+
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent.parent / "layercatalog.json")
 
 
@@ -118,3 +123,37 @@ def udf_noop():
         },
     }
     return noop_udf_callback
+
+
+@pytest.fixture
+def backend_implementation() -> 'GeoPySparkBackendImplementation':
+    from openeogeotrellis.backend import GeoPySparkBackendImplementation
+    return GeoPySparkBackendImplementation()
+
+
+@pytest.fixture
+def flask_app(backend_implementation) -> flask.Flask:
+    app = build_app(backend_implementation=backend_implementation)
+    app.config['TESTING'] = True
+    app.config['SERVER_NAME'] = 'oeo.net'
+    return app
+
+
+@pytest.fixture
+def client(flask_app):
+    return flask_app.test_client()
+
+
+@pytest.fixture
+def user_defined_process_registry(backend_implementation: OpenEoBackendImplementation) -> UserDefinedProcesses:
+    return backend_implementation.user_defined_processes
+
+
+@pytest.fixture
+def api(api_version, client) -> ApiTester:
+    return ApiTester(api_version=api_version, client=client, data_root=TEST_DATA_ROOT)
+
+
+@pytest.fixture
+def api100(client) -> ApiTester:
+    return ApiTester(api_version="1.0.0", client=client, data_root=TEST_DATA_ROOT)

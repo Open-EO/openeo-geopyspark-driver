@@ -6,42 +6,13 @@ import numpy as np
 import pytest
 from numpy.testing import assert_equal
 
-from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
-from openeo_driver.testing import ApiTester, TEST_USER
-from openeo_driver.views import app
+from openeo_driver.testing import TEST_USER
 from openeogeotrellis.testing import random_name
 from openeogeotrellis.utils import get_jvm
-from .data import TEST_DATA_ROOT
 
 _log = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def backend_implementation() -> OpenEoBackendImplementation:
-    import openeo_driver.views
-    return openeo_driver.views.backend_implementation
-
-
-@pytest.fixture
-def user_defined_process_registry(backend_implementation: OpenEoBackendImplementation) -> UserDefinedProcesses:
-    return backend_implementation.user_defined_processes
-
-
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    app.config['SERVER_NAME'] = 'oeo.net'
-    return app.test_client()
-
-
-@pytest.fixture
-def api(api_version, client) -> ApiTester:
-    return ApiTester(api_version=api_version, client=client, data_root=TEST_DATA_ROOT)
-
-
-@pytest.fixture
-def api100(client) -> ApiTester:
-    return ApiTester(api_version="1.0.0", client=client, data_root=TEST_DATA_ROOT)
 
 
 @contextlib.contextmanager

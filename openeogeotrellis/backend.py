@@ -114,7 +114,11 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
         image_collection: GeopysparkDataCube = evaluate(
             process_graph,
-            env=EvalEnv({'version': api_version, 'pyramid_levels': 'all'})
+            env=EvalEnv({
+                'version': api_version,
+                'pyramid_levels': 'all',
+                "backend_implementation": GeoPySparkBackendImplementation(),
+            })
         )
 
         wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
@@ -152,7 +156,11 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
         image_collection: GeopysparkDataCube = evaluate(
             process_graph,
-            env=EvalEnv({'version': api_version, 'pyramid_levels': 'all'})
+            env=EvalEnv({
+                'version': api_version,
+                'pyramid_levels': 'all',
+                "backend_implementation": GeoPySparkBackendImplementation(),
+            })
         )
 
         wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
@@ -803,7 +811,8 @@ class GpsBatchJobs(backend.BatchJobs):
         from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
         env = EvalEnv({
-            "user": User(user_id)
+            "user": User(user_id),
+            "backend_implementation": GeoPySparkBackendImplementation(),
         })
 
         if api_version:
@@ -1140,6 +1149,7 @@ class UserDefinedProcesses(backend.UserDefinedProcesses):
         self._repo.delete(user_id, process_id)
 
     def _validate(self, spec: dict, process_id: str) -> None:
+        # TODO: move this to python driver
         if 'process_graph' not in spec:
             raise ProcessGraphMissingException
 
