@@ -4,12 +4,12 @@ from datetime import datetime
 from typing import List, Dict, Union
 
 import geopyspark
-from openeogeotrellis import filter_properties
 from openeogeotrellis import sentinel_hub
 from shapely.geometry import box
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
+from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
