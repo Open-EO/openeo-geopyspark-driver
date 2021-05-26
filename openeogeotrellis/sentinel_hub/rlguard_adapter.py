@@ -4,7 +4,7 @@ from os import environ
 from sys import argv
 
 # TODO: get this from a common package instead
-from rlguard import apply_for_request, calculate_processing_units, OutputFormat
+from .rlguard import apply_for_request, calculate_processing_units, OutputFormat
 
 
 def calculate_delay(request_params):

@@ -290,7 +290,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
 
-                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited(
                     endpoint,
                     dataset_id,
                     client_id,
