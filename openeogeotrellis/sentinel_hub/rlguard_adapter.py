@@ -1,9 +1,11 @@
 import json
+import os
 import sys
-from os import environ
 from sys import argv
 
 # TODO: get this from a common package instead
+from openeogeotrellis.configparams import ConfigParams
+
 from .rlguard import apply_for_request, calculate_processing_units, OutputFormat
 
 
@@ -15,13 +17,11 @@ def calculate_delay(request_params):
 
 
 if __name__ == '__main__':
-    if not environ.get('ZOOKEEPER_HOSTS'):
-        print(f"Error: environment variable ZOOKEEPER_HOSTS is not set", file=sys.stderr)
-        exit(1)
-
     if len(argv) < 2:
         print(f"Usage: {argv[0]} <request params JSON>", file=sys.stderr)
         exit(1)
+
+    os.environ['ZOOKEEPER_HOSTS'] = ",".join(ConfigParams().zookeepernodes)
 
     delay = calculate_delay(json.loads(argv[1]))
     print(json.dumps({'delay_s': delay}))
