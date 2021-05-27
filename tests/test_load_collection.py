@@ -39,13 +39,30 @@ def test_load_collection_sar_backscatter_incompatible():
             """Process "sar_backscatter" is not applicable for collection TERRASCOPE_S2_TOC_V2.""")
 
 
-def test_load_file_oscars():
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_file_oscars(get_jvm):
     catalog = get_layer_catalog()
+    jvm_mock = get_jvm.return_value
+    raster_layer = MagicMock()
+    raster_layer.layerMetadata.return_value = '{' \
+                                              '"crs":"EPSG:4326",\n' \
+                                              '"cellType":"uint8",\n' \
+                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
+                                              '"layoutDefinition":{\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
+                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
+                                              '}' \
+                                              '}'
+
+    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
     load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326})
     env = EvalEnv()
     env = env.push({"pyramid_levels": "single"})
-    catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
+    collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
+    assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
+    assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
 
 
 @mock.patch('openeogeotrellis.layercatalog.get_jvm')
