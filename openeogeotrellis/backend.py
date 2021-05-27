@@ -18,6 +18,7 @@ from typing import Callable, Dict, Tuple
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
+from pyspark.version import __version__ as pysparkversion
 
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.users import User
@@ -714,7 +715,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
             else:
                 submit_script = 'submit_batch_job.sh'
-                if(sys.version_info[0]>=3 and sys.version_info[1]>=8):
+                if( pysparkversion.startswith('2.4')):
+                    submit_script = 'submit_batch_job_spark24.sh'
+                elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
                     submit_script = 'submit_batch_job_spark3.sh'
                 script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
 
