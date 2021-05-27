@@ -183,14 +183,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        ))
 
         def file_oscars_pyramid():
+            cellWidth = metadata.get("cube:dimensions", "x", "step", default=10.0)
+            cellHeight = metadata.get("cube:dimensions", "y", "step", default=10.0)
             return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
                                 jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
                                                                                        opensearch_collection_id,
                                                                                        opensearch_link_titles,
                                                                                        root_path,
                                                                                        jvm.geotrellis.raster.CellSize(
-                                                                                           30.0,
-                                                                                           30.0),
+                                                                                           cellWidth,
+                                                                                           cellHeight),
                                                                                        experimental
                                                                                        ))
 
