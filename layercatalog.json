@@ -1438,7 +1438,7 @@
       "eo:bands": [
         {
           "name": "DEM",
-          "aliases": ["Copernicus_DSM_COG_10"]
+          "aliases": ["DEM"]
         }
       ]
     },
