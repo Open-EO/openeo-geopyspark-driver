@@ -4,7 +4,7 @@ from kazoo.client import KazooClient
 import logging
 import os
 
-from openeogeotrellis.sentinel_hub.repository import ZooKeeperRepository
+from repository import ZooKeeperRepository
 
 ZOOKEEPER_KEY_BASE = "/openeo/rlguard"
 ZOOKEEPER_HOSTS = os.environ.get("ZOOKEEPER_HOSTS", "127.0.0.1:2181")
@@ -13,16 +13,13 @@ zk.start()
 repository = ZooKeeperRepository(zk, ZOOKEEPER_KEY_BASE)
 
 
+class SyncerDownException(Exception):
+    pass
+
+
 class PolicyType(Enum):
     PROCESSING_UNITS = "PU"
     REQUESTS = "RQ"
-
-    def __eq__(self, value):
-        if isinstance(value, bytes):
-            return self.value == value.decode()
-        if isinstance(value, str):
-            return self.value == value
-        return super().__eq__(value)
 
 
 class OutputFormat(Enum):
@@ -80,14 +77,23 @@ def calculate_processing_units(
 
 def apply_for_request(processing_units: float) -> float:
     """
-    Decrements & fetches the Redis counters and calculates the delay.
+    Decrements & fetches the Redis counters, calculates the delay and returns it.
+
+    If syncer service is down (detected by self-expiring key not being in Redis), raises
+    `SyncerDownException`. If this exception is caught, worker should handle retries in
+    conventional way (ideally exponential backoff, limited to the time it takes for the
+    offending bucket to refill itself from 0 to full).
     """
     # figure out the types of the buckets so we know how much to decrement them:
     policy_refills = repository.get_policy_refills()
     policy_types = repository.get_policy_types()
+    syncer_alive = repository.is_syncer_alive()
 
     logging.debug(f"Policy types: {policy_types}")
     logging.debug(f"Policy bucket refills: {policy_refills}ns")
+
+    if not syncer_alive:
+        raise SyncerDownException("Syncer service is down - revert to manual retries.")
 
     # decrement buckets according to their type:
     buckets_types_items = policy_types.items()
@@ -95,7 +101,7 @@ def apply_for_request(processing_units: float) -> float:
     for policy_id, policy_type in buckets_types_items:
         new_value = repository.increment_counter(
             policy_id,
-            -float(processing_units) if policy_type == PolicyType.PROCESSING_UNITS else -1.0
+            -float(processing_units) if policy_type == PolicyType.PROCESSING_UNITS.value else -1.0
         )
 
         new_remaining.append(new_value)
