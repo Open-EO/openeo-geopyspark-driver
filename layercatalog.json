@@ -1445,7 +1445,6 @@
       "data_source": {
         "type": "file-oscars",
         "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-        "opensearch_endpoint": "http://oscars-dev.vgt.vito.be",
         "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG",
         "native_crs": "EPSG:4326"
       }
