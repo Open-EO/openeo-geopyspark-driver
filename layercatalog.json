@@ -1437,8 +1437,7 @@
     "summaries": {
       "eo:bands": [
         {
-          "name": "DEM",
-          "aliases": ["DEM"]
+          "name": "DEM"
         }
       ]
     },
