@@ -4,7 +4,7 @@ from kazoo.client import KazooClient
 import logging
 import os
 
-from repository import ZooKeeperRepository
+from .repository import ZooKeeperRepository
 
 ZOOKEEPER_KEY_BASE = "/openeo/rlguard"
 ZOOKEEPER_HOSTS = os.environ.get("ZOOKEEPER_HOSTS", "127.0.0.1:2181")
