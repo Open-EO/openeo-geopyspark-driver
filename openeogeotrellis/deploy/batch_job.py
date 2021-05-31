@@ -17,6 +17,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeo.util import ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
+from openeo_driver.datacube import DriverDataCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
@@ -305,11 +306,10 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         geojsons = (mapping(geometry) for geometry in result.geometries)
         result = JSONResult(geojsons)
 
-    if isinstance(result, GeopysparkDataCube):
+    if isinstance(result, DriverDataCube):
         format_options = job_specification.get('output', {})
         format_options["batch_mode"] = True
-        format = format_options.pop("format")
-        result = ImageCollectionResult(cube=result, format=format, options=format_options)
+        result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
 
     if not isinstance(result, SaveResult):  # Assume generic JSON result
         result = JSONResult(result)
