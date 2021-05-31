@@ -622,3 +622,65 @@ def test_ep3718_aggregate_spatial_geometries(api100, geometries, pixels_threshol
         "2021-02-15T00:00:00Z": [[1.0, 2.0, 15.0]],
     }
     assert result == expected
+
+
+@pytest.mark.parametrize("geometries", [
+    {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+    {"type": "MultiPolygon", "coordinates": [[[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]]},
+    {
+        "type": "GeometryCollection",
+        "geometries": [{"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]}],
+    },
+    {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+    },
+    {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+        }]
+    }
+])
+def test_ep3887_mask_polygon(api100, geometries):
+    """EP-3887: mask_polygon with GeometryCollection/FeatureCollection gives empty result"""
+
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-04", "2021-01-06"],
+                "bands": ["Flat:2"]
+            },
+        },
+        "maskpolygon1": {
+            "process_id": "mask_polygon",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "mask": geometries,
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "maskpolygon1"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    assert result["coords"]["x"]["data"] == [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875]
+    assert result["coords"]["y"]["data"] == [0.125, 0.375, 0.625, 0.875, 1.125, 1.375, 1.625, 1.875]
+    assert result["data"] == [[[
+        [2, 0, 0, 0, 0, 0, 0, 0],
+        [2, 2, 0, 0, 0, 0, 0, 0],
+        [2, 2, 2, 2, 0, 0, 0, 0],
+        [2, 2, 2, 2, 2, 2, 0, 0],
+        [2, 2, 2, 2, 2, 2, 2, 0],
+        [2, 2, 2, 2, 2, 0, 0, 0],
+        [2, 2, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+    ]]]
