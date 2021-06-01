@@ -214,6 +214,27 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
+    def apply_dimension(self, process, dimension: str, target_dimension: str = None,
+                        context: dict = None, env: EvalEnv = None) -> 'DriverDataCube':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(process, dict):
+            process = GeoPySparkBackendImplementation.accept_process_graph(process)
+        if isinstance(process, GeotrellisTileProcessGraphVisitor):
+            if dimension == self.metadata.temporal_dimension.name:
+                from openeo_driver.ProcessGraphDeserializer import convert_node
+                context = convert_node(context, env=env)
+                pysc = gps.get_spark_context()
+                return self._apply_to_levels_geotrellis_rdd(
+                    lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context))
+            elif dimension == self.metadata.band_dimension.name:
+                return self._apply_bands_dimension(process)
+            else:
+                raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
+        if isinstance(process, SingleNodeUDFProcessGraphVisitor):
+            udf = process.udf_args.get('udf', None)
+            return self._run_udf_dimension(udf, context, dimension, env)
+        raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
+
     def reduce(self, reducer: str, dimension: str) -> 'GeopysparkDataCube':
         # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
         from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite, median_composite
@@ -241,14 +262,19 @@ class GeopysparkDataCube(DriverDataCube):
         :param pgVisitor:
         :return:
         """
-        pysc = gps.get_spark_context()
-        float_datacube = self.apply_to_levels(lambda layer : layer.convert_data_type("float32"))
-        result = float_datacube._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
-
-        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer.convert_data_type("float32"),cellType=CellType.FLOAT32))
+        result = self._apply_bands_dimension(pgVisitor)
         if result.metadata.has_band_dimension():
             result.metadata.reduce_dimension(result.metadata.band_dimension.name)
+        return result
+
+    def _apply_bands_dimension(self,pgVisitor):
+        pysc = gps.get_spark_context()
+        float_datacube = self.apply_to_levels(lambda layer: layer.convert_data_type("float32"))
+        result = float_datacube._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
+        result = result.apply_to_levels(
+            lambda layer: GeopysparkDataCube._transform_metadata(layer.convert_data_type("float32"),
+                                                                 cellType=CellType.FLOAT32))
         return result
 
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
@@ -418,19 +444,7 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             context = reducer.udf_args.get('context', {})
-            # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
-            from openeo_driver.ProcessGraphDeserializer import convert_node
-            # Resolve "from_parameter" references in context object
-            context = convert_node(context, env=env)
-            if not isinstance(udf,str):
-                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
-            if dimension == self.metadata.temporal_dimension.name:
-                #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
-                result_collection = self.apply_tiles_spatiotemporal(udf,context)
-            elif dimension == self.metadata.band_dimension.name:
-                result_collection = self.apply_tiles(udf,context)
-            else:
-                FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
+            result_collection = self._run_udf_dimension(udf, context, dimension, env)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self.reduce_bands(reducer)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
@@ -443,6 +457,21 @@ class GeopysparkDataCube(DriverDataCube):
             if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
                 result_collection = result_collection.apply_to_levels(lambda rdd:  rdd.to_spatial_layer() if rdd.layer_type != gps.LayerType.SPATIAL else rdd)
         return result_collection
+
+    def _run_udf_dimension(self, udf, context, dimension, env):
+        # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
+        from openeo_driver.ProcessGraphDeserializer import convert_node
+        # Resolve "from_parameter" references in context object
+        context = convert_node(context, env=env)
+        if not isinstance(udf, str):
+            raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+        if dimension == self.metadata.temporal_dimension.name:
+            # EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
+            return self.apply_tiles_spatiotemporal(udf, context)
+        elif dimension == self.metadata.band_dimension.name:
+            return self.apply_tiles(udf, context)
+        else:
+            raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
     def apply_tiles(self, function, context={}) -> 'GeopysparkDataCube':
         """Apply a function to the given set of bands in this image collection."""
