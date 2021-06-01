@@ -91,7 +91,7 @@ def on_started() -> None:
         principal = sc.getConf().get("spark.yarn.principal")
         keytab = sc.getConf().get("spark.yarn.keytab")
         job_tracker = JobTracker(JobRegistry, principal, keytab)
-        threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+        threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
     else:
         _log.info("Not launching thread to poll YARN job status")
 

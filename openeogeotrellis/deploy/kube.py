@@ -52,7 +52,7 @@ def main():
             job_registry.ensure_paths()
 
         job_tracker = JobTracker(JobRegistry, "", "")
-        threading.Thread(target=job_tracker.update_statuses, daemon=True).start()
+        threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
 
     def on_started() -> None:
         from openeo_driver.views import app
