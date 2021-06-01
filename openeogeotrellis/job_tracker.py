@@ -33,6 +33,7 @@ class JobTracker:
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
+        # TODO: get rid of dependency on catalog
         self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(opensearch_enrich=False))
 
     def loop_update_statuses(self, interval_s: int = 60):
@@ -280,4 +281,6 @@ class JobTracker:
 
 
 if __name__ == '__main__':
-    JobTracker(JobRegistry, 'vdboschj', "/home/bossie/Documents/VITO/vdboschj.keytab").loop_update_statuses()
+    logging.basicConfig(level=logging.INFO)
+
+    JobTracker(JobRegistry, principal="", keytab="").update_statuses()
