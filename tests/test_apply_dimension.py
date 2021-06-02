@@ -11,7 +11,7 @@ from numpy.testing import assert_array_almost_equal
 
 
 def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands_and_three_dates):
-    the_date = datetime.datetime(2017, 9, 25, 11, 37)
+    the_date = datetime.datetime(2017, 9, 30, 00, 37)
     graph = {
         "array_interpolate_linear": {
             "arguments": {
@@ -23,7 +23,6 @@ def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands
             "result": True
         }
     }
-    input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
         process=graph,
        dimension='t',
@@ -32,11 +31,8 @@ def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands
         context={'bla':'bla'}
     )
     result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
-    print(input)
-    print(result_array)
-    #expected_result = np.power(2, input)
-    #print(expected_result)
-    #assert_array_almost_equal(expected_result, result_array)
+
+    assert np.all(np.isclose(result_array, 1.5))
 
 
 
