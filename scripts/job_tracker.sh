@@ -9,4 +9,4 @@ export OPENEO_CATALOG_FILES="venv36/layercatalog.json"
 export AWS_ACCESS_KEY_ID="???"
 export AWS_SECRET_ACCESS_KEY="!!!"
 
-python -m openeogeotrellis.job_tracker 2>&1
+python -m openeogeotrellis.job_tracker

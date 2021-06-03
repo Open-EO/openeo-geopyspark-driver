@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union, List
 import traceback
@@ -81,7 +82,8 @@ class JobTracker:
                                                finished=finish_time)
 
                                 if current_status != new_status:
-                                    _log.info("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+                                    _log.info("changed job %s status from %s to %s" %
+                                              (job_id, current_status, new_status), extra={'job_id': job_id})
 
                                 if state == "COMPLETED":
                                     # FIXME: do we support SHub batch processes in this environment? The AWS
@@ -92,7 +94,7 @@ class JobTracker:
                                     registry.patch(job_id, user_id, **result_metadata)
 
                                     registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id)
+                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
                             else:
                                 state, final_state, start_time, finish_time, aggregate_resource_allocation =\
                                     JobTracker._yarn_status(application_id)
@@ -110,7 +112,8 @@ class JobTracker:
                                                cpu_time_seconds=cpu_time_seconds)
 
                                 if current_status != new_status:
-                                    _log.info("changed job %s status from %s to %s" % (job_id, current_status, new_status))
+                                    _log.info("changed job %s status from %s to %s" %
+                                              (job_id, current_status, new_status), extra={job_id: job_id})
 
                                 if final_state != "UNDEFINED":
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
@@ -126,12 +129,12 @@ class JobTracker:
                                         registry.remove_dependencies(job_id, user_id)
 
                                     registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id)
+                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
                 except Exception:
                     _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
-                                 .format(j=job_id, e=traceback.format_exc()))
+                                 .format(j=job_id, e=traceback.format_exc()), extra={'job_id': job_id})
                     # TODO: mark it as done to keep it from being considered further?
 
 
@@ -273,14 +276,36 @@ class JobTracker:
                 if (java_exception.getClass().getName() ==
                         'org.openeo.geotrellissentinelhub.S3Service$UnknownFolderException'):
                     _log.warning("could not delete unknown result folder s3://{b}/{f}"
-                                 .format(b=bucket_name, f=subfolder))
+                                 .format(b=bucket_name, f=subfolder), extra={'job_id': job_id})
                 else:
                     raise e
 
-        _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id))
+        _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+                  extra={'job_id': job_id})
 
 
 if __name__ == '__main__':
+    import json
+    from openeo.util import dict_no_none
+
     logging.basicConfig(level=logging.INFO)
 
-    JobTracker(JobRegistry, principal="", keytab="").update_statuses()
+    class JsonFormatter:
+        # TODO: add 'message' and a timestamp that is recognized by Kibana ('asctime'?)
+        def format(self, record):
+            formatted_record = {}
+
+            for key in ['created', 'levelname', 'msg', 'job_id']:
+                formatted_record[key] = getattr(record, key, None)
+
+            return json.dumps(dict_no_none(**formatted_record))
+
+    handler = logging.StreamHandler(stream=sys.stdout)
+    handler.formatter = JsonFormatter()
+
+    _log.addHandler(handler)
+
+    try:
+        JobTracker(JobRegistry, principal="", keytab="").update_statuses()
+    except:
+        _log.error(traceback.format_exc())
