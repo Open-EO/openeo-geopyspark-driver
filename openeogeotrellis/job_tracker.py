@@ -11,6 +11,7 @@ from openeo.util import date_to_rfc3339
 import re
 from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
+from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
@@ -291,23 +292,11 @@ class JobTracker:
 
 if __name__ == '__main__':
     import argparse
-    import json
-    from openeo.util import dict_no_none
 
     logging.basicConfig(level=logging.INFO)
 
-    class JsonFormatter:
-        # TODO: add 'message' and a timestamp that is recognized by Kibana ('asctime'?)
-        def format(self, record):
-            formatted_record = {}
-
-            for key in ['created', 'levelname', 'msg', 'job_id']:
-                formatted_record[key] = getattr(record, key, None)
-
-            return json.dumps(dict_no_none(**formatted_record))
-
     handler = logging.StreamHandler(stream=sys.stdout)
-    handler.formatter = JsonFormatter()
+    handler.formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
 
     _log.addHandler(handler)
 
