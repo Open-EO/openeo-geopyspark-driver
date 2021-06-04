@@ -32,7 +32,10 @@ class JobTracker:
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
     def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str,
-                 jvm: JVMView = utils.get_jvm()):
+                 jvm: JVMView = None):
+        if jvm is None:
+            jvm = utils.get_jvm()
+
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
