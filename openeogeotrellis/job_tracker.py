@@ -9,13 +9,14 @@ from collections import namedtuple
 from datetime import datetime
 from openeo.util import date_to_rfc3339
 import re
+from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis import utils
 
 _log = logging.getLogger(__name__)
 
@@ -30,12 +31,14 @@ class JobTracker:
                                             'aggregate_resource_allocation'])
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
-    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
+    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str,
+                 jvm: JVMView = utils.get_jvm()):
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
         # TODO: get rid of dependency on catalog
         self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(opensearch_enrich=False))
+        self._jvm = jvm
 
     def loop_update_statuses(self, interval_s: int = 60):
         try:
@@ -125,7 +128,7 @@ class JobTracker:
                                                       or dependency['batch_request_id']
                                                       for dependency in job.get('dependencies') or []]
 
-                                        JobTracker._delete_batch_process_results(job_id, subfolders)
+                                        self._delete_batch_process_results(job_id, subfolders)
                                         registry.remove_dependencies(job_id, user_id)
 
                                     registry.mark_done(job_id, user_id)
@@ -262,9 +265,8 @@ class JobTracker:
         else:
             _log.warning("No Kerberos principal/keytab: will not refresh TGT")
 
-    @staticmethod
-    def _delete_batch_process_results(job_id: str, subfolders: List[str]):
-        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
+    def _delete_batch_process_results(self, job_id: str, subfolders: List[str]):
+        s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
         for subfolder in subfolders:
@@ -306,6 +308,12 @@ if __name__ == '__main__':
     _log.addHandler(handler)
 
     try:
-        JobTracker(JobRegistry, principal="", keytab="").update_statuses()
+        # TODO: make configurable
+        java_gateway = JavaGateway.launch_gateway(jarpath="venv36/share/py4j/py4j0.10.9.2.jar",
+                                                  classpath="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
+                                                  javaopts=["-client"],
+                                                  die_on_exit=True)
+
+        JobTracker(JobRegistry, principal="", keytab="", jvm=java_gateway.jvm).update_statuses()
     except:
         _log.error(traceback.format_exc())
