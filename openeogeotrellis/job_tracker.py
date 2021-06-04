@@ -312,5 +312,6 @@ if __name__ == '__main__':
                                                   die_on_exit=True)
 
         JobTracker(JobRegistry, principal="", keytab="", jvm=java_gateway.jvm).update_statuses()
-    except:
-        _log.error(traceback.format_exc())
+    except Exception as e:
+        _log.error(e, exc_info=True)
+        raise e
