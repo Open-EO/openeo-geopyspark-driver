@@ -61,7 +61,8 @@ setup(
         'Shapely',
         'epsel~=1.0.0',
         'numbagg==0.1',
-        'Bottleneck==1.3.2'
+        'Bottleneck==1.3.2',
+        'python-json-logger'
     ],
     extras_require={
         "dev": tests_require,
