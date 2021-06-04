@@ -290,6 +290,7 @@ class JobTracker:
 
 
 if __name__ == '__main__':
+    import argparse
     import json
     from openeo.util import dict_no_none
 
@@ -310,10 +311,14 @@ if __name__ == '__main__':
 
     _log.addHandler(handler)
 
+    parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--py4j-jarpath", default="venv36/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
+    parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar", help='Classpath used to launch the Java Gateway')
+    args = parser.parse_args()
+
     try:
-        # TODO: make configurable
-        java_gateway = JavaGateway.launch_gateway(jarpath="venv36/share/py4j/py4j0.10.9.2.jar",
-                                                  classpath="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
+        java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
+                                                  classpath=args.py4j_classpath,
                                                   javaopts=["-client"],
                                                   die_on_exit=True)
 
