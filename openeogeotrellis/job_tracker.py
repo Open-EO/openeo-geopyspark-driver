@@ -120,7 +120,7 @@ class JobTracker:
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
-                                              (job_id, current_status, new_status), extra={job_id: job_id})
+                                              (job_id, current_status, new_status), extra={'job_id': job_id})
 
                                 if final_state != "UNDEFINED":
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
