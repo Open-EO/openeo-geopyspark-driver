@@ -4,7 +4,6 @@ Script to start a production server. This script can serve as the entry-point fo
 
 import logging
 import sys
-import threading
 from logging.config import dictConfig
 
 from openeo_driver.server import run_gunicorn
@@ -35,7 +34,6 @@ dictConfig({
 sys.path.insert(0, 'py4j-0.10.7-src.zip')
 sys.path.insert(0, 'pyspark.zip')
 from openeogeotrellis.deploy import flask_config, get_socket, load_custom_processes
-from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.job_registry import JobRegistry
 
 
@@ -50,19 +48,11 @@ def main():
             .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
             .set("spark.kryo.classesToRegister","org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
     print("starting spark context")
-    sc = SparkContext(conf=conf)
-
-
+    SparkContext(conf=conf)
 
     def setup_batch_jobs() -> None:
-        principal = sc.getConf().get("spark.yarn.principal")
-        keytab = sc.getConf().get("spark.yarn.keytab")
-
         with JobRegistry() as job_registry:
             job_registry.ensure_paths()
-
-        job_tracker = JobTracker(JobRegistry, principal, keytab)
-        threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
 
     def on_started() -> None:
         app.logger.setLevel('DEBUG')

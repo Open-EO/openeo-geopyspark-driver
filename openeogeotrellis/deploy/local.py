@@ -5,7 +5,6 @@ Script to start a local server. This script can serve as the entry-point for doi
 import logging
 import os
 import sys
-import threading
 from glob import glob
 from logging.config import dictConfig
 
@@ -80,20 +79,6 @@ def on_started() -> None:
     show_log_level(logging.getLogger('gunicorn.error'))
     show_log_level(logging.getLogger('flask'))
     show_log_level(logging.getLogger('werkzeug'))
-
-    from openeogeotrellis.job_tracker import JobTracker
-    if JobTracker.yarn_available():
-        _log.info("Launching thread to poll YARN job status")
-        from pyspark import SparkContext
-        from openeogeotrellis.job_registry import JobRegistry
-
-        sc = SparkContext.getOrCreate()
-        principal = sc.getConf().get("spark.yarn.principal")
-        keytab = sc.getConf().get("spark.yarn.keytab")
-        job_tracker = JobTracker(JobRegistry, principal, keytab)
-        threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
-    else:
-        _log.info("Not launching thread to poll YARN job status")
 
 
 if __name__ == '__main__':
