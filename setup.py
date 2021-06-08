@@ -20,6 +20,7 @@ tests_require = [
     'mock',
     'schema',
     'scipy>=1.3.0',
+    'requests-mock>=1.8.0',
 ]
 
 setup(
