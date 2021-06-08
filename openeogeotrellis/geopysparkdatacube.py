@@ -546,7 +546,11 @@ class GeopysparkDataCube(DriverDataCube):
                 for date in interval:
                     date_list.append(date)
         intervals_iso = [ reformat_date(date) for date in date_list  ]
-        labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
+        if(labels is not None):
+            labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
+        else:
+            labels_iso = [ reformat_date(i[0]) for i in intervals]
+
 
         pysc = gps.get_spark_context()
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
