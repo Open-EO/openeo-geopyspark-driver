@@ -61,6 +61,9 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         super().__init__(metadata=metadata, dimensions=dimensions)
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
+        if(self.has_temporal_dimension()):
+            self.temporal_dimension.extent = temporal_extent
+
 
     def _clone_and_update(
             self, metadata: dict = None, dimensions: List[Dimension] = None,
