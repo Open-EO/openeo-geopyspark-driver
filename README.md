@@ -39,7 +39,6 @@ For development, you can run the service:
     export SPARK_HOME=$(find_spark_home.py)
     export HADOOP_CONF_DIR=/etc/hadoop/conf
     export FLASK_DEBUG=1
-    export DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis
     python openeogeotrellis/deploy/local.py
 
 

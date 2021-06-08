@@ -6,31 +6,10 @@ import re
 import subprocess
 from unittest import mock
 
-import pytest
-
 import openeogeotrellis.job_registry
-from openeo_driver.testing import ApiTester, TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
-from openeo_driver.views import app
+from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
 from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
-from .data import TEST_DATA_ROOT
-
-
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    app.config['SERVER_NAME'] = 'oeo.net'
-    return app.test_client()
-
-
-@pytest.fixture
-def api(api_version, client) -> ApiTester:
-    return ApiTester(api_version=api_version, client=client, data_root=TEST_DATA_ROOT)
-
-
-@pytest.fixture
-def api100(client) -> ApiTester:
-    return ApiTester(api_version="1.0.0", client=client, data_root=TEST_DATA_ROOT)
 
 
 def test_file_formats(api100):

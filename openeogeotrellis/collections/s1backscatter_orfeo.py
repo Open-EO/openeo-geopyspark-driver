@@ -351,7 +351,7 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("outputs.sizey", tile_size)
                 ortho_rect.SetParameterInt("outputs.ulx", int(key_extent["xmin"]))
                 ortho_rect.SetParameterInt("outputs.uly", int(key_extent["ymax"]))
-                ortho_rect.SetParameterString("interpolator", "nn")
+                ortho_rect.SetParameterString("interpolator", "linear")
                 ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
                 ortho_rect.SetParameterInt("opt.ram", 512)
                 logger.info(log_prefix + f"OrthoRectification params: {otb_param_dump(ortho_rect)}")

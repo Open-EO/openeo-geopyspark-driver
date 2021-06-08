@@ -34,7 +34,6 @@ spark-submit \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 --conf spark.executorEnv.XDG_DATA_DIRS=/opt/rh/rh-python35/root/usr/share \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 --conf spark.yarn.appMasterEnv.XDG_DATA_DIRS=/opt/rh/rh-python35/root/usr/share \
- --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.driver.extraJavaOptions="-Dpixels.treshold=0" \
  --files "${base_dir}/scripts/log4j.properties","${base_dir}/layercatalog.json" \
  --archives "${hdfsVenvZip}#venv" \

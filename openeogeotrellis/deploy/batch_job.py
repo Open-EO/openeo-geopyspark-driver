@@ -17,12 +17,13 @@ from shapely.geometry.base import BaseGeometry
 
 from openeo.util import ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
+from openeo_driver.datacube import DriverDataCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, null
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union, to_hashable
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
@@ -253,7 +254,7 @@ def main(argv: List[str]) -> None:
 
 
         job_specification = _parse(job_specification_file)
-        load_custom_processes(logger)
+        load_custom_processes()
 
         conf = (SparkConf()
                 .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -290,26 +291,32 @@ def main(argv: List[str]) -> None:
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict, user_id:str=None):
     process_graph = job_specification['process_graph']
+
+    backend_implementation = GeoPySparkBackendImplementation()
+    logger.info(f"Using backend implementation {backend_implementation}")
+    correlation_id = str(uuid.uuid4())
+    logger.info(f"Correlation id: {correlation_id}")
     env = EvalEnv({
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
         'user': User(user_id=user_id),
-        'correlation_id': str(uuid.uuid4()),
-        'dependencies': dependencies
+        'correlation_id': correlation_id,
+        'dependencies': dependencies,
+        "backend_implementation": backend_implementation,
     })
     tracer = DryRunDataTracer()
+    logger.info("Starting process graph evaluation")
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
-    logger.info("Evaluated process graph result of type {t}: {r!r}".format(t=type(result), r=result))
+    logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
         geojsons = (mapping(geometry) for geometry in result.geometries)
         result = JSONResult(geojsons)
 
-    if isinstance(result, GeopysparkDataCube):
+    if isinstance(result, DriverDataCube):
         format_options = job_specification.get('output', {})
         format_options["batch_mode"] = True
-        format = format_options.pop("format")
-        result = ImageCollectionResult(cube=result, format=format, options=format_options)
+        result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
 
     if not isinstance(result, SaveResult):  # Assume generic JSON result
         result = JSONResult(result)

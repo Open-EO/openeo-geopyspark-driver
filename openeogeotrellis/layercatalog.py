@@ -4,12 +4,12 @@ from datetime import datetime
 from typing import List, Dict, Union
 
 import geopyspark
-from openeogeotrellis import filter_properties
 from openeogeotrellis import sentinel_hub
 from shapely.geometry import box
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
+from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
@@ -84,6 +84,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         experimental = load_params.get("featureflags",{}).get("experimental",False)
         tilesize = load_params.get("featureflags",{}).get("tilesize",256)
+        indexReduction = load_params.get("featureflags", {}).get("indexreduction", 8)
+        temporalResolution = load_params.get("featureflags", {}).get("temporalresolution", "ByDay")
 
         jvm = get_jvm()
 
@@ -117,6 +119,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #WTF simple assignment to a var in a scala class doesn't work??
         getattr(datacubeParams, "tileSize_$eq")(tilesize)
         getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
+        datacubeParams.setPartitionerIndexReduction(indexReduction)
+        datacubeParams.setPartitionerTemporalResolution(temporalResolution)
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
@@ -179,14 +183,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        ))
 
         def file_oscars_pyramid():
+            cellWidth = metadata.get("cube:dimensions", "x", "step", default=10.0)
+            cellHeight = metadata.get("cube:dimensions", "y", "step", default=10.0)
             return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
                                 jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
                                                                                        opensearch_collection_id,
                                                                                        opensearch_link_titles,
                                                                                        root_path,
                                                                                        jvm.geotrellis.raster.CellSize(
-                                                                                           30.0,
-                                                                                           30.0),
+                                                                                           cellWidth,
+                                                                                           cellHeight),
                                                                                        experimental
                                                                                        ))
 
@@ -290,7 +296,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
 
-                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory(
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited(
                     endpoint,
                     dataset_id,
                     client_id,

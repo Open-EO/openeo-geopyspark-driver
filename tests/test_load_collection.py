@@ -40,6 +40,32 @@ def test_load_collection_sar_backscatter_incompatible():
 
 
 @mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_file_oscars(get_jvm):
+    catalog = get_layer_catalog()
+    jvm_mock = get_jvm.return_value
+    raster_layer = MagicMock()
+    raster_layer.layerMetadata.return_value = '{' \
+                                              '"crs":"EPSG:4326",\n' \
+                                              '"cellType":"uint8",\n' \
+                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
+                                              '"layoutDefinition":{\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
+                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
+                                              '}' \
+                                              '}'
+
+    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+    load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
+                                 spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326})
+    env = EvalEnv()
+    env = env.push({"pyramid_levels": "single"})
+    collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
+    assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
+    assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
+
+
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
 def test_load_collection_old_and_new_band_names(get_jvm):
     catalog = get_layer_catalog()
 
@@ -77,6 +103,7 @@ def test_create_params():
     datacubeParams.tileSize = 256
     assert datacubeParams.tileSize == 256
 
+
 @mock.patch('openeogeotrellis.layercatalog.get_jvm')
 def test_load_collection_bands_with_required_extent(get_jvm):
     catalog = get_layer_catalog()
@@ -104,8 +131,8 @@ def test_load_collection_bands_with_required_extent(get_jvm):
     collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
     print(collection.metadata)
-    assert len(collection.metadata.bands)==1
-    assert collection.metadata.bands[0].name=='TOC-B03_10M'
+    assert len(collection.metadata.bands) == 1
+    assert collection.metadata.bands[0].name == 'TOC-B03_10M'
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
@@ -142,15 +169,15 @@ def test_load_collection_data_cube_params(get_jvm):
 
     )
     load_params['featureflags'] = {
-      "tilesize":1,
-      "experimental":True
-   }
-    env = EvalEnv({'require_bounds': True, 'pyramid_levels':'highest'})
+        "tilesize": 1,
+        "experimental": True
+    }
+    env = EvalEnv({'require_bounds': True, 'pyramid_levels': 'highest'})
     collection = catalog.load_collection('AGERA5', load_params=load_params, env=env)
 
     print(collection.metadata)
-    assert len(collection.metadata.bands)==1
-    assert collection.metadata.bands[0].name=='temperature-mean'
+    assert len(collection.metadata.bands) == 1
+    assert collection.metadata.bands[0].name == 'temperature-mean'
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory
     projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
@@ -162,4 +189,3 @@ def test_load_collection_data_cube_params(get_jvm):
     factory_mock.return_value.datacube_seq.assert_called_once_with(projected_polys, '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '',datacubeParams)
     getattr(datacubeParams,'tileSize_$eq').assert_called_once_with(1)
     getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')
-

@@ -1437,8 +1437,7 @@
     "summaries": {
       "eo:bands": [
         {
-          "name": "DEM",
-          "aliases": ["Copernicus_DSM_COG_10"]
+          "name": "DEM"
         }
       ]
     },
@@ -1446,8 +1445,59 @@
       "data_source": {
         "type": "file-oscars",
         "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-        "opensearch_endpoint": "http://oscars-dev.vgt.vito.be",
         "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG",
+        "native_crs": "EPSG:4326"
+      }
+    }
+  },
+  {
+    "id": "COPERNICUS_90",
+    "name": "COPERNICUS_90",
+    "title": "Copernicus Global 90 meter Digital Elevation Model dataset.",
+    "description": "Copernicus Global 90 meter Digital Elevation Model dataset in COG format.",
+    "license": "proprietary",
+    "providers": [
+      {
+          "name": "VITO, on behalf of the Belgian Science Policy Office (BELSPO).",
+          "roles":
+          [
+              "producer",
+              "licensor"
+          ],
+          "url": "https://terrascope.be"
+      }
+      ],
+    "links": [
+      {
+        "rel": "license",
+        "href": "https://spacedata.copernicus.eu/documents/20126/0/CSCDA_ESA_Mission-specific+Annex.pdf"
+      }
+    ],
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2010-12-12", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "step": 0.00833333333, "reference_system": "EPSG:4326"},
+      "y": {"type": "spatial", "axis": "y", "step": 0.00833333333, "reference_system": "EPSG:4326"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["DEM"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "DEM"
+        }
+      ]
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-oscars",
+        "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_90M_COG",
+        "root_path": "/data/MTDA/DEM/COP_DEM_90M_COG",
         "native_crs": "EPSG:4326"
       }
     }

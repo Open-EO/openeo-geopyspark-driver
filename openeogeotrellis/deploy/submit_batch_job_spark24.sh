@@ -47,7 +47,7 @@ pysparkPython="venv/bin/python"
 kinit -kt ${keyTab} ${principal} || true
 
 export HDP_VERSION=3.1.4.0-315
-export SPARK_HOME=/usr/hdp/$HDP_VERSION/spark2
+export SPARK_HOME=/usr/local/spark-2.4.7
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="venv/lib64"
@@ -57,14 +57,19 @@ export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-pa
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ ! -f ${backend_assembly} ]; then
-   backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar
+   backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
 fi
+
+echo "Downloading ${OPENEO_VENV_ZIP}"
+curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
+openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+ -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
 sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
@@ -100,18 +105,25 @@ spark-submit \
  --conf spark.dynamicAllocation.minExecutors=5 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf "spark.executorEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
- --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
- --conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
+ --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
+ --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
+ --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
+ --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
- --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
+ --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true --conf spark.shuffle.service.port=7447 \
  --conf spark.ui.view.acls.groups=vito \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/centos8-python36-hadoop:latest \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/centos8-python36-hadoop:latest \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
  --files layercatalog.json,"${processGraphFile}" \
  --py-files "${pyfiles}" \
- --archives "${OPENEO_VENV_ZIP}#venv" \
+ --archives "${openeo_zip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \

@@ -214,6 +214,27 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
+    def apply_dimension(self, process, dimension: str, target_dimension: str = None,
+                        context: dict = None, env: EvalEnv = None) -> 'DriverDataCube':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(process, dict):
+            process = GeoPySparkBackendImplementation.accept_process_graph(process)
+        if isinstance(process, GeotrellisTileProcessGraphVisitor):
+            if dimension == self.metadata.temporal_dimension.name:
+                from openeo_driver.ProcessGraphDeserializer import convert_node
+                context = convert_node(context, env=env)
+                pysc = gps.get_spark_context()
+                return self._apply_to_levels_geotrellis_rdd(
+                    lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context))
+            elif dimension == self.metadata.band_dimension.name:
+                return self._apply_bands_dimension(process)
+            else:
+                raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
+        if isinstance(process, SingleNodeUDFProcessGraphVisitor):
+            udf = process.udf_args.get('udf', None)
+            return self._run_udf_dimension(udf, context, dimension, env)
+        raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
+
     def reduce(self, reducer: str, dimension: str) -> 'GeopysparkDataCube':
         # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
         from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite, median_composite
@@ -241,14 +262,19 @@ class GeopysparkDataCube(DriverDataCube):
         :param pgVisitor:
         :return:
         """
-        pysc = gps.get_spark_context()
-        float_datacube = self.apply_to_levels(lambda layer : layer.convert_data_type("float32"))
-        result = float_datacube._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
-
-        result = result.apply_to_levels(lambda layer:GeopysparkDataCube._transform_metadata(layer.convert_data_type("float32"),cellType=CellType.FLOAT32))
+        result = self._apply_bands_dimension(pgVisitor)
         if result.metadata.has_band_dimension():
             result.metadata.reduce_dimension(result.metadata.band_dimension.name)
+        return result
+
+    def _apply_bands_dimension(self,pgVisitor):
+        pysc = gps.get_spark_context()
+        float_datacube = self.apply_to_levels(lambda layer: layer.convert_data_type("float32"))
+        result = float_datacube._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
+        result = result.apply_to_levels(
+            lambda layer: GeopysparkDataCube._transform_metadata(layer.convert_data_type("float32"),
+                                                                 cellType=CellType.FLOAT32))
         return result
 
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
@@ -418,19 +444,7 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             context = reducer.udf_args.get('context', {})
-            # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
-            from openeo_driver.ProcessGraphDeserializer import convert_node
-            # Resolve "from_parameter" references in context object
-            context = convert_node(context, env=env)
-            if not isinstance(udf,str):
-                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'."%udf)
-            if dimension == self.metadata.temporal_dimension.name:
-                #EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
-                result_collection = self.apply_tiles_spatiotemporal(udf,context)
-            elif dimension == self.metadata.band_dimension.name:
-                result_collection = self.apply_tiles(udf,context)
-            else:
-                FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
+            result_collection = self._run_udf_dimension(udf, context, dimension, env)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self.reduce_bands(reducer)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
@@ -443,6 +457,21 @@ class GeopysparkDataCube(DriverDataCube):
             if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name and self.pyramid.layer_type != gps.LayerType.SPATIAL:
                 result_collection = result_collection.apply_to_levels(lambda rdd:  rdd.to_spatial_layer() if rdd.layer_type != gps.LayerType.SPATIAL else rdd)
         return result_collection
+
+    def _run_udf_dimension(self, udf, context, dimension, env):
+        # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
+        from openeo_driver.ProcessGraphDeserializer import convert_node
+        # Resolve "from_parameter" references in context object
+        context = convert_node(context, env=env)
+        if not isinstance(udf, str):
+            raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+        if dimension == self.metadata.temporal_dimension.name:
+            # EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
+            return self.apply_tiles_spatiotemporal(udf, context)
+        elif dimension == self.metadata.band_dimension.name:
+            return self.apply_tiles(udf, context)
+        else:
+            raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
     def apply_tiles(self, function, context={}) -> 'GeopysparkDataCube':
         """Apply a function to the given set of bands in this image collection."""
@@ -488,7 +517,7 @@ class GeopysparkDataCube(DriverDataCube):
         pass
 
     def aggregate_temporal(
-            self, intervals: List, labels: List, reducer, dimension: str = None
+            self, intervals: List, labels: List, reducer, dimension: str = None, context:dict = None
     ) -> 'GeopysparkDataCube':
         """ Computes a temporal aggregation based on an array of date and/or time intervals.
 
@@ -515,11 +544,27 @@ class GeopysparkDataCube(DriverDataCube):
                     date_list.append(date)
         intervals_iso = [ reformat_date(date) for date in date_list  ]
         labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
+
         pysc = gps.get_spark_context()
-        mapped_keys = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
-        reducer = self._normalize_temporal_reducer(dimension, reducer)
-        return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(reducer, dict):
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+
+        if isinstance(reducer, str):
+            #deprecated codepath: only single process reduces
+            pysc = gps.get_spark_context()
+            mapped_keys = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
+            reducer = self._normalize_temporal_reducer(dimension, reducer)
+            return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
+        elif isinstance(reducer, GeotrellisTileProcessGraphVisitor):
+            return self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().aggregateTemporal(rdd,
+                                                                                                          intervals_iso,
+                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {}))
+        else:
+            raise FeatureUnsupportedException("Unsupported type of reducer in aggregate_temporal: " + str(reducer))
+
 
     @classmethod
     def _transform_metadata(cls,layer_or_metadata, cellType = None):
@@ -682,7 +727,7 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
 
-    def apply_neighborhood(self, process: Dict, size: List, overlap: List) -> 'GeopysparkDataCube':
+    def apply_neighborhood(self, process: Dict, size: List, overlap: List, env: EvalEnv) -> 'GeopysparkDataCube':
 
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
@@ -724,6 +769,10 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf = process.udf_args.get('udf', None)
             context = process.udf_args.get('context', {})
+            # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
+            from openeo_driver.ProcessGraphDeserializer import convert_node
+            # Resolve "from_parameter" references in context object
+            context = convert_node(context, env=env)
             if not isinstance(udf, str):
                 raise ValueError(
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
@@ -911,80 +960,60 @@ class GeopysparkDataCube(DriverDataCube):
 
 
     def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
-        # TODO: rename to aggregate_polygon?
+        # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
 
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        from_vector_file = isinstance(regions, str)
-        multiple_geometries = from_vector_file or isinstance(regions, GeometryCollection)
+        if isinstance(regions, (Polygon, MultiPolygon)):
+            regions = GeometryCollection([regions])
 
-        if func in ['histogram', 'sd', 'median']:
-            highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-            layer_metadata = highest_level.layer_metadata
-            scala_data_cube = highest_level.srdd.rdd()
-            polygons = to_projected_polygons(self._get_jvm(), regions)
-            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+        highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+        layer_metadata = highest_level.layer_metadata
+        scala_data_cube = highest_level.srdd.rdd()
+        polygons = to_projected_polygons(self._get_jvm(), regions)
+        from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+        to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-            # TODO also add dumping results first to temp json file like with "mean"
-            if func == 'histogram':
-                stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-            elif func == 'sd':
-                stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-            elif func == 'median':
-                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-            else:
-                raise ValueError(func)
-
-            return AggregatePolygonResult(
-                timeseries=self._as_python(stats),
-                # TODO: regions can also be a string (path to vector file) instead of geometry object
-                regions=regions if multiple_geometries else GeometryCollection([regions]),
-                metadata=self.metadata
+        # TODO also add dumping results first to temp json file like with "mean"
+        if func == 'histogram':
+            stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
             )
+            timeseries = self._as_python(stats)
+        elif func == 'sd':
+            stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+            )
+            timeseries = self._as_python(stats)
+        elif func == 'median':
+            stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+            )
+            timeseries = self._as_python(stats)
         elif func == "mean":
-            if multiple_geometries:
-                highest_level = self.pyramid.levels[self.pyramid.max_zoom]
-                layer_metadata = highest_level.layer_metadata
-                scala_data_cube = highest_level.srdd.rdd()
-                polygons = to_projected_polygons(self._get_jvm(), regions)
-                from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-                to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
-
-                with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                    self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                        scala_data_cube,
-                        polygons,
-                        from_date.isoformat(),
-                        to_date.isoformat(),
-                        0,
-                        temp_file.name
-                    )
-                    with open(temp_file.name, encoding='utf-8') as f:
-                        timeseries = json.load(f)
-                return AggregatePolygonResult(
-                    timeseries=timeseries,
-                    # TODO: regions can also be a string (path to vector file) instead of geometry object
-                    regions=regions,
-                    metadata=self.metadata
+            with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                    scala_data_cube,
+                    polygons,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    0,
+                    temp_file.name
                 )
-            else:
-                return AggregatePolygonResult(
-                    timeseries=self.polygonal_mean_timeseries(regions),
-                    regions=GeometryCollection([regions]),
-                    metadata=self.metadata
-                )
+                with open(temp_file.name, encoding='utf-8') as f:
+                    timeseries = json.load(f)
         else:
             raise ValueError(func)
+
+        return AggregatePolygonResult(
+            timeseries=timeseries,
+            # TODO: regions can also be a string (path to vector file) instead of geometry object
+            regions=regions,
+            metadata=self.metadata
+        )
 
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'
@@ -1010,53 +1039,6 @@ class GeopysparkDataCube(DriverDataCube):
             return {self._as_python(key): self._as_python(value) for key, value in dict(java_object).items()}
 
         return java_object
-
-    def polygonal_mean_timeseries(self, polygon: Union[Polygon, MultiPolygon]) -> Dict:
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
-        layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = GeopysparkDataCube.__reproject_polygon(polygon, "+init=EPSG:4326", layer_crs)
-
-        #TODO somehow mask function was masking everything, while the approach with direct timeseries computation did not have issues...
-        masked_layer = max_level.mask(reprojected_polygon)
-
-        no_data = masked_layer.layer_metadata.no_data_value
-
-        def combine_cells(acc: List[Tuple[int, int]], tile) -> List[Tuple[int, int]]:  # [(sum, count)]
-            n_bands = len(tile.cells)
-
-            if not acc:
-                acc = [(0, 0)] * n_bands
-
-            for i in range(n_bands):
-                grid = tile.cells[i]
-
-                # special treatment for a UDF layer (NO_DATA is nan so every value, including nan, is not equal to nan)
-                without_no_data = (~np.isnan(grid)) & (grid != no_data)
-
-                sum = grid[without_no_data].sum()
-                count = without_no_data.sum()
-
-                acc[i] = acc[i][0] + sum, acc[i][1] + count
-
-            return acc
-
-        def combine_values(l1: List[Tuple[int, int]], l2: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-            for i in range(len(l2)):
-                l1[i] = l1[i][0] + l2[i][0], l1[i][1] + l2[i][1]
-
-            return l1
-
-        # GeoPySpark uses utcfromtimestamp to convert SpaceTimeKey/ZonedDateTime; it returns a naive datetime ffs
-        polygon_mean_by_timestamp = masked_layer.to_numpy_rdd() \
-            .map(lambda pair: (pair[0].instant, pair[1])) \
-            .aggregateByKey([], combine_cells, combine_values)
-
-        def to_mean(values: Tuple[int, int]) -> float:
-            sum, count = values
-            return sum / count
-
-        collected = polygon_mean_by_timestamp.collect()
-        return {rfc3339.datetime(timestamp): [[to_mean(v) for v in values]] for timestamp, values in collected}
 
     def _to_xarray(self):
         spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]

@@ -29,7 +29,7 @@ userLogFileName=$5
 metadataFileName=$6
 principal=$7
 keyTab=$8
-openEoUser=$9
+proxyUser=$9
 apiVersion=${10}
 drivermemory=${11-22G}
 executormemory=${12-4G}
@@ -47,7 +47,7 @@ pysparkPython="venv/bin/python"
 kinit -kt ${keyTab} ${principal} || true
 
 export HDP_VERSION=3.1.4.0-315
-export SPARK_HOME=/opt/spark3_0_0
+export SPARK_HOME=/opt/spark3_1_1
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="venv/lib64"
@@ -60,6 +60,10 @@ if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
 fi
 
+echo "Downloading ${OPENEO_VENV_ZIP}"
+curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
+openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
+
 main_py_file='venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
@@ -70,8 +74,8 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
 
 sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
-if PYTHONPATH= ipa -v user-find --login "${openEoUser}"; then
-  run_as="--proxy-user ${openEoUser}"
+if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
+  run_as="--proxy-user ${proxyUser}"
 else
   run_as="--principal ${principal} --keytab ${keyTab}"
 fi
@@ -105,7 +109,6 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
  --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
  --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
- --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -113,14 +116,15 @@ spark-submit \
  --conf spark.ui.view.acls.groups=vito \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:20210126-56 \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:20210507-60 \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:20210126-56 \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:20210507-60 \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
  --files layercatalog.json,"${processGraphFile}" \
  --py-files "${pyfiles}" \
- --archives "${OPENEO_VENV_ZIP}#venv" \
+ --archives "${openeo_zip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
+ --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${proxyUser}"

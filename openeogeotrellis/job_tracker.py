@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union, List
 import traceback
@@ -8,14 +9,15 @@ from collections import namedtuple
 from datetime import datetime
 from openeo.util import date_to_rfc3339
 import re
-import geopyspark as gps
+from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
+from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis import utils
 
 _log = logging.getLogger(__name__)
 
@@ -30,107 +32,118 @@ class JobTracker:
                                             'aggregate_resource_allocation'])
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
-    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
+    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str,
+                 jvm: JVMView = None):
+        if jvm is None:
+            jvm = utils.get_jvm()
+
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
-        self._track_interval = 60  # seconds
+        # TODO: get rid of dependency on catalog
         self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(opensearch_enrich=False))
+        self._jvm = jvm
 
-    def update_statuses(self) -> None:
+    def loop_update_statuses(self, interval_s: int = 60):
         try:
             i = 0
 
             while True:
                 try:
+                    _log.info("tracking statuses...")
+
                     if i % 60 == 0:
                         self._refresh_kerberos_tgt()
 
-                    with self._job_registry() as registry:
-                        _log.info("tracking statuses...")
-
-                        jobs_to_track = registry.get_running_jobs()
-
-                        for job in jobs_to_track:
-                            try:
-                                job_id, user_id = job['job_id'], job['user_id']
-                                application_id, current_status = job['application_id'], job['status']
-
-                                if application_id:
-                                    try:
-                                        if ConfigParams().is_kube_deploy:
-                                            from openeogeotrellis.utils import s3_client, download_s3_dir
-                                            state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
-
-                                            new_status = JobTracker._kube_status_parser(state)
-
-                                            registry.patch(job_id, user_id,
-                                                           status=new_status,
-                                                           started=start_time,
-                                                           finished=finish_time)
-
-                                            if current_status != new_status:
-                                                _log.info("changed job %s status from %s to %s" % (job_id, current_status, new_status))
-
-                                            if state == "COMPLETED":
-                                                # FIXME: do we support SHub batch processes in this environment? The AWS
-                                                #  credentials conflict.
-                                                download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
-
-                                                result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                                registry.patch(job_id, user_id, **result_metadata)
-
-                                                registry.mark_done(job_id, user_id)
-                                                _log.info("marked %s as done" % job_id)
-                                        else:
-                                            state, final_state, start_time, finish_time, aggregate_resource_allocation =\
-                                                JobTracker._yarn_status(application_id)
-
-                                            memory_time_megabyte_seconds, cpu_time_seconds =\
-                                                JobTracker._parse_resource_allocation(aggregate_resource_allocation)
-
-                                            new_status = JobTracker._to_openeo_status(state, final_state)
-
-                                            registry.patch(job_id, user_id,
-                                                           status=new_status,
-                                                           started=JobTracker._to_serializable_datetime(start_time),
-                                                           finished=JobTracker._to_serializable_datetime(finish_time),
-                                                           memory_time_megabyte_seconds=memory_time_megabyte_seconds,
-                                                           cpu_time_seconds=cpu_time_seconds)
-
-                                            if current_status != new_status:
-                                                _log.info("changed job %s status from %s to %s" % (job_id, current_status, new_status))
-
-                                            if final_state != "UNDEFINED":
-                                                result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                                # TODO: skip patching the job znode and read from this file directly?
-                                                registry.patch(job_id, user_id, **result_metadata)
-
-                                                if new_status == 'finished':
-                                                    subfolders = [dependency.get('subfolder')
-                                                                  or dependency['batch_request_id']
-                                                                  for dependency in job.get('dependencies') or []]
-
-                                                    JobTracker._delete_batch_process_results(job_id, subfolders)
-                                                    registry.remove_dependencies(job_id, user_id)
-
-                                                registry.mark_done(job_id, user_id)
-                                                _log.info("marked %s as done" % job_id)
-                                    except JobTracker._UnknownApplicationIdException:
-                                        registry.mark_done(job_id, user_id)
-                            except Exception:
-                                _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
-                                             .format(j=job_id, e=traceback.format_exc()))
-                                # TODO: mark it as done to keep it from being considered further?
+                    self.update_statuses()
                 except Exception:
                     _log.warning("scheduling new run after failing to track batch jobs:\n{e}"
                                  .format(e=traceback.format_exc()))
 
-                time.sleep(self._track_interval)
+                time.sleep(interval_s)
 
                 i += 1
         except KeyboardInterrupt:
             pass
+
+    def update_statuses(self) -> None:
+        with self._job_registry() as registry:
+            jobs_to_track = registry.get_running_jobs()
+
+            for job in jobs_to_track:
+                try:
+                    job_id, user_id = job['job_id'], job['user_id']
+                    application_id, current_status = job['application_id'], job['status']
+
+                    if application_id:
+                        try:
+                            if ConfigParams().is_kube_deploy:
+                                from openeogeotrellis.utils import s3_client, download_s3_dir
+                                state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
+
+                                new_status = JobTracker._kube_status_parser(state)
+
+                                registry.patch(job_id, user_id,
+                                               status=new_status,
+                                               started=start_time,
+                                               finished=finish_time)
+
+                                if current_status != new_status:
+                                    _log.info("changed job %s status from %s to %s" %
+                                              (job_id, current_status, new_status), extra={'job_id': job_id})
+
+                                if state == "COMPLETED":
+                                    # FIXME: do we support SHub batch processes in this environment? The AWS
+                                    #  credentials conflict.
+                                    download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
+
+                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    registry.patch(job_id, user_id, **result_metadata)
+
+                                    registry.mark_done(job_id, user_id)
+                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
+                            else:
+                                state, final_state, start_time, finish_time, aggregate_resource_allocation =\
+                                    JobTracker._yarn_status(application_id)
+
+                                memory_time_megabyte_seconds, cpu_time_seconds =\
+                                    JobTracker._parse_resource_allocation(aggregate_resource_allocation)
+
+                                new_status = JobTracker._to_openeo_status(state, final_state)
+
+                                registry.patch(job_id, user_id,
+                                               status=new_status,
+                                               started=JobTracker._to_serializable_datetime(start_time),
+                                               finished=JobTracker._to_serializable_datetime(finish_time),
+                                               memory_time_megabyte_seconds=memory_time_megabyte_seconds,
+                                               cpu_time_seconds=cpu_time_seconds)
+
+                                if current_status != new_status:
+                                    _log.info("changed job %s status from %s to %s" %
+                                              (job_id, current_status, new_status), extra={'job_id': job_id})
+
+                                if final_state != "UNDEFINED":
+                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    # TODO: skip patching the job znode and read from this file directly?
+                                    registry.patch(job_id, user_id, **result_metadata)
+
+                                    if new_status == 'finished':
+                                        subfolders = [dependency.get('subfolder')
+                                                      or dependency['batch_request_id']
+                                                      for dependency in job.get('dependencies') or []]
+
+                                        self._delete_batch_process_results(job_id, subfolders)
+                                        registry.remove_dependencies(job_id, user_id)
+
+                                    registry.mark_done(job_id, user_id)
+                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
+                        except JobTracker._UnknownApplicationIdException:
+                            registry.mark_done(job_id, user_id)
+                except Exception:
+                    _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
+                                 .format(j=job_id, e=traceback.format_exc()), extra={'job_id': job_id})
+                    # TODO: mark it as done to keep it from being considered further?
+
 
     @staticmethod
     def yarn_available() -> bool:
@@ -256,9 +269,8 @@ class JobTracker:
         else:
             _log.warning("No Kerberos principal/keytab: will not refresh TGT")
 
-    @staticmethod
-    def _delete_batch_process_results(job_id: str, subfolders: List[str]):
-        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
+    def _delete_batch_process_results(self, job_id: str, subfolders: List[str]):
+        s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
         for subfolder in subfolders:
@@ -270,12 +282,36 @@ class JobTracker:
                 if (java_exception.getClass().getName() ==
                         'org.openeo.geotrellissentinelhub.S3Service$UnknownFolderException'):
                     _log.warning("could not delete unknown result folder s3://{b}/{f}"
-                                 .format(b=bucket_name, f=subfolder))
+                                 .format(b=bucket_name, f=subfolder), extra={'job_id': job_id})
                 else:
                     raise e
 
-        _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id))
+        _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+                  extra={'job_id': job_id})
 
 
 if __name__ == '__main__':
-    JobTracker(JobRegistry, 'vdboschj', "/home/bossie/Documents/VITO/vdboschj.keytab").update_statuses()
+    import argparse
+
+    logging.basicConfig(level=logging.INFO)
+
+    handler = logging.StreamHandler(stream=sys.stdout)
+    handler.formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+
+    _log.addHandler(handler)
+
+    parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--py4j-jarpath", default="venv36/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
+    parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar", help='Classpath used to launch the Java Gateway')
+    args = parser.parse_args()
+
+    try:
+        java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
+                                                  classpath=args.py4j_classpath,
+                                                  javaopts=["-client"],
+                                                  die_on_exit=True)
+
+        JobTracker(JobRegistry, principal="", keytab="", jvm=java_gateway.jvm).update_statuses()
+    except Exception as e:
+        _log.error(e, exc_info=True)
+        raise e

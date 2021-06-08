@@ -142,16 +142,17 @@ def main(argv=None):
 
     _setup_local_spark(print=_log.info)
 
-    # TODO: find cleaner way (without env variables) to "inject" driver implementation
-    os.environ["DRIVER_IMPLEMENTATION_PACKAGE"] = "openeogeotrellis"
+    # Local imports to workaround the pyspark import issues.
     from openeo_driver.ProcessGraphDeserializer import evaluate
+    from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     env = EvalEnv({
         "version": args.api_version,
         "pyramid_levels": "highest",
         "user": None,  # TODO
         "require_bounds": True,
-        "correlation_id": f"cli-pid{os.getpid()}"
+        "correlation_id": f"cli-pid{os.getpid()}",
+        "backend_implementation": GeoPySparkBackendImplementation(),
     })
 
     with TimingLogger(title="Evaluate process graph", logger=_log):
