@@ -1,10 +1,11 @@
-from typing import List, Tuple
 import unittest.mock as mock
+from typing import List, Tuple
 
 import pytest
 import schema
 
 from openeo.util import deep_get
+from openeo_driver.utils import read_json
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
@@ -70,3 +71,129 @@ def skip_sentinelhub_layer():
     viewingParameters["bottom"] = 50.0
     viewingParameters["srs"] = "EPSG:4326"
     datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
+
+
+def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "tests/data/layercatalog01.json",
+            "tests/data/layercatalog02.json",
+            "tests/data/layercatalog03_oscars.json"
+        ]
+
+        collections_response = read_json("tests/data/collections_oscars01.json")
+        requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
+
+        all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
+
+    assert all_metadata == [
+        {
+            "id": "XIP",
+            "_vito": {
+                "data_source": {
+                    "opensearch_endpoint": "https://services.terrascope.test/catalogue",
+                    "opensearch_collection_id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+                }
+            },
+            "title": "Sentinel 1 GRD Sigma0 product, VH, VV and angle.",
+            "description": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 "
+                           "is reflected back to the sensor...",
+            "extent": {
+                "spatial": {"bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]},
+                "temporal": {"interval": [["2014-10-23", None]]}
+            },
+            "links": [
+                {
+                    "rel": "alternate",
+                    "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
+                    "title": "Online User Documentation"
+                },
+                {
+                    "rel": "alternate",
+                    "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1"
+                },
+                {
+                    "rel": "alternate",
+                    "href": "https://services.terrascope.be/catalogue/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+                    "title": "OpenSearch entry point"
+                }
+            ],
+            "cube:dimensions": {
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
+                "t": {"type": "temporal"},
+                "bands": {
+                    "type": "bands",
+                    "values": ["VH"]
+                }
+            },
+            "summaries": {
+                "eo:bands": [
+                    {
+                        "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+                        "type": "VH",
+                        "title": "VH",
+                        "resolution": 10,
+                        "bitPerValue": 32,
+                        "name": "VH"
+                    }
+                ],
+                "instruments": ["MSI"]
+            }
+        },
+        {
+            "id": "FOO",
+            "license": "apache",
+            "links": [
+                "example.com/foo"
+            ]
+        },
+        {
+            "id": "BAR",
+            "description": "The BAR layer",
+            "links": [
+                "example.com/bar"
+            ]
+        },
+        {
+            "id": "BZZ"
+        },
+        {
+            "id": "QUU"
+        }
+    ]
+
+
+def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock):
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "tests/data/layercatalog01.json",
+            "tests/data/layercatalog04_creodias.json"
+        ]
+        collections_response = read_json("tests/data/collections_creodias01.json")
+        requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
+
+        all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
+
+    assert all_metadata == [
+        {
+            "id": "WUQ",
+            "title": "Sentinel-1 Collection",
+            "description": "Sentinel-1 Collection",
+            "keywords": ["esa", "sentinel", "sentinel1", "s1", "radar"],
+            "_vito": {
+                "data_source": {
+                    "opensearch_collection_id": "Sentinel1",
+                    "opensearch_endpoint": "https://finder.creodias.test"
+                }
+            },
+            "cube:dimensions": {
+                "t": {"type": "temporal"},
+                "x": {"axis": "x", "type": "spatial"},
+                "y": {"axis": "y", "type": "spatial"}
+            },
+        },
+        {"id": "FOO", "license": "mit"},
+        {"id": "BAR", "description": "bar",  "links": ["example.com/bar"]},
+        {"id": "BZZ"}
+    ]

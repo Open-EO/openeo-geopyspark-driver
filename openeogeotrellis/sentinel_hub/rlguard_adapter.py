@@ -1,0 +1,34 @@
+import json
+import os
+import sys
+import traceback
+from sys import argv
+
+from openeogeotrellis.configparams import ConfigParams
+
+os.environ['ZOOKEEPER_HOSTS'] = ",".join(ConfigParams().zookeepernodes)
+
+# TODO: import assumes ZOOKEEPER_HOSTS is set
+# TODO: build a common package and import from there instead
+from .rlguard import apply_for_request, calculate_processing_units, OutputFormat, SyncerDownException
+
+
+def calculate_delay(request_params):
+    request_params['output_format'] = OutputFormat(request_params['output_format'])
+
+    pu = calculate_processing_units(**request_params)
+    return apply_for_request(pu)
+
+
+if __name__ == '__main__':
+    if len(argv) < 2:
+        print(f"Usage: {argv[0]} <request params JSON>", file=sys.stderr)
+        exit(1)
+
+    try:
+        delay = calculate_delay(json.loads(argv[1]))
+        print(json.dumps({'delay_s': delay}))
+    except SyncerDownException as e:
+        print(json.dumps({'error': traceback.format_exc()}))
+        # If this happens, retries should be handled manually, with exponential backoff (but limited to the
+        # time it takes to fill the offending bucket from empty to full).

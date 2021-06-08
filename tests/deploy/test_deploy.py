@@ -1,17 +1,12 @@
-from io import StringIO
 import logging
 import sys
 import textwrap
+from io import StringIO
 from unittest import mock
-import uuid
 
-from openeo.capabilities import ComparableVersion
-from openeo_driver.ProcessGraphDeserializer import get_process_registry
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy import load_custom_processes
-
-
-def _random_name(prefix: str) -> str:
-    return '{p}_{r}'.format(p=prefix, r=uuid.uuid4().hex[:8])
+from openeogeotrellis.testing import random_name
 
 
 def _get_logger():
@@ -32,7 +27,7 @@ def test_load_custom_processes_default():
 def test_load_custom_processes_absent(tmp_path):
     logger, stream = _get_logger()
     sys_path = [str(tmp_path)]
-    name = _random_name(prefix="custom_processes")
+    name = random_name(prefix="custom_processes")
     with mock.patch("sys.path", new=sys_path):
         load_custom_processes(logger, _name=name)
 
@@ -41,17 +36,17 @@ def test_load_custom_processes_absent(tmp_path):
     assert '{n!r} not loaded: ModuleNotFoundError("No module named {n!r}"'.format(n=name) in logs
 
 
-def test_load_custom_processes_present(tmp_path, api_version):
+def test_load_custom_processes_present(tmp_path, api_version, backend_implementation):
     logger, stream = _get_logger()
-    process_name = _random_name(prefix="my_process")
-    module_name = _random_name(prefix="custom_processes")
+    process_name = random_name(prefix="my_process")
+    module_name = random_name(prefix="custom_processes")
 
     path = tmp_path / (module_name + '.py')
     with path.open("w") as f:
         f.write(textwrap.dedent("""
             from openeo_driver.ProcessGraphDeserializer import custom_process
             @custom_process
-            def {p}(*args):
+            def {p}(args, env):
                 return 42
         """.format(p=process_name)))
     with mock.patch("sys.path", new=[str(tmp_path)] + sys.path):
@@ -61,6 +56,6 @@ def test_load_custom_processes_present(tmp_path, api_version):
     assert "Trying to load {n!r} with PYTHONPATH ['{p!s}".format(n=module_name, p=str(tmp_path)) in logs
     assert "Loaded {n!r}: {p!r}".format(n=module_name, p=str(path)) in logs
 
-    process_registry = get_process_registry(ComparableVersion(api_version))
+    process_registry = backend_implementation.processing.get_process_registry(api_version=api_version)
     f = process_registry.get_function(process_name)
-    assert f() == 42
+    assert f({}, EvalEnv()) == 42

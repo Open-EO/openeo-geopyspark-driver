@@ -1,8 +1,11 @@
+import os
 import sys
 import time
 from pyspark import SparkContext, SparkConf
 import openeo
 from openeo import ImageCollection
+from openeo_driver.utils import EvalEnv
+from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.utils import kerberos
 from openeo_driver import ProcessGraphDeserializer
 # from openeo_driver.utils import replace_nan_values
@@ -14,13 +17,13 @@ import geopandas as gpd
 """
 To run locally, unset SPARK_HOME, then:
 
-SPARK_HOME=$(find_spark_home.py) HADOOP_CONF_DIR=/etc/hadoop/conf DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis spark-submit \
+SPARK_HOME=$(find_spark_home.py) HADOOP_CONF_DIR=/etc/hadoop/conf spark-submit \
 --master "local[*]" \
 --principal vdboschj@VGT.VITO.BE --keytab ${HOME}/Documents/VITO/vdboschj.keytab \
---jars jars/geotrellis-backend-assembly-0.4.5-openeo.jar,jars/geotrellis-extensions-1.3.0-SNAPSHOT.jar \
+--jars jars/geotrellis-backend-assembly-0.4.6-openeo.jar,jars/geotrellis-extensions-2.2.0-SNAPSHOT.jar \
 benchmarks/benchmark.py
 
-To debug application in PyCharm, set SPARK_HOME, HADOOP_CONF_DIR and DRIVER_IMPLEMENTATION_PACKAGE, then use e.g.
+To debug application in PyCharm, set SPARK_HOME, HADOOP_CONF_DIR, then use e.g.
 _local_spark_conf()
 """
 
@@ -79,13 +82,20 @@ def main(argv: List[str]) -> None:
 
     sc = SparkContext.getOrCreate(conf=None)
 
+    env = EvalEnv({
+        "version": "1.0.0",
+        "pyramid_levels": "highest",
+        "correlation_id": f"benchmark-pid{os.getpid()}",
+        "backend_implementation": GeoPySparkBackendImplementation(),
+    })
+
     try:
         for context, vector_file in vector_files:
             process_graph = _huge_vector_file_time_series(vector_file, start_date, end_date).graph
 
             def evaluate() -> Dict:
                 kerberos()
-                return ProcessGraphDeserializer.evaluate(process_graph, viewingParameters={'version': "0.4.0"})
+                return ProcessGraphDeserializer.evaluate(process_graph, env=env)
 
             def combine_iterations(acc: (Dict, float), i: int) -> (Dict, float):
                 count = i + 1

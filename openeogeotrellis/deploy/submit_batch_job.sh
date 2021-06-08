@@ -23,18 +23,24 @@ fi
 
 jobName=$1
 processGraphFile=$2
-outputFile=$3
-userLogFile=$4
-principal=$5
-keyTab=$6
-openEoUser=$7
-apiVersion=$8
-drivermemory=${9-22G}
-executormemory=${10-4G}
-executormemoryoverhead=${11-2G}
-drivercores=${12-14}
-executorcores=${13-2}
-
+outputDir=$3
+outputFileName=$4
+userLogFileName=$5
+metadataFileName=$6
+principal=$7
+keyTab=$8
+proxyUser=$9
+apiVersion=${10}
+drivermemory=${11-22G}
+executormemory=${12-4G}
+executormemoryoverhead=${13-3G}
+drivercores=${14-14}
+executorcores=${15-2}
+drivermemoryoverhead=${16-8G}
+queue=${17-default}
+profile=${18-false}
+dependencies=${19-"no_dependencies"}
+pyfiles=${20}
 
 pysparkPython="venv/bin/python"
 
@@ -51,22 +57,20 @@ export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-pa
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ ! -f ${backend_assembly} ]; then
-   backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.5-openeo.jar
-fi
-
-pyfiles="--py-files cropsar*.whl"
-if [ -f __pyfiles__/custom_processes.py ]; then
-   pyfiles=${pyfiles},__pyfiles__/custom_processes.py
+   backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar
 fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
- -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties"
+ -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
-if ipa -v user-find --login "${openEoUser}"; then
-  run_as="--proxy-user ${openEoUser}"
+sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+
+if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
+  run_as="--proxy-user ${proxyUser}"
 else
   run_as="--principal ${principal} --keytab ${keyTab}"
 fi
@@ -75,18 +79,19 @@ spark-submit \
  --master yarn --deploy-mode cluster \
  ${run_as} \
  --conf spark.yarn.submit.waitAppCompletion=false \
+ --queue "${queue}" \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
- --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
- --conf spark.kryoserializer.buffer.max=512m \
+ --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
+ --conf spark.python.profile=$profile \
+ --conf spark.kryoserializer.buffer.max=1G \
  --conf spark.rpc.message.maxSize=200 \
- --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
  --conf spark.rdd.compress=true \
  --conf spark.driver.cores=${drivercores} \
  --conf spark.executor.cores=${executorcores} \
  --conf spark.driver.maxResultSize=5g \
- --conf spark.driver.memoryOverhead=8g \
+ --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  --conf spark.blacklist.enabled=true \
  --conf spark.speculation=true \
@@ -95,17 +100,20 @@ spark-submit \
  --conf spark.dynamicAllocation.minExecutors=5 \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
- --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
- --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
+ --conf "spark.executorEnv.PYSPARK_PYTHON=$pysparkPython" \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
+ --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
+ --conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
+ --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
- --conf spark.yarn.appMasterEnv.OPENEO_REQUIRE_BOUNDS=False \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
- --files layercatalog.json,"${processGraphFile}" ${pyfiles} \
+ --files layercatalog.json,"${processGraphFile}" \
+ --py-files "${pyfiles}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
+ --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputFile}" "${userLogFile}" "${apiVersion}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${proxyUser}"

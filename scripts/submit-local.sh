@@ -15,11 +15,10 @@ export SPARK_HOME=/usr/hdp/${HDP_VERSION}/spark2
 export LD_LIBRARY_PATH="venv/lib64"
 export PYSPARK_PYTHON=/usr/bin/python3.6
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
-export DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis
 
 hdfsVenvZip=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
-extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.3.0-SNAPSHOT/geotrellis-extensions-1.3.0-SNAPSHOT.jar
-backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.5-openeo.jar
+extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.2.0-SNAPSHOT/geotrellis-extensions-2.2.0-SNAPSHOT.jar
+backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar
 
 echo "Found backend assembly: ${backend_assembly}"
 
@@ -43,7 +42,6 @@ spark-submit \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64  \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64  \
  --conf spark.yarn.appMasterEnv.OPENEO_VENV_ZIP=${hdfsVenvZip} \
- --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.yarn.appMasterEnv.WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \

@@ -27,7 +27,7 @@ def test_extract_application_id():
 19/07/10 15:56:41 WARN Client: Neither spark.yarn.jars nor spark.yarn.archive is set, falling back to uploading libraries under SPARK_HOME.
 19/07/10 15:56:46 INFO Client: Uploading resource file:/data1/hadoop/yarn/local/usercache/jenkins/appcache/application_1562328661428_5538/spark-ad3a2402-36d5-407a-8b30-392033d45899/__spark_libs__4608991107087829959.zip -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/__spark_libs__4608991107087829959.zip
 19/07/10 15:56:51 INFO Client: Uploading resource file:/data1/hadoop/yarn/local/usercache/jenkins/appcache/application_1562328661428_5538/container_e3344_1562328661428_5538_01_000001/geotrellis-extensions-1.3.0-SNAPSHOT.jar -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/geotrellis-extensions-1.3.0-SNAPSHOT.jar
-19/07/10 15:56:52 INFO Client: Uploading resource file:/data1/hadoop/yarn/local/usercache/jenkins/appcache/application_1562328661428_5538/container_e3344_1562328661428_5538_01_000001/geotrellis-backend-assembly-0.4.5-openeo.jar -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/geotrellis-backend-assembly-0.4.5-openeo.jar
+19/07/10 15:56:52 INFO Client: Uploading resource file:/data1/hadoop/yarn/local/usercache/jenkins/appcache/application_1562328661428_5538/container_e3344_1562328661428_5538_01_000001/geotrellis-backend-assembly-0.4.6-openeo.jar -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/geotrellis-backend-assembly-0.4.6-openeo.jar
 19/07/10 15:56:54 INFO Client: Uploading resource file:/data1/hadoop/yarn/local/usercache/jenkins/appcache/application_1562328661428_5538/container_e3344_1562328661428_5538_01_000001/layercatalog.json -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/layercatalog.json
 19/07/10 15:56:54 INFO Client: Uploading resource file:/mnt/ceph/Projects/OpenEO/f5ddcb98-a9ca-440e-a705-da6d71aaab44/in -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/in
 19/07/10 15:56:54 INFO Client: Uploading resource https://artifactory.vgt.vito.be/auxdata-public/openeo/venv.zip#venv -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/venv.zip
@@ -84,3 +84,39 @@ def test_extract_application_id():
 19/07/10 15:58:11 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
     """
     assert GpsBatchJobs._extract_application_id(yarn_log) == "application_1562328661428_5542"
+
+
+def test_get_submit_py_files_basic(tmp_path, caplog):
+    (tmp_path / "lib.whl").touch()
+    (tmp_path / "zop.zip").touch()
+    (tmp_path / "__pyfiles__").mkdir()
+    (tmp_path / "__pyfiles__" / "stuff.py").touch()
+    env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "stuff.py,lib.whl,foo.py"}
+    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    assert py_files == "__pyfiles__/stuff.py,lib.whl"
+    warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert warn_logs == ["Could not find 'py-file' foo.py: skipping"]
+
+
+def test_get_submit_py_files_deep_paths(tmp_path, caplog):
+    # Originally submitted py-files
+    env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/stuff.py,data/deps/lib.whl"}
+    # Resources of flask app job.
+    (tmp_path / "lib.whl").touch()
+    (tmp_path / "__pyfiles__").mkdir()
+    (tmp_path / "__pyfiles__" / "stuff.py").touch()
+    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    assert py_files == "__pyfiles__/stuff.py,lib.whl"
+    warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert warn_logs == []
+
+
+def test_get_submit_py_files_no_env(tmp_path):
+    py_files = GpsBatchJobs.get_submit_py_files(env={}, cwd=tmp_path)
+    assert py_files == ""
+
+
+def test_get_submit_py_files_empty(tmp_path):
+    env = {"OPENEO_SPARK_SUBMIT_PY_FILES": ""}
+    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    assert py_files == ""

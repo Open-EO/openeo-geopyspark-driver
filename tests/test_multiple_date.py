@@ -3,20 +3,20 @@ from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+import rasterio
 from geopyspark import CellType
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
 from numpy.testing import assert_array_almost_equal
-from openeo.metadata import CollectionMetadata
-from openeo_driver.errors import FeatureUnsupportedException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeo_driver.errors import FeatureUnsupportedException
+from openeo_driver.utils import EvalEnv
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.numpy_aggregators import max_composite
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
 def reducer(operation: str):
@@ -80,7 +80,7 @@ class TestMultipleDates(TestCase):
                 'layoutDefinition': {
                     'extent': extent,
                     'tileLayout': {'tileCols': 5, 'tileRows': 5, 'layoutCols': 2, 'layoutRows': 2}}}
-    collection_metadata = CollectionMetadata({
+    collection_metadata = GeopysparkCubeMetadata({
         "cube:dimensions": {
             "t": {"type": "temporal"},
         }
@@ -122,53 +122,60 @@ class TestMultipleDates(TestCase):
     def test_reproject_spatial(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
-        resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3857",method="max")
+        ref_path = str(self.temp_folder / "reproj_ref.tiff")
+        imagecollection.reduce('max', dimension="t").save_result(ref_path, format="GTIFF")
+
+        resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3395",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
-        resampled.reduce('max', dimension="t").download(path, format="GTIFF", parameters={'tiled': True})
+        res = resampled.reduce('max', dimension="t")
+        res.save_result(path, format="GTIFF", format_options={"parameters": {'stitch': True}})
 
-        import rasterio
-        with rasterio.open(path) as ds:
-            print(ds.profile)
-
-
+        with rasterio.open(ref_path) as ref_ds:
+            with rasterio.open(path) as ds:
+                print(ds.profile)
+                #this reprojection does not change the shape, so we can compare
+                assert ds.read().shape == ref_ds.read().shape
+                
+                assert (ds.crs.to_epsg() == 3395)
 
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        env = EvalEnv()
 
 
-        stitched = imagecollection.reduce_dimension(dimension="t", reducer=reducer("max")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t", reducer=reducer("max"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(2.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("min")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("min"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(1.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("sum")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("sum"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(4.0, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(dimension="t",reducer=reducer("mean")).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("variance"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(0.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(0.2222222, stitched.cells[0][0][1])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("sd"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(0.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(0.4714045, stitched.cells[0][0][1])
@@ -179,24 +186,24 @@ class TestMultipleDates(TestCase):
             datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
         })})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
-
-        stitched = imagecollection.reduce_dimension(reducer=reducer("min"), dimension="t").pyramid.levels[0].stitch()
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        env = EvalEnv()
+        stitched = cube.reduce_dimension(reducer=reducer("min"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(1.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("max"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("max"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("sum"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("sum"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(6.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("mean"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("mean"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(3.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("variance"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(4.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce_dimension(reducer=reducer("sd"), dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(2.0, stitched.cells[0][0][0], delta=0.001)
 
     def test_reduce_some_nodata(self):
@@ -207,7 +214,7 @@ class TestMultipleDates(TestCase):
             datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
         }, no_data)})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
         stitched = imagecollection.reduce("min", dimension="t").pyramid.levels[0].stitch()
         #print(stitched)
@@ -278,19 +285,51 @@ class TestMultipleDates(TestCase):
     def test_reduce_nontemporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         with self.assertRaises(FeatureUnsupportedException) as context:
             imagecollection.reduce("max", dimension="gender").pyramid.levels[0].stitch()
         print(context.exception)
 
     def test_aggregate_temporal(self):
+        """
+        Tests deprecated process spec! To be phased out.
+        @return:
+        """
+        interval_list = ["2017-01-01", "2018-01-01"]
+        self._test_aggregate_temporal(interval_list)
+
+    def _median_reducer(self):
+        from openeo.processes import median
+        builder = median({"from_argument": "data"})
+        return builder.flat_graph()
+
+    def test_aggregate_temporal_median(self):
         input = Pyramid({0: self.tiled_raster_rdd})
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         stitched = (
-            imagecollection.aggregate_temporal(["2017-01-01", "2018-01-01"], ["2017-01-03"], "max", dimension="t")
+            imagecollection.aggregate_temporal(["2015-01-01", "2018-01-01"], ["2017-01-03"], self._median_reducer(), dimension="t")
                 .pyramid.levels[0].to_spatial_layer().stitch()
         )
         print(stitched)
+        expected_median = np.median([self.tile.cells, self.tile2.cells, self.tile.cells], axis=0)
+        #TODO nodata handling??
+        assert_array_almost_equal(stitched.cells[0, 1:2, 1:2], expected_median[ 1:2, 1:2])
+
+
+    def _test_aggregate_temporal(self, interval_list):
+        input = Pyramid({0: self.tiled_raster_rdd})
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        stitched = (
+            imagecollection.aggregate_temporal(interval_list, ["2017-01-03"], "min", dimension="t")
+                .pyramid.levels[0].to_spatial_layer().stitch()
+        )
+        print(stitched)
+        expected_max = np.min([self.tile2.cells, self.tile.cells],axis=0)
+        assert_array_almost_equal(stitched.cells[0, 0:5, 0:5], expected_max)
+
+
+    def test_aggregate_temporal_100(self):
+        self._test_aggregate_temporal([["2017-01-01", "2018-01-01"]])
 
     def test_max_aggregator(self):
         tiles = [self.tile,self.tile2]
@@ -299,18 +338,21 @@ class TestMultipleDates(TestCase):
 
     def test_aggregate_max_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce('max', dimension='t').pyramid.levels[0].stitch()
+        layer = imagecollection.reduce('max', dimension='t').pyramid.levels[0]
+        stitched = layer.stitch()
+        assert CellType.FLOAT32.value == layer.layer_metadata.cell_type
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
     def test_min_time(self):
         input = Pyramid( {0:self.tiled_raster_rdd })
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
-        min_time = imagecollection.reduce_dimension(reducer=reducer('min'), dimension='t')
-        max_time = imagecollection.reduce_dimension(reducer=reducer('max'), dimension='t')
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        env = EvalEnv()
+        min_time = cube.reduce_dimension(reducer=reducer('min'), dimension='t', env=env)
+        max_time = cube.reduce_dimension(reducer=reducer('max'), dimension='t', env=env)
 
         stitched = min_time.pyramid.levels[0].stitch()
         print(stitched)
@@ -320,7 +362,7 @@ class TestMultipleDates(TestCase):
         for p in self.points[1:3]:
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
-            print(imagecollection.timeseries(p.x,p.y,srs="EPSG:3857"))
+            print(cube.timeseries(p.x,p.y,srs="EPSG:3857"))
             max_result = max_time.timeseries(p.x, p.y,srs="EPSG:3857")
             self.assertEqual(1.0,result['NoDate'])
             self.assertEqual(2.0,max_result['NoDate'])
@@ -332,9 +374,9 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(
-            input, InMemoryServiceRegistry(),
-            metadata=CollectionMetadata({
+        imagecollection = GeopysparkDataCube(
+            pyramid=input,
+            metadata=GeopysparkCubeMetadata({
                 "cube:dimensions": {
                     # TODO: also specify other dimensions?
                     "bands": {"type": "bands", "values": ["2"]}
@@ -370,9 +412,9 @@ class TestMultipleDates(TestCase):
 
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(
-            input, InMemoryServiceRegistry(),
-            metadata=CollectionMetadata({
+        imagecollection = GeopysparkDataCube(
+            pyramid=input,
+            metadata=GeopysparkCubeMetadata({
                 "cube:dimensions": {
                     # TODO: also specify other dimensions?
                     "bands": {"type": "bands", "values": ["2"]}
@@ -412,42 +454,86 @@ def rct_savitzky_golay(udf_data:UdfData):
             tile = result_dict[k]
             assert_array_almost_equal(np.squeeze(v.cells),np.squeeze(tile.cells),decimal=2)
 
-
-    def test_mask_raster(self):
-        input = Pyramid({0: self.tiled_raster_rdd})
+    def test_mask_raster_replacement_default_none(self):
         def createMask(tile):
             tile.cells[0][0][0] = 0.0
             return tile
+
+        input = Pyramid({0: self.tiled_raster_rdd})
         mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
         mask = Pyramid({0: mask_layer})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
-        stitched = imagecollection.mask(mask=GeotrellisTimeSeriesImageCollection(mask, InMemoryServiceRegistry()),
-                                        replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        mask_cube = GeopysparkDataCube(pyramid=mask)
+        stitched = cube.mask(mask=mask_cube).reduce('max', dimension="t").pyramid.levels[0].stitch()
         print(stitched)
-        self.assertEquals(2.0,stitched.cells[0][0][0])
-        self.assertEquals(10.0, stitched.cells[0][0][1])
+        assert stitched.cells[0][0][0] == 2.0
+        assert np.isnan(stitched.cells[0][0][1])
 
-    def test_apply_kernel(self):
-        kernel = np.array([[0.0,1.0,0.0],[1.0,1.0,1.0],[0.0,1.0,0.0]])
+    def test_mask_raster_replacement_float(self):
+        def createMask(tile):
+            tile.cells[0][0][0] = 0.0
+            return tile
 
         input = Pyramid({0: self.tiled_raster_rdd})
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
-        stitched = imagecollection.apply_kernel(kernel, 2.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
+        mask = Pyramid({0: mask_layer})
 
-        self.assertEquals(12.0, stitched.cells[0][0][0])
-        self.assertEquals(16.0, stitched.cells[0][0][1])
-        self.assertEquals(20.0, stitched.cells[0][1][1])
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        mask_cube = GeopysparkDataCube(pyramid=mask)
+        stitched = cube.mask(mask=mask_cube, replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        print(stitched)
+        assert stitched.cells[0][0][0] == 2.0
+        assert stitched.cells[0][0][1] == 10.0
+
+    def test_mask_raster_replacement_int(self):
+        def createMask(tile):
+            tile.cells[0][0][0] = 0.0
+            return tile
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+        mask_layer = self.tiled_raster_rdd.map_tiles(createMask)
+        mask = Pyramid({0: mask_layer})
+
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        mask_cube = GeopysparkDataCube(pyramid=mask)
+        stitched = cube.mask(mask=mask_cube, replacement=10).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        print(stitched)
+        assert stitched.cells[0][0][0] == 2.0
+        assert stitched.cells[0][0][1] == 10.0
+
+    def test_apply_kernel_float(self):
+        kernel = np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]])
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+        img = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        stitched = img.apply_kernel(kernel, 2.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+
+        assert stitched.cells[0][0][0] == 12.0
+        assert stitched.cells[0][0][1] == 16.0
+        assert stitched.cells[0][1][1] == 20.0
+
+    def test_apply_kernel_int(self):
+        kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+
+        input = Pyramid({0: self.tiled_raster_rdd})
+        img = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        stitched = img.apply_kernel(kernel).reduce('max', dimension="t").pyramid.levels[0].stitch()
+
+        assert stitched.cells[0][0][0] == 6.0
+        assert stitched.cells[0][0][1] == 8.0
+        assert stitched.cells[0][1][1] == 10.0
 
     def test_resample_spatial(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(), metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
         resampled = imagecollection.resample_spatial(resolution=0.05)
 
         path = str(self.temp_folder / "resampled.tiff")
-        resampled.reduce('max', dimension="t").download(path, format="GTIFF", parameters={'tiled': True})
+        res = resampled.reduce('max', dimension="t")
+        res.save_result(path, format="GTIFF", format_options={"parameters": {'tiled': True}})
 
         import rasterio
         with rasterio.open(path) as ds:
@@ -455,8 +541,8 @@ def rct_savitzky_golay(udf_data:UdfData):
             self.assertAlmostEqual(0.05, ds.res[0], 3)
 
     def test_rename_dimension(self):
-        imagecollection = GeotrellisTimeSeriesImageCollection(Pyramid({0: self.tiled_raster_rdd}), InMemoryServiceRegistry(),
-                                                              metadata=self.collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=Pyramid({0: self.tiled_raster_rdd}),
+                                             metadata=self.collection_metadata)
 
         dim_renamed = imagecollection.rename_dimension('t','myNewTimeDim')
 

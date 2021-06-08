@@ -1,18 +1,52 @@
 import collections
+import contextlib
 import grp
 import logging
+import math
 import os
-from pathlib import Path
 import pwd
+import resource
 import stat
+from pathlib import Path
 from typing import Union
 
-from dateutil.parser import parse
-from py4j.java_gateway import JavaGateway
 import pytz
+from dateutil.parser import parse
+from kazoo.client import KazooClient
+from py4j.java_gateway import JavaGateway, JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
+from openeo_driver.delayed_vector import DelayedVector
+from openeogeotrellis.configparams import ConfigParams
+
 logger = logging.getLogger("openeo")
+
+def log_memory(function):
+    def memory_logging_wrapper(*args, **kwargs):
+        try:
+            from spark_memlogger import memlogger
+        except ImportError:
+            return function(*args, **kwargs)
+
+        ml = memlogger.MemLogger(5,api_version_auto_timeout_ms=60000)
+        try:
+            try:
+                ml.start()
+            except:
+                logger.warning("Error while configuring memory logging, will not be available!", exc_info=True)
+            return function(*args, **kwargs)
+        finally:
+            ml.stop()
+
+    return memory_logging_wrapper
+
+
+def get_jvm() -> JVMView:
+    import geopyspark
+    pysc = geopyspark.get_spark_context()
+    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
+    jvm = gateway.jvm
+    return jvm
 
 
 def kerberos():
@@ -113,6 +147,8 @@ def to_projected_polygons(jvm, *args):
     if len(args) == 1 and isinstance(args[0], (str, Path)):
         # Vector file
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
+    elif len(args) == 1 and isinstance(args[0], DelayedVector):
+        return to_projected_polygons(jvm, args[0].path)
     elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
         # Multiple polygons
         polygon_wkts = [str(x) for x in args[0]]
@@ -125,3 +161,96 @@ def to_projected_polygons(jvm, *args):
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     else:
         raise ValueError(args)
+
+
+@contextlib.contextmanager
+def zk_client(hosts: str = ','.join(ConfigParams().zookeepernodes)):
+    zk = KazooClient(hosts)
+    zk.start()
+
+    try:
+        yield zk
+    finally:
+        zk.stop()
+        zk.close()
+
+
+def set_max_memory(max_total_memory_in_bytes: int):
+    soft_limit, hard_limit = max_total_memory_in_bytes, max_total_memory_in_bytes
+    resource.setrlimit(resource.RLIMIT_AS, (soft_limit, hard_limit))
+
+    logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
+
+def kube_client():
+    from kubernetes import client, config
+    config.load_incluster_config()
+    api_instance = client.CustomObjectsApi()
+    return api_instance
+
+def s3_client():
+    import boto3
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    swift_url = os.environ.get("SWIFT_URL")
+    s3_client = boto3.client("s3",
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        endpoint_url=swift_url)
+    return s3_client
+
+def download_s3_dir(bucketName, directory):
+    import boto3
+
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    swift_url = os.environ.get("SWIFT_URL")
+
+    s3_resource = boto3.resource("s3",
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        endpoint_url=swift_url)
+    bucket = s3_resource.Bucket(bucketName)
+
+    for obj in bucket.objects.filter(Prefix = directory):
+        if not os.path.exists("/" + os.path.dirname(obj.key)):
+            os.makedirs("/" + os.path.dirname(obj.key))
+        bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
+
+
+def lonlat_to_mercator_tile_indices(
+        longitude: float, latitude: float, zoom: int,
+        tile_size: int = 512, flip_y: bool = False
+):
+    """
+    Conversion of lon-lat coordinates to (web)Mercator tile indices
+    :param longitude:
+    :param latitude:
+    :param zoom: zoom level (0, 1, ...)
+    :param tile_size: tile size in pixels
+    :param flip_y: False: [0, 0] is lower left corner (TMS); True: [0, 0] is upper left (Google Maps/QuadTree style)
+    :return: (tx, ty) mercator tile indices
+    """
+    # Lon-lat to Spherical Mercator "meters" (EPSG:3857/EPSG:900913)
+    offset = 2 * math.pi * 6378137 / 2.0
+    mx = longitude * offset / 180
+    my = (math.log(math.tan((90 + latitude) * math.pi / 360)) / (math.pi / 180.0)) * offset / 180
+    # Meters to pyramid pixels at zoom level
+    resolution = 2 * math.pi * 6378137 / tile_size / (2 ** zoom)
+    px = (mx + offset) / resolution
+    py = (my + offset) / resolution
+    # Pixels to TMS tile
+    tx = int(math.ceil(px / tile_size) - 1)
+    ty = int(math.ceil(py / tile_size) - 1)
+    if flip_y:
+        ty = (2 ** zoom - 1) - ty
+    return tx, ty
+
+
+@contextlib.contextmanager
+def nullcontext():
+    """
+    Context manager that does nothing.
+
+    Backport of Python 3.7 `contextlib.nullcontext`
+    """
+    yield

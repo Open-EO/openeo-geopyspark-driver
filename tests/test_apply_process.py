@@ -1,6 +1,8 @@
 import datetime
 import math
+from typing import List
 from unittest import TestCase
+import pytest
 
 import geopyspark as gps
 import numpy as np
@@ -8,16 +10,29 @@ import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from openeo.metadata import CollectionMetadata
+from openeo_driver.errors import OpenEOApiException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeogeotrellis.GeotrellisImageCollection import GeotrellisTimeSeriesImageCollection
+from openeo_driver.utils import EvalEnv
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
-class TestCustomFunctions(TestCase):
+def _build_metadata(bands: List[str] = ["B01", "B02"]) -> GeopysparkCubeMetadata:
+    """Helper to build metadata instance"""
+    return GeopysparkCubeMetadata({
+        "cube:dimensions": {
+            "bands": {"type": "bands", "values": bands}
+        },
+        "summaries": {
+            "eo:bands": [{"name": b, "common_name": "common" + b} for b in bands]
+        }
+    })
+
+
+class TestApplyProcess(TestCase):
 
     first = np.zeros((1, 4, 4))
     first.fill(10)
@@ -143,7 +158,7 @@ class TestCustomFunctions(TestCase):
 
         input = self.create_spacetime_layer()
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         transformed_collection = imagecollection.apply("cos")
         for p in self.points[0:3]:
             result = transformed_collection.timeseries(p.x, p.y)
@@ -155,21 +170,51 @@ class TestCustomFunctions(TestCase):
 
     def test_apply_cos(self):
         input = self.create_spacetime_layer()
-        cube = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         res = cube.apply("cos")
         data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
         np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(self.first[0]))
         np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(self.second[0]))
 
+    def test_apply_complex_graph(self):
+        graph = {
+            "sin": {
+                "arguments": {
+                    "x": {
+                        "from_argument": "data"
+                    }
+                },
+                "process_id": "sin",
+                "result": False
+            },
+            "multiply": {
+                "arguments": {
+                    "x": {
+                        "from_node": "sin"
+                    },
+                    "y": 5.0
+                },
+                "process_id": "multiply",
+                "result": True
+            }
+        }
+
+        input = self.create_spacetime_layer()
+        cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+        res = cube.apply(graph)
+        data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
+        np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0*np.sin(self.first[0]))
+        np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], 5.0*np.sin(self.second[0]))
+
     def test_reduce_bands(self):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
-        collection_metadata = CollectionMetadata({
+        collection_metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 "my_bands": {"type": "bands", "values": ["B04", "B08"]},
             }
         })
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry(),collection_metadata)
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=collection_metadata)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -177,7 +222,8 @@ class TestCustomFunctions(TestCase):
                 "arguments": {
                     "data": {
                         "from_argument": "dimension_data"
-                    }
+                    },
+                    "ignore_nodata":True
                 },
                 "process_id": "sum"
             },
@@ -204,7 +250,7 @@ class TestCustomFunctions(TestCase):
             }
         }
         visitor.accept_process_graph(graph)
-        stitched = imagecollection.reduce_dimension('my_bands',visitor).pyramid.levels[0].to_spatial_layer().stitch()
+        stitched = imagecollection.reduce_dimension(dimension='my_bands', reducer=visitor, env=EvalEnv()).pyramid.levels[0].to_spatial_layer().stitch()
         print(stitched)
         self.assertEqual(3.0, stitched.cells[0][0][0])
 
@@ -212,7 +258,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -240,11 +286,45 @@ class TestCustomFunctions(TestCase):
         print(stitched)
         self.assertEqual(0, stitched.cells[0][0][0])
 
+    def test_apply_if(self):
+        input = self.create_spacetime_layer_singleband()
+        input = gps.Pyramid({0: input})
+
+        imagecollection = GeopysparkDataCube(pyramid=input)
+
+        graph = {
+            "6": {
+              "arguments": {
+                "reject": {"from_parameter":"x"},
+                "value": {
+                  "from_node": "10"
+                },
+                "accept": 2.0
+
+              },
+              "process_id": "if",
+              "result": True
+            },
+            "10": {
+              "process_id": "gt",
+              "arguments": {
+                "x": {
+                  "from_parameter": "x"
+                },
+                "y": 7.0
+              }
+            }
+          }
+
+        stitched = imagecollection.apply(graph).pyramid.levels[0].to_spatial_layer().stitch()
+        print(stitched)
+        self.assertEqual(2.0, stitched.cells[0][0][0])
+
     def test_reduce_bands_comparison_ops(self):
         input = self.create_spacetime_layer_singleband()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph = {
@@ -268,7 +348,7 @@ class TestCustomFunctions(TestCase):
         input = self.create_spacetime_layer()
         input = gps.Pyramid({0: input})
 
-        imagecollection = GeotrellisTimeSeriesImageCollection(input, InMemoryServiceRegistry())
+        imagecollection = GeopysparkDataCube(pyramid=input)
 
         visitor = GeotrellisTileProcessGraphVisitor()
         graph ={
@@ -364,7 +444,7 @@ class TestCustomFunctions(TestCase):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
-        metadata = CollectionMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["B04", "B08"]}
@@ -376,7 +456,7 @@ class TestCustomFunctions(TestCase):
                 ]
             }
         })
-        imagecollection = GeotrellisTimeSeriesImageCollection(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+        imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
 
         stitched = imagecollection.ndvi().pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -392,7 +472,7 @@ class TestCustomFunctions(TestCase):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
-        metadata = CollectionMetadata({
+        metadata = GeopysparkCubeMetadata({
             "cube:dimensions": {
                 # TODO: also specify other dimensions?
                 "bands": {"type": "bands", "values": ["B04", "B08"]}
@@ -404,7 +484,7 @@ class TestCustomFunctions(TestCase):
                 ]
             }
         })
-        imagecollection = GeotrellisTimeSeriesImageCollection(pyramid, InMemoryServiceRegistry(), metadata=metadata)
+        imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
 
         stitched = imagecollection.ndvi().linear_scale_range(-1, 1, 0, 100).pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -417,26 +497,77 @@ class TestCustomFunctions(TestCase):
         expected[0][0]=255.0
         np.testing.assert_array_almost_equal(cells, expected.astype(np.uint8))
 
-    def test_merge_cubes(self):
+    def _test_merge_cubes_subtract_spatial(self, left_spatial=False, right_spatial=False):
+        # TODO: this would be cleaner with @pytest.mark.parameterize but that's not supported on TestCase methods
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
+        if left_spatial:
+            layer1 = layer1.to_spatial_layer()
+        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
+        if right_spatial:
+            layer2 = layer2.to_spatial_layer()
+        metadata = _build_metadata()
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata)
+
+        res = cube1.merge_cubes(cube2, 'subtract')
+        layer = res.pyramid.levels[0]
+        if layer.layer_type != LayerType.SPATIAL:
+            layer = layer.to_spatial_layer()
+        actual = layer.stitch().cells[0, 0:4, 0:4]
+        expected = red_ramp - nir_ramp
+        np.testing.assert_array_equal(expected, actual)
+
+    def test_merge_cubes_subtract_spatial_0_0(self):
+        self._test_merge_cubes_subtract_spatial(False, False)
+
+    def test_merge_cubes_subtract_spatial_0_1(self):
+        self._test_merge_cubes_subtract_spatial(False, True)
+
+    def test_merge_cubes_subtract_spatial_1_0(self):
+        self.skipTest("TODO EP-3635 still Causes exception in geotrellis extension")
+        self._test_merge_cubes_subtract_spatial(True, False)
+
+    def test_merge_cubes_subtract_spatial_1_1(self):
+        self._test_merge_cubes_subtract_spatial(True, True)
+
+    def test_merge_cubes_into_single_band(self):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
+        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
+        metadata = _build_metadata(bands=["the_band"])
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata)
+        res = cube1.merge_cubes(cube2, 'sum')
+        stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
+        assert stitched.cells.shape[0] == 1
+        np.testing.assert_array_equal(red_ramp + nir_ramp, stitched.cells[0, 0:4, 0:4])
+
+    def test_merge_cubes_exception_if_levels_do_not_match(self):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
+        layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
+        metadata = _build_metadata(bands=["the_band"])
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({14: layer2}), metadata=metadata)
+        with pytest.raises(OpenEOApiException) as excinfo:
+            res = cube1.merge_cubes(cube2, 'sum')
+
+
+        
+    def test_merge_cubes_into_separate_bands(self):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer1 = self._create_spacetime_layer(cells=np.array([[red_ramp]]))
         layer2 = self._create_spacetime_layer(cells=np.array([[nir_ramp]]))
 
-        metadata = CollectionMetadata({
-            "cube:dimensions": {
-                # TODO: also specify other dimensions?
-                "bands": {"type": "bands", "values": ["the_band"]}
-            },
-            "summaries": {
-                "eo:bands": [
-                    {"name": "the_band"}
-                ]
-            }
-        })
+        metadata1 = _build_metadata(bands=["the_band_1"])
+        metadata2 = _build_metadata(bands=["the_band_2"])
 
-        cube1 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer1}), InMemoryServiceRegistry(), metadata=metadata)
-        cube2 = GeotrellisTimeSeriesImageCollection(gps.Pyramid({0: layer2}), InMemoryServiceRegistry(), metadata=metadata)
-        sum = cube1.merge(cube2,'sum')
-        stitched = sum.pyramid.levels[0].to_spatial_layer().stitch()
-
-        np.testing.assert_array_equal(red_ramp + nir_ramp, stitched.cells[0, 0:4, 0:4])
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
+        res = cube1.merge_cubes(cube2)
+        stitched = res.pyramid.levels[0].to_spatial_layer().stitch()
+        assert stitched.cells.shape[0] == 2
+        np.testing.assert_array_equal(red_ramp, stitched.cells[0, 0:4, 0:4])        
+        np.testing.assert_array_equal(nir_ramp, stitched.cells[1, 0:4, 0:4])        
+        

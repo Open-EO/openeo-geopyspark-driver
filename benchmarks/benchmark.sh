@@ -12,8 +12,8 @@ export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
 
 hdfsVenvZip=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
-extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/1.3.0-SNAPSHOT/geotrellis-extensions-1.3.0-SNAPSHOT.jar
-backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.5-openeo.jar
+extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.2.0-SNAPSHOT/geotrellis-extensions-2.2.0-SNAPSHOT.jar
+backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar
 
 script_dir=$(dirname "$0")
 base_dir="${script_dir}/.."
@@ -34,7 +34,6 @@ spark-submit \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 --conf spark.executorEnv.XDG_DATA_DIRS=/opt/rh/rh-python35/root/usr/share \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/rh/rh-python35/root/usr/lib64 --conf spark.yarn.appMasterEnv.XDG_DATA_DIRS=/opt/rh/rh-python35/root/usr/share \
- --conf spark.executorEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis --conf spark.yarn.appMasterEnv.DRIVER_IMPLEMENTATION_PACKAGE=openeogeotrellis \
  --conf spark.driver.extraJavaOptions="-Dpixels.treshold=0" \
  --files "${base_dir}/scripts/log4j.properties","${base_dir}/layercatalog.json" \
  --archives "${hdfsVenvZip}#venv" \

@@ -1,5 +1,6 @@
 import numbers
 from collections import OrderedDict
+from typing import Union
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
@@ -14,12 +15,14 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         #process list to keep track of processes, so this class has a double function
         self.processes = OrderedDict()
 
-    def enterProcess(self, process_id: str, arguments: dict):
+    def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
         self.builder.expressionStart(process_id, arguments)
+        # TODO: store/use namespace?
         self.processes[process_id] = arguments
         return self
 
-    def leaveProcess(self, process_id: str, arguments: dict):
+    def leaveProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
+        # TODO: store/use namespace?
         self.builder.expressionEnd(process_id, arguments)
         return self
 
@@ -29,6 +32,10 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
 
     def leaveArgument(self, argument_id: str, value):
         self.builder.argumentEnd()
+        return self
+
+    def from_parameter(self,parameter_id:str):
+        self.builder.fromParameter(parameter_id)
         return self
 
     def constantArgument(self, argument_id: str, value):

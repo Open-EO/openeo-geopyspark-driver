@@ -13,11 +13,13 @@ pythonPipeline {
   wipeout_workspace = true
   hadoop = true
   pre_test_script = 'pre_test.sh'
-  extra_env_variables = 'TRAVIS=1'
+  extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/java/default']
   python_version = ["3.6"]
-  downstream_job = 'geo.OpenEO/openeo-geopyspark-integrationtests'
+  docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
+  downstream_job = 'geo.openEO_all/geo.openeo_integrationtests'
   wheel_repo = 'python-openeo'
   wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
   extras_require = 'dev'
+  upload_dev_wheels = false
 }

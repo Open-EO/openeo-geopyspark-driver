@@ -1,0 +1,91 @@
+---
+apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+  name: {{ job_name }}
+  namespace: spark-jobs
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: {{ image_name }}
+  imagePullPolicy: Always
+  mainApplicationFile: local:///usr/local/lib/python3.7/dist-packages/openeogeotrellis/deploy/batch_job.py
+  arguments:
+    - "{{ job_specification }}"
+    - "{{ output_dir }}"
+    - "{{ output_file }}"
+    - "{{ log_file }}"
+    - "{{ metadata_file }}"
+    - "{{ api_version }}"
+  sparkConf:
+    "spark.extraListeners": "org.openeo.sparklisteners.CancelRunawayJobListener"
+    "spark.rpc.message.maxSize": "200"
+    "spark.rdd.compress": "true"
+    "spark.driver.maxResultSize": "5g"
+    "spark.blacklist.enabled": "true"
+    "spark.speculation": "true"
+    "spark.speculation.interval": "5000ms"
+    "spark.speculation.multiplier": "4"
+  sparkVersion: "2.4.5"
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 0
+    onFailureRetryInterval: 10
+    onSubmissionFailureRetries: 5
+    onSubmissionFailureRetryInterval: 20
+  volumes:
+    - name: "eodata"
+      hostPath:
+        path: "/eodata"
+        type: DirectoryOrCreate
+  driver:
+    envVars:
+      OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
+      KUBE: "true"
+      AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
+      AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
+      SWIFT_URL: {{ swift_url }}
+      SWIFT_BUCKET: {{ swift_bucket }}
+      ZOOKEEPERNODES: {{ zookeeper_nodes }}
+    cores: {{ driver_cores }}
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.debug=true"
+    memory: "{{ driver_memory }}"
+    labels:
+      version: 2.4.5
+      name: {{ job_id }}-driver
+    serviceAccount: openeo
+    volumeMounts:
+      - name: "eodata"
+        mountPath: "/eodata"
+      - name: "testdata"
+        mountPath: "/data"
+  executor:
+    envVars:
+      OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
+      KUBE: "true"
+      AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
+      AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
+      SWIFT_URL: {{ swift_url }}
+      SWIFT_BUCKET: {{ swift_bucket }}
+      ZOOKEEPERNODES: {{ zookeeper_nodes }}
+    cores: {{ executor_cores }}
+    instances: 1
+    memory: "{{ executor_memory }}"
+    labels:
+      version: 2.4.5
+    volumeMounts:
+      - name: "eodata"
+        mountPath: "/eodata"
+  deps:
+    jars:
+      - 'local:///opt/geotrellis-extensions-2.2.0-SNAPSHOT.jar'
+      - 'local:///opt/geotrellis-backend-assembly-0.4.6-openeo.jar'
+    files:
+      - 'local:///opt/layercatalog.json'
+  monitoring:
+    exposeDriverMetrics: true
+    exposeExecutorMetrics: true
+    prometheus:
+      jmxExporterJar: "/opt/jmx_prometheus_javaagent-0.13.0.jar"
+      port: 8090
