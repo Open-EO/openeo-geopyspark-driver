@@ -93,6 +93,7 @@ def test_load_collection_old_and_new_band_names(get_jvm):
         assert len(collection.metadata.bands) == 1
         assert collection.metadata.bands[0].name == bands[0]
         assert collection.metadata.bands[0].aliases == ['TOC-B03_10M']
+        assert collection.metadata.temporal_dimension.extent == ('2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00')
 
 
 def test_create_params():
