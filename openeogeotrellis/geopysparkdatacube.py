@@ -517,7 +517,7 @@ class GeopysparkDataCube(DriverDataCube):
         pass
 
     def aggregate_temporal(
-            self, intervals: List, labels: List, reducer, dimension: str = None
+            self, intervals: List, labels: List, reducer, dimension: str = None, context:dict = None
     ) -> 'GeopysparkDataCube':
         """ Computes a temporal aggregation based on an array of date and/or time intervals.
 
@@ -544,11 +544,27 @@ class GeopysparkDataCube(DriverDataCube):
                     date_list.append(date)
         intervals_iso = [ reformat_date(date) for date in date_list  ]
         labels_iso = list(map(lambda l:pd.to_datetime(l).strftime('%Y-%m-%dT%H:%M:%SZ'), labels))
+
         pysc = gps.get_spark_context()
-        mapped_keys = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
-        reducer = self._normalize_temporal_reducer(dimension, reducer)
-        return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(reducer, dict):
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+
+        if isinstance(reducer, str):
+            #deprecated codepath: only single process reduces
+            pysc = gps.get_spark_context()
+            mapped_keys = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd,level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapInstantToInterval(rdd,intervals_iso,labels_iso))
+            reducer = self._normalize_temporal_reducer(dimension, reducer)
+            return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
+        elif isinstance(reducer, GeotrellisTileProcessGraphVisitor):
+            return self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().aggregateTemporal(rdd,
+                                                                                                          intervals_iso,
+                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {}))
+        else:
+            raise FeatureUnsupportedException("Unsupported type of reducer in aggregate_temporal: " + str(reducer))
+
 
     @classmethod
     def _transform_metadata(cls,layer_or_metadata, cellType = None):

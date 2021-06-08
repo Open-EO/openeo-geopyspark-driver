@@ -298,6 +298,24 @@ class TestMultipleDates(TestCase):
         interval_list = ["2017-01-01", "2018-01-01"]
         self._test_aggregate_temporal(interval_list)
 
+    def _median_reducer(self):
+        from openeo.processes import median
+        builder = median({"from_argument": "data"})
+        return builder.flat_graph()
+
+    def test_aggregate_temporal_median(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        stitched = (
+            imagecollection.aggregate_temporal(["2015-01-01", "2018-01-01"], ["2017-01-03"], self._median_reducer(), dimension="t")
+                .pyramid.levels[0].to_spatial_layer().stitch()
+        )
+        print(stitched)
+        expected_median = np.median([self.tile.cells, self.tile2.cells, self.tile.cells], axis=0)
+        #TODO nodata handling??
+        assert_array_almost_equal(stitched.cells[0, 1:2, 1:2], expected_median[ 1:2, 1:2])
+
+
     def _test_aggregate_temporal(self, interval_list):
         input = Pyramid({0: self.tiled_raster_rdd})
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
