@@ -27,6 +27,7 @@ dictConfig({
         'handlers': ['wsgi']
     },
     'loggers': {
+        "gunicorn": {"level": "INFO"},
         'werkzeug': {'level': 'DEBUG'},
         'flask': {'level': 'DEBUG'},
         'openeo': {'level': 'DEBUG'},
