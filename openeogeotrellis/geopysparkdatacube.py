@@ -228,7 +228,7 @@ class GeopysparkDataCube(DriverDataCube):
                 context = convert_node(context, env=env)
                 pysc = gps.get_spark_context()
                 return self._apply_to_levels_geotrellis_rdd(
-                    lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context))
+                    lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context if isinstance(context,dict) else {}))
             elif dimension == self.metadata.band_dimension.name:
                 return self._apply_bands_dimension(process)
             else:
