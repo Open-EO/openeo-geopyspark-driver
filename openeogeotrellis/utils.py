@@ -49,15 +49,12 @@ def get_jvm() -> JVMView:
     return jvm
 
 
-def kerberos():
-    import geopyspark as gps
+def kerberos(principal, key_tab, jvm: JVMView = None):
+    if jvm is None:
+        jvm = get_jvm()
 
     if 'HADOOP_CONF_DIR' not in os.environ:
         logger.warning('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
-
-    sc = gps.get_spark_context()
-    gateway = JavaGateway(gateway_parameters=sc._gateway.gateway_parameters)
-    jvm = gateway.jvm
 
     hadoop_auth = jvm.org.apache.hadoop.conf.Configuration().get('hadoop.security.authentication')
     if hadoop_auth != 'kerberos':
@@ -71,10 +68,8 @@ def kerberos():
     ))
     # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().getAuthenticationMethod().toString())
 
-    principal = sc.getConf().get("spark.yarn.principal")
-    sparkKeytab = sc.getConf().get("spark.yarn.keytab")
-    if principal is not None and sparkKeytab is not None:
-        jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal, sparkKeytab)
+    if principal is not None and key_tab is not None:
+        jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal, key_tab)
         jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().setAuthenticationMethod(
             jvm.org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS)
     # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().toString())

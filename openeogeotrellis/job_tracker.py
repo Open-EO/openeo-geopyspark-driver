@@ -40,8 +40,7 @@ class JobTracker:
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
-        # TODO: get rid of dependency on catalog
-        self._batch_jobs = GpsBatchJobs(catalog=get_layer_catalog(opensearch_enrich=False))
+        self._batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=False), jvm, principal, keytab)
         self._jvm = jvm
 
     def loop_update_statuses(self, interval_s: int = 60):
@@ -70,10 +69,14 @@ class JobTracker:
         with self._job_registry() as registry:
             jobs_to_track = registry.get_running_jobs()
 
-            for job in jobs_to_track:
+            for job_info in jobs_to_track:
                 try:
-                    job_id, user_id = job['job_id'], job['user_id']
-                    application_id, current_status = job['application_id'], job['status']
+                    job_id, user_id = job_info['job_id'], job_info['user_id']
+                    application_id, current_status = job_info['application_id'], job_info['status']
+
+                    if job_info.get('dependency_status') in ['awaiting', "awaiting_retry"]:
+                        self._batch_jobs._poll_sentinelhub_batch_processes(job_id, user_id, job_info)  # TODO: move that logic to here
+                        return
 
                     if application_id:
                         try:
@@ -130,7 +133,7 @@ class JobTracker:
                                     if new_status == 'finished':
                                         subfolders = [dependency.get('subfolder')
                                                       or dependency['batch_request_id']
-                                                      for dependency in job.get('dependencies') or []]
+                                                      for dependency in job_info.get('dependencies') or []]
 
                                         self._delete_batch_process_results(job_id, subfolders)
                                         registry.remove_dependencies(job_id, user_id)
@@ -302,7 +305,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--py4j-jarpath", default="venv36/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
-    parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar", help='Classpath used to launch the Java Gateway')
+    parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
+                        help='Classpath used to launch the Java Gateway')
+    parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
+    parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
+                        help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
     try:
@@ -311,7 +318,7 @@ if __name__ == '__main__':
                                                   javaopts=["-client"],
                                                   die_on_exit=True)
 
-        JobTracker(JobRegistry, principal="", keytab="", jvm=java_gateway.jvm).update_statuses()
+        JobTracker(JobRegistry, args.principal, args.keytab, java_gateway.jvm).update_statuses()
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e

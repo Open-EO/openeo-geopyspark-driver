@@ -15,7 +15,8 @@ _log = logging.getLogger(__name__)
 def remove_batch_jobs_before(upper: datetime) -> None:
     _log.info("removing batch jobs before {d}...".format(d=upper))
 
-    batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=False))
+    # TODO: how to cope with unneeded arguments?
+    batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=None, key_tab=None)
     batch_jobs.delete_jobs_before(upper)
 
 

@@ -94,7 +94,10 @@ def main(argv: List[str]) -> None:
             process_graph = _huge_vector_file_time_series(vector_file, start_date, end_date).graph
 
             def evaluate() -> Dict:
-                kerberos()
+                principal = sc.getConf().get("spark.yarn.principal")
+                key_tab = sc.getConf().get("spark.yarn.keytab")
+
+                kerberos(principal, key_tab)
                 return ProcessGraphDeserializer.evaluate(process_graph, env=env)
 
             def combine_iterations(acc: (Dict, float), i: int) -> (Dict, float):
