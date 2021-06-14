@@ -321,7 +321,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "GTiff": {
                     "title": "GeoTiff",
                     "gis_data_types": ["raster"],
-                    "parameters": {},
+                    "parameters": {
+                        "tile_grid": {
+                            "type": "string",
+                            "description": "Specifies the tile grid to use, for batch jobs only. By default, no tile grid is set, and one Geotiff is generated per date. If a tile grid is set, multiple geotiffs are generated per date, as defined by the specified tiling grid.",
+                            "default": "none",
+                            "enum": ["wgs84-1degree","utm-100km","utm-20km","utm-10km"]
+                        },
+                        "ZLEVEL": {
+                            "type": "string",
+                            "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
+                            "default": "6"
+                        }
+                    },
                 },
                 "PNG": {
                     "title": "Portable Network Graphics",
