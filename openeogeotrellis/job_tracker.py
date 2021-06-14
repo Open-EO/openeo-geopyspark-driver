@@ -7,6 +7,8 @@ import traceback
 import time
 from collections import namedtuple
 from datetime import datetime
+
+import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339
 import re
 from py4j.java_gateway import JavaGateway, JVMView
@@ -297,6 +299,7 @@ if __name__ == '__main__':
     import argparse
 
     logging.basicConfig(level=logging.INFO)
+    openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
 
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
