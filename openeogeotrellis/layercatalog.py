@@ -43,9 +43,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             raise OpenEOApiException(message="""Process "sar_backscatter" is not applicable for collection {c}."""
                                      .format(c=collection_id), status_code=400)
 
-        # TODO is it necessary to do this kerberos stuff here?
-        kerberos()
-
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
         native_crs = layer_source_info.get("native_crs","UTM")

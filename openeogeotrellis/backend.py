@@ -18,12 +18,13 @@ from typing import Callable, Dict, Tuple
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
+from pyspark import SparkContext
 from pyspark.version import __version__ as pysparkversion
 
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.users import User
 from openeogeotrellis import sentinel_hub
-from py4j.java_gateway import JavaGateway
+from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
@@ -251,16 +252,24 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         catalog = get_layer_catalog(opensearch_enrich=True)
 
+        jvm = gps.get_spark_context()._gateway.jvm
+
+        conf = SparkContext.getOrCreate().getConf()
+        principal = conf.get("spark.yarn.principal", conf.get("spark.kerberos.principal"))
+        key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
+
         super().__init__(
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=catalog,
-            batch_jobs=GpsBatchJobs(catalog),
+            batch_jobs=GpsBatchJobs(catalog, jvm, principal, key_tab),
             user_defined_processes=UserDefinedProcesses(user_defined_process_repository),
             processing=ConcreteProcessing()
         )
 
+        self._principal = principal
+        self._key_tab = key_tab
+
     def health_check(self) -> str:
-        from pyspark import SparkContext
         sc = SparkContext.getOrCreate()
         count = sc.parallelize([1, 2, 3]).map(lambda x: x * x).sum()
         return 'Health check: ' + str(count)
@@ -353,7 +362,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         date_regex = options['date_regex']
 
         if glob_pattern.startswith("hdfs:"):
-            kerberos()
+            kerberos(self._principal, self._key_tab)
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -440,9 +449,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 class GpsBatchJobs(backend.BatchJobs):
     _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
 
-    def __init__(self, catalog: CollectionCatalog):
+    def __init__(self, catalog: CollectionCatalog, jvm: JVMView, principal: str, key_tab: str):
         super().__init__()
         self._catalog = catalog
+        self._jvm = jvm
+        self._principal = principal
+        self._key_tab = key_tab
 
     def create_job(
             self, user_id: str, process: dict, api_version: str,
@@ -472,12 +484,6 @@ class GpsBatchJobs(backend.BatchJobs):
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user.user_id)
 
-        # FIXME: for now, the assumption is that the client will call this on a regular basis
-        # an external process can poll SHub, schedule a Spark job if all DONE and stop -> no unnecessary invocations
-        # but this one has to keep state somewhere to prevent it from doing this
-        if job_info.get('dependency_status') in ['awaiting', "awaiting_retry"]:
-            self._poll_sentinelhub_batch_processes(job_id, user, job_info)
-
         return JobRegistry.job_info_to_metadata(job_info)
 
     def _get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
@@ -486,9 +492,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return JobRegistry.job_info_to_metadata(job_info)
 
-    def _poll_sentinelhub_batch_processes(self, job_id: str, user: User, job_info: dict):
-        user_id = user.user_id
-
+    def _poll_sentinelhub_batch_processes(self, job_id: str, user_id: str, job_info: dict):
         def batch_request_statuses(batch_process_dependency: dict) -> List[Tuple[str, Callable[[], None]]]:
             """returns a (status, retrier) for each batch request ID in the dependency"""
             collection_id = batch_process_dependency['collection_id']
@@ -500,8 +504,7 @@ class GpsBatchJobs(backend.BatchJobs):
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
 
-            jvm = gps.get_spark_context()._gateway.jvm
-            batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+            batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                 endpoint, ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
@@ -534,7 +537,7 @@ class GpsBatchJobs(backend.BatchJobs):
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'available')
 
-            self._start_job(job_id, user, dependencies)
+            self._start_job(job_id, user_id, dependencies)
         elif all(status in ["DONE", "PARTIAL"] for status, _ in statuses):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
                 with JobRegistry() as registry:
@@ -588,13 +591,16 @@ class GpsBatchJobs(backend.BatchJobs):
         return py_files
 
     def start_job(self, job_id: str, user: User):
-        self._start_job(job_id, user)
+        proxy_user = self.get_proxy_user(user)
 
-    def _start_job(self, job_id: str, user: User, batch_process_dependencies: Union[list, None] = None):
-        from pyspark import SparkContext
+        if proxy_user:
+            with JobRegistry() as registry:
+                # TODO: add dedicated method
+                registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
 
-        user_id = user.user_id
+        self._start_job(job_id, user.user_id)
 
+    def _start_job(self, job_id: str, user_id: str, batch_process_dependencies: Union[list, None] = None):
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
@@ -649,11 +655,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 return ",".join(tuples)
 
             if not ConfigParams().is_kube_deploy:
-                kerberos()
-
-            conf = SparkContext.getOrCreate().getConf()
-
-            principal, key_tab = conf.get("spark.yarn.principal",conf.get("spark.kerberos.principal")), conf.get("spark.yarn.keytab",conf.get("spark.kerberos.keytab"))
+                kerberos(self._principal, self._key_tab)
 
             if ConfigParams().is_kube_deploy:
                 import yaml
@@ -747,14 +749,14 @@ class GpsBatchJobs(backend.BatchJobs):
                             JOB_METADATA_FILENAME,
                             ]
 
-                    if principal is not None and key_tab is not None:
-                        args.append(principal)
-                        args.append(key_tab)
+                    if self._principal is not None and self._key_tab is not None:
+                        args.append(self._principal)
+                        args.append(self._key_tab)
                     else:
                         args.append("no_principal")
                         args.append("no_keytab")
 
-                    args.append(self.get_proxy_user(user) or user_id)
+                    args.append(job_info.get('proxy_user') or user_id)
 
                     if api_version:
                         args.append(api_version)
@@ -803,6 +805,7 @@ class GpsBatchJobs(backend.BatchJobs):
         else:
             raise _BatchJobError(stream)
 
+    # TODO: encapsulate this SHub stuff in a dedicated class?
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
                                                job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
@@ -880,9 +883,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     else:
                         continue  # skip SHub batch process and use sync approach instead
 
-                    jvm = gps.get_spark_context()._gateway.jvm
-
-                    sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
+                    sample_type = self._jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                         layer_source_info.get('sample_type', 'UINT16'))
 
                     from_date, to_date = [normalize_date(d) for d in constraints['temporal_extent']]
@@ -891,9 +892,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     south = spatial_extent['south']
                     east = spatial_extent['east']
                     north = spatial_extent['north']
-                    bbox = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
+                    bbox = self._jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
 
-                    batch_processing_service = jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
+                    batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                         layer_source_info['endpoint'],
                         ConfigParams().sentinel_hub_batch_bucket,
                         layer_source_info['client_id'], layer_source_info['client_secret'])

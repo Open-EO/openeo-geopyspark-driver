@@ -262,7 +262,10 @@ def main(argv: List[str]) -> None:
                 .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
         with SparkContext(conf=conf) as sc:
-            kerberos()
+            principal = sc.getConf().get("spark.yarn.principal")
+            key_tab = sc.getConf().get("spark.yarn.keytab")
+
+            kerberos(principal, key_tab)
             
             def run_driver(): 
                 run_job(
