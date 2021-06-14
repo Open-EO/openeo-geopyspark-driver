@@ -312,10 +312,15 @@ if __name__ == '__main__':
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
+    java_opts = [
+        "-client",
+        "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+    ]
+
     try:
         java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
                                                   classpath=args.py4j_classpath,
-                                                  javaopts=["-client"],
+                                                  javaopts=java_opts,
                                                   die_on_exit=True)
 
         JobTracker(JobRegistry, args.principal, args.keytab, java_gateway.jvm).update_statuses()
