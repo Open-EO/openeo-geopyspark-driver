@@ -305,10 +305,15 @@ if __name__ == '__main__':
     parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar", help='Classpath used to launch the Java Gateway')
     args = parser.parse_args()
 
+    java_opts = [
+        "-client",
+        "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+    ]
+
     try:
         java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
                                                   classpath=args.py4j_classpath,
-                                                  javaopts=["-client"],
+                                                  javaopts=java_opts,
                                                   die_on_exit=True)
 
         JobTracker(JobRegistry, principal="", keytab="", jvm=java_gateway.jvm).update_statuses()

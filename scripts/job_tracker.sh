@@ -6,6 +6,7 @@ source venv36/bin/activate
 
 export SPARK_HOME=$(find_spark_home.py)
 export OPENEO_CATALOG_FILES="venv36/layercatalog.json"
+export AWS_REGION="eu-central-1"
 export AWS_ACCESS_KEY_ID="???"
 export AWS_SECRET_ACCESS_KEY="!!!"
 
