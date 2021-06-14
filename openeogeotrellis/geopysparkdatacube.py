@@ -182,6 +182,10 @@ class GeopysparkDataCube(DriverDataCube):
             metadata=self.metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
         )
 
+    def filter_spatial(self, geometries) -> 'GeopysparkDataCube':
+        #not sure if we can update the metadata here
+        return self
+
     def filter_bands(self, bands) -> 'GeopysparkDataCube':
         band_indices = [self.metadata.get_band_index(b) for b in bands]
         _log.info("filter_bands({b!r}) -> indices {i!r}".format(b=bands, i=band_indices))
@@ -1129,7 +1133,12 @@ class GeopysparkDataCube(DriverDataCube):
                     if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                         directory = pathlib.Path(filename).parent
                         filename = str(directory)
-                        self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
+                        if tile_grid:
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
+                                spatial_rdd.srdd.rdd(), filename,
+                                tile_grid, self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel))
+                        else:
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
                                                                                       filename, zlevel,
                                                                                       self._get_jvm().scala.Option.apply(
                                                                                           crop_extent))
