@@ -228,6 +228,26 @@ class TestDownload(TestCase):
         assert 2 == len(asset['bands'])
         assert 'image/tiff; application=geotiff' == asset['type']
 
+    def test_write_assets_samples_netcdf(self):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'netCDF'
+
+        res = imagecollection.write_assets(str(self.temp_folder / "test_download_result.") + format, format=format,format_options={
+            "batch_mode":True,
+            "geometries":geojson_to_geometry(self.features),
+            "sample_by_feature": True,
+            "feature_id_property": 'id'
+        })
+        assert len(res) == 3
+        name,asset = res.popitem()
+        file = asset['href']
+        assert asset['nodata'] == -1
+        assert asset['roles'] == ['data']
+        assert 2 == len(asset['bands'])
+        assert 'application/x-netcdf' == asset['type']
 
 
 

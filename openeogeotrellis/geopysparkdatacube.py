@@ -1104,9 +1104,9 @@ class GeopysparkDataCube(DriverDataCube):
         tile_grid = format_options.get("tile_grid", "")
         sample_by_feature = format_options.get("sample_by_feature", False)
         feature_id_property = format_options.get("feature_id_property", False)
+        batch_mode = format_options.get("batch_mode", False)
 
         if format in ["GTIFF", "PNG"]:
-            batch_mode = format_options.get("batch_mode", False)
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch) :
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
@@ -1199,26 +1199,55 @@ class GeopysparkDataCube(DriverDataCube):
                     self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename)
 
         elif format == "NETCDF":
-            if not tiled:
-                result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
-            else:
-                result=self._collect_as_xarray(spatial_rdd)
 
-            batch_mode = format_options.get("batch_mode", False)
-            if batch_mode:
+            if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL and sample_by_feature:
+                _log.info("Output one netCDF file per feature.")
+                geometries = format_options['geometries']
+                projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
+                labels = [str(x) for x in range(len(geometries))]
                 directory = pathlib.Path(filename).parent
-                filename = str(directory / "openEO.nc")
-            XarrayIO.to_netcdf_file(array=result, path=filename)
-            if batch_mode:
-                asset = {
-                    "href": filename,
-                    "roles": ["data"],
-                    "type": "application/x-netcdf"
-                }
-                if self.metadata.has_band_dimension():
-                    bands = [b._asdict() for b in self.metadata.bands]
-                    asset["bands"] = bands
-                return { "openEO.nc": asset}
+                band_names = self.metadata.band_names if self.metadata.has_band_dimension() else ["var"]
+
+                asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(spatial_rdd.srdd.rdd(),
+                                                                                                str(directory),
+                                                                                                projected_polygons,
+                                                                                                labels,
+                                                                                                band_names
+                                                                                                )
+                asset_paths = [pathlib.Path(asset_paths.get(i)) for i in range(len(asset_paths))]
+                assets = {}
+                max_level = self.pyramid.levels[self.pyramid.max_zoom]
+                nodata = max_level.layer_metadata.no_data_value
+                for p in asset_paths:
+                    assets[p.name] = {
+                        "href": str(p),
+                        "type":  "application/x-netcdf",
+                        "roles": ["data"],
+                        'bands': band_names,
+                        'nodata': nodata,
+                    }
+                return assets
+            else:
+                if not tiled:
+                    result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+                else:
+                    result=self._collect_as_xarray(spatial_rdd)
+
+
+                if batch_mode:
+                    directory = pathlib.Path(filename).parent
+                    filename = str(directory / "openEO.nc")
+                XarrayIO.to_netcdf_file(array=result, path=filename)
+                if batch_mode:
+                    asset = {
+                        "href": filename,
+                        "roles": ["data"],
+                        "type": "application/x-netcdf"
+                    }
+                    if self.metadata.has_band_dimension():
+                        bands = [b._asdict() for b in self.metadata.bands]
+                        asset["bands"] = bands
+                    return { "openEO.nc": asset}
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
