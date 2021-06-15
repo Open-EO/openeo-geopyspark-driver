@@ -504,7 +504,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return JobRegistry.job_info_to_metadata(job_info)
 
-    def _poll_sentinelhub_batch_processes(self, job_id: str, user_id: str, job_info: dict):
+    def poll_sentinelhub_batch_processes(self, job_info: dict) -> bool:
+        """ Returns True if this job depends on ongoing SHub batch processes. """
+        if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
+            return False
+
+        # TODO: split polling logic and resuming logic?
+        job_id, user_id = job_info['job_id'], job_info['user_id']
+
         def batch_request_statuses(batch_process_dependency: dict) -> List[Tuple[str, Callable[[], None]]]:
             """returns a (status, retrier) for each batch request ID in the dependency"""
             collection_id = batch_process_dependency['collection_id']
@@ -573,6 +580,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_info['status'] = 'error'  # TODO: avoid mutation
         else:  # still some in progress and none FAILED yet: continue polling
             pass
+
+        return True
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with JobRegistry() as registry:
