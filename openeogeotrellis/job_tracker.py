@@ -304,7 +304,8 @@ if __name__ == '__main__':
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
 
-    _log.addHandler(handler)
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--py4j-jarpath", default="venv36/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
@@ -315,6 +316,7 @@ if __name__ == '__main__':
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
+    # TODO: make this configurable as well?
     java_opts = [
         "-client",
         "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"

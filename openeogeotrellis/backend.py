@@ -524,7 +524,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
             def retrier(request_id: str) -> Callable[[], None]:
                 def retry():
-                    logger.warning(f"retrying Sentinel Hub batch process {request_id} for batch job {job_id}")
+                    logger.warning(f"retrying Sentinel Hub batch process {request_id} for batch job {job_id}",
+                                   extra={'job_id': job_id})
                     batch_processing_service.restart_partially_failed_batch_process(request_id)
 
                 return retry
@@ -536,7 +537,7 @@ class GpsBatchJobs(backend.BatchJobs):
         statuses = reduce(operator.add, (batch_request_statuses(batch_process) for batch_process in dependencies))
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
-                     .format(j=job_id, ss=[status for status, _ in statuses]))
+                     .format(j=job_id, ss=[status for status, _ in statuses]), extra={'job_id': job_id})
 
         if any(status == "FAILED" for status, _ in statuses):  # at least one failed: not recoverable
             with JobRegistry() as registry:
@@ -787,19 +788,20 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(self.get_submit_py_files())
 
                     try:
-                        logger.info("Submitting job: {a!r}".format(a=args))
+                        logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
                         output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
                     except CalledProcessError as e:
-                        logger.exception(e)
-                        logger.error(e.stdout)
-                        logger.error(e.stderr)
+                        logger.exception(e, extra={'job_id': job_id})
+                        logger.error(e.stdout, extra={'job_id': job_id})
+                        logger.error(e.stderr, extra={'job_id': job_id})
                         raise e
 
                 try:
                     # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-                    logger.info(output_string)
+                    logger.info(output_string, extra={'job_id': job_id})
                     application_id = self._extract_application_id(output_string)
-                    print("mapped job_id %s to application ID %s" % (job_id, application_id))
+                    logger.info("mapped job_id %s to application ID %s" % (job_id, application_id),
+                                extra={'job_id': job_id})
 
                     registry.set_application_id(job_id, user_id, application_id)
                     registry.set_status(job_id, user_id, 'queued')
@@ -840,7 +842,8 @@ class GpsBatchJobs(backend.BatchJobs):
         convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer}))
 
         source_constraints = dry_run_tracer.get_source_constraints()
-        logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
+        logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
+                    extra={'job_id': job_id})
 
         batch_process_dependencies = []
 
@@ -889,9 +892,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if card4l:
                         logger.info("deemed batch job {j} CARD4L compliant ({s})".format(j=job_id,
-                                                                                         s=sar_backscatter_arguments))
+                                                                                         s=sar_backscatter_arguments),
+                                    extra={'job_id': job_id})
                     elif area() >= 50 * 1000 * 50 * 1000:  # 50x50 km
-                        logger.info("deemed batch job {j} AOI large enough ({a} m²)".format(j=job_id, a=area()))
+                        logger.info("deemed batch job {j} AOI large enough ({a} m²)".format(j=job_id, a=area()),
+                                    extra={'job_id': job_id})
                     else:
                         continue  # skip SHub batch process and use sync approach instead
 
@@ -963,7 +968,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         subfolder = batch_request_ids[0]
 
                     logger.info("scheduled Sentinel Hub batch process(es) {bs} for batch job {j} (CARD4L {c})"
-                                .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"))
+                                .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"),
+                                extra={'job_id': job_id})
 
                     batch_process_dependencies.append({
                         'collection_id': collection_id,
@@ -1039,7 +1045,8 @@ class GpsBatchJobs(backend.BatchJobs):
             with open(metadata_file) as f:
                 return json.load(f)
         except FileNotFoundError:
-            logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True)
+            logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True,
+                           extra={'job_id': job_id})
 
         return {}
 
@@ -1081,11 +1088,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 )
 
                 logger.debug("Killed corresponding Spark job {s} for job {j}: {a!r}".format(s=application_id, j=job_id,
-                                                                                            a=kill_spark_job.args))
+                                                                                            a=kill_spark_job.args),
+                             extra={'job_id': job_id})
             except CalledProcessError as e:
                 logger.warning(
                     "Could not kill corresponding Spark job {s} for job {j}".format(s=application_id, j=job_id),
-                    exc_info=e)
+                    exc_info=e, extra={'job_id': job_id})
             finally:
                 with JobRegistry() as registry:
                     registry.set_status(job_id, user_id, 'canceled')
@@ -1123,12 +1131,12 @@ class GpsBatchJobs(backend.BatchJobs):
             if propagate_errors:
                 raise
             else:
-                logger.warning("Could not delete {p}".format(p=job_dir), exc_info=e)
+                logger.warning("Could not delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
 
-        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id))
+        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
         with JobRegistry() as registry:
