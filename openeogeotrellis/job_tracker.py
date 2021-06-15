@@ -78,7 +78,7 @@ class JobTracker:
 
                     if job_info.get('dependency_status') in ['awaiting', "awaiting_retry"]:
                         self._batch_jobs._poll_sentinelhub_batch_processes(job_id, user_id, job_info)  # TODO: move that logic to here
-                        return
+                        continue
 
                     if application_id:
                         try:

@@ -55,6 +55,7 @@ export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
+# TODO: something wrong with this logic, when the file is missing, backend_assembly is not passed to spark-submit
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar

@@ -667,7 +667,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 return ",".join(tuples)
 
             if not ConfigParams().is_kube_deploy:
-                kerberos(self._principal, self._key_tab)
+                kerberos(self._principal, self._key_tab, self._jvm)
 
             if ConfigParams().is_kube_deploy:
                 import yaml
