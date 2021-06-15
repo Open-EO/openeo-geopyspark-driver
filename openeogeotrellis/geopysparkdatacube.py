@@ -1102,6 +1102,8 @@ class GeopysparkDataCube(DriverDataCube):
         stitch = format_options.get("stitch", False)
         catalog = format_options.get("parameters", {}).get("catalog", False)
         tile_grid = format_options.get("tile_grid", "")
+        sample_by_feature = format_options.get("sample_by_feature", False)
+        feature_id_property = format_options.get("feature_id_property", False)
 
         if format in ["GTIFF", "PNG"]:
             batch_mode = format_options.get("batch_mode", False)
@@ -1133,15 +1135,26 @@ class GeopysparkDataCube(DriverDataCube):
                     if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                         directory = pathlib.Path(filename).parent
                         filename = str(directory)
+                        compression = self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
+                            zlevel)
+                        asset_paths = None
                         if tile_grid:
                             self._get_jvm().org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
                                 spatial_rdd.srdd.rdd(), filename,
-                                tile_grid, self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel))
+                                tile_grid, compression)
+                        elif sample_by_feature:
+                            #EP-3874 user requests to output data by polygon
+                            _log.info("Output one tiff file per feature and timestamp.")
+                            geometries = format_options['geometries']
+                            projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
+                            labels = [str(x) for x in range(len(geometries))]
+                            asset_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(spatial_rdd.srdd.rdd(), filename,projected_polygons,labels,compression)
+                            asset_paths = [pathlib.Path(asset_paths.get(i)) for i in range(len(asset_paths))]
                         else:
                             self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
-                                                                                      filename, zlevel,
-                                                                                      self._get_jvm().scala.Option.apply(
-                                                                                          crop_extent))
+                                                                                                  filename, zlevel,
+                                                                                                  self._get_jvm().scala.Option.apply(
+                                                                                                      crop_extent))
                         assets = {}
                         bands = []
                         if self.metadata.has_band_dimension():
@@ -1149,11 +1162,14 @@ class GeopysparkDataCube(DriverDataCube):
                         max_level = self.pyramid.levels[self.pyramid.max_zoom]
                         nodata = max_level.layer_metadata.no_data_value
 
-                        for p in directory.glob('openEO*.tif'):
+                        if asset_paths == None:
+                            asset_paths = directory.glob('openEO*.tif')
+
+                        for p in asset_paths:
                             assets[p.name] = {
-                                "href":str(p),
-                                "type":"image/tiff; application=geotiff",
-                                "roles":["data"],
+                                "href": str(p),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"],
                                 'bands': bands,
                                 'nodata': nodata,
                             }

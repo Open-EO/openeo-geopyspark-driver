@@ -1,4 +1,5 @@
 import datetime
+import json
 from pathlib import Path
 from unittest import TestCase, skip
 
@@ -7,12 +8,14 @@ import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from openeo_driver.utils import geojson_to_geometry
 from pyspark import SparkContext
 from shapely import geometry
 from shapely.geometry import Point
 
 from openeo.metadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from tests.data import get_test_data_file
 
 
 class TestDownload(TestCase):
@@ -193,6 +196,31 @@ class TestDownload(TestCase):
             "batch_mode":True
         })
         assert 1 == len(res)
+        name,asset = res.popitem()
+        file = asset['href']
+        assert asset['nodata'] == -1
+        assert asset['roles'] == ['data']
+        assert 2 == len(asset['bands'])
+        assert 'image/tiff; application=geotiff' == asset['type']
+
+    with get_test_data_file("geometries/polygons02.geojson").open() as f:
+        features = json.load(f)
+
+    def test_write_assets_samples(self):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'GTiff'
+
+        res = imagecollection.write_assets(str(self.temp_folder / "test_download_result.") + format, format=format,format_options={
+            "multidate":True,
+            "batch_mode":True,
+            "geometries":geojson_to_geometry(self.features),
+            "sample_by_feature": True,
+            "feature_id_property": 'id'
+        })
+        assert len(res) == 3
         name,asset = res.popitem()
         file = asset['href']
         assert asset['nodata'] == -1

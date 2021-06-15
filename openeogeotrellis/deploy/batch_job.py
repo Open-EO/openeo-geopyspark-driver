@@ -327,6 +327,10 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     assets_metadata = None
     if('write_assets' in dir(result)):
         result.options["batch_mode"] = True
+        if( result.options.get("sample_by_feature")):
+            result.options["geometries"] = tracer.get_geometries("filter_spatial")
+            if(result.options["geometries"] == None):
+                logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
         assets_metadata = result.write_assets(str(output_file))
         for name,asset in assets_metadata.items():
             _add_permissions(Path(asset["href"]), stat.S_IWGRP)
