@@ -30,7 +30,8 @@ from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
+    ProcessParameterInvalidException
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
@@ -1146,6 +1147,9 @@ class GeopysparkDataCube(DriverDataCube):
                             #EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
                             geometries = format_options['geometries']
+                            if (geometries is None or len(geometries) == 0):
+                                raise ProcessParameterInvalidException("sample_by_feature", "save_result",
+                                                                       "The 'sample_by_feature' format option was set, but could not find valid features. Features can be specified using 'filter_spatial'.")
                             projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
                             labels = [str(x) for x in range(len(geometries))]
                             asset_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(spatial_rdd.srdd.rdd(), filename,projected_polygons,labels,compression)
@@ -1203,6 +1207,8 @@ class GeopysparkDataCube(DriverDataCube):
             if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
                 geometries = format_options['geometries']
+                if(geometries is None or len(geometries) == 0):
+                    raise ProcessParameterInvalidException("sample_by_feature","save_result","The 'sample_by_feature' format option was set, but could not find valid features. Features can be specified using 'filter_spatial'.")
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = [str(x) for x in range(len(geometries))]
                 directory = pathlib.Path(filename).parent
