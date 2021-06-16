@@ -328,7 +328,12 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     if('write_assets' in dir(result)):
         result.options["batch_mode"] = True
         if( result.options.get("sample_by_feature")):
-            result.options["geometries"] = tracer.get_geometries("filter_spatial")
+            geoms = tracer.get_geometries("filter_spatial")
+            if len(geoms) > 1:
+                logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(geoms)))
+            elif len(geoms) == 1:
+                logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
+            result.options["geometries"] = geoms[0]
             if(result.options["geometries"] == None):
                 logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
         assets_metadata = result.write_assets(str(output_file))

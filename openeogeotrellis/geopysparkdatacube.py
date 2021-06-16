@@ -1147,11 +1147,8 @@ class GeopysparkDataCube(DriverDataCube):
                             #EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
                             geometries = format_options['geometries']
-                            if (geometries is None or len(geometries) == 0):
-                                raise ProcessParameterInvalidException("sample_by_feature", "save_result",
-                                                                       "The 'sample_by_feature' format option was set, but could not find valid features. Features can be specified using 'filter_spatial'.")
                             projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
-                            labels = [str(x) for x in range(len(geometries))]
+                            labels = self.get_labels(geometries)
                             asset_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(spatial_rdd.srdd.rdd(), filename,projected_polygons,labels,compression)
                             asset_paths = [pathlib.Path(asset_paths.get(i)) for i in range(len(asset_paths))]
                         else:
@@ -1207,10 +1204,8 @@ class GeopysparkDataCube(DriverDataCube):
             if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
                 geometries = format_options['geometries']
-                if(geometries is None or len(geometries) == 0):
-                    raise ProcessParameterInvalidException("sample_by_feature","save_result","The 'sample_by_feature' format option was set, but could not find valid features. Features can be specified using 'filter_spatial'.")
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
-                labels = [str(x) for x in range(len(geometries))]
+                labels = self.get_labels(geometries)
                 directory = pathlib.Path(filename).parent
                 band_names = self.metadata.band_names if self.metadata.has_band_dimension() else ["var"]
 
@@ -1271,6 +1266,12 @@ class GeopysparkDataCube(DriverDataCube):
                 code="FormatUnsupported", status_code=400
             )
         return {str(pathlib.Path(filename).name):{"href":filename}}
+
+    def get_labels(self, geometries):
+        if isinstance(geometries,DelayedVector):
+            geometries = list(geometries.geometries)
+        return [str(x) for x in range(len(geometries))]
+
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
             
