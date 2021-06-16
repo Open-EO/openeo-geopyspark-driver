@@ -332,6 +332,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": "string",
                             "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
                             "default": "6"
+                        },
+                        "sample_by_feature": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Set to true to write one output tiff per feature and date. Spatial features can be specified using filter_spatial. This setting is used to sample a data cube at multiple locations in a single job."
+                        },
+                        "feature_id_property": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
                         }
                     },
                 },
@@ -348,7 +358,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "NetCDF": {
                     "title": "Network Common Data Form",
                     "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
-                    "parameters": {},
+                    "parameters": {
+                        "sample_by_feature": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Set to true to write one output netCDF per feature, containing all bands and dates. Spatial features can be specified using filter_spatial. This setting is used to sample a data cube at multiple locations in a single job."
+                        },
+                        "feature_id_property": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
+                        }
+                    },
                 },
                 "JSON": {
                     "gis_data_types": ["raster"],
