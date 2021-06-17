@@ -142,14 +142,18 @@ class JobTracker:
                                         registry.remove_dependencies(job_id, user_id)
 
                                     registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
+
+                                    _log.info("marked %s as done" % job_id, extra={
+                                        'job_id': job_id,
+                                        'bbox': result_metadata.get('bbox'),
+                                        'cpu_time_seconds': cpu_time_seconds
+                                    })
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
                 except Exception:
                     _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
                                  .format(j=job_id, e=traceback.format_exc()), extra={'job_id': job_id})
                     # TODO: mark it as done to keep it from being considered further?
-
 
     @staticmethod
     def yarn_available() -> bool:
