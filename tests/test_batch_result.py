@@ -1,5 +1,6 @@
 import json
 
+from openeo.metadata import Band
 from openeogeotrellis.deploy.batch_job import extract_result_metadata,run_job
 
 def test_ep3874_filter_spatial(tmp_path):
@@ -72,4 +73,8 @@ def test_ep3874_filter_spatial(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
-    assert len(metadata["assets"]) == 2
+    assets = metadata["assets"]
+    assert len(assets) == 2
+    for asset in assets:
+        bands = [Band(**b) for b in assets[asset]["bands"]]
+        assert len(bands) == 1
