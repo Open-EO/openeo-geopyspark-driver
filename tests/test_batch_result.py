@@ -17,7 +17,45 @@ def test_ep3874_filter_spatial(tmp_path):
             "process_id": "filter_spatial",
             "arguments": {
                 "data": {"from_node": "lc"},
-                "geometries": "https://artifactory.vgt.vito.be/testdata-public/parcels/test_10.geojson",
+                "geometries":  {
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+                    },
+                        {
+                            "type": "Feature",
+                            "properties": {},
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [
+                                    [
+                                        [
+                                            0.72,
+                                            -0.516
+                                        ],
+                                        [
+                                            2.99,
+                                            -1.29
+                                        ],
+                                        [
+                                            2.279,
+                                            1.724
+                                        ],
+                                        [
+                                            0.725,
+                                            -0.18
+                                        ],
+                                        [
+                                            0.725,
+                                            -0.516
+                                        ]
+                                    ]
+                                ]
+                            }
+                        }
+                    ]
+                },
             }
         },
         "save": {
@@ -34,3 +72,4 @@ def test_ep3874_filter_spatial(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
+    assert len(metadata["assets"]) == 2

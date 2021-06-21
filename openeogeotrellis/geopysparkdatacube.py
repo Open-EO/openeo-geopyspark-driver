@@ -1207,7 +1207,11 @@ class GeopysparkDataCube(DriverDataCube):
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = self.get_labels(geometries)
                 directory = pathlib.Path(filename).parent
-                band_names = self.metadata.band_names if self.metadata.has_band_dimension() else ["var"]
+                band_names = ["var"]
+                bands = None
+                if self.metadata.has_band_dimension():
+                    bands = [b._asdict() for b in self.metadata.bands]
+                    band_names = self.metadata.band_names
 
                 asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(spatial_rdd.srdd.rdd(),
                                                                                                 str(directory),
@@ -1224,9 +1228,11 @@ class GeopysparkDataCube(DriverDataCube):
                         "href": str(p),
                         "type":  "application/x-netcdf",
                         "roles": ["data"],
-                        'bands': band_names,
-                        'nodata': nodata,
+                        "nodata": nodata,
                     }
+                    if bands is not None:
+                        assets[p.name]["bands"] = bands
+
                 return assets
             else:
                 if not tiled:
