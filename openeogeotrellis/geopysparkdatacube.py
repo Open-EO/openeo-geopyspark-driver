@@ -1202,11 +1202,17 @@ class GeopysparkDataCube(DriverDataCube):
         elif format == "NETCDF":
             band_names = ["var"]
             bands = None
+            dim_names = {}
             if self.metadata.has_band_dimension():
                 bands = [b._asdict() for b in self.metadata.bands]
                 band_names = self.metadata.band_names
+                dim_names['bands'] = self.metadata.band_dimension.name
+            if self.metadata.has_temporal_dimension():
+                dim_names['t'] = self.metadata.temporal_dimension.name
             max_level = self.pyramid.levels[self.pyramid.max_zoom]
             nodata = max_level.layer_metadata.no_data_value
+            global_metadata = format_options.get("file_metadata",{})
+            zlevel = format_options.get("ZLEVEL", 6)
 
             if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
@@ -1219,7 +1225,8 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                                 str(directory),
                                                                                                 projected_polygons,
                                                                                                 labels,
-                                                                                                band_names
+                                                                                                band_names,dim_names,
+                                                                                                global_metadata
                                                                                                 )
 
                 return self.return_netcdf_assets(asset_paths, bands, nodata)
@@ -1230,7 +1237,7 @@ class GeopysparkDataCube(DriverDataCube):
                     asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(spatial_rdd.srdd.rdd(),
                         filename,
                         band_names,
-                        {},{}
+                        dim_names,global_metadata,zlevel
                     )
                     return self.return_netcdf_assets(asset_paths, bands, nodata)
 

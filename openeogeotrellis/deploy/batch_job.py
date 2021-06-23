@@ -324,9 +324,17 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     if not isinstance(result, SaveResult):  # Assume generic JSON result
         result = JSONResult(result)
 
+    global_metadata_attributes = {
+        "title" : job_specification.get("title",""),
+        "description": job_specification.get("description", ""),
+        "institution": "openEO platform - Geotrellis backend: " + __version__
+
+    }
+
     assets_metadata = None
     if('write_assets' in dir(result)):
         result.options["batch_mode"] = True
+        result.options["file_metadata"] = global_metadata_attributes
         if( result.options.get("sample_by_feature")):
             geoms = tracer.get_geometries("filter_spatial")
             if len(geoms) > 1:
