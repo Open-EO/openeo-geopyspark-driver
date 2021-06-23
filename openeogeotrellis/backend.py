@@ -13,7 +13,7 @@ from functools import reduce
 from pathlib import Path
 from shapely.geometry.polygon import Polygon
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple, Optional
 
 import geopyspark as gps
 import pkg_resources
@@ -1080,7 +1080,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return {}
 
-    def get_log_entries(self, job_id: str, user_id: str, offset: str) -> List[dict]:
+    def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> List[dict]:
         # will throw if job doesn't match user
         job_info = self._get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in ['created', 'queued']:
