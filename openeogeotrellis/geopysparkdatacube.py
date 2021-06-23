@@ -1231,7 +1231,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 return self.return_netcdf_assets(asset_paths, bands, nodata)
             else:
-                if stitch:
+                if not stitch:
                     directory = pathlib.Path(filename).parent
                     filename = str(directory / "openEO.nc")
                     asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(spatial_rdd.srdd.rdd(),
