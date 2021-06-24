@@ -63,7 +63,8 @@ setup(
         'epsel~=1.0.0',
         'numbagg==0.1',
         'Bottleneck==1.3.2',
-        'python-json-logger'
+        'python-json-logger',
+        'rlguard-lib',
     ],
     extras_require={
         "dev": tests_require,

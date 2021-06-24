@@ -1,23 +1,23 @@
 import json
-import os
 import sys
 import traceback
 from sys import argv
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.utils import zk_client
 
-os.environ['ZOOKEEPER_HOSTS'] = ",".join(ConfigParams().zookeepernodes)
-
-# TODO: import assumes ZOOKEEPER_HOSTS is set
-# TODO: build a common package and import from there instead
-from .rlguard import apply_for_request, calculate_processing_units, OutputFormat, SyncerDownException
+# FIXME: add rlguard-lib as a dependency
+from rlguard import apply_for_request, calculate_processing_units, OutputFormat, SyncerDownException
+from rlguard.repository import ZooKeeperRepository
 
 
 def calculate_delay(request_params):
     request_params['output_format'] = OutputFormat(request_params['output_format'])
 
-    pu = calculate_processing_units(**request_params)
-    return apply_for_request(pu)
+    with zk_client() as zk:
+        zookeeper_repository = ZooKeeperRepository(zk, key_base="/openeo/rlguard")
+
+        pu = calculate_processing_units(**request_params)
+        return apply_for_request(pu, zookeeper_repository)
 
 
 if __name__ == '__main__':
