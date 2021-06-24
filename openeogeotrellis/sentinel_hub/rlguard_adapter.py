@@ -5,7 +5,6 @@ from sys import argv
 
 from openeogeotrellis.utils import zk_client
 
-# FIXME: add rlguard-lib as a dependency
 from rlguard import apply_for_request, calculate_processing_units, OutputFormat, SyncerDownException
 from rlguard.repository import ZooKeeperRepository
 
