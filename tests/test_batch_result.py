@@ -38,7 +38,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         "save": {
             "process_id": "save_result",
             "arguments": {"data": {"from_node": "reducedimension1"}, "format": "netCDF","options":{
-                "stitch":True
+                "stitch":False
             }},
             "result": True,
         }
