@@ -3,16 +3,15 @@ from collections import OrderedDict
 from typing import Union
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
+from openeogeotrellis.utils import get_jvm
 
 
 class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
 
-    def __init__(self):
+    def __init__(self, _builder=None):
         super().__init__()
-        import geopyspark as gps
-        jvm = gps.get_spark_context()._gateway.jvm
-        self.builder = jvm.org.openeo.geotrellis.OpenEOProcessScriptBuilder()
-        #process list to keep track of processes, so this class has a double function
+        self.builder = _builder or get_jvm().org.openeo.geotrellis.OpenEOProcessScriptBuilder()
+        # process list to keep track of processes, so this class has a double function
         self.processes = OrderedDict()
 
     def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
@@ -34,7 +33,7 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         self.builder.argumentEnd()
         return self
 
-    def from_parameter(self,parameter_id:str):
+    def from_parameter(self, parameter_id: str):
         self.builder.fromParameter(parameter_id)
         return self
 
@@ -56,3 +55,51 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
 
     def leaveArray(self, argument_id: str):
         self.builder.arrayEnd()
+
+
+class FakeGeotrellisTileProcessGraphVisitor(GeotrellisTileProcessGraphVisitor):
+    """
+    Fake GeotrellisTileProcessGraphVisitor that just prints out all
+    the OpenEOProcessScriptBuilder calls it would do (instead of executing them).
+    Helps with building the correct builder call sequence for
+    OpenEOProcessScriptBuilder unit tests in openeo-geotrellis-extension.
+    """
+
+    class _FakeBuilder:
+        def __getattr__(self, item):
+            def print_call(*args):
+                call_args = ", ".join(repr(a) for a in args)
+                print(f"{item}({call_args})")
+
+            return print_call
+
+    def __init__(self):
+        super().__init__(_builder=self._FakeBuilder())
+
+
+if __name__ == '__main__':
+    # Example usage of FakeGeotrellisTileProcessGraphVisitor
+    process_graph = {
+        "band0": {
+            "process_id": "array_element",
+            "arguments": {"data": {"from_parameter": "data"}, "index": 0}
+        },
+        "band1": {
+            "process_id": "array_element",
+            "arguments": {"data": {"from_parameter": "data"}, "index": 1}
+        },
+        "add": {
+            "process_id": "add",
+            "arguments": {"x": {"from_node": "band0"}, "y": {"from_node": "band1"}},
+            "result": True
+        }
+    }
+    visitor = FakeGeotrellisTileProcessGraphVisitor()
+    visitor.accept_process_graph(process_graph)
+    # This prints out something like:
+    #     expressionStart('add', {'x': {'from_node': 'band0', 'node': {'process_id': ...
+    #     argumentStart('x')
+    #     expressionStart('array_element', {'data': {'from_parameter': 'data'}, 'index': 0})
+    #     argumentStart('data')
+    #     fromParameter('data')
+    #     ....
