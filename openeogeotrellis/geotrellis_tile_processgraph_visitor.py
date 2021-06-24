@@ -1,4 +1,6 @@
+import json
 import numbers
+import sys
 from collections import OrderedDict
 from typing import Union
 
@@ -68,8 +70,9 @@ class FakeGeotrellisTileProcessGraphVisitor(GeotrellisTileProcessGraphVisitor):
     class _FakeBuilder:
         def __getattr__(self, item):
             def print_call(*args):
-                call_args = ", ".join(repr(a) for a in args)
-                print(f"{item}({call_args})")
+                # Use `json` instead of `repr` to get double quoted strings (compatible with C/Java/Scala).
+                call_args = ", ".join(json.dumps(a) for a in args)
+                print(f"builder.{item}({call_args});")
 
             return print_call
 
@@ -78,22 +81,35 @@ class FakeGeotrellisTileProcessGraphVisitor(GeotrellisTileProcessGraphVisitor):
 
 
 if __name__ == '__main__':
-    # Example usage of FakeGeotrellisTileProcessGraphVisitor
-    process_graph = {
-        "band0": {
-            "process_id": "array_element",
-            "arguments": {"data": {"from_parameter": "data"}, "index": 0}
-        },
-        "band1": {
-            "process_id": "array_element",
-            "arguments": {"data": {"from_parameter": "data"}, "index": 1}
-        },
-        "add": {
-            "process_id": "add",
-            "arguments": {"x": {"from_node": "band0"}, "y": {"from_node": "band1"}},
-            "result": True
+    if sys.argv[1:]:
+        process_graph, = sys.argv[1:]
+        if process_graph.strip().startswith('{'):
+            process_graph = json.loads(process_graph)
+        elif process_graph.strip().endswith('.json'):
+            with open(process_graph) as f:
+                process_graph = json.load(f)
+        elif process_graph.strip() == "-":
+            process_graph = json.load(sys.stdin)
+        else:
+            raise ValueError(process_graph)
+    else:
+        # Default example
+        process_graph = {
+            "band0": {
+                "process_id": "array_element",
+                "arguments": {"data": {"from_parameter": "data"}, "index": 0}
+            },
+            "band1": {
+                "process_id": "array_element",
+                "arguments": {"data": {"from_parameter": "data"}, "index": 1}
+            },
+            "add": {
+                "process_id": "add",
+                "arguments": {"x": {"from_node": "band0"}, "y": {"from_node": "band1"}},
+                "result": True
+            }
         }
-    }
+
     visitor = FakeGeotrellisTileProcessGraphVisitor()
     visitor.accept_process_graph(process_graph)
     # This prints out something like:
