@@ -58,6 +58,7 @@ def main():
     app = build_app(backend_implementation=GeoPySparkBackendImplementation())
     app.config.from_object(flask_config)
     app.config.from_mapping(
+        # TODO: move this VITO/CreoDIAS specific description to CreoDIAS deploy repo.
         OPENEO_DESCRIPTION="""
             [UNSTABLE] OpenEO API running on CreoDIAS (using GeoPySpark driver). This endpoint runs openEO on a Kubernetes cluster.
             The main component can be found here: https://github.com/Open-EO/openeo-geopyspark-driver

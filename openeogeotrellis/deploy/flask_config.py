@@ -1,11 +1,8 @@
 from openeo_driver.server import build_backend_deploy_metadata
 from openeogeotrellis import get_backend_version
 
-OPENEO_TITLE = "VITO Remote Sensing openEO API"
-OPENEO_DESCRIPTION = """
-    OpenEO API to the VITO Remote Sensing product catalog and processing services
-    (using GeoPySpark driver).
-"""
+OPENEO_TITLE = "GeoPySpark based openEO backend"
+OPENEO_DESCRIPTION = OPENEO_TITLE
 
 OPENEO_BACKEND_VERSION = get_backend_version()
 OPENEO_BACKEND_DEPLOY_METADATA = build_backend_deploy_metadata(
