@@ -13,8 +13,6 @@ from openeogeotrellis.utils import get_jvm
 _log = logging.getLogger(__name__)
 
 
-
-
 @contextlib.contextmanager
 def set_jvm_system_properties(properties: dict):
     """Context manager to temporary set jvm System properties."""
@@ -655,3 +653,176 @@ def test_ep3887_mask_polygon(api100, geometries):
         [2, 2, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0, 0],
     ]]]
+
+
+def test_apply_dimension_array_concat(api100):
+    """EP-3775 apply_dimension with array_concat"""
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-01-10"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Flat:1", "TileRow", "Longitude", "Day"]
+            },
+        },
+        "ad": {
+            "process_id": "apply_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "bands",
+                "process": {"process_graph": {
+                    "one": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}
+                    },
+                    "lon": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 2}
+                    },
+                    "day": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 3}
+                    },
+                    "lon x day": {
+                        "process_id": "multiply", "arguments": {"x": {"from_node": "lon"}, "y": {"from_node": "day"}}
+                    },
+                    "array_concat": {
+                        "process_id": "array_concat",
+                        "arguments": {
+                            "array1": {"from_parameter": "data"},
+                            "array2": [{"from_node": "one"}, {"from_node": "lon x day"}, ]
+                        },
+                        "result": True,
+                    }
+                }},
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "ad"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+    assert_equal(data, [[
+        np.ones((4, 4)),
+        np.zeros((4, 4)),
+        [[0, 0, 0, 0], [0.25, 0.25, 0.25, 0.25], [0.5, 0.5, 0.5, 0.5], [0.75, 0.75, 0.75, 0.75]],
+        np.full((4, 4), fill_value=5),
+        np.ones((4, 4)),
+        [[0, 0, 0, 0], [1.25, 1.25, 1.25, 1.25], [2.5, 2.5, 2.5, 2.5], [3.75, 3.75, 3.75, 3.75]],
+    ]])
+
+
+@pytest.mark.parametrize("repeat", [1, 3])
+def test_apply_dimension_array_create(api100, repeat):
+    """EP-3775 apply_dimension with array_create"""
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-01-10"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Flat:1", "Day"]
+            },
+        },
+        "ad": {
+            "process_id": "apply_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "bands",
+                "process": {"process_graph": {
+                    "one": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}
+                    },
+                    "day": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}
+                    },
+                    "array_create": {
+                        "process_id": "array_create",
+                        "arguments": {
+                            "data": [{"from_node": "one"}, {"from_node": "day"}, ],
+                            "repeat": repeat
+                        },
+                        "result": True,
+                    }
+                }},
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "ad"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+    assert_equal(data, [[np.ones((4, 4)), np.full((4, 4), fill_value=5), ] * repeat])
+
+
+def test_reduce_dimension_array_create_array_concat(api100):
+    """EP-3775 reduce_dimension with array_create and array_concat"""
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-01-10"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Flat:1", "Flat:2"]
+            },
+        },
+        "reduce": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "bands",
+                "reducer": {"process_graph": {
+                    "one": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}
+                    },
+                    "two": {
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}
+                    },
+                    "two ones": {
+                        "process_id": "array_create",
+                        "arguments": {"data": [{"from_node": "one"}, {"from_node": "one"}]}
+                    },
+                    "three twos": {
+                        "process_id": "array_create",
+                        "arguments": {"data": [{"from_node": "two"}, {"from_node": "two"}, {"from_node": "two"}]}
+                    },
+                    "array_concat": {
+                        "process_id": "array_concat",
+                        "arguments": {
+                            "array1": {"from_node": "two ones"},
+                            "array2": {"from_node": "three twos"},
+                        },
+                    },
+                    "sum": {
+                        "process_id": "sum",
+                        "arguments": {"data": {"from_node": "array_concat"}},
+                        "result": True
+                    }
+                }},
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "reduce"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "x", "y"]
+    data = result["data"]
+    assert_equal(data, np.full((1, 4, 4), fill_value=8))
