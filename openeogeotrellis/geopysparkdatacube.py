@@ -711,7 +711,18 @@ class GeopysparkDataCube(DriverDataCube):
             lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
 
-    def apply_kernel(self, kernel: np.ndarray, factor=1, border = 0, replace_invalid=0):
+    def apply_kernel(self, kernel: np.ndarray, factor=1, border=0, replace_invalid=0):
+        # TODO: support border options and replace_invalid
+        if border != 0:
+            raise ProcessParameterInvalidException(
+                parameter='border', process='apply_kernel',
+                reason=f'This backend only supports border value 0, not {border!r}.'
+            )
+        if replace_invalid != 0:
+            raise ProcessParameterInvalidException(
+                parameter='replace_invalid', process='apply_kernel',
+                reason=f'This backend only supports replace_invalid value 0 not {replace_invalid!r}.'
+            )
 
         pysc = gps.get_spark_context()
 
