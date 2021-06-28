@@ -93,18 +93,6 @@ def api_version(request):
 
 
 @pytest.fixture
-def udp_repository() -> 'UserDefinedProcessRepository':
-    from openeogeotrellis.user_defined_process_repository import InMemoryUserDefinedProcessRepository
-    return InMemoryUserDefinedProcessRepository()
-
-
-@pytest.fixture
-def udps(udp_repository) -> 'UserDefinedProcesses':
-    from openeogeotrellis.backend import UserDefinedProcesses
-    return UserDefinedProcesses(udp_repository)
-
-
-@pytest.fixture
 def udf_noop():
     file_name = get_test_data_file("udf_noop.py")
     with open(file_name, "r")  as f:

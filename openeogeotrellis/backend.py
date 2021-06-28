@@ -1,3 +1,4 @@
+import json
 import logging
 import operator
 import os
@@ -11,33 +12,33 @@ import uuid
 from datetime import datetime
 from functools import reduce
 from pathlib import Path
-from shapely.geometry.polygon import Polygon
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Tuple, Optional
+from typing import Callable, Dict, Tuple, Optional, List, Union
 
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
-from pyspark import SparkContext
-from pyspark.version import __version__ as pysparkversion
-
-from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
-from openeo_driver.users import User
-from openeogeotrellis import sentinel_hub
 from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
+from pyspark import SparkContext
+from pyspark.version import __version__ as pysparkversion
+from shapely.geometry.polygon import Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
+from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog)
+                                   CollectionCatalog, UserDefinedProcessMetadata)
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import (JobNotFinishedException, ProcessGraphMissingException,
-                                  OpenEOApiException, InternalException, ServiceUnsupportedException,
-                                  FeatureUnsupportedException)
+from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
+                                  ServiceUnsupportedException)
+from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis import sentinel_hub
+from openeogeotrellis._utm import area_in_square_meters
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
@@ -45,9 +46,9 @@ from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
-from openeogeotrellis.user_defined_process_repository import *
+from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
+    InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import normalize_date, kerberos, zk_client
-from openeogeotrellis._utm import area_in_square_meters
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -244,7 +245,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperServiceRegistry()
         )
 
-        user_defined_process_repository = (
+        user_defined_processes = (
             # choosing between DBs can be done in said config
             InMemoryUserDefinedProcessRepository() if ConfigParams().is_ci_context
             else ZooKeeperUserDefinedProcessRepository()
@@ -262,7 +263,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=catalog,
             batch_jobs=GpsBatchJobs(catalog, jvm, principal, key_tab),
-            user_defined_processes=UserDefinedProcesses(user_defined_process_repository),
+            user_defined_processes=user_defined_processes,
             processing=ConcreteProcessing()
         )
 
@@ -1178,22 +1179,4 @@ class GpsBatchJobs(backend.BatchJobs):
 
 class _BatchJobError(Exception):
     pass
-
-
-class UserDefinedProcesses(backend.UserDefinedProcesses):
-
-    def __init__(self, user_defined_process_repository: UserDefinedProcessRepository):
-        self._repo = user_defined_process_repository
-
-    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
-        return self._repo.get(user_id, process_id)
-
-    def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
-        return self._repo.get_for_user(user_id)
-
-    def save(self, user_id: str, process_id: str, spec: dict) -> None:
-        self._repo.save(user_id, spec)
-
-    def delete(self, user_id: str, process_id: str) -> None:
-        self._repo.delete(user_id, process_id)
 
