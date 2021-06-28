@@ -1181,7 +1181,6 @@ class _BatchJobError(Exception):
 
 
 class UserDefinedProcesses(backend.UserDefinedProcesses):
-    _valid_process_graph_id = re.compile(r"^\w+$")
 
     def __init__(self, user_defined_process_repository: UserDefinedProcessRepository):
         self._repo = user_defined_process_repository
@@ -1193,21 +1192,8 @@ class UserDefinedProcesses(backend.UserDefinedProcesses):
         return self._repo.get_for_user(user_id)
 
     def save(self, user_id: str, process_id: str, spec: dict) -> None:
-        self._validate(spec, process_id)
         self._repo.save(user_id, spec)
 
     def delete(self, user_id: str, process_id: str) -> None:
         self._repo.delete(user_id, process_id)
 
-    def _validate(self, spec: dict, process_id: str) -> None:
-        # TODO: move this to python driver
-        if 'process_graph' not in spec:
-            raise ProcessGraphMissingException
-
-        if not self._valid_process_graph_id.match(process_id):
-            raise OpenEOApiException(
-                status_code=400,
-                message="Invalid process_graph_id {i}, must match {p}".format(i=process_id,
-                                                                              p=self._valid_process_graph_id.pattern))
-
-        spec['id'] = process_id
