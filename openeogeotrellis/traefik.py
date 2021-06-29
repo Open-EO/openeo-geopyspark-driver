@@ -63,11 +63,11 @@ class Traefik:
         def add_load_balanced_server_v1():
             # TODO: a Path:/.well-known/openeo matcher is a better fit but that seems to require an additional
             #   "test" node
-            if environment == 'dev':
-                match_openeo = "Host: openeo-dev.vgt.vito.be,openeo-dev.vito.be;" \
+            if environment == 'prod':
+                match_openeo = "Host: openeo.vgt.vito.be,openeo.vito.be;" \
                                "PathPrefix: /openeo,/.well-known/openeo"
             else:
-                match_openeo = "Host: openeo.vgt.vito.be,openeo.vito.be;" \
+                match_openeo = "Host: openeo-dev.vgt.vito.be,openeo-dev.vito.be;" \
                                "PathPrefix: /openeo,/.well-known/openeo"
 
             self._create_backend_server(backend_id=cluster_id, server_id=server_id, host=host, port=port)
@@ -75,11 +75,11 @@ class Traefik:
                                        priority=100)
 
         def add_load_balanced_server_v2():
-            if environment == 'dev':
-                match_openeo = "Host(`openeo-dev.vgt.vito.be`,`openeo-dev.vito.be`) && " \
+            if environment == 'prod':
+                match_openeo = "Host(`openeo.vgt.vito.be`,`openeo.vito.be`) && " \
                                "PathPrefix(`/openeo`,`/.well-known/openeo`)"
             else:
-                match_openeo = "Host(`openeo.vgt.vito.be`,`openeo.vito.be`) && " \
+                match_openeo = "Host(`openeo-dev.vgt.vito.be`,`openeo-dev.vito.be`) && " \
                                "PathPrefix(`/openeo`,`/.well-known/openeo`)"
 
             self._create_tservice_server(tservice_id=cluster_id, server_id=server_id, host=host, port=port)
