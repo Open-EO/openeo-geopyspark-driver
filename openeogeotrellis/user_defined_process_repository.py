@@ -1,38 +1,23 @@
-from abc import ABC, abstractmethod
-from typing import List
 import contextlib
-from openeogeotrellis.configparams import ConfigParams
+import json
+from typing import List, Dict
+from typing import Union
+
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsError, NoNodeError
-import json
-from typing import Union
-from openeo_driver.backend import UserDefinedProcessMetadata
+
+from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
 from openeo_driver.errors import ProcessGraphNotFoundException
+from openeogeotrellis.configparams import ConfigParams
 
 
-class UserDefinedProcessRepository(ABC):
-    @abstractmethod
-    def save(self, user_id: str, spec: dict) -> None:
-        pass
+class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
+    # TODO: encode user id before using in zookeeper path (it could contain characters that don't play nice)
+    # TODO: include version number in payload to allow schema updates?
 
-    @abstractmethod
-    def get(self, user_id: str, process_graph_id: str) -> Union[UserDefinedProcessMetadata, None]:
-        # intentionally return None instead of raising because it's not an exceptional situation
-        pass
-
-    @abstractmethod
-    def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
-        pass
-
-    @abstractmethod
-    def delete(self, user_id: str, process_graph_id) -> None:
-        pass
-
-
-class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
-    def __init__(self):
-        self._hosts = ','.join(ConfigParams().zookeepernodes)
-        self._root = "/openeo/udps"
+    def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
+        self._hosts = ','.join(hosts)
+        self._root = root
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
@@ -44,7 +29,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
     def _deserialize(data: bytes) -> dict:
         return json.loads(data.decode())
 
-    def save(self, user_id: str, spec: dict):
+    def save(self, user_id: str, process_id: str, spec: dict) -> None:
         with self._zk_client() as zk:
             udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=spec['id'])
             data = self._serialize(spec)
@@ -55,9 +40,9 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
                 _, stat = zk.get(udp_path)
                 zk.set(udp_path, data, version=stat.version)
 
-    def get(self, user_id: str, process_graph_id: str) -> Union[UserDefinedProcessMetadata, None]:
+    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
         with self._zk_client() as zk:
-            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_graph_id)
+            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
             try:
                 data, _ = zk.get(udp_path)
                 return UserDefinedProcessMetadata.from_dict(self._deserialize(data)['specification'])
@@ -75,14 +60,14 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
             except NoNodeError:
                 return []
 
-    def delete(self, user_id: str, process_graph_id) -> None:
+    def delete(self, user_id: str, process_id: str) -> None:
         with self._zk_client() as zk:
-            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_graph_id)
+            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
 
             try:
                 zk.delete(udp_path)
             except NoNodeError:
-                raise ProcessGraphNotFoundException(process_graph_id)
+                raise ProcessGraphNotFoundException(process_graph_id=process_id)
 
     @contextlib.contextmanager
     def _zk_client(self):
@@ -96,35 +81,35 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcessRepository):
             zk.close()
 
 
-class InMemoryUserDefinedProcessRepository(UserDefinedProcessRepository):
+class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
     def __init__(self):
-        self._store = {}
+        self._store: Dict[str, Dict[str, UserDefinedProcessMetadata]] = {}
 
-    def save(self, user_id: str, spec: dict) -> None:
+    def save(self, user_id: str, process_id: str, spec: dict) -> None:
         user_udps = self._store.get(user_id, {})
         new_udp = UserDefinedProcessMetadata.from_dict(spec)
         user_udps[new_udp.id] = new_udp
         self._store[user_id] = user_udps
 
-    def get(self, user_id: str, process_graph_id: str) -> Union[UserDefinedProcessMetadata, None]:
+    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
         user_udps = self._store.get(user_id, {})
-        return user_udps.get(process_graph_id)
+        return user_udps.get(process_id)
 
     def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
         user_udps = self._store.get(user_id, {})
-        return [udp for _, udp in user_udps.items()]
+        return list(user_udps.values())
 
-    def delete(self, user_id: str, process_graph_id) -> None:
+    def delete(self, user_id: str, process_id: str) -> None:
         user_udps = self._store.get(user_id, {})
 
         try:
-            user_udps.pop(process_graph_id)
+            user_udps.pop(process_id)
         except KeyError:
-            raise ProcessGraphNotFoundException(process_graph_id)
+            raise ProcessGraphNotFoundException(process_id)
 
 
 def main():
-    repo = ZooKeeperUserDefinedProcessRepository()
+    repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
 
     user_id = 'vdboschj'
     process_graph_id = 'evi'
@@ -140,7 +125,7 @@ def main():
         }
     }
 
-    repo.save(user_id, udp_spec)
+    repo.save(user_id=user_id, process_id=process_graph_id, spec=udp_spec)
 
     udps = repo.get_for_user(user_id)
 
