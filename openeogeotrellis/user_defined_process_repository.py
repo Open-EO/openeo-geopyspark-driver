@@ -12,9 +12,12 @@ from openeogeotrellis.configparams import ConfigParams
 
 
 class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
-    def __init__(self):
-        self._hosts = ','.join(ConfigParams().zookeepernodes)
-        self._root = "/openeo/udps"
+    # TODO: encode user id before using in zookeeper path (it could contain characters that don't play nice)
+    # TODO: include version number in payload to allow schema updates?
+
+    def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
+        self._hosts = ','.join(hosts)
+        self._root = root
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
@@ -106,7 +109,7 @@ class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
 
 
 def main():
-    repo = ZooKeeperUserDefinedProcessRepository()
+    repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
 
     user_id = 'vdboschj'
     process_graph_id = 'evi'

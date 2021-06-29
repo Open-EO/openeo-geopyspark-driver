@@ -248,7 +248,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         user_defined_processes = (
             # choosing between DBs can be done in said config
             InMemoryUserDefinedProcessRepository() if ConfigParams().is_ci_context
-            else ZooKeeperUserDefinedProcessRepository()
+            else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
         )
 
         catalog = get_layer_catalog(opensearch_enrich=True)
