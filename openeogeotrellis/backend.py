@@ -35,9 +35,9 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
 from openeo_driver.users import User
+from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis._utm import area_in_square_meters
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor

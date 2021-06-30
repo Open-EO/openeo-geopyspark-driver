@@ -1,10 +1,9 @@
 import logging
 import traceback
 from datetime import datetime
-from typing import List, Dict, Union
+from typing import List, Dict
 
 import geopyspark
-from openeogeotrellis import sentinel_hub
 from shapely.geometry import box
 
 from openeo.metadata import Band
@@ -13,15 +12,16 @@ from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
+from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, to_hashable
-from openeogeotrellis._utm import auto_utm_epsg_for_geometry
+from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearchOscars, OpenSearchCreodias
-from openeogeotrellis.utils import kerberos, dict_merge_recursive, normalize_date, to_projected_polygons, get_jvm
+from openeogeotrellis.utils import dict_merge_recursive, normalize_date, to_projected_polygons, get_jvm
 
 logger = logging.getLogger(__name__)
 

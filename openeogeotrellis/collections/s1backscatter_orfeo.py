@@ -22,8 +22,8 @@ from py4j.java_gateway import JVMView, JavaObject
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
+from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import smart_bool
-from openeogeotrellis._utm import utm_zone_from_epsg
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm
 
