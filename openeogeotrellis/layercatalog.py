@@ -274,6 +274,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         else pyramid_factory.pyramid_seq(extent, srs, None, None))
             else:
                 endpoint = layer_source_info['endpoint']
+                shub_collection_id = layer_source_info['collection_id']
                 dataset_id = layer_source_info['dataset_id']
                 client_id = layer_source_info['client_id']
                 client_secret = layer_source_info['client_secret']
@@ -295,6 +296,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited(
                     endpoint,
+                    shub_collection_id,
                     dataset_id,
                     client_id,
                     client_secret,
