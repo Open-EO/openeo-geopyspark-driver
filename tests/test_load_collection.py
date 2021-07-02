@@ -20,12 +20,38 @@ def test_load_collection_bands_missing_required_extent():
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
 
-def test_load_collection_sar_backscatter_compatible():
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_collection_sar_backscatter_compatible(get_jvm):
     catalog = get_layer_catalog()
+
+    jvm_mock = get_jvm.return_value
+    raster_layer = MagicMock()
+    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+    raster_layer.layerMetadata.return_value = '{' \
+                                              '"crs":"EPSG:4326",\n' \
+                                              '"cellType":"uint8",\n' \
+                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
+                                              '"layoutDefinition":{\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
+                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
+                                              '}' \
+                                              '}'
+
     load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
                                  sar_backscatter=SarBackscatterArgs())
-    catalog.load_collection('SENTINEL1_GAMMA0_SENTINELHUB', load_params=load_params, env=EvalEnv())
+    catalog.load_collection('SENTINEL1_GAMMA0_SENTINELHUB', load_params=load_params,
+                            env=EvalEnv({'pyramid_levels': 'highest'}))
+
+    factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited
+    sample_type_mock = jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.return_value
+
+    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "S1GRD", "???", "!!!",
+                                         {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock)
+
+    jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
+    factory_mock.return_value.datacube_seq.assert_called_once
 
 
 def test_load_collection_sar_backscatter_incompatible():
