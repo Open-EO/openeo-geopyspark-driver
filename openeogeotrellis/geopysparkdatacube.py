@@ -146,7 +146,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return gps.TiledRasterLayer(layer_type, srdd)
 
-    def _apply_to_levels_geotrellis_rdd(self, func, metadata: GeopysparkCubeMetadata = None):
+    def _apply_to_levels_geotrellis_rdd(self, func, metadata: GeopysparkCubeMetadata = None, target_type = None):
         """
         Applies a function to each level of the pyramid. The argument provided to the function is the Geotrellis ContextRDD.
 
@@ -154,7 +154,7 @@ class GeopysparkDataCube(DriverDataCube):
         :return:
         """
         pyramid = Pyramid({
-            k: self._create_tilelayer(func(l.srdd.rdd(), k), l.layer_type, k)
+            k: self._create_tilelayer(func(l.srdd.rdd(), k), l.layer_type if target_type==None else target_type , k)
             for k, l in self.pyramid.levels.items()
         })
         return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
@@ -232,8 +232,19 @@ class GeopysparkDataCube(DriverDataCube):
                 from openeo_driver.ProcessGraphDeserializer import convert_node
                 context = convert_node(context, env=env)
                 pysc = gps.get_spark_context()
-                return self._apply_to_levels_geotrellis_rdd(
-                    lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context if isinstance(context,dict) else {}))
+                if target_dimension == self.metadata.band_dimension.name:
+                    #reduce the time dimension into the bands dimension
+                    result_collection = self._apply_to_levels_geotrellis_rdd(
+                        lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimensionTargetBands(rdd,
+                                                                                                                process.builder,
+                                                                                                                context if isinstance(
+                                                                                                                    context,
+                                                                                                                    dict) else {}), target_type=gps.LayerType.SPATIAL)
+                    result_collection.metadata = result_collection.metadata.reduce_dimension(dimension)
+                    return result_collection
+                else:
+                    return self._apply_to_levels_geotrellis_rdd(
+                        lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context if isinstance(context,dict) else {}))
             elif dimension == self.metadata.band_dimension.name:
                 return self._apply_bands_dimension(process)
             else:

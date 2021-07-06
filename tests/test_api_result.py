@@ -716,6 +716,95 @@ def test_apply_dimension_array_concat(api100):
         [[0, 0, 0, 0], [1.25, 1.25, 1.25, 1.25], [2.5, 2.5, 2.5, 2.5], [3.75, 3.75, 3.75, 3.75]],
     ]])
 
+def test_apply_dimension_reduce_time(api100):
+    """EP-3775 apply_dimension with array_concat"""
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-01-30"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Flat:1", "TileRow", "Longitude", "Day"]
+            },
+        },
+        "ad": {
+            "process_id": "apply_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "t",
+                "target_dimension": "bands",
+                "process": {"process_graph": {
+                  "arrayconcat1": {
+                    "arguments": {
+                      "array1": {
+                        "from_node": "quantiles1"
+                      },
+                      "array2": [
+                        {
+                          "from_node": "sd1"
+                        },
+                        {
+                          "from_node": "mean1"
+                        }
+                      ]
+                    },
+                    "process_id": "array_concat"
+
+                  },
+                  "mean1": {
+                    "arguments": {
+                      "data": {
+                        "from_parameter": "data"
+                      }
+                    },
+                    "process_id": "mean"
+                  },
+                  "quantiles1": {
+                    "arguments": {
+                      "data": {
+                        "from_parameter": "data"
+                      },
+                      "probabilities": [
+                        0.25,
+                        0.5,
+                        0.75
+                      ]
+                    },
+
+                    "process_id": "quantiles"
+                  },
+                  "sd1": {
+                    "arguments": {
+                      "data": {
+                        "from_parameter": "data"
+                      }
+                    },
+                      "result": True,
+                    "process_id": "sd"
+                  }
+                }},
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "ad"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == [ "bands", "x", "y"]
+    data = result["data"]
+    #TODO EP-3916: this result is probably wrong, maybe compute expected result with numpy, also user more complex callback graph, to test feature engineering
+    assert_equal(data, [
+        np.zeros((4, 4)),
+        np.zeros((4, 4)),
+        np.zeros((4, 4)),
+        np.full((4, 4), fill_value=10.0),
+    ])
+
 
 @pytest.mark.parametrize("repeat", [1, 3])
 def test_apply_dimension_array_create(api100, repeat):
