@@ -1,5 +1,5 @@
-from pathlib import Path
 from unittest import mock
+from pytest import approx
 
 from mock import MagicMock
 from openeo_driver.save_result import ImageCollectionResult
@@ -24,6 +24,7 @@ def test_extract_result_metadata():
     expected = {
         "bbox": [4, 51, 5, 52],
         "geometry": {"type": "Polygon", "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),)},
+        "area": {"value": approx(7725459381.443416, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
         "links":[]
@@ -51,6 +52,7 @@ def test_extract_result_metadata_aggregate_spatial():
                 (((15.0, 5.0), (40.0, 10.0), (10.0, 20.0), (5.0, 10.0), (15.0, 5.0)),)
             ],
         },
+        "area": {"value": approx(6797677574525.158, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
         "links": []
@@ -74,6 +76,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
             'type': 'Polygon',
             'coordinates': (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
         },
+        "area": {"value": approx(6763173869883.328, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
         "links": []
@@ -97,6 +100,7 @@ def test_run_job(evaluate,tmp_path):
             'end_datetime': None,
             'epsg': None,
             'geometry': None,
+            'area': None,
             'instruments': [],
             'links': [],
             'processing:facility': 'VITO - SPARK',

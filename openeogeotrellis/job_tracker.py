@@ -145,7 +145,7 @@ class JobTracker:
 
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
-                                        'bbox': result_metadata.get('bbox'),
+                                        'area': result_metadata['area'],
                                         'cpu_time_seconds': cpu_time_seconds
                                     })
                         except JobTracker._UnknownApplicationIdException:

@@ -18,6 +18,7 @@ from typing import Callable, Dict, Tuple, Optional, List, Union
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
+from openeo_driver.delayed_vector import DelayedVector
 from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
@@ -904,31 +905,50 @@ class GpsBatchJobs(backend.BatchJobs):
                               and sar_backscatter_arguments.local_incidence_angle)
 
                     spatial_extent = constraints['spatial_extent']
+                    crs = spatial_extent['crs']
 
-                    def area():
+                    def bbox_area() -> float:
                         geom = Polygon.from_bounds(
                             xmin=spatial_extent['west'],
                             ymin=spatial_extent['south'],
                             xmax=spatial_extent['east'],
                             ymax=spatial_extent['north'])
 
-                        return area_in_square_meters(geom, spatial_extent['crs'])
+                        return area_in_square_meters(geom, crs)
 
                     maximum_area = 1e+12  # 1 million km²
 
-                    if area() > maximum_area:
+                    if bbox_area() > maximum_area:
                         raise OpenEOApiException(message=
                                                  "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
-                                                 .format(a=area(), c=collection_id, m=maximum_area), status_code=400)
+                                                 .format(a=bbox_area(), c=collection_id, m=maximum_area),
+                                                 status_code=400)
+
+                    def large_area() -> bool:
+                        geometries = (constraints.get("aggregate_spatial", {}).get("geometries") or
+                                      constraints.get("filter_spatial", {}).get("geometries"))
+
+                        if not geometries:
+                            area = bbox_area()
+                        elif isinstance(geometries, DelayedVector):
+                            # FIXME: don't access DelayedVector's geometries
+                            area = area_in_square_meters(geometries.geometries, crs)
+                        else:
+                            area = area_in_square_meters(geometries, crs)
+
+                        large_enough = area >= 50 * 1000 * 50 * 1000  # 50x50 km²
+
+                        if large_enough:
+                            logger.info("deemed batch job {j} AOI large enough ({a} m²)".format(j=job_id, a=area),
+                                        extra={'job_id': job_id})
+
+                        return large_enough
 
                     if card4l:
                         logger.info("deemed batch job {j} CARD4L compliant ({s})".format(j=job_id,
                                                                                          s=sar_backscatter_arguments),
                                     extra={'job_id': job_id})
-                    elif area() >= 50 * 1000 * 50 * 1000:  # 50x50 km
-                        logger.info("deemed batch job {j} AOI large enough ({a} m²)".format(j=job_id, a=area()),
-                                    extra={'job_id': job_id})
-                    else:
+                    elif not large_area():
                         continue  # skip SHub batch process and use sync approach instead
 
                     sample_type = self._jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
@@ -972,7 +992,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             layer_source_info['collection_id'],
                             layer_source_info['dataset_id'],
                             bbox,
-                            spatial_extent['crs'],
+                            crs,
                             from_date,
                             to_date,
                             shub_band_names,
@@ -987,7 +1007,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             layer_source_info['collection_id'],
                             layer_source_info['dataset_id'],
                             bbox,
-                            spatial_extent['crs'],
+                            crs,
                             from_date,
                             to_date,
                             shub_band_names,

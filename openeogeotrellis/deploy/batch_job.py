@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
-from shapely.geometry import mapping, Polygon
+from shapely.geometry import mapping, Polygon, GeometryCollection
 from shapely.geometry.base import BaseGeometry
 
 from openeo.util import ensure_dir, Rfc3339, TimingLogger
@@ -22,6 +22,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult
 from openeo_driver.users import User
+from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union, to_hashable
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.deploy import load_custom_processes
@@ -104,18 +105,22 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         spatial_extent = spatial_extent_union(*extents)
         bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in bbox):
-            geometry = mapping(Polygon.from_bounds(*bbox))
+            polygon = Polygon.from_bounds(*bbox)
+            geometry = mapping(polygon)
+            area = area_in_square_meters(polygon, spatial_extent["crs"])
         else:
             bbox = None
             geometry = None
+            area = None
     else:
         bbox = None
         geometry = None
+        area = None
 
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
-    aggregate_spatial_geometries = tracer.get_geometries()
+    aggregate_spatial_geometries = tracer.get_geometries()  # TODO: consider "filter_spatial" geometries too?
     if aggregate_spatial_geometries:
         if len(aggregate_spatial_geometries) > 1:
             logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
@@ -123,21 +128,26 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         if isinstance(agg_geometry, BaseGeometry):
             bbox = agg_geometry.bounds
             geometry = mapping(agg_geometry)
+            area = area_in_square_meters(agg_geometry, "EPSG:4326")
         elif isinstance(agg_geometry, DelayedVector):
             bbox = agg_geometry.bounds
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
+            # FIXME: don't access DelayedVector's geometries
+            area = area_in_square_meters(GeometryCollection(list(agg_geometry.geometries)), agg_geometry.crs)
 
     links = tracer.get_metadata_links()
-    links = [ link for k,v in links.items() for link in v ]
+    links = [link for k, v in links.items() for link in v]
+
     # TODO: dedicated type?
     # TODO: match STAC format?
     return {
         'geometry': geometry,
         'bbox': bbox,
+        'area': {'value': area, 'unit': 'square meter'} if area else None,
         'start_datetime': start_date,
         'end_datetime': end_date,
-        'links':links
+        'links': links
     }
 
 
