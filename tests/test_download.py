@@ -18,7 +18,7 @@ from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from tests.data import get_test_data_file
 
 
-class TestDownload(TestCase):
+class TestDownload:
 
     first = np.zeros((1, 4, 4))
     first.fill(1)
@@ -63,13 +63,6 @@ class TestDownload(TestCase):
         (Point(-10.0, 15.0), None, None)
     ]
 
-    def setUp(self):
-        # TODO: make this reusable (or a pytest fixture)
-        self.temp_folder = Path.cwd() / 'tmp'
-        if not self.temp_folder.exists():
-            self.temp_folder.mkdir()
-        assert self.temp_folder.is_dir()
-
     def create_spacetime_layer(self):
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
@@ -96,24 +89,24 @@ class TestDownload(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
-    def download_no_bands(self, format):
+    def download_no_bands(self, tmp_path, format):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
-        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format)
+        res = imagecollection.save_result(str(tmp_path / "test_download_result.") + format, format=format)
         print(res)
 
-    def download_no_args(self,format, format_options={}):
+    def download_no_args(self, tmp_path, format, format_options={}):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
-        res = imagecollection.save_result(str(self.temp_folder / "test_download_result.") + format, format=format, format_options=format_options)
+        res = imagecollection.save_result(str(tmp_path / "test_download_result.") + format, format=format, format_options=format_options)
         print(res)
         return res
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
-    def download_masked(self,format):
+    def download_masked(self, tmp_path, format):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
@@ -122,12 +115,12 @@ class TestDownload(TestCase):
         polygon = geometry.Polygon([[0, 0], [1.9, 0], [1.9, 1.9], [0, 1.9]])
         imagecollection = imagecollection.mask_polygon(mask=polygon)
 
-        filename = str(self.temp_folder / "test_download_masked_result.") + format
+        filename = str(tmp_path / "test_download_masked_result.") + format
         res = imagecollection.save_result(filename, format=format)
         print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
-    def download_masked_reproject(self,format):
+    def download_masked_reproject(self, tmp_path, format):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
@@ -144,54 +137,53 @@ class TestDownload(TestCase):
         reprojected = transform(project, polygon)
         imagecollection = imagecollection.mask_polygon(mask=reprojected, srs="EPSG:3857")
 
-        filename = str(self.temp_folder / "test_download_masked_result.3857.") + format
+        filename = str(tmp_path / "test_download_masked_result.3857.") + format
         res = imagecollection.save_result(filename, format=format)
         print(res)
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
+    def test_download_geotiff_no_args(self, tmp_path):
+        self.download_no_args(tmp_path, 'gtiff')
 
-    def test_download_geotiff_no_args(self):
-        self.download_no_args('gtiff')
+    def test_download_netcdf_no_bands(self, tmp_path):
+        self.download_no_bands(tmp_path, 'netcdf')
 
-    def test_download_netcdf_no_bands(self):
-        self.download_no_bands('netcdf')
+    def test_download_netcdf_no_args(self, tmp_path):
+        self.download_no_args(tmp_path, 'netcdf')
 
-    def test_download_netcdf_no_args(self):
-        self.download_no_args('netcdf')
-
-    def test_download_netcdf_no_args_batch(self):
-        res = self.download_no_args('netcdf',{"batch_mode":True, "multidate":True})
+    def test_download_netcdf_no_args_batch(self, tmp_path):
+        res = self.download_no_args(tmp_path, 'netcdf', {"batch_mode": True, "multidate": True})
         print(res)
 
-    def test_download_json_no_args(self):
-        self.download_no_args('json')
+    def test_download_json_no_args(self, tmp_path):
+        self.download_no_args(tmp_path, 'json')
 
-    def test_download_masked_geotiff(self):
-        self.download_masked('gtiff')
+    def test_download_masked_geotiff(self, tmp_path):
+        self.download_masked(tmp_path, 'gtiff')
 
-    def test_download_masked_netcdf(self):
-        self.download_masked('netcdf')
+    def test_download_masked_netcdf(self, tmp_path):
+        self.download_masked(tmp_path, 'netcdf')
 
-    def test_download_masked_json(self):
-        self.download_masked('json')
+    def test_download_masked_json(self, tmp_path):
+        self.download_masked(tmp_path, 'json')
 
-    def test_download_masked_geotiff_reproject(self):
-        self.download_masked_reproject('gtiff')
+    def test_download_masked_geotiff_reproject(self, tmp_path):
+        self.download_masked_reproject(tmp_path, 'gtiff')
 
-    def test_download_masked_netcdf_reproject(self):
-        self.download_masked_reproject('netcdf')
+    def test_download_masked_netcdf_reproject(self, tmp_path):
+        self.download_masked_reproject(tmp_path, 'netcdf')
 
-    def test_download_masked_json_reproject(self):
-        self.download_masked_reproject('json')
+    def test_download_masked_json_reproject(self, tmp_path):
+        self.download_masked_reproject(tmp_path, 'json')
 
-    def test_write_assets(self):
+    def test_write_assets(self, tmp_path):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
 
-        res = imagecollection.write_assets(str(self.temp_folder / "test_download_result.") + format, format=format,format_options={
+        res = imagecollection.write_assets(str(tmp_path / "test_download_result.") + format, format=format,format_options={
             "multidate":True,
             "batch_mode":True
         })
@@ -206,14 +198,14 @@ class TestDownload(TestCase):
     with get_test_data_file("geometries/polygons02.geojson").open() as f:
         features = json.load(f)
 
-    def test_write_assets_samples(self):
+    def test_write_assets_samples(self, tmp_path):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
 
-        res = imagecollection.write_assets(str(self.temp_folder / "test_download_result.") + format, format=format,format_options={
+        res = imagecollection.write_assets(str(tmp_path / "test_download_result.") + format, format=format,format_options={
             "multidate":True,
             "batch_mode":True,
             "geometries":geojson_to_geometry(self.features),
@@ -228,14 +220,14 @@ class TestDownload(TestCase):
         assert 2 == len(asset['bands'])
         assert 'image/tiff; application=geotiff' == asset['type']
 
-    def test_write_assets_samples_netcdf(self):
+    def test_write_assets_samples_netcdf(self, tmp_path):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'netCDF'
 
-        res = imagecollection.write_assets(str(self.temp_folder / "test_download_result.") + format, format=format,format_options={
+        res = imagecollection.write_assets(str(tmp_path / "test_download_result.") + format, format=format,format_options={
             "batch_mode":True,
             "geometries":geojson_to_geometry(self.features),
             "sample_by_feature": True,
