@@ -7,8 +7,9 @@ import sys
 from urllib.parse import urlparse
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
+from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -151,7 +152,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     }
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,asset_metadata:Dict = None) -> None:
+def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,
+                            unique_process_ids: Set[str], asset_metadata: Dict = None) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -197,6 +199,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata['instruments'] = instruments
     metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
     metadata['processing:software'] = 'openeo-geotrellis-' + __version__
+    metadata['unique_process_ids'] = list(unique_process_ids)
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -410,7 +413,10 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
         _transform_stac_metadata(job_dir)
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,asset_metadata=assets_metadata)
+    unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+
+    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
+                            unique_process_ids=unique_process_ids, asset_metadata=assets_metadata)
 
     if ConfigParams().is_kube_deploy:
         import boto3

@@ -90,8 +90,9 @@ def test_run_job(evaluate,tmp_path):
     cube_mock.write_assets.return_value = asset_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
     run_job(
-        job_specification={'process_graph':{}}, output_file=tmp_path /"out", metadata_file=tmp_path / "metadata.json",
-        api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins"
+        job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
+        output_file=tmp_path /"out", metadata_file=tmp_path / "metadata.json", api_version="1.0.0", job_dir="./",
+        dependencies={}, user_id="jenkins"
     )
     cube_mock.write_assets.assert_called_once()
     metadata_result = read_json(tmp_path/"metadata.json")
@@ -101,6 +102,7 @@ def test_run_job(evaluate,tmp_path):
             'epsg': None,
             'geometry': None,
             'area': None,
+            'unique_process_ids': ['discard_result'],
             'instruments': [],
             'links': [],
             'processing:facility': 'VITO - SPARK',
