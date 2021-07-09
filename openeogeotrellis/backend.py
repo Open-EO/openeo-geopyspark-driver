@@ -23,7 +23,7 @@ from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.version import __version__ as pysparkversion
-from shapely.geometry.polygon import Polygon
+from shapely.geometry import Polygon, GeometryCollection
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band
@@ -932,7 +932,8 @@ class GpsBatchJobs(backend.BatchJobs):
                             area = bbox_area()
                         elif isinstance(geometries, DelayedVector):
                             # FIXME: don't access DelayedVector's geometries
-                            area = area_in_square_meters(geometries.geometries, crs)
+                            area = area_in_square_meters(GeometryCollection(list(geometries.geometries)),
+                                                         geometries.crs)
                         else:
                             area = area_in_square_meters(geometries, crs)
 
