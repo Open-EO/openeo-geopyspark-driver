@@ -5,6 +5,46 @@ from openeo.metadata import Band
 from openeogeotrellis.deploy.batch_job import extract_result_metadata,run_job
 
 
+def test_png_export(tmp_path):
+
+    job_spec = {
+        "title": "my job",
+        "description": "*minimum band*",
+        "process_graph":{
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"]
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "lc"}, "format": "PNG"},
+            "result": True,
+        }
+    }}
+    metadata_file = tmp_path / "metadata.json"
+    run_job(job_spec, output_file= "/tmp/out.png" , metadata_file=metadata_file,
+            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+    assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
+    assets = metadata["assets"]
+    assert len(assets) == 1
+    for asset in assets:
+        theAsset = assets[asset]
+
+        assert 'image/png' == theAsset['type']
+        href = theAsset['href']
+        from osgeo.gdal import Info
+        info = Info(href, format='json')
+        print(info)
+        assert info['driverShortName'] == 'PNG'
+
+
 def test_ep3899_netcdf_no_bands(tmp_path):
 
     job_spec = {

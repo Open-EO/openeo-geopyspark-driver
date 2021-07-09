@@ -1130,7 +1130,7 @@ class GeopysparkDataCube(DriverDataCube):
         batch_mode = format_options.get("batch_mode", False)
 
         if format in ["GTIFF", "PNG"]:
-            if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch) :
+            if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
                 spatial_rdd = spatial_rdd.to_spatial_layer()
 
             if format == "GTIFF":
@@ -1220,6 +1220,13 @@ class GeopysparkDataCube(DriverDataCube):
                     self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename, crop_extent)
                 else:
                     self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename)
+                return {
+                    str(pathlib.Path(filename).name): {
+                        "href": filename,
+                        "type": "image/png",
+                        "roles": ["data"]
+                    }
+                }
 
         elif format == "NETCDF":
             band_names = ["var"]
