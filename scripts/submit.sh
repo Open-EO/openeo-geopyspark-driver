@@ -14,7 +14,7 @@ export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-pa
 
 hdfsVenvZip=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
 extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.2.0-SNAPSHOT/geotrellis-extensions-2.2.0-SNAPSHOT.jar
-backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo.jar
+backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.7-openeo.jar
 
 echo "Found backend assembly: ${backend_assembly}"
 

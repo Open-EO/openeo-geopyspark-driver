@@ -42,7 +42,7 @@ setup(
         'openeo_udf>=1.0.0rc3',
         'pyspark==3.1.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
-        'geopyspark==0.4.6+openeo',
+        'geopyspark==0.4.7+openeo',
         'py4j',
         'numpy>=1.17.0,<1.19.0',
         'pandas>=0.24.2',
