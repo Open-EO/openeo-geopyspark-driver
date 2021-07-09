@@ -77,9 +77,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         },
         "save": {
             "process_id": "save_result",
-            "arguments": {"data": {"from_node": "reducedimension1"}, "format": "netCDF","options":{
-                "stitch":False
-            }},
+            "arguments": {"data": {"from_node": "reducedimension1"}, "format": "netCDF"},
             "result": True,
         }
     }}
@@ -100,7 +98,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         info = Info("NETCDF:\""+href+"\":var", format='json')
         print(info)
         assert info['driverShortName'] == 'netCDF'
-        da = xarray.open_dataset(href)
+        da = xarray.open_dataset(href, engine='h5netcdf')
         print(da)
 
 def test_ep3874_filter_spatial(tmp_path):
@@ -129,30 +127,7 @@ def test_ep3874_filter_spatial(tmp_path):
                             "properties": {},
                             "geometry": {
                                 "type": "Polygon",
-                                "coordinates": [
-                                    [
-                                        [
-                                            0.72,
-                                            -0.516
-                                        ],
-                                        [
-                                            2.99,
-                                            -1.29
-                                        ],
-                                        [
-                                            2.279,
-                                            1.724
-                                        ],
-                                        [
-                                            0.725,
-                                            -0.18
-                                        ],
-                                        [
-                                            0.725,
-                                            -0.516
-                                        ]
-                                    ]
-                                ]
+                                "coordinates": [[[0.72, -0.516],[2.99,-1.29],[2.279,1.724],[0.725,-0.18],[0.725,-0.516]]]
                             }
                         }
                     ]
@@ -176,5 +151,11 @@ def test_ep3874_filter_spatial(tmp_path):
     assets = metadata["assets"]
     assert len(assets) == 2
     for asset in assets:
-        bands = [Band(**b) for b in assets[asset]["bands"]]
+        theAsset = assets[asset]
+        bands = [Band(**b) for b in theAsset["bands"]]
         assert len(bands) == 1
+        da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
+        assert 'Flat:2' in da
+        print(da['Flat:2'])
+
+
