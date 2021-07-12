@@ -134,8 +134,9 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
-            # FIXME: don't access DelayedVector's geometries
-            area = area_in_square_meters(GeometryCollection(list(agg_geometry.geometries)), agg_geometry.crs)
+            area = (get_jvm()
+                    .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(agg_geometry.path)
+                    .areaInSquareMeters())
 
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]

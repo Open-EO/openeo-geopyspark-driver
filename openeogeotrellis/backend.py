@@ -931,9 +931,9 @@ class GpsBatchJobs(backend.BatchJobs):
                         if not geometries:
                             area = bbox_area()
                         elif isinstance(geometries, DelayedVector):
-                            # FIXME: don't access DelayedVector's geometries
-                            area = area_in_square_meters(GeometryCollection(list(geometries.geometries)),
-                                                         geometries.crs)
+                            area = (self._jvm
+                                    .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
+                                    .areaInSquareMeters())
                         else:
                             area = area_in_square_meters(geometries, crs)
 
