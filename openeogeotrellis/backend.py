@@ -31,7 +31,7 @@ from openeo.util import dict_no_none, rfc3339
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog, UserDefinedProcessMetadata)
+                                   CollectionCatalog)
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
@@ -916,12 +916,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
                         return area_in_square_meters(geom, crs)
 
-                    maximum_area = 1e+12  # 1 million km²
+                    absolute_maximum_area = 1e+12  # 1 million km²
 
-                    if bbox_area() > maximum_area:
+                    if bbox_area() > absolute_maximum_area:
                         raise OpenEOApiException(message=
                                                  "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
-                                                 .format(a=bbox_area(), c=collection_id, m=maximum_area),
+                                                 .format(a=bbox_area(), c=collection_id, m=absolute_maximum_area),
                                                  status_code=400)
 
                     def large_area() -> bool:
@@ -937,11 +937,13 @@ class GpsBatchJobs(backend.BatchJobs):
                         else:
                             area = area_in_square_meters(geometries, crs)
 
-                        large_enough = area >= 50 * 1000 * 50 * 1000  # 50x50 km²
+                        batch_process_threshold_area = 50 * 1000 * 50 * 1000  # 50x50 km²
+                        large_enough = area >= batch_process_threshold_area
 
-                        if large_enough:
-                            logger.info("deemed batch job {j} AOI large enough ({a} m²)".format(j=job_id, a=area),
-                                        extra={'job_id': job_id})
+                        logger.info("deemed batch job {j} AOI {b} ({a} m²) for batch processing (>= {t} m²)"
+                                    .format(j=job_id, b="large enough" if large_enough else "too small", a=area,
+                                            t=batch_process_threshold_area),
+                                    extra={'job_id': job_id})
 
                         return large_enough
 
