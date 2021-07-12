@@ -940,17 +940,15 @@ class GpsBatchJobs(backend.BatchJobs):
                         batch_process_threshold_area = 50 * 1000 * 50 * 1000  # 50x50 km²
                         large_enough = area >= batch_process_threshold_area
 
-                        logger.info("deemed batch job {j} AOI {b} ({a} m²) for batch processing (>= {t} m²)"
-                                    .format(j=job_id, b="large enough" if large_enough else "too small", a=area,
-                                            t=batch_process_threshold_area),
-                                    extra={'job_id': job_id})
+                        logger.info("deemed collection {c} AOI ({a} m²) {s} for batch processing (threshold {t} m²)"
+                                    .format(c=collection_id, a=area, s="large enough" if large_enough else "too small",
+                                            t=batch_process_threshold_area), extra={'job_id': job_id})
 
                         return large_enough
 
                     if card4l:
-                        logger.info("deemed batch job {j} CARD4L compliant ({s})".format(j=job_id,
-                                                                                         s=sar_backscatter_arguments),
-                                    extra={'job_id': job_id})
+                        logger.info("deemed collection {c} request CARD4L compliant ({s})"
+                                    .format(c=collection_id, s=sar_backscatter_arguments), extra={'job_id': job_id})
                     elif not large_area():
                         continue  # skip SHub batch process and use sync approach instead
 
