@@ -1215,6 +1215,8 @@ class GeopysparkDataCube(DriverDataCube):
                                 }
                             }
             else:
+                if not filename.endswith(".png"):
+                    filename = filename + ".png"
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
                     self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename, crop_extent)
@@ -1263,11 +1265,19 @@ class GeopysparkDataCube(DriverDataCube):
                 if not stitch:
                     directory = pathlib.Path(filename).parent
                     filename = str(directory / "openEO.nc")
-                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(spatial_rdd.srdd.rdd(),
-                        filename,
-                        band_names,
-                        dim_names,global_metadata,zlevel
-                    )
+                    if(spatial_rdd.layer_type != gps.LayerType.SPATIAL):
+                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(spatial_rdd.srdd.rdd(),
+                            filename,
+                            band_names,
+                            dim_names,global_metadata,zlevel
+                        )
+                    else:
+                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
+                            spatial_rdd.srdd.rdd(),
+                            filename,
+                            band_names,
+                            dim_names, global_metadata, zlevel
+                            )
                     return self.return_netcdf_assets(asset_paths, bands, nodata)
 
                 else:
