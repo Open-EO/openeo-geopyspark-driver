@@ -1,4 +1,5 @@
 import datetime
+import textwrap
 from unittest import TestCase
 
 import geopyspark as gps
@@ -11,7 +12,6 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
-import openeo_udf.functions
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -73,45 +73,6 @@ class TestCustomFunctions(TestCase):
         tile = Tile.from_numpy_array(cells, -1)
         custom_function(tile.cells,0)
 
-
-    def test_apply_openeo_udf_to_tile(self):
-        import os, openeo_udf
-        dir = os.path.dirname(openeo_udf.functions.__file__)
-        file_name = os.path.join(dir, "datacube_ndvi.py")
-        with open(file_name, "r")  as f:
-            udf_code = f.read()
-
-        cells = np.array([self.first, self.second], dtype='int')
-        tile = Tile.from_numpy_array(cells, -1)
-
-    def test_point_series_apply_tile(self):
-        file_name = get_test_data_file( "datacube_ndvi.py")
-        with open(file_name, "r")  as f:
-            udf_code = f.read()
-
-        reducer = GeoPySparkBackendImplementation().visit_process_graph({
-                "udf_process": {
-                    "arguments": {
-                        "data": {
-                            "from_argument": "dimension_data"
-                        },
-                        "udf": udf_code
-                    },
-                    "process_id": "run_udf",
-                    "result": True
-                },
-            })
-
-        env = EvalEnv()
-        transformed_collection = self.imagecollection_with_two_bands_and_one_date.reduce_dimension(dimension="bands", reducer = reducer, env=env)
-
-        for p in self.points[0:3]:
-            result = transformed_collection.timeseries(p.x, p.y)
-            print(result)
-            value = result.popitem()
-            print(value)
-            #self.assertEqual(3.0,value[1][0])
-
     def test_polygon_series(self):
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
 
@@ -159,3 +120,52 @@ class TestCustomFunctions(TestCase):
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
         means = imagecollection.zonal_statistics(regions=polygon, func="mean")
         assert means.data == {'2017-09-25T11:37:00Z': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}
+
+
+@pytest.mark.parametrize("udf_code", [
+    """
+    from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
+    def apply_datacube(cube: DataCube, context: dict) -> DataCube:
+        red = cube.array.sel(bands='red')
+        nir = cube.array.sel(bands='nir')
+        ndvi = (nir - red) / (nir + red)
+        ndvi.name = "NDVI"
+        return DataCube(array=ndvi)
+    """,
+    """
+    from openeo.udf import XarrayDataCube
+    def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+        red = cube.array.sel(bands='red')
+        nir = cube.array.sel(bands='nir')
+        ndvi = (nir - red) / (nir + red)
+        ndvi.name = "NDVI"    
+        return XarrayDataCube(array=ndvi)
+    """
+])
+def test_point_series_apply_tile(imagecollection_with_two_bands_and_one_date, udf_code):
+    udf_code = textwrap.dedent(udf_code)
+
+    reducer = GeoPySparkBackendImplementation().visit_process_graph({
+        "udf_process": {
+            "arguments": {
+                "data": {
+                    "from_argument": "dimension_data"
+                },
+                "udf": udf_code
+            },
+            "process_id": "run_udf",
+            "result": True
+        },
+    })
+
+    env = EvalEnv()
+    transformed_collection = imagecollection_with_two_bands_and_one_date.reduce_dimension(
+        dimension="bands", reducer=reducer, env=env
+    )
+
+    for p in TestCustomFunctions.points[0:3]:
+        result = transformed_collection.timeseries(p.x, p.y)
+        print(result)
+        value = result.popitem()
+        print(value)
+        # self.assertEqual(3.0,value[1][0])

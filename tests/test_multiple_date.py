@@ -1,8 +1,10 @@
 import datetime
+import textwrap
 from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+import pytest
 import rasterio
 from geopyspark import CellType
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
@@ -367,47 +369,6 @@ class TestMultipleDates(TestCase):
             self.assertEqual(1.0,result['NoDate'])
             self.assertEqual(2.0,max_result['NoDate'])
 
-
-
-    def test_apply_spatiotemporal(self):
-        import openeo_udf.functions
-
-        input = Pyramid({0: self.tiled_raster_rdd})
-
-        imagecollection = GeopysparkDataCube(
-            pyramid=input,
-            metadata=GeopysparkCubeMetadata({
-                "cube:dimensions": {
-                    # TODO: also specify other dimensions?
-                    "bands": {"type": "bands", "values": ["2"]}
-                },
-                "summaries": {"eo:bands": [
-                    {
-                        "name": "2",
-                        "common_name": "blue",
-                        "wavelength_nm": 496.6,
-                        "res_m": 10,
-                        "scale": 0.0001,
-                        "offset": 0,
-                        "type": "int16",
-                        "unit": "1"
-                    }
-                ]}
-            })
-        )
-        import os, openeo_udf
-        dir = os.path.dirname(openeo_udf.functions.__file__)
-        file_name = os.path.join(dir, "datacube_reduce_time_sum.py")
-        with open(file_name, "r")  as f:
-            udf_code = f.read()
-
-        result = imagecollection.apply_tiles_spatiotemporal(udf_code)
-        stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
-        print(stitched)
-        self.assertEqual(2,stitched.cells[0][0][0])
-        self.assertEqual(6, stitched.cells[0][0][5])
-        self.assertEqual(4, stitched.cells[0][5][6])
-
     def test_apply_dimension_spatiotemporal(self):
 
         input = Pyramid({0: self.tiled_raster_rdd})
@@ -547,3 +508,66 @@ def rct_savitzky_golay(udf_data:UdfData):
         dim_renamed = imagecollection.rename_dimension('t','myNewTimeDim')
 
         dim_renamed.metadata.assert_valid_dimension('myNewTimeDim')
+
+
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
+        from openeo_udf.api.udf_data import UdfData  # Old style openeo_udf API
+        
+        def hyper_sum(udf_data: UdfData):
+            # Iterate over each tile
+            cube_list = []
+            for cube in udf_data.get_datacube_list():
+                mean = cube.array.sum(dim="t")
+                mean.name = cube.id + "_sum"
+                cube_list.append(DataCube(array=mean))
+            udf_data.set_datacube_list(cube_list)
+    """,
+    """
+        from openeo.udf import XarrayDataCube, UdfData
+    
+        def hyper_sum(udf_data: UdfData):
+            # Iterate over each tile
+            cube_list = []
+            for cube in udf_data.get_datacube_list():
+                mean = cube.array.sum(dim="t")
+                mean.name = cube.id + "_sum"
+                cube_list.append(XarrayDataCube(array=mean))
+            udf_data.set_datacube_list(cube_list)
+    """,
+])
+def test_apply_spatiotemporal(udf_code):
+    udf_code = textwrap.dedent(udf_code)
+
+    input = Pyramid({0: TestMultipleDates.tiled_raster_rdd})
+
+    imagecollection = GeopysparkDataCube(
+        pyramid=input,
+        metadata=GeopysparkCubeMetadata({
+            "cube:dimensions": {
+                # TODO: also specify other dimensions?
+                "bands": {"type": "bands", "values": ["2"]}
+            },
+            "summaries": {"eo:bands": [
+                {
+                    "name": "2",
+                    "common_name": "blue",
+                    "wavelength_nm": 496.6,
+                    "res_m": 10,
+                    "scale": 0.0001,
+                    "offset": 0,
+                    "type": "int16",
+                    "unit": "1"
+                }
+            ]}
+        })
+    )
+
+    result = imagecollection.apply_tiles_spatiotemporal(udf_code)
+    stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
+    print(stitched)
+
+    assert stitched.cells[0][0][0] == 2
+    assert stitched.cells[0][0][5] == 6
+    assert stitched.cells[0][5][6] == 4
