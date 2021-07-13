@@ -368,11 +368,6 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         result.save_result(filename=str(output_file))
         _add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
-    elif isinstance(result, JSONResult):
-        with open(output_file, 'w') as f:
-            json.dump(result.prepare_for_json(), f)
-        _add_permissions(output_file, stat.S_IWGRP)
-        logger.info("wrote JSON result to %s" % output_file)
     elif isinstance(result, MultipleFilesResult):
         result.reduce(output_file, delete_originals=True)
         _add_permissions(output_file, stat.S_IWGRP)

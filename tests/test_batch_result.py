@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+
 import xarray
 
 from openeo.metadata import Band
@@ -43,6 +45,36 @@ def test_png_export(tmp_path):
         info = Info(href, format='json')
         print(info)
         assert info['driverShortName'] == 'PNG'
+
+
+def test_simple_math(tmp_path):
+    simple_compute = {
+        'subtract1': {'process_id': 'subtract', 'arguments': {'x': 50, 'y': 32}},
+           'divide1': {'process_id': 'divide', 'arguments': {'x': {'from_node': 'subtract1'}, 'y': 1.8},
+                       'result': True}
+    }
+    job_spec = {
+        "title": "my job",
+        "description": "*minimum band*",
+        "process_graph":simple_compute
+    }
+    metadata_file = tmp_path / "metadata.json"
+    run_job(job_spec, output_file= Path("/tmp/out.json") , metadata_file=metadata_file,
+            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    assets = metadata["assets"]
+    assert len(assets) == 1
+    for asset in assets:
+        theAsset = assets[asset]
+
+        assert 'application/json' == theAsset['type']
+        href = theAsset['href']
+        with open(href,'r') as f:
+            theJSON = json.load(f)
+            assert theJSON == 10.0
+
 
 
 def test_ep3899_netcdf_no_bands(tmp_path):
