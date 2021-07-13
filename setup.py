@@ -37,7 +37,7 @@ setup(
     setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
-        'openeo>=0.7.0a1.*',
+        'openeo>=0.8.1a2.*',
         'openeo_driver>=0.10.11a1.*',
         'openeo_udf>=1.0.0rc3',
         'pyspark==3.1.1; python_version>="3.8"',

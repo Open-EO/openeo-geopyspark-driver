@@ -18,7 +18,6 @@ import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
 from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType
-from openeo_driver.datastructs import ResolutionMergeArgs
 from pandas import Series
 from py4j.java_gateway import JVMView
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
@@ -26,9 +25,10 @@ from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 import openeo.metadata
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
-from openeo.udf.xarraydatacube import XarrayIO
-from openeo.util import rfc3339
+from openeo.udf import UdfData, run_udf_code
+from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo_driver.datacube import DriverDataCube
+from openeo_driver.datastructs import ResolutionMergeArgs
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
@@ -37,13 +37,7 @@ from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.run_udf import run_user_code
 from openeogeotrellis.utils import to_projected_polygons, log_memory
-
-try:
-    from openeo_udf.api.base import UdfData
-except ImportError as e:
-    from openeo_udf.api.udf_data import UdfData
 
 
 _log = logging.getLogger(__name__)
@@ -347,9 +341,10 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
     @classmethod
-    def _tile_to_datacube(cls, bands_numpy: np.ndarray, extent: SpatialExtent,
-                          band_dimension: openeo.metadata.BandDimension, start_times=None):
-        from openeo_udf.api.datacube import DataCube
+    def _tile_to_datacube(
+            cls, bands_numpy: np.ndarray, extent: SpatialExtent,
+            band_dimension: openeo.metadata.BandDimension, start_times=None
+    ) -> XarrayDataCube:
 
         coords = {}
         dims = ('bands','y', 'x')
@@ -396,7 +391,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         # create&wrap the underlying xarray
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
-        return DataCube(the_array)
+        return XarrayDataCube(the_array)
 
     def apply_tiles_spatiotemporal(self, function, context={}) -> 'GeopysparkDataCube':
         """
@@ -418,20 +413,15 @@ class GeopysparkDataCube(DriverDataCube):
 
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
 
-            from openeo_udf.api.datacube import DataCube
-            #new UDF API available
-
-            datacube:DataCube = GeopysparkDataCube._tile_to_datacube(
+            datacube: XarrayDataCube = GeopysparkDataCube._tile_to_datacube(
                 multidim_array,
                 extent=extent,
                 band_dimension=openeo_metadata.band_dimension if openeo_metadata.has_band_dimension() else None,
                 start_times=pd.DatetimeIndex(dates)
             )
 
-            data = UdfData({"EPSG": 900913}, [datacube])
-            data.user_context = context
-
-            result_data = run_user_code(function,data)
+            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
+            result_data = run_udf_code(code=function, data=data)
             cubes = result_data.get_datacube_list()
             if len(cubes)!=1:
                 raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
@@ -505,18 +495,14 @@ class GeopysparkDataCube(DriverDataCube):
             key = geotrellis_tile[0]
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, key)
 
-            from openeo_udf.api.datacube import DataCube
-
-            datacube:DataCube = GeopysparkDataCube._tile_to_datacube(
+            datacube: XarrayDataCube = GeopysparkDataCube._tile_to_datacube(
                 geotrellis_tile[1].cells,
                 extent=extent,
                 band_dimension=openeo_metadata.band_dimension
             )
 
-            data = UdfData({"EPSG": 900913}, [datacube])
-            data.user_context = context
-
-            result_data = run_user_code(function,data)
+            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
+            result_data = run_udf_code(code=function, data=data)
             cubes = result_data.get_datacube_list()
             if len(cubes)!=1:
                 raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
