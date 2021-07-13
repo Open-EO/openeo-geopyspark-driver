@@ -189,7 +189,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 output_file.name: {
                     'bands': bands,
                     'nodata': nodata,
-                    'media_type': result.get_mimetype()
+                    'type': result.get_mimetype()
                 }
             }
         else:

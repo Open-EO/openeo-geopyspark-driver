@@ -1047,7 +1047,7 @@ class GpsBatchJobs(backend.BatchJobs):
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
         nodata = out_metadata.get("nodata", None)
-        media_type = out_metadata.get("media_type", "application/octet-stream")
+        media_type = out_metadata.get("type", out_metadata.get("media_type", "application/octet-stream"))
 
         results_dict = {}
 
@@ -1055,7 +1055,7 @@ class GpsBatchJobs(backend.BatchJobs):
             results_dict['out'] = {
                 # TODO: give meaningful filename and extension
                 "output_dir": str(job_dir),
-                "media_type": media_type,
+                "type": media_type,
                 "bands": bands,
                 "nodata": nodata
             }
@@ -1063,19 +1063,19 @@ class GpsBatchJobs(backend.BatchJobs):
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
             results_dict['profile_dumps.tar.gz'] = {
                 "output_dir": str(job_dir),
-                "media_type": "application/gzip"
+                "type": "application/gzip"
             }
 
         for file_name in os.listdir(job_dir):
             if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME:
                 results_dict[file_name] = {
                     "output_dir": str(job_dir),
-                    "media_type": "application/json"
+                    "type": "application/json"
                 }
             elif file_name.endswith("_MULTIBAND.tif"):
                 results_dict[file_name] = {
                     "output_dir": str(job_dir),
-                    "media_type": "image/tiff; application=geotiff"
+                    "type": "image/tiff; application=geotiff"
                 }
 
         #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
