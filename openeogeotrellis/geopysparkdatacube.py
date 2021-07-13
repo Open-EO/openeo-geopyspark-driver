@@ -1,3 +1,4 @@
+import collections
 import json
 import logging
 import math
@@ -40,10 +41,9 @@ from openeogeotrellis.run_udf import run_user_code
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 
 try:
-    from openeo_udf.api.base import UdfData, SpatialExtent
+    from openeo_udf.api.base import UdfData
 except ImportError as e:
     from openeo_udf.api.udf_data import UdfData
-    from openeo_udf.api.spatial_extent import SpatialExtent
 
 
 _log = logging.getLogger(__name__)
@@ -103,6 +103,9 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         """Get opensearch_link_titles from band dimension"""
         names_with_aliases = zip(self.band_dimension.band_names, self.band_dimension.band_aliases)
         return [n[1][0] if n[1] else n[0] for n in names_with_aliases]
+
+
+SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
 
 
 class GeopysparkDataCube(DriverDataCube):
@@ -328,7 +331,7 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
     @classmethod
-    def _mapTransform(cls, layoutDefinition, spatialKey):
+    def _mapTransform(cls, layoutDefinition, spatialKey) -> SpatialExtent:
         ex = layoutDefinition.extent
         x_range = ex.xmax - ex.xmin
         xinc = x_range / layoutDefinition.tileLayout.layoutCols
