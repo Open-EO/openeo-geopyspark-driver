@@ -957,3 +957,127 @@ def test_reduce_dimension_array_create_array_concat(api100):
     assert result["dims"] == ["t", "x", "y"]
     data = result["data"]
     assert_equal(data, np.full((1, 4, 4), fill_value=8))
+
+
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
+        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
+            return DataCube(cube.get_array().max("t"))
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_hypercube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """,
+])
+def test_udf_basic_reduce_temporal(api100, user_defined_process_registry, udf_code):
+    """Test doing UDF based temporal reduce"""
+    udf_code = textwrap.dedent(udf_code)
+
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "reduce": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "t",
+                "reducer": {"process_graph": {"udf": {
+                    "process_id": "run_udf",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "udf": udf_code,
+                        "runtime": "Python",
+                    },
+                    "result": True
+                }}}
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "reduce"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["bands", "x", "y"]
+    data = result["data"]
+    assert_equal(data, np.array([
+        np.array([[0, .25, .5, .75]] * 8).T,
+        np.full((4, 8), fill_value=25)
+    ]))
+
+
+@pytest.mark.parametrize("udf_code", [
+    """
+        def hello(name: str):
+            return f"hello {name}"
+    """,
+    """
+        def apply_datacube(cube, context: dict):
+            return DataCube(cube.get_array().max("t"))
+    """,
+    """
+        def apply_hypercube(cube, context: dict):
+            return DataCube(cube.get_array().max("t"))
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """
+])
+def test_udf_invalid_signature(api100, user_defined_process_registry, udf_code):
+    """Test doing UDF with invalid signature: should raise error"""
+    udf_code = textwrap.dedent(udf_code)
+
+    response = api100.result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "reduce": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "t",
+                "reducer": {"process_graph": {"udf": {
+                    "process_id": "run_udf",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "udf": udf_code,
+                        "runtime": "Python",
+                    },
+                    "result": True
+                }}}
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "reduce"}, "format": "json"},
+            "result": True,
+        }
+    })
+
+    # TODO: improve status code, error code and message
+    response.assert_error(status_code=500, error_code=None, message="No UDF found")
