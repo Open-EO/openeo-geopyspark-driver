@@ -1144,6 +1144,12 @@ class GeopysparkDataCube(DriverDataCube):
                         crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
                     else:
                         crop_extent = None
+                    bands = []
+                    if self.metadata.has_band_dimension():
+                        bands = [b._asdict() for b in self.metadata.bands]
+                    max_level = self.pyramid.levels[self.pyramid.max_zoom]
+                    nodata = max_level.layer_metadata.no_data_value
+
                     if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL:
                         directory = pathlib.Path(filename).parent
                         filename = str(directory)
@@ -1168,11 +1174,7 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                                   self._get_jvm().scala.Option.apply(
                                                                                                       crop_extent))
                         assets = {}
-                        bands = []
-                        if self.metadata.has_band_dimension():
-                            bands = [b._asdict() for b in self.metadata.bands]
-                        max_level = self.pyramid.levels[self.pyramid.max_zoom]
-                        nodata = max_level.layer_metadata.no_data_value
+
 
                         if asset_paths == None:
                             asset_paths = directory.glob('openEO*.tif')
@@ -1183,7 +1185,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                                 'bands': bands,
-                                'nodata': nodata,
+                                'nodata': nodata
                             }
                         return assets
 
@@ -1195,12 +1197,15 @@ class GeopysparkDataCube(DriverDataCube):
                                                                        "type": "image/tiff; application=geotiff",
                                                                        "roles": ["data"]} for filename in filenames}
                         else:
-                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,filename,zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+                            filePath = pathlib.Path(filename).parent / "openEO.tif"
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,str(filePath),zlevel,self._get_jvm().scala.Option.apply(crop_extent))
                             return {
-                                str(pathlib.Path(filename).name): {
-                                    "href": filename,
+                                str(filePath.name): {
+                                    "href": str(filePath),
                                     "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"]
+                                    "roles": ["data"],
+                                    'bands': bands,
+                                    'nodata': nodata
                                 }
                             }
             else:
