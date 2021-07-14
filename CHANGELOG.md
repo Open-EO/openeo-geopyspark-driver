@@ -10,7 +10,16 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## 2021-04-8
+## 2021-07-14
+
+### Changed
+
+- Add support for `openeo.udf` based UDFs and keep backward compatibility with `openeo_udf` based UDFs 
+  (EP-3856, [#78](https://github.com/Open-EO/openeo-geopyspark-driver/issues/78), 
+  [#93](https://github.com/Open-EO/openeo-geopyspark-driver/issues/93))
+
+
+## 2021-04-08
 
 ### Feature
 - Add support for (multiple) default OIDC clients (for EGI Check-in OIDC provider) (EP-3700, [Open-EO/openeo-api#366](https://github.com/Open-EO/openeo-api/pull/366))
