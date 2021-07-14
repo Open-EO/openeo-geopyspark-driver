@@ -49,7 +49,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
-from openeogeotrellis.utils import normalize_date, kerberos, zk_client
+from openeogeotrellis.utils import normalize_date, kerberos, zk_client, to_projected_polygons
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -932,9 +932,12 @@ class GpsBatchJobs(backend.BatchJobs):
                                                  .format(a=bbox_area(), c=collection_id, m=absolute_maximum_area),
                                                  status_code=400)
 
+                    def get_geometries():
+                        return (constraints.get("aggregate_spatial", {}).get("geometries") or
+                                constraints.get("filter_spatial", {}).get("geometries"))
+
                     def large_area() -> bool:
-                        geometries = (constraints.get("aggregate_spatial", {}).get("geometries") or
-                                      constraints.get("filter_spatial", {}).get("geometries"))
+                        geometries = get_geometries()
 
                         if not geometries:
                             area = bbox_area()
@@ -1011,11 +1014,22 @@ class GpsBatchJobs(backend.BatchJobs):
                             request_group_id)
                         )
                     else:
+                        geometries = get_geometries()
+
+                        if not geometries:
+                            geometry = bbox
+                            # text crs is unchanged
+                        else:
+                            # handles DelayedVector as well as Shapely geometries
+                            projected_polygons = to_projected_polygons(self._jvm, geometries)
+                            geometry = projected_polygons.polygons()
+                            crs = projected_polygons.crs()
+
                         # TODO: pass subfolder explicitly (also a random UUID) instead of implicit batch request ID?
                         batch_request_ids = [batch_processing_service.start_batch_process(
                             layer_source_info['collection_id'],
                             layer_source_info['dataset_id'],
-                            bbox,
+                            geometry,
                             crs,
                             from_date,
                             to_date,
