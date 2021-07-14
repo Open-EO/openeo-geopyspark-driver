@@ -120,14 +120,21 @@ def test_udp_simple_temporal_reduce(api100, user_defined_process_registry):
     ]))
 
 
-def test_udp_udf_reduce_temporal(api100, user_defined_process_registry):
-    """Test calling a UDP with a UDP based reduce operation"""
-    udf_code = textwrap.dedent("""
-        # TODO EP-3856 convert to XarrayDataCube usage
-        from openeo_udf.api.datacube import DataCube
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
         def apply_datacube(cube: DataCube, context: dict) -> DataCube:
             return DataCube(cube.get_array().max("t"))
-    """)
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """,
+])
+def test_udp_udf_reduce_temporal(api100, user_defined_process_registry, udf_code):
+    """Test calling a UDP with a UDF based reduce operation"""
+    udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
     udp_spec = {
         "id": udp_id,
@@ -187,15 +194,23 @@ def test_udp_udf_reduce_temporal(api100, user_defined_process_registry):
 
 
 @pytest.mark.parametrize("set_offset", [False, True])
-def test_udp_udf_reduce_temporal_with_parameter(api100, user_defined_process_registry, set_offset):
-    """Test calling a UDP with a UDP based reduce operation and fetching a UDP parameter value (EP-3781)"""
-    udf_code = textwrap.dedent("""
-        # TODO EP-3856 convert to XarrayDataCube usage
-        from openeo_udf.api.datacube import DataCube
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
         def apply_datacube(cube: DataCube, context: dict) -> DataCube:
             offset = context.get("offset", 34)
             return DataCube(cube.get_array().max("t") + offset) 
-    """)
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            offset = context.get("offset", 34)
+            return XarrayDataCube(cube.get_array().max("t") + offset) 
+    """,
+])
+def test_udp_udf_reduce_temporal_with_parameter(api100, user_defined_process_registry, set_offset, udf_code):
+    """Test calling a UDP with a UDF based reduce operation and fetching a UDP parameter value (EP-3781)"""
+    udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
     udp_spec = {
         "id": udp_id,
@@ -259,18 +274,29 @@ def test_udp_udf_reduce_temporal_with_parameter(api100, user_defined_process_reg
 
 
 @pytest.mark.parametrize("set_parameters", [False, True])
-def test_udp_udf_reduce_bands_with_parameter(api100, user_defined_process_registry, set_parameters):
-    """Test calling a UDP with a UDP based reduce operation and fetching a UDP parameter value (EP-3781)"""
-    udf_code = textwrap.dedent("""
-        # TODO EP-3856 convert to XarrayDataCube usage
-        from openeo_udf.api.datacube import DataCube
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
         def apply_datacube(cube: DataCube, context: dict) -> DataCube:
             l_scale = context.get("l_scale", 100)
             d_scale = context.get("d_scale", 1)
             array = cube.get_array()
             res = l_scale * array.sel(bands="Longitude") + d_scale * array.sel(bands="Day") 
             return DataCube(res) 
-    """)
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            l_scale = context.get("l_scale", 100)
+            d_scale = context.get("d_scale", 1)
+            array = cube.get_array()
+            res = l_scale * array.sel(bands="Longitude") + d_scale * array.sel(bands="Day") 
+            return XarrayDataCube(res) 
+    """,
+])
+def test_udp_udf_reduce_bands_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
+    """Test calling a UDP with a UDF based reduce operation and fetching a UDP parameter value (EP-3781)"""
+    udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
     udp_spec = {
         "id": udp_id,
@@ -390,14 +416,22 @@ def test_apply_square_pixels(api100):
     assert_equal(data, expected)
 
 
-def test_apply_udf_square_pixels(api100):
-    udf_code = textwrap.dedent("""
-        # TODO EP-3856 convert to XarrayDataCube usage
-        from openeo_udf.api.datacube import DataCube
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
         def apply_datacube(cube: DataCube, context: dict) -> DataCube:
             array = cube.get_array()
-            return DataCube(array * array) 
-    """)
+            return DataCube(array * array)  
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            array = cube.get_array()
+            return XarrayDataCube(array * array)  
+    """,
+])
+def test_apply_udf_square_pixels(api100, udf_code):
+    udf_code = textwrap.dedent(udf_code)
 
     response = api100.check_result({
         "lc": {
@@ -444,15 +478,23 @@ def test_apply_udf_square_pixels(api100):
 
 
 @pytest.mark.parametrize("set_parameters", [False, True])
-def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process_registry, set_parameters):
-    """Test calling a UDP with a UDP based reduce operation and fetching a UDP parameter value (EP-3781)"""
-    udf_code = textwrap.dedent("""
-        # TODO EP-3856 convert to XarrayDataCube usage
-        from openeo_udf.api.datacube import DataCube
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
         def apply_datacube(cube: DataCube, context: dict) -> DataCube:
             offset = context.get("offset", 100)
             return DataCube(cube.get_array() + offset) 
-    """)
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            offset = context.get("offset", 100)
+            return XarrayDataCube(cube.get_array() + offset) 
+    """,
+])
+def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
+    """Test calling a UDP with a UDF based reduce operation and fetching a UDP parameter value (EP-3781)"""
+    udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
     udp_spec = {
         "id": udp_id,
@@ -915,3 +957,127 @@ def test_reduce_dimension_array_create_array_concat(api100):
     assert result["dims"] == ["t", "x", "y"]
     data = result["data"]
     assert_equal(data, np.full((1, 4, 4), fill_value=8))
+
+
+@pytest.mark.parametrize("udf_code", [
+    """
+        from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
+        def apply_datacube(cube: DataCube, context: dict) -> DataCube:
+            return DataCube(cube.get_array().max("t"))
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_hypercube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """,
+])
+def test_udf_basic_reduce_temporal(api100, user_defined_process_registry, udf_code):
+    """Test doing UDF based temporal reduce"""
+    udf_code = textwrap.dedent(udf_code)
+
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "reduce": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "t",
+                "reducer": {"process_graph": {"udf": {
+                    "process_id": "run_udf",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "udf": udf_code,
+                        "runtime": "Python",
+                    },
+                    "result": True
+                }}}
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "reduce"}, "format": "json"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["bands", "x", "y"]
+    data = result["data"]
+    assert_equal(data, np.array([
+        np.array([[0, .25, .5, .75]] * 8).T,
+        np.full((4, 8), fill_value=25)
+    ]))
+
+
+@pytest.mark.parametrize("udf_code", [
+    """
+        def hello(name: str):
+            return f"hello {name}"
+    """,
+    """
+        def apply_datacube(cube, context: dict):
+            return DataCube(cube.get_array().max("t"))
+    """,
+    """
+        def apply_hypercube(cube, context: dict):
+            return DataCube(cube.get_array().max("t"))
+    """,
+    """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube) -> XarrayDataCube:
+            return XarrayDataCube(cube.get_array().max("t"))
+    """
+])
+def test_udf_invalid_signature(api100, user_defined_process_registry, udf_code):
+    """Test doing UDF with invalid signature: should raise error"""
+    udf_code = textwrap.dedent(udf_code)
+
+    response = api100.result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "reduce": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "t",
+                "reducer": {"process_graph": {"udf": {
+                    "process_id": "run_udf",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "udf": udf_code,
+                        "runtime": "Python",
+                    },
+                    "result": True
+                }}}
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "reduce"}, "format": "json"},
+            "result": True,
+        }
+    })
+
+    # TODO: improve status code, error code and message
+    response.assert_error(status_code=500, error_code=None, message="No UDF found")

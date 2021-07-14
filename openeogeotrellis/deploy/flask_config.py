@@ -10,7 +10,6 @@ OPENEO_BACKEND_DEPLOY_METADATA = build_backend_deploy_metadata(
         "openeo",
         "openeo_driver",
         "openeo-geopyspark",
-        "openeo_udf",
         "geopyspark",
     ]
     # TODO: add version info about geotrellis-extensions jar?

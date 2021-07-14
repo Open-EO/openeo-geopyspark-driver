@@ -21,6 +21,7 @@ tests_require = [
     'schema',
     'scipy>=1.3.0',
     'requests-mock>=1.8.0',
+    'openeo_udf>=1.0.0rc3',
 ]
 
 setup(
@@ -37,9 +38,8 @@ setup(
     setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
-        'openeo>=0.7.0a1.*',
+        'openeo>=0.8.1a2.*',
         'openeo_driver>=0.10.11a1.*',
-        'openeo_udf>=1.0.0rc3',
         'pyspark==3.1.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',

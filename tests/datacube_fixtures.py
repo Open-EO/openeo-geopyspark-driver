@@ -109,7 +109,8 @@ def imagecollection_with_two_bands_and_one_date(request):
 
     datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
 
-    request.instance.imagecollection_with_two_bands_and_one_date = datacube
+    if request.instance:
+        request.instance.imagecollection_with_two_bands_and_one_date = datacube
     return datacube
 
 
