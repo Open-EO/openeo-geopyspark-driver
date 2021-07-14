@@ -71,6 +71,7 @@ def test_simple_math(tmp_path):
 
         assert 'application/json' == theAsset['type']
         href = theAsset['href']
+        assert href.endswith(".json")
         with open(href,'r') as f:
             theJSON = json.load(f)
             assert theJSON == 10.0
