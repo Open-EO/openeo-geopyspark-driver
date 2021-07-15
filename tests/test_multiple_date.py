@@ -135,7 +135,7 @@ class TestMultipleDates(TestCase):
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
         res = resampled.reduce('max', dimension="t")
-        res.save_result(path, format="GTIFF", format_options={"parameters": {'stitch': True}})
+        res.save_result(path, format="GTIFF")
 
         with rasterio.open(ref_path) as ref_ds:
             with rasterio.open(path) as ds:
@@ -494,7 +494,7 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         path = str(self.temp_folder / "resampled.tiff")
         res = resampled.reduce('max', dimension="t")
-        res.save_result(path, format="GTIFF", format_options={"parameters": {'tiled': True}})
+        res.save_result(path, format="GTIFF" )
 
         import rasterio
         with rasterio.open(path) as ds:

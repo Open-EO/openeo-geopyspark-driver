@@ -1197,7 +1197,9 @@ class GeopysparkDataCube(DriverDataCube):
                                                                        "type": "image/tiff; application=geotiff",
                                                                        "roles": ["data"]} for filename in filenames}
                         else:
-                            filePath = pathlib.Path(filename).parent / "openEO.tif"
+                            originalName = pathlib.Path(filename)
+
+                            filePath = originalName.parent / ("openEO.tif" if originalName.name == "out" else originalName.name)
                             self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,str(filePath),zlevel,self._get_jvm().scala.Option.apply(crop_extent))
                             return {
                                 str(filePath.name): {

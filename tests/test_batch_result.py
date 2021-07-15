@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import xarray
+import pytest
 
 from openeo.metadata import Band
 from openeogeotrellis.deploy.batch_job import extract_result_metadata,run_job
