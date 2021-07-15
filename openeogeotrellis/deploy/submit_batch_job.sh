@@ -68,7 +68,8 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
  -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
-sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
 if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
   run_as="--proxy-user ${proxyUser}"
