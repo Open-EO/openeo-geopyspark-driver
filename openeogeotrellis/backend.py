@@ -759,12 +759,20 @@ class GpsBatchJobs(backend.BatchJobs):
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
 
-                    time.sleep(5)
-                    status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id))
-                    application_id = status_response['status']['sparkApplicationId']
+                    status_response = {}
+                    retry=0
+                    while('status' not in status_response and retry<5):
+                        retry+=1
+                        time.sleep(5)
+                        status_response = api_instance.get_namespaced_custom_object(" ", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id))
 
-                    logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
-                    registry.set_application_id(job_id, user_id, application_id)
+                    if('status' not in status_response):
+                        logger.info("invalid status response: {status}".format(status=str(status_response)))
+                        registry.set_status(job_id, user_id, 'error')
+                    else:
+                        application_id = status_response['status']['sparkApplicationId']
+                        logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
+                        registry.set_application_id(job_id, user_id, application_id)
                 except ApiException as e:
                     print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
