@@ -225,7 +225,7 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
         if isinstance(process, GeotrellisTileProcessGraphVisitor):
-            if dimension == self.metadata.temporal_dimension.name:
+            if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
                 from openeo_driver.ProcessGraphDeserializer import convert_node
                 context = convert_node(context, env=env)
                 pysc = gps.get_spark_context()
@@ -242,7 +242,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     return self._apply_to_levels_geotrellis_rdd(
                         lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context if isinstance(context,dict) else {}))
-            elif dimension == self.metadata.band_dimension.name:
+            elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
                 return self._apply_bands_dimension(process)
             else:
                 raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
