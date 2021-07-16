@@ -245,7 +245,7 @@ class GeopysparkDataCube(DriverDataCube):
             elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
                 return self._apply_bands_dimension(process)
             else:
-                raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
+                raise FeatureUnsupportedException(f"apply_dimension along dimension {dimension} is not supported. These dimensions are available: " + str(self.metadata.dimension_names()))
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf = process.udf_args.get('udf', None)
             return self._run_udf_dimension(udf, context, dimension, env)
