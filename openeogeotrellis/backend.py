@@ -19,6 +19,7 @@ import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.save_result import ImageCollectionResult
 from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
@@ -115,7 +116,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
         service_id = str(uuid.uuid4())
 
-        image_collection: GeopysparkDataCube = evaluate(
+        image_collection = evaluate(
             process_graph,
             env=EvalEnv({
                 'version': api_version,
@@ -123,6 +124,13 @@ class GpsSecondaryServices(backend.SecondaryServices):
                 "backend_implementation": GeoPySparkBackendImplementation(),
             })
         )
+
+        if (isinstance(image_collection, ImageCollectionResult)):
+            image_collection = image_collection.cube
+        elif(not isinstance(image_collection,GeopysparkDataCube)):
+            logger.info("Can not create service for: " + str(image_collection))
+            raise OpenEOApiException("Can not create service for: " + str(image_collection))
+
 
         wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
 
@@ -210,7 +218,10 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def restore_services(self):
         for user_id, service_metadata in self.service_registry.get_metadata_all_before(upper=datetime.max):
             if service_metadata.enabled:
-                self.start_service(user_id=user_id, service_id=service_metadata.id)
+                try:
+                    self.start_service(user_id=user_id, service_id=service_metadata.id)
+                except:
+                    logger.exception("Error while restoring service: " + str(service_metadata))
 
     def _proxy_service(self, service_id, host, port):
         if not ConfigParams().is_ci_context:
