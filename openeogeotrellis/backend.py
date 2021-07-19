@@ -689,6 +689,7 @@ class GpsBatchJobs(backend.BatchJobs):
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "3G")
             driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
+            max_executors = extra_options.get("max-executors", "500")
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
 
@@ -837,6 +838,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(profile)
                     args.append(serialize_dependencies())
                     args.append(self.get_submit_py_files())
+                    args.append(max_executors)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})

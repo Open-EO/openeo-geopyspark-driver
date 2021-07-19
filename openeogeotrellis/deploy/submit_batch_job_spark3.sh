@@ -41,6 +41,7 @@ queue=${17-default}
 profile=${18-false}
 dependencies=${19-"no_dependencies"}
 pyfiles=${20}
+maxexecutors=${21-500}
 
 pysparkPython="venv/bin/python"
 
@@ -103,6 +104,7 @@ spark-submit \
  --conf spark.speculation.interval=5000ms \
  --conf spark.speculation.multiplier=4 \
  --conf spark.dynamicAllocation.minExecutors=5 \
+ --conf spark.dynamicAllocation.maxExecutors=${maxexecutors} \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
