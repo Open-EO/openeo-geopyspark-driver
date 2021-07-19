@@ -1241,20 +1241,29 @@ class GeopysparkDataCube(DriverDataCube):
             global_metadata = format_options.get("file_metadata",{})
             zlevel = format_options.get("ZLEVEL", 6)
 
-            if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL and sample_by_feature:
+            if batch_mode and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
                 geometries = format_options['geometries']
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = self.get_labels(geometries)
                 directory = pathlib.Path(filename).parent
-
-                asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(spatial_rdd.srdd.rdd(),
-                                                                                                str(directory),
-                                                                                                projected_polygons,
-                                                                                                labels,
-                                                                                                band_names,dim_names,
-                                                                                                global_metadata
-                                                                                                )
+                if(spatial_rdd.layer_type != gps.LayerType.SPATIAL):
+                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(spatial_rdd.srdd.rdd(),
+                                                                                                    str(directory),
+                                                                                                    projected_polygons,
+                                                                                                    labels,
+                                                                                                    band_names,dim_names,
+                                                                                                    global_metadata
+                                                                                                    )
+                else:
+                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
+                        spatial_rdd.srdd.rdd(),
+                        str(directory),
+                        projected_polygons,
+                        labels,
+                        band_names, dim_names,
+                        global_metadata
+                        )
 
                 return self.return_netcdf_assets(asset_paths, bands, nodata)
             else:
