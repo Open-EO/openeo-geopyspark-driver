@@ -288,7 +288,7 @@ class GeopysparkDataCube(DriverDataCube):
         float_datacube = self.apply_to_levels(lambda layer: layer.convert_data_type("float32"))
         result = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
-        target_cell_type = pgVisitor.builder.getOutputCellType().name
+        target_cell_type = pgVisitor.builder.getOutputCellType().name()
         result = result.apply_to_levels(
             lambda layer: GeopysparkDataCube._transform_metadata(TiledRasterLayer(layer.layer_type,
                              layer.srdd.convertDataType(target_cell_type)),
