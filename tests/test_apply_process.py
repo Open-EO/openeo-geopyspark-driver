@@ -441,22 +441,7 @@ class TestApplyProcess(TestCase):
         self.assertEqual(3.0, stitched.cells[0][0][0])
 
     def test_ndvi(self):
-        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
-        layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
-        pyramid = gps.Pyramid({0: layer})
-        metadata = GeopysparkCubeMetadata({
-            "cube:dimensions": {
-                # TODO: also specify other dimensions?
-                "bands": {"type": "bands", "values": ["B04", "B08"]}
-            },
-            "summaries": {
-                "eo:bands": [
-                    {"name": "B04", "common_name": "red"},
-                    {"name": "B08", "common_name": "nir"},
-                ]
-            }
-        })
-        imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
+        imagecollection = self.create_red_nir_layer()
 
         stitched = imagecollection.ndvi().pyramid.levels[0].to_spatial_layer().stitch()
         cells = stitched.cells[0, 0:4, 0:4]
@@ -468,7 +453,7 @@ class TestApplyProcess(TestCase):
         ])
         np.testing.assert_array_almost_equal(cells, expected)
 
-    def test_linear_scale_range(self):
+    def create_red_nir_layer(self):
         red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
         layer = self._create_spacetime_layer(cells=np.array([[red_ramp], [nir_ramp]]))
         pyramid = gps.Pyramid({0: layer})
@@ -485,8 +470,48 @@ class TestApplyProcess(TestCase):
             }
         })
         imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
+        return imagecollection
+
+    def test_linear_scale_range(self):
+        imagecollection = self.create_red_nir_layer()
 
         stitched = imagecollection.ndvi().linear_scale_range(-1, 1, 0, 100).pyramid.levels[0].to_spatial_layer().stitch()
+        cells = stitched.cells[0, 0:4, 0:4]
+        expected =50.0*  (1.0 +np.array([
+            [np.nan, 1 / 1, 2 / 2, 3 / 3],
+            [-1 / 1, 0 / 2, 1 / 3, 2 / 4],
+            [-2 / 2, -1 / 3, 0 / 4, 1 / 5],
+            [-3 / 3, -2 / 4, -1 / 5, 0 / 6]
+        ]))
+        expected[0][0]=255.0
+        np.testing.assert_array_almost_equal(cells, expected.astype(np.uint8))
+
+
+    def test_linear_scale_range_reduce(self):
+        imagecollection = self.create_red_nir_layer()
+
+        visitor = GeotrellisTileProcessGraphVisitor()
+        graph = {
+            "scale": {
+                "process_id": "linear_scale_range",
+                "result": True,
+                "arguments": {
+                    "x": {
+                        "from_argument": "data"
+                    },
+                    "inputMin": -1,
+                    "inputMax": 1,
+                    "outputMin": 0,
+                    "outputMax": 100,
+                }
+            }
+
+        }
+        visitor.accept_process_graph(graph)
+
+        scaled_layer = imagecollection.ndvi().reduce_bands(visitor).pyramid.levels[0].to_spatial_layer()
+        assert scaled_layer.layer_metadata.cell_type == 'uint8ud255'
+        stitched = scaled_layer.stitch()
         cells = stitched.cells[0, 0:4, 0:4]
         expected =50.0*  (1.0 +np.array([
             [np.nan, 1 / 1, 2 / 2, 3 / 3],
