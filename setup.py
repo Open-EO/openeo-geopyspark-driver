@@ -65,6 +65,8 @@ setup(
         'Bottleneck==1.3.2',
         'python-json-logger',
         'rlguard-lib',
+        'openeo_udf',
+        'jep==3.9.1'
     ],
     extras_require={
         "dev": tests_require,
