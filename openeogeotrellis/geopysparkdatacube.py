@@ -512,7 +512,7 @@ class GeopysparkDataCube(DriverDataCube):
             _log.info(f"apply_tiles tilefunction result dims: {result_array.dims}")
             return (key,Tile(result_array.values, geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
-        if runtime == 'PythonOffheap':
+        if runtime == 'Python-Jep':
             def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
                 band_names = openeo_metadata.band_dimension.band_names
                 jvm = gps.get_spark_context()._jvm
