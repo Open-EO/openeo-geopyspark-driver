@@ -1,4 +1,5 @@
 import unittest.mock as mock
+from pathlib import Path
 from typing import List, Tuple
 
 import pytest
@@ -74,14 +75,16 @@ def skip_sentinelhub_layer():
 
 
 def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
+    test_root = Path(__file__).parent / "data"
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog02.json",
-            "tests/data/layercatalog03_oscars.json"
+            test_root / "layercatalog01.json",
+            test_root / "layercatalog02.json",
+            test_root / "layercatalog03_oscars.json"
         ]
 
-        collections_response = read_json("tests/data/collections_oscars01.json")
+
+        collections_response = read_json(test_root / "collections_oscars01.json")
         requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
         all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
@@ -102,6 +105,14 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
                 "spatial": {"bbox": [[-1.05893, 47.66031, 11.6781, 53.67487]]},
                 "temporal": {"interval": [["2014-10-23", None]]}
             },
+            'keywords': ['VITO',
+                         'C-SAR',
+                         'Orthoimagery',
+                         'SENTINEL-1A',
+                         'SENTINEL-1',
+                         'SENTINEL-1B',
+                         'RADAR BACKSCATTER',
+                         'RADAR'],
             "links": [
                 {
                     "rel": "alternate",

@@ -77,6 +77,7 @@ class OpenSearchOscars(OpenSearch):
         earliest_start_date, latest_end_date = date_bounds()
 
         bands = collection["properties"].get("bands")
+        keywords = collection["properties"].get("keyword",[])
 
         def instruments() -> List[str]:
             instruments_short_names = [info.get("instrument", {}).get("instrumentShortName") for info in
@@ -93,6 +94,7 @@ class OpenSearchOscars(OpenSearch):
                     [earliest_start_date.isoformat(), latest_end_date.isoformat() if latest_end_date else None]
                 ]}
             },
+            "keywords": keywords,
             "links": [transform_link(l) for l in collection["properties"]["links"]["describedby"]] +
                      [search_link(l) for l in collection["properties"]["links"].get("search", [])],
             "cube:dimensions": {
