@@ -47,14 +47,14 @@ def main():
     print("starting spark context")
     SparkContext.getOrCreate()
 
-    def setup_batch_jobs() -> None:
+    def setup_batch_jobs():
         with JobRegistry() as job_registry:
             job_registry.ensure_paths()
 
         job_tracker = JobTracker(JobRegistry, "", "")
         threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
 
-    def on_started() -> None:
+    def on_started():
         app.logger.setLevel('DEBUG')
         deploy.load_custom_processes()
         setup_batch_jobs()
