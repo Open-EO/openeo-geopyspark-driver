@@ -39,7 +39,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.yarn.appMasterEnv.PYSPARK_DRIVER_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
- --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64  \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:venv/lib64/python3.6/site-packages/jep  \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64  \
  --conf spark.yarn.appMasterEnv.OPENEO_VENV_ZIP=${hdfsVenvZip} \
  --conf spark.yarn.appMasterEnv.WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s \

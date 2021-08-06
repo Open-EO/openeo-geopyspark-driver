@@ -487,7 +487,7 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
-    def apply_tiles(self, function, context={}) -> 'GeopysparkDataCube':
+    def apply_tiles(self, function, context={}, runtime="python") -> 'GeopysparkDataCube':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
 
@@ -512,12 +512,26 @@ class GeopysparkDataCube(DriverDataCube):
             _log.info(f"apply_tiles tilefunction result dims: {result_array.dims}")
             return (key,Tile(result_array.values, geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
 
-        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
-            numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
-                log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
-            )
-            metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
-            return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
+        if runtime == 'Python-Jep':
+            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
+                band_names = openeo_metadata.band_dimension.band_names
+                jvm = gps.get_spark_context()._jvm
+                udf = jvm.org.openeo.geotrellis.udf.Udf
+                result_layer = udf.runUserCode(function, rdd.srdd.rdd(), band_names, context)
+
+                temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+                option = jvm.scala.Option
+                return gps.TiledRasterLayer(
+                        gps.LayerType.SPACETIME,
+                        temporal_tiled_raster_layer(option.apply(rdd.zoom_level), result_layer)
+                    )
+        else:
+            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
+                numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
+                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
+                )
+                metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
+                return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
 
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 

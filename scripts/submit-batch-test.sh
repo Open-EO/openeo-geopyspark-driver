@@ -43,7 +43,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.yarn.appMasterEnv.PYSPARK_DRIVER_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
- --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal:venv/lib64/python3.6/site-packages/jep \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
  --conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data \
  --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
