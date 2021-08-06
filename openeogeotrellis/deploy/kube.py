@@ -10,6 +10,7 @@ from logging.config import dictConfig
 from openeo_driver.server import run_gunicorn
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import flask_config, get_socket
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.job_tracker import JobTracker
@@ -48,11 +49,12 @@ def main():
     SparkContext.getOrCreate()
 
     def setup_batch_jobs():
-        with JobRegistry() as job_registry:
-            job_registry.ensure_paths()
+        if ConfigParams().is_ci_context:
+            with JobRegistry() as job_registry:
+                job_registry.ensure_paths()
 
-        job_tracker = JobTracker(JobRegistry, "", "")
-        threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
+            job_tracker = JobTracker(JobRegistry, "", "")
+            threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
 
     def on_started():
         app.logger.setLevel('DEBUG')
