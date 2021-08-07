@@ -49,7 +49,7 @@ def main():
     SparkContext.getOrCreate()
 
     def setup_batch_jobs():
-        if ConfigParams().is_ci_context:
+        if not ConfigParams().is_ci_context:
             with JobRegistry() as job_registry:
                 job_registry.ensure_paths()
 
