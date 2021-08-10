@@ -1206,19 +1206,18 @@ class GpsBatchJobs(backend.BatchJobs):
             else:
                 logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
                                                                                                        o=e.stdout),
-                               exc_info=e)
+                               exc_info=e, extra={'job_id': job_id})
 
         job_dir = self._get_job_output_dir(job_id)
 
         try:
             shutil.rmtree(job_dir)
-        except FileNotFoundError as e:  # nothing to delete, not an error
+        except FileNotFoundError:  # nothing to delete, not an error
             pass
         except Exception as e:
+            logger.warning("Could not recursively delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
             if propagate_errors:
                 raise
-            else:
-                logger.warning("Could not delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)

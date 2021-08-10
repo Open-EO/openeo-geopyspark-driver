@@ -3,7 +3,6 @@ import logging
 import kazoo.client
 
 from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
-from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
 
 logging.basicConfig(level=logging.INFO)
