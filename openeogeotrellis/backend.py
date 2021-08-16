@@ -1003,6 +1003,17 @@ class GpsBatchJobs(backend.BatchJobs):
                     def metadata_properties() -> Dict[str, object]:
                         return {property_name: value for property_name, value in exact_property_matches}
 
+                    geometries = get_geometries()
+
+                    if not geometries:
+                        geometry = bbox
+                        # string crs is unchanged
+                    else:
+                        # handles DelayedVector as well as Shapely geometries
+                        projected_polygons = to_projected_polygons(self._jvm, geometries)
+                        geometry = projected_polygons.polygons()
+                        crs = projected_polygons.crs()
+
                     if card4l:
                         # TODO: not obvious but this does the validation as well
                         dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
@@ -1016,7 +1027,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         batch_request_ids = list(batch_processing_service.start_card4l_batch_processes(
                             layer_source_info['collection_id'],
                             layer_source_info['dataset_id'],
-                            bbox,
+                            geometry,
                             crs,
                             from_date,
                             to_date,
@@ -1027,17 +1038,6 @@ class GpsBatchJobs(backend.BatchJobs):
                             request_group_id)
                         )
                     else:
-                        geometries = get_geometries()
-
-                        if not geometries:
-                            geometry = bbox
-                            # text crs is unchanged
-                        else:
-                            # handles DelayedVector as well as Shapely geometries
-                            projected_polygons = to_projected_polygons(self._jvm, geometries)
-                            geometry = projected_polygons.polygons()
-                            crs = projected_polygons.crs()
-
                         # TODO: pass subfolder explicitly (also a random UUID) instead of implicit batch request ID?
                         batch_request_ids = [batch_processing_service.start_batch_process(
                             layer_source_info['collection_id'],
