@@ -368,7 +368,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["other"],  # TODO: also "raster", "vector", "table"?
                     "parameters": {},
                 },
-                "NetCDF": {
+                "netCDF": {
                     "title": "Network Common Data Form",
                     "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
                     "parameters": {
