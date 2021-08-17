@@ -17,7 +17,7 @@ def test_file_formats(api100):
     assert "GeoJSON" in formats["input"]
     assert "GTiff" in formats["output"]
     assert "CovJSON" in formats["output"]
-    assert "NetCDF" in formats["output"]
+    assert "netCDF" in formats["output"]
 
 
 def test_health(api):
