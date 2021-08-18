@@ -1426,8 +1426,8 @@
       "temporal": {"interval": [["2010-12-12", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "step": 0.002777777777777778, "reference_system": "EPSG:4326"},
-      "y": {"type": "spatial", "axis": "y", "step": 0.002777777777777778, "reference_system": "EPSG:4326"},
+      "x": {"type": "spatial", "axis": "x", "step": 0.002777777777777778, "reference_system": 4326},
+      "y": {"type": "spatial", "axis": "y", "step": 0.002777777777777778, "reference_system": 4326},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -1478,8 +1478,8 @@
       "temporal": {"interval": [["2010-12-12", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "step": 0.00833333333, "reference_system": "EPSG:4326"},
-      "y": {"type": "spatial", "axis": "y", "step": 0.00833333333, "reference_system": "EPSG:4326"},
+      "x": {"type": "spatial", "axis": "x", "step": 0.00833333333, "reference_system": 4326},
+      "y": {"type": "spatial", "axis": "y", "step": 0.00833333333, "reference_system": 4326},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
