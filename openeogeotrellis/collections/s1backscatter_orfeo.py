@@ -147,7 +147,8 @@ class S1BackscatterOrfeo:
             sar_backscatter_arguments: SarBackscatterArgs = SarBackscatterArgs(),
             bands=None,
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
-            result_dtype="float32"
+            result_dtype="float32",
+            extra_properties={}
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -190,11 +191,12 @@ class S1BackscatterOrfeo:
 
         # Build RDD of file metadata from Creodias catalog query.
         # TODO openSearchLinkTitles?
-        attributeValues = {
+        attributeValues = extra_properties
+        attributeValues.update({
             "productType": "GRD",
             "sensorMode": "IW",
             "processingLevel": "LEVEL1",
-        }
+        })
         file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
             collection_id, [], attributeValues, correlation_id
         )
