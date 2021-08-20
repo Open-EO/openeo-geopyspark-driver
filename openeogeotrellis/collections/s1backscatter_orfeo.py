@@ -191,12 +191,15 @@ class S1BackscatterOrfeo:
 
         # Build RDD of file metadata from Creodias catalog query.
         # TODO openSearchLinkTitles?
-        attributeValues = extra_properties
-        attributeValues.update({
+        attributeValues = {
             "productType": "GRD",
             "sensorMode": "IW",
             "processingLevel": "LEVEL1",
-        })
+        }
+        allowed_extra_properties = ["orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness", "polarisation", "missionTakeId"]
+        filtered_extra_properties = {k: extra_properties[k] for k in allowed_extra_properties if k in extra_properties}
+        attributeValues.update(filtered_extra_properties)
+
         file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
             collection_id, [], attributeValues, correlation_id
         )
