@@ -152,7 +152,7 @@ def main(argv=None):
         "user": None,  # TODO
         "require_bounds": True,
         "correlation_id": f"cli-pid{os.getpid()}",
-        "backend_implementation": GeoPySparkBackendImplementation(),
+        "backend_implementation": GeoPySparkBackendImplementation(use_zookeeper=False),
     })
 
     with TimingLogger(title="Evaluate process graph", logger=_log):

@@ -250,16 +250,16 @@ class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
-    def __init__(self):
+    def __init__(self, use_zookeeper=True):
         # TODO: do this with a config instead of hardcoding rules?
         self._service_registry = (
-            InMemoryServiceRegistry() if ConfigParams().is_ci_context
+            InMemoryServiceRegistry() if not use_zookeeper or ConfigParams().is_ci_context
             else ZooKeeperServiceRegistry()
         )
 
         user_defined_processes = (
             # choosing between DBs can be done in said config
-            InMemoryUserDefinedProcessRepository() if ConfigParams().is_ci_context
+            InMemoryUserDefinedProcessRepository() if not use_zookeeper or ConfigParams().is_ci_context
             else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
         )
 
