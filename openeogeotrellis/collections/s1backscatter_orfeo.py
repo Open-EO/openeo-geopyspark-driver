@@ -682,3 +682,13 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             metadata=layer_metadata_py
         )
         return {zoom: tile_layer}
+
+
+def get_implementation(version: str = "1", jvm=None) -> S1BackscatterOrfeo:
+    jvm = jvm or get_jvm()
+    if version == "1":
+        return S1BackscatterOrfeo(jvm=jvm)
+    elif version == "2":
+        return S1BackscatterOrfeoV2(jvm=jvm)
+    else:
+        raise ValueError(version)
