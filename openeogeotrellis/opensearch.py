@@ -85,6 +85,34 @@ class OpenSearchOscars(OpenSearch):
 
             return list(set([name for name in instruments_short_names if name]))
 
+        previews = collection["properties"]["links"].get("previews",[])
+
+        assets =  {}
+        if(len(previews)>0):
+            assets["thumbnail"] = {
+                "roles": [
+                    "thumbnail"
+                ],
+                "href": previews[0].get("href"),
+                "title": "Thumbnail",
+                "type": previews[0].get("type")
+            }
+
+        inspire = list(filter(lambda link: link.get("type") == "application/vnd.iso.19139+xml" , collection["properties"]["links"].get("via",[])))
+
+        if(len(inspire)>0):
+            assets["metadata_iso_19139"]= {
+                "roles": [
+                    "metadata",
+                    "iso-19139"
+                ],
+                "href": inspire[0].get("href"),
+                "title": "ISO 19139 metadata",
+                "type": "application/vnd.iso.19139+xml"
+            }
+
+
+
         return {
             "title": collection["properties"]["title"],
             "description": collection["properties"]["abstract"],
@@ -106,7 +134,8 @@ class OpenSearchOscars(OpenSearch):
             "summaries": {
                 "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None,
                 "instruments": instruments()
-            }
+            },
+            "assets":assets
         }
 
     def __repr__(self):
