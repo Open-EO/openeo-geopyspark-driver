@@ -284,15 +284,6 @@ class S1BackscatterOrfeo:
                         input_tiff=band_tiffs[band.lower()], key_extent=key_ext, key_epsg=key_epsg, dem_dir=dem_dir,
                         tile_size=tile_size, log_prefix=log_prefix.replace(": ", f"-{band}: ")
                     )
-                    if data.shape != (tile_size, tile_size):
-                        if sar_backscatter_arguments.options.get("orfeo_output_mismatch_handling") == "warn":
-                            logger.warning(log_prefix + f"Crop/pad shape {data.shape} to ({tile_size},{tile_size})")
-                            pad_width = [(0, max(0, tile_size - data.shape[0])), (0, max(0, tile_size - data.shape[1]))]
-                            data = numpy.pad(data, pad_width)[:tile_size, :tile_size]
-                        else:
-                            # Fail with exception by default
-                            raise OpenEOApiException(f"Orfeo output mismatch {data.shape} != ({tile_size},{tile_size})")
-
                     tile_data[b] = data
 
                 if sar_backscatter_arguments.options.get("to_db", False):
