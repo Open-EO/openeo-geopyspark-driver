@@ -582,6 +582,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             }
 
         per_obs = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
+        # TODO: still split if union is too large?
 
         # Apply Orfeo processing over union of tiles per observation
         # and slice up after that
@@ -605,10 +606,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             col_max = max(f["key"]["col"] for f in features)
             row_min = min(f["key"]["row"] for f in features)
             row_max = max(f["key"]["row"] for f in features)
-            instant_min = min(f["key"]["instant"] for f in features)
-            instant_max = max(f["key"]["instant"] for f in features)
-            assert instant_min == instant_max, f"Not single instant {instant_min}-{instant_max}"
-            logger.info(f"{log_prefix} col[{col_min},{col_max}] row[{row_min},{row_max}] instant[{instant_min}]")
+            instants = set(f["key"]["instant"] for f in features)
+            assert len(instants) == 1, f"Not single instant: {instants}"
+            instant = instants.pop()
+            logger.info(f"{log_prefix} col[{col_min},{col_max}] row[{row_min},{row_max}] instant[{instant}]")
             xmin_min = min(f["key_extent"]["xmin"] for f in features)
             xmax_max = max(f["key_extent"]["xmax"] for f in features)
             ymin_min = min(f["key_extent"]["ymin"] for f in features)
@@ -619,7 +620,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             union_epsg = key_epsgs.pop()
             union_width = tile_size * (col_max - col_min + 1)
             union_height = tile_size * (row_max - row_min + 1)
-            logger.info(f"{log_prefix} extent union {union_extent} EPSG {union_epsg}")
+            logger.info(f"{log_prefix} extent union {union_extent} EPSG {union_epsg}: {union_width}x{union_height}px")
 
             band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
 
@@ -656,12 +657,28 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                     logger.info(log_prefix + "Converting backscatter intensity to decibel")
                     orfeo_output_bands = 10 * numpy.log10(orfeo_output_bands)
 
-                # TODO: split orfeo_output_bands in tiles
-                key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
+                # Split orfeo output in tiles
+                logger.info(f"{log_prefix} Split {orfeo_output_bands.shape} in tiles of {tile_size}")
                 cell_type = geopyspark.CellType(orfeo_output_bands.dtype.name)
-                logger.info(log_prefix + f"Create Tile for key {key} from {orfeo_output_bands.shape}")
-                tile = geopyspark.Tile(orfeo_output_bands, cell_type, no_data_value=nodata)
-                return key, tile
+                tiles = []
+                for c in range(col_max - col_min + 1):
+                    for r in range(row_max - row_min + 1):
+                        col = col_min + c
+                        row = row_min + r
+                        key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+                        tile = orfeo_output_bands[:, c * tile_size:(c + 1) * tile_size, r * tile_size:(r + 1) * tile_size]
+                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                        tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
+                        tiles.append((key, tile))
+                return tiles
 
-        # TODO ...
-        per_obs.map(process_obs)
+        tile_rdd = per_obs.flatMap(process_obs)
+        if result_dtype:
+            layer_metadata_py.cell_type = result_dtype
+        logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
+        tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
+            layer_type=geopyspark.LayerType.SPACETIME,
+            numpy_rdd=tile_rdd,
+            metadata=layer_metadata_py
+        )
+        return {zoom: tile_layer}
