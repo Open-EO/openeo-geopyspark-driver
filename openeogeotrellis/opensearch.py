@@ -85,6 +85,12 @@ class OpenSearchOscars(OpenSearch):
 
             return list(set([name for name in instruments_short_names if name]))
 
+        def platforms() -> List[str]:
+            platform_short_names = [info.get("platform", {}).get("platformShortName") for info in
+                                       collection["properties"]["acquisitionInformation"]]
+
+            return list(set([name for name in platform_short_names if name]))
+
         previews = collection["properties"]["links"].get("previews",[])
 
         assets =  {}
@@ -133,6 +139,7 @@ class OpenSearchOscars(OpenSearch):
             },
             "summaries": {
                 "eo:bands": [dict(band, name=band["title"]) for band in bands] if bands else None,
+                "platform": platforms(),
                 "instruments": instruments()
             },
             "assets":assets

@@ -149,6 +149,7 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
                         "name": "VH"
                     }
                 ],
+                "platform": [],
                 "instruments": ["MSI"]
             },
             "assets":{}
