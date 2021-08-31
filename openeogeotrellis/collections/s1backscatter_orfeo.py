@@ -195,6 +195,59 @@ class S1BackscatterOrfeo:
             paths = rdd.map(lambda f: f["feature"]["id"]).distinct().count()
             logger.info(f"RDD info: {record_count} records, {paths} creo paths, key_ranges: {key_ranges}")
 
+    @staticmethod
+    def _creo_scan_for_band_tiffs(creo_path: pathlib.Path, log_prefix: str) -> Dict[str, pathlib.Path]:
+        """
+        Scan given creodias path for TIFF files
+        :param creo_path: path to observation root folder
+        :param log_prefix: prefix for logging
+        :return: dictionary mapping band name (vv, vh, ...) to tiff path
+        """
+        with TimingLogger(title=f"{log_prefix} Scan {creo_path}", logger=logger):
+            # We expect the desired geotiff files under `creo_path` at location like
+            #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
+            # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
+            band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
+            band_tiffs = {}
+            for tiff in creo_path.glob("measurement/*.tiff"):
+                match = band_regex.match(tiff.name)
+                if match:
+                    band_tiffs[match.group(1).lower()] = tiff
+            if not band_tiffs:
+                raise OpenEOApiException("No tiffs found")
+            logger.info(f"{log_prefix} Detected band tiffs: {band_tiffs}")
+        return band_tiffs
+
+    @staticmethod
+    def _get_dem_dir_context(sar_backscatter_arguments: SarBackscatterArgs, extent: dict, epsg: int):
+        """
+        Build context manager that sets up temporary dir with digital elevation model files
+        for given spatial extent.
+        """
+        elevation_model = sar_backscatter_arguments.elevation_model
+        if elevation_model:
+            elevation_model = elevation_model.lower()
+        if elevation_model in [None, "srtmgl1"]:
+            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+                srtm_root="/eodata/auxdata/SRTMGL1/dem",
+            )
+        elif elevation_model in ["geotiff", "mapzen"]:
+            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
+                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+                zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
+                dem_tile_size=512,
+                dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+            )
+        elif elevation_model in ["off"]:
+            # Context that returns None when entering
+            dem_dir_context = nullcontext()
+        else:
+            raise FeatureUnsupportedException(
+                f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
+            )
+        return dem_dir_context
+
     def creodias(
             self,
             projected_polygons,
@@ -253,47 +306,15 @@ class S1BackscatterOrfeo:
             key_epsg = feature["metadata"]["crs_epsg"]
             creo_path = pathlib.Path(feature["feature"]["id"])
             logger.info(log_prefix + f"Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
+            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
 
-            with TimingLogger(title=f"{log_prefix} scan {creo_path}", logger=logger):
-                # We expect the desired geotiff files under `creo_path` at location like
-                #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
-                # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
-                band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
-                band_tiffs = {}
-                for tiff in creo_path.glob("measurement/*.tiff"):
-                    match = band_regex.match(tiff.name)
-                    if match:
-                        band_tiffs[match.group(1).lower()] = tiff
-                if not band_tiffs:
-                    raise OpenEOApiException("No tiffs found")
-                logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
+            band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
 
-            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
-
-            elevation_model = sar_backscatter_arguments.elevation_model
-            if elevation_model:
-                elevation_model = elevation_model.lower()
-            if elevation_model in [None, "srtmgl1"]:
-                dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
-                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
-                    srtm_root="/eodata/auxdata/SRTMGL1/dem",
-                )
-            elif elevation_model in ["geotiff", "mapzen"]:
-                dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
-                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
-                    zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
-                    dem_tile_size=512,
-                    dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
-                )
-            elif elevation_model in ["off"]:
-                # Context that returns None when entering
-                dem_dir_context = nullcontext()
-            else:
-                raise FeatureUnsupportedException(
-                    f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
-                )
+            dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
+                sar_backscatter_arguments=sar_backscatter_arguments, extent=key_ext, epsg=key_epsg
+            )
 
             msg = f"{log_prefix}Process {creo_path} and load into geopyspark Tile"
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
