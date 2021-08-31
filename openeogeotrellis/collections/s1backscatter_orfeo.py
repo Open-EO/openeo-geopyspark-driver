@@ -8,7 +8,7 @@ import tempfile
 import types
 import zipfile
 from datetime import datetime
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, List
 
 import epsel
 import geopyspark
@@ -81,14 +81,17 @@ class S1BackscatterOrfeo:
     Collection loader that uses Orfeo pipeline to calculate Sentinel-1 Backscatter on the fly.
     """
 
+    _DEFAULT_TILE_SIZE = 512
+
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
 
     def _load_feature_rdd(
-            self, file_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int, tile_size: int
+            self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
+            tile_size: int
     ) -> Tuple[pyspark.RDD, JavaObject]:
-        logger.info("Loading feature JSON RDD from {f}".format(f=file_factory))
-        json_rdd = file_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size)
+        logger.info("Loading feature JSON RDD from {f}".format(f=file_rdd_factory))
+        json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size)
         jrdd = json_rdd._1()
         layer_metadata_sc = json_rdd._2()
 
@@ -99,6 +102,35 @@ class S1BackscatterOrfeo:
         pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
         pyrdd = pyrdd.map(json.loads)
         return pyrdd, layer_metadata_sc
+
+    def _build_feature_rdd(
+            self,
+            collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
+            tile_size: int, zoom: int, correlation_id: str
+    ):
+        """Build RDD of file metadata from Creodias catalog query."""
+        # TODO openSearchLinkTitles?
+        attributeValues = {
+            "productType": "GRD",
+            "sensorMode": "IW",
+            "processingLevel": "LEVEL1",
+        }
+        # Additional query values for orbit filtering
+        attributeValues.update({
+            k: v for (k, v) in extra_properties.items() if k in [
+                "orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness",
+                "polarisation", "missionTakeId",
+            ]
+        })
+        file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
+            collection_id, [], attributeValues, correlation_id
+        )
+        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
+            file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
+            zoom=zoom, tile_size=tile_size
+        )
+        layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
+        return feature_pyrdd, layer_metadata_py
 
     def _convert_scala_metadata(self, metadata_sc: JavaObject) -> geopyspark.Metadata:
         """
@@ -138,6 +170,31 @@ class S1BackscatterOrfeo:
             extent=extent_py, layout_definition=layout_definition_py
         )
 
+    # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
+    _coefficient_mapping = {
+        "beta0": "beta",
+        "sigma0-ellipsoid": "sigma",
+        "gamma0-ellipsoid": "gamma",
+    }
+
+    def _get_sar_calibration_lut(self, coefficient: str) -> str:
+        try:
+            return self._coefficient_mapping[coefficient]
+        except KeyError:
+            raise OpenEOApiException(
+                f"Backscatter coefficient {coefficient!r} is not supported. "
+                f"Use one of {list(self._coefficient_mapping.keys())}.")
+
+    def _debug_show_rdd_info(self, rdd):
+        with TimingLogger(title="Collect RDD info", logger=logger):
+            record_count = rdd.count()
+            key_ranges = {
+                k: rdd.map(lambda f: f["key"][k]).distinct().collect()
+                for k in ["col", "row", "instant"]
+            }
+            paths = rdd.map(lambda f: f["feature"]["id"]).distinct().count()
+            logger.info(f"RDD info: {record_count} records, {paths} creo paths, key_ranges: {key_ranges}")
+
     def creodias(
             self,
             projected_polygons,
@@ -155,21 +212,7 @@ class S1BackscatterOrfeo:
         """
         # Initial argument checking
         bands = bands or ["VH", "VV"]
-
-        # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
-        coefficient_mapping = {
-            "beta0": "beta",
-            "sigma0-ellipsoid": "sigma",
-            "gamma0-ellipsoid": "gamma",
-        }
-
-        if sar_backscatter_arguments.coefficient in coefficient_mapping:
-            sar_calibration_lut = coefficient_mapping[sar_backscatter_arguments.coefficient]
-        else:
-            raise OpenEOApiException(
-                f"Backscatter coefficient {sar_backscatter_arguments.coefficient!r} is not supported. "
-                f"Use one of {list(coefficient_mapping.keys())}.")
-
+        sar_calibration_lut = self._get_sar_calibration_lut(sar_backscatter_arguments.coefficient)
         if sar_backscatter_arguments.mask:
             raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
         if sar_backscatter_arguments.contributing_area:
@@ -179,45 +222,25 @@ class S1BackscatterOrfeo:
         if sar_backscatter_arguments.ellipsoid_incidence_angle:
             raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
 
-        noise_removal = bool(sar_backscatter_arguments.noise_removal)
-
         # Tile size to use in the TiledRasterLayer.
-        tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
+        tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
         # Geoid for orthorectification: get from options, fallback on config.
         elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
         elev_default = sar_backscatter_arguments.options.get("elev_default")
         logger.info(f"elev_geoid: {elev_geoid!r}")
 
-        # Build RDD of file metadata from Creodias catalog query.
-        # TODO openSearchLinkTitles?
-        attributeValues = {
-            "productType": "GRD",
-            "sensorMode": "IW",
-            "processingLevel": "LEVEL1",
-        }
-        allowed_extra_properties = ["orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness", "polarisation", "missionTakeId"]
-        filtered_extra_properties = {k: extra_properties[k] for k in allowed_extra_properties if k in extra_properties}
-        attributeValues.update(filtered_extra_properties)
+        noise_removal = bool(sar_backscatter_arguments.noise_removal)
+        debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
-        file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
-            collection_id, [], attributeValues, correlation_id
+        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+            collection_id=collection_id, projected_polygons=projected_polygons,
+            from_date=from_date, to_date=to_date, extra_properties=extra_properties,
+            tile_size=tile_size, zoom=zoom, correlation_id=
+            correlation_id
         )
-        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
-            file_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
-            zoom=zoom, tile_size=tile_size
-        )
-        layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
-
-        if smart_bool(sar_backscatter_arguments.options.get("debug")):
-            with TimingLogger(title="Collect RDD info", logger=logger):
-                record_count = feature_pyrdd.count()
-                key_ranges = {
-                    k: feature_pyrdd.map(lambda f: f["key"][k]).distinct().collect()
-                    for k in ["col", "row", "instant"]
-                }
-                paths = feature_pyrdd.map(lambda f: f["feature"]["id"]).distinct().count()
-                logger.info(f"RDD info: {record_count} records, {paths} creo paths, key_ranges: {key_ranges}")
+        if debug_mode:
+            self._debug_show_rdd_info(feature_pyrdd)
 
         @epsel.ensure_info_logging
         @TimingLogger(title="process_feature", logger=logger)
@@ -300,7 +323,7 @@ class S1BackscatterOrfeo:
 
         @TimingLogger(title="orfeo_pipeline", logger=logger)
         def orfeo_pipeline(
-                input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None], tile_size: int = 512,
+                input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None], tile_size: int,
                 log_prefix: str = ""
         ):
             logger.info(log_prefix + f"Input tiff {input_tiff}")
