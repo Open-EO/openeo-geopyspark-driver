@@ -16,7 +16,7 @@ from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CatalogClient
-from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
+from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -378,11 +378,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'file-oscars':
             pyramid = file_oscars_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
-            pyramid = S1BackscatterOrfeo(jvm=jvm).creodias(
+            sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+            s1_backscatter_orfeo = get_s1_backscatter_orfeo(
+                version=sar_backscatter_arguments.options.get("implementation_version", "1"),
+                jvm=jvm
+            )
+            pyramid = s1_backscatter_orfeo.creodias(
                 projected_polygons=projected_polygons_native_crs,
                 from_date=from_date, to_date=to_date,
                 correlation_id=correlation_id,
-                sar_backscatter_arguments=load_params.sar_backscatter or SarBackscatterArgs(),
+                sar_backscatter_arguments=sar_backscatter_arguments,
                 bands=bands,
                 extra_properties=metadata_properties()
             )
