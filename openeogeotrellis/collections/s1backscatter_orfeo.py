@@ -670,7 +670,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                         tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                         tiles.append((key, tile))
-                return tiles
+
+            logger.info(f"{log_prefix} Union extent split in {len(tiles)} tiles")
+            return tiles
 
         tile_rdd = per_obs.flatMap(process_obs)
         if result_dtype:
