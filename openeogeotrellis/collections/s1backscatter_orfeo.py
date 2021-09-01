@@ -275,60 +275,60 @@ class S1BackscatterOrfeo:
                 for (p, v) in app.GetParameters().items()
             }
 
-        msg = f"{log_prefix} Orfeo processing pipeline on {input_tiff}"
-        with tempfile.TemporaryDirectory() as temp_dir, TimingLogger(title=msg, logger=logger):
+        with tempfile.TemporaryDirectory() as temp_dir:
 
-            # SARCalibration
-            sar_calibration = otb.Registry.CreateApplication('SARCalibration')
-            sar_calibration.SetParameterString("in", str(input_tiff))
-            sar_calibration.SetParameterString("lut", sar_calibration_lut)
-            sar_calibration.SetParameterValue('noise', noise_removal)
-            sar_calibration.SetParameterInt('ram', 512)
-            logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
-            sar_calibration.Execute()
+            with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
+                # SARCalibration
+                sar_calibration = otb.Registry.CreateApplication('SARCalibration')
+                sar_calibration.SetParameterString("in", str(input_tiff))
+                sar_calibration.SetParameterString("lut", sar_calibration_lut)
+                sar_calibration.SetParameterValue('noise', noise_removal)
+                sar_calibration.SetParameterInt('ram', 512)
+                logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
+                sar_calibration.Execute()
 
-            # OrthoRectification
-            ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
-            ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
-            if dem_dir:
-                ortho_rect.SetParameterString("elev.dem", dem_dir)
-            if elev_geoid:
-                ortho_rect.SetParameterString("elev.geoid", elev_geoid)
-            if elev_default is not None:
-                ortho_rect.SetParameterFloat("elev.default", float(elev_default))
-            ortho_rect.SetParameterString("map", "utm")
-            ortho_rect.SetParameterInt("map.utm.zone", utm_zone)
-            ortho_rect.SetParameterValue("map.utm.northhem", utm_northhem)
-            ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
-            ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
-            ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
-            ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
-            ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
-            ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
-            ortho_rect.SetParameterString("interpolator", "linear")
-            ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
-            ortho_rect.SetParameterInt("opt.ram", 512)
-            logger.info(f"{log_prefix} OrthoRectification params: {otb_param_dump(ortho_rect)}")
-            ortho_rect.Execute()
+                # OrthoRectification
+                ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
+                ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
+                if dem_dir:
+                    ortho_rect.SetParameterString("elev.dem", dem_dir)
+                if elev_geoid:
+                    ortho_rect.SetParameterString("elev.geoid", elev_geoid)
+                if elev_default is not None:
+                    ortho_rect.SetParameterFloat("elev.default", float(elev_default))
+                ortho_rect.SetParameterString("map", "utm")
+                ortho_rect.SetParameterInt("map.utm.zone", utm_zone)
+                ortho_rect.SetParameterValue("map.utm.northhem", utm_northhem)
+                ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
+                ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+                ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
+                ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
+                ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
+                ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
+                ortho_rect.SetParameterString("interpolator", "linear")
+                ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
+                ortho_rect.SetParameterInt("opt.ram", 512)
+                logger.info(f"{log_prefix} OrthoRectification params: {otb_param_dump(ortho_rect)}")
+                ortho_rect.Execute()
 
-            # TODO: extract numpy array directly (instead of through on disk files)
-            #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
-            #       but requires orfeo toolbox to be compiled with numpy support
-            #       (numpy header files must be available at compile time I guess)
+                # TODO: extract numpy array directly (instead of through on disk files)
+                #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
+                #       but requires orfeo toolbox to be compiled with numpy support
+                #       (numpy header files must be available at compile time I guess)
 
-            out_path = os.path.join(temp_dir, "out.tiff")
-            ortho_rect.SetParameterString("io.out", out_path)
-            ortho_rect.ExecuteAndWriteOutput()
+                out_path = os.path.join(temp_dir, "out.tiff")
+                logger.info(f"{log_prefix} Write orfeo pipeline output to temporary {out_path}")
+                ortho_rect.SetParameterString("io.out", out_path)
+                ortho_rect.ExecuteAndWriteOutput()
 
             import rasterio
-            msg = f"{log_prefix} Reading orfeo output tiff: {out_path}"
-            with TimingLogger(title=msg, logger=logger), rasterio.open(out_path) as ds:
-                logger.info(f"{log_prefix} Output tiff metadata: {ds.meta}, bounds {ds.bounds}")
+            with rasterio.open(out_path) as ds:
+                logger.info(f"{log_prefix} Reading {out_path}: metadata: {ds.meta}, bounds {ds.bounds}")
                 assert (ds.count, ds.width, ds.height) == (1, extent_width_px, extent_height_px)
                 data = ds.read(1)
                 nodata = ds.nodata
 
-        logger.info(f"{log_prefix} Data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
+        logger.info(f"{log_prefix} Final orfeo pipeline data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
         return data, nodata
 
     def creodias(
@@ -570,8 +570,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             self._debug_show_rdd_info(feature_pyrdd)
 
         # Group multiple tiles by observation
-        @epsel.ensure_info_logging
-        @TimingLogger(title="process_feature", logger=logger)
         def process_feature(feature: dict) -> Tuple[str, dict]:
             creo_path = feature["feature"]["id"]
             return creo_path, {
@@ -608,7 +606,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             instants = set(f["key"]["instant"] for f in features)
             assert len(instants) == 1, f"Not single instant: {instants}"
             instant = instants.pop()
-            logger.info(f"{log_prefix} col[{col_min},{col_max}] row[{row_min},{row_max}] instant[{instant}]")
+            logger.info(f"{log_prefix} Union tiling keys col[{col_min},{col_max}] row[{row_min},{row_max}] instant[{instant}]")
             xmin_min = min(f["key_extent"]["xmin"] for f in features)
             xmax_max = max(f["key_extent"]["xmax"] for f in features)
             ymin_min = min(f["key_extent"]["ymin"] for f in features)
@@ -619,7 +617,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             union_epsg = key_epsgs.pop()
             union_width = tile_size * (col_max - col_min + 1)
             union_height = tile_size * (row_max - row_min + 1)
-            logger.info(f"{log_prefix} extent union {union_extent} EPSG {union_epsg}: {union_width}x{union_height}px")
+            logger.info(f"{log_prefix} Union extent {union_extent} EPSG {union_epsg}: {union_width}x{union_height}px")
 
             band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
 
