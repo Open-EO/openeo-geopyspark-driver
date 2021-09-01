@@ -911,17 +911,21 @@ class GpsBatchJobs(backend.BatchJobs):
                     metadata = metadata.filter_bands(band_names)
 
                 layer_source_info = metadata.get("_vito", "data_source")
+                sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
 
-                if ("sar_backscatter" in constraints
-                        and not layer_source_info.get("sar_backscatter_compatible", False)):
+                if "sar_backscatter" in constraints and not sar_backscatter_compatible:
                     raise OpenEOApiException(message=
                                              """Process "sar_backscatter" is not applicable for collection {c}."""
                                              .format(c=collection_id), status_code=400)
 
                 if layer_source_info['type'] == 'sentinel-hub':
-                    sar_backscatter_arguments = constraints.get("sar_backscatter", SarBackscatterArgs())
+                    sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
+                        constraints.get("sar_backscatter", SarBackscatterArgs()) if sar_backscatter_compatible
+                        else None
+                    )
 
-                    card4l = (sar_backscatter_arguments.coefficient == "gamma0-terrain"
+                    card4l = (sar_backscatter_arguments
+                              and sar_backscatter_arguments.coefficient == "gamma0-terrain"
                               and sar_backscatter_arguments.mask
                               and sar_backscatter_arguments.local_incidence_angle)
 
@@ -994,10 +998,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     shub_band_names = metadata.band_names
 
-                    if sar_backscatter_arguments.mask:
+                    if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                         shub_band_names.append('dataMask')
 
-                    if sar_backscatter_arguments.local_incidence_angle:
+                    if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
 
                     def metadata_properties() -> Dict[str, object]:
@@ -1049,7 +1053,8 @@ class GpsBatchJobs(backend.BatchJobs):
                             shub_band_names,
                             sample_type,
                             metadata_properties(),
-                            sentinel_hub.processing_options(sar_backscatter_arguments)
+                            (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
+                             else {})
                         )]
 
                         subfolder = batch_request_ids[0]
