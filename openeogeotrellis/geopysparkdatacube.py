@@ -1153,6 +1153,7 @@ class GeopysparkDataCube(DriverDataCube):
                         self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
                 else:
                     _log.info("save_result: saveRDD")
+                    gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
@@ -1188,7 +1189,7 @@ class GeopysparkDataCube(DriverDataCube):
                             self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
                                                                                                   filename, zlevel,
                                                                                                   self._get_jvm().scala.Option.apply(
-                                                                                                      crop_extent))
+                                                                                                      crop_extent),gtiff_options)
                         assets = {}
 
 
@@ -1216,7 +1217,7 @@ class GeopysparkDataCube(DriverDataCube):
                             originalName = pathlib.Path(filename)
 
                             filePath = originalName.parent / ("openEO.tif" if originalName.name == "out" else originalName.name)
-                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,str(filePath),zlevel,self._get_jvm().scala.Option.apply(crop_extent))
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,str(filePath),zlevel,self._get_jvm().scala.Option.apply(crop_extent),gtiff_options)
                             return {
                                 str(filePath.name): {
                                     "href": str(filePath),
