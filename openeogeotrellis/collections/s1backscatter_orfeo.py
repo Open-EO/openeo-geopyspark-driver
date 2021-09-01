@@ -262,11 +262,10 @@ class S1BackscatterOrfeo:
             elev_default: float = None,
             log_prefix: str = "",
     ):
-        logger.info(log_prefix + f"Input tiff {input_tiff}")
+        logger.info(f"{log_prefix} Input tiff {input_tiff}")
 
         utm_zone, utm_northhem = utm_zone_from_epsg(extent_epsg)
-        logger.info(
-            log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=extent, u=utm_zone, c=extent_epsg))
+        logger.info(f"{log_prefix} extent {extent} (UTM {utm_zone}, EPSG {extent_epsg})")
 
         otb = _import_orfeo_toolbox()
 
@@ -276,7 +275,7 @@ class S1BackscatterOrfeo:
                 for (p, v) in app.GetParameters().items()
             }
 
-        msg = f"{log_prefix}Orfeo processing pipeline on {input_tiff}"
+        msg = f"{log_prefix} Orfeo processing pipeline on {input_tiff}"
         with tempfile.TemporaryDirectory() as temp_dir, TimingLogger(title=msg, logger=logger):
 
             # SARCalibration
@@ -285,7 +284,7 @@ class S1BackscatterOrfeo:
             sar_calibration.SetParameterString("lut", sar_calibration_lut)
             sar_calibration.SetParameterValue('noise', noise_removal)
             sar_calibration.SetParameterInt('ram', 512)
-            logger.info(log_prefix + f"SARCalibration params: {otb_param_dump(sar_calibration)}")
+            logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
             sar_calibration.Execute()
 
             # OrthoRectification
@@ -309,7 +308,7 @@ class S1BackscatterOrfeo:
             ortho_rect.SetParameterString("interpolator", "linear")
             ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
             ortho_rect.SetParameterInt("opt.ram", 512)
-            logger.info(log_prefix + f"OrthoRectification params: {otb_param_dump(ortho_rect)}")
+            logger.info(f"{log_prefix} OrthoRectification params: {otb_param_dump(ortho_rect)}")
             ortho_rect.Execute()
 
             # TODO: extract numpy array directly (instead of through on disk files)
@@ -322,14 +321,14 @@ class S1BackscatterOrfeo:
             ortho_rect.ExecuteAndWriteOutput()
 
             import rasterio
-            msg = f"{log_prefix}Reading orfeo output tiff: {out_path}"
+            msg = f"{log_prefix} Reading orfeo output tiff: {out_path}"
             with TimingLogger(title=msg, logger=logger), rasterio.open(out_path) as ds:
-                logger.info(log_prefix + "Output tiff metadata: {m}, bounds {b}".format(m=ds.meta, b=ds.bounds))
+                logger.info(f"{log_prefix} Output tiff metadata: {ds.meta}, bounds {ds.bounds}")
                 assert (ds.count, ds.width, ds.height) == (1, extent_width_px, extent_height_px)
                 data = ds.read(1)
                 nodata = ds.nodata
 
-        logger.info(log_prefix + f"Data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
+        logger.info(f"{log_prefix} Data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
         return data, nodata
 
     def creodias(
@@ -384,13 +383,13 @@ class S1BackscatterOrfeo:
         def process_feature(feature):
 
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
-            log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
+            log_prefix = "p{p}-key({c},{r},{i})".format(p=os.getpid(), c=col, r=row, i=instant)
 
             key_ext = feature["key_extent"]
             key_epsg = feature["metadata"]["crs_epsg"]
             creo_path = pathlib.Path(feature["feature"]["id"])
-            logger.info(log_prefix + f"Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
-            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
+            logger.info(f"{log_prefix} Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
+            logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
 
@@ -400,7 +399,7 @@ class S1BackscatterOrfeo:
                 sar_backscatter_arguments=sar_backscatter_arguments, extent=key_ext, epsg=key_epsg
             )
 
-            msg = f"{log_prefix}Process {creo_path} and load into geopyspark Tile"
+            msg = f"{log_prefix} Process {creo_path} and load into geopyspark Tile"
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
                 tile_data = numpy.zeros((len(bands), tile_size, tile_size), dtype=result_dtype)
@@ -416,19 +415,19 @@ class S1BackscatterOrfeo:
                         sar_calibration_lut=sar_calibration_lut,
                         noise_removal=noise_removal,
                         elev_geoid=elev_geoid, elev_default=elev_default,
-                        log_prefix=log_prefix.replace(": ", f"-{band}: ")
+                        log_prefix=f"{log_prefix}-{band}"
                     )
                     tile_data[b] = data
 
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
                     #       and require user to use standard openEO functionality (`apply` based conversion)?
-                    logger.info(log_prefix + "Converting backscatter intensity to decibel")
+                    logger.info(f"{log_prefix} Converting backscatter intensity to decibel")
                     tile_data = 10 * numpy.log10(tile_data)
 
                 key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
                 cell_type = geopyspark.CellType(tile_data.dtype.name)
-                logger.info(log_prefix + f"Create Tile for key {key} from {tile_data.shape}")
+                logger.info(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                 tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                 return key, tile
 
@@ -654,7 +653,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
                     #       and require user to use standard openEO functionality (`apply` based conversion)?
-                    logger.info(log_prefix + "Converting backscatter intensity to decibel")
+                    logger.info(f"{log_prefix} Converting backscatter intensity to decibel")
                     orfeo_output_bands = 10 * numpy.log10(orfeo_output_bands)
 
                 # Split orfeo output in tiles
