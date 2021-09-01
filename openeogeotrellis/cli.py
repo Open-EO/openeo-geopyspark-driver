@@ -135,6 +135,7 @@ def safe_repr(x, max_length=2000) -> str:
     return s
 
 
+@TimingLogger(title="main", logger=_log)
 def main(argv=None):
     logging.basicConfig(level=logging.INFO)
     process_graph, args = handle_cli(argv)
