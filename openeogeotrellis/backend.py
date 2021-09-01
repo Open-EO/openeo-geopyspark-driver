@@ -575,7 +575,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     for request_id in batch_request_ids]
 
         dependencies = job_info.get('dependencies') or []
-        statuses = reduce(operator.add, (batch_request_statuses(batch_process) for batch_process in dependencies))
+        statuses = reduce(operator.add, (batch_request_statuses(dependency) for dependency in dependencies))
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
                      .format(j=job_id, ss=[status for status, _ in statuses]), extra={'job_id': job_id})
