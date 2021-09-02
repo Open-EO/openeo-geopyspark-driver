@@ -730,6 +730,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
 
+                user_id_truncated = user_id.split('@')[0][:20]
+                job_id_truncated = job_id.split('-')[0]
+
                 job_specification_file = output_dir + '/job_specification.json'
 
                 jobspec_bytes = str.encode(job_info['specification'])
@@ -742,15 +745,14 @@ class GpsBatchJobs(backend.BatchJobs):
                     api_version = '0.4.0'
 
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
-                user_id_truncated = user_id.split('@')[0][:20]
                 rendered = Template(open(jinja_template).read()).render(
-                    job_name="job-{j}-{u}".format(j=job_id, u=user_id_truncated),
+                    job_name="job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated),
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
                     log_file="log",
                     metadata_file=JOB_METADATA_FILENAME,
-                    job_id=job_id,
+                    job_id=job_id_truncated,
                     driver_cores=driver_cores,
                     driver_memory=driver_memory,
                     executor_cores=executor_cores,
@@ -777,15 +779,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     while('status' not in status_response and retry<5):
                         retry+=1
                         time.sleep(5)
-                        status_response = api_instance.get_namespaced_custom_object(" ", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id, u=user_id_truncated))
+                        status_response = api_instance.get_namespaced_custom_object(" ", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated))
 
                     if('status' not in status_response):
                         logger.info("invalid status response: {status}".format(status=str(status_response)))
-                        registry.set_status(job_id, user_id_truncated, 'error')
+                        registry.set_status(job_id, user_id, 'error')
                     else:
                         application_id = status_response['status']['sparkApplicationId']
                         logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
-                        registry.set_application_id(job_id, user_id_truncated, application_id)
+                        registry.set_application_id(job_id, user_id, application_id)
                 except ApiException as e:
                     print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
