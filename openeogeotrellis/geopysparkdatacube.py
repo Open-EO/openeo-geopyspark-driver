@@ -38,6 +38,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import to_projected_polygons, log_memory
+from openeogeotrellis._version import __version__ as softwareversion
 
 
 _log = logging.getLogger(__name__)
@@ -1134,7 +1135,7 @@ class GeopysparkDataCube(DriverDataCube):
         feature_id_property = format_options.get("feature_id_property", False)
         batch_mode = format_options.get("batch_mode", False)
         overviews = format_options.get("overviews", "OFF")
-        colormap = format_options.get("colormap", {})
+        colormap = format_options.get("colormap", None)
 
         if format in ["GTIFF", "PNG"]:
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
@@ -1156,10 +1157,16 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
+                    if( colormap is not None):
+                        gpsColormap = gps.ColorMap.build(breaks=colormap)
+                        gtiff_options.setColorMap(gpsColormap.cmap)
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
+                        for index in range(1,len(self.metadata.band_dimension.band_names)+1):
+                            gtiff_options.addBandTag(index,"DESCRIPTION",self.metadata.band_dimension.band_names[index])
                     if crop_bounds:
                         crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
                     else:
