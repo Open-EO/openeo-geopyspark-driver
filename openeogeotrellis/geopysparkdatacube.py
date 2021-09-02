@@ -1133,6 +1133,8 @@ class GeopysparkDataCube(DriverDataCube):
         sample_by_feature = format_options.get("sample_by_feature", False)
         feature_id_property = format_options.get("feature_id_property", False)
         batch_mode = format_options.get("batch_mode", False)
+        overviews = format_options.get("overviews", "OFF")
+        colormap = format_options.get("colormap", {})
 
         if format in ["GTIFF", "PNG"]:
             if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
@@ -1154,6 +1156,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    getattr(gtiff_options, "overviews_$eq")(overviews)
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
