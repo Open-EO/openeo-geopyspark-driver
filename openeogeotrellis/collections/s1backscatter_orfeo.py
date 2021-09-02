@@ -8,7 +8,7 @@ import tempfile
 import types
 import zipfile
 from datetime import datetime
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, List
 
 import epsel
 import geopyspark
@@ -81,14 +81,17 @@ class S1BackscatterOrfeo:
     Collection loader that uses Orfeo pipeline to calculate Sentinel-1 Backscatter on the fly.
     """
 
+    _DEFAULT_TILE_SIZE = 512
+
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
 
     def _load_feature_rdd(
-            self, file_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int, tile_size: int
+            self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
+            tile_size: int
     ) -> Tuple[pyspark.RDD, JavaObject]:
-        logger.info("Loading feature JSON RDD from {f}".format(f=file_factory))
-        json_rdd = file_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size)
+        logger.info("Loading feature JSON RDD from {f}".format(f=file_rdd_factory))
+        json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size)
         jrdd = json_rdd._1()
         layer_metadata_sc = json_rdd._2()
 
@@ -99,6 +102,35 @@ class S1BackscatterOrfeo:
         pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
         pyrdd = pyrdd.map(json.loads)
         return pyrdd, layer_metadata_sc
+
+    def _build_feature_rdd(
+            self,
+            collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
+            tile_size: int, zoom: int, correlation_id: str
+    ):
+        """Build RDD of file metadata from Creodias catalog query."""
+        # TODO openSearchLinkTitles?
+        attributeValues = {
+            "productType": "GRD",
+            "sensorMode": "IW",
+            "processingLevel": "LEVEL1",
+        }
+        # Additional query values for orbit filtering
+        attributeValues.update({
+            k: v for (k, v) in extra_properties.items() if k in [
+                "orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness",
+                "polarisation", "missionTakeId",
+            ]
+        })
+        file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
+            collection_id, [], attributeValues, correlation_id
+        )
+        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
+            file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
+            zoom=zoom, tile_size=tile_size
+        )
+        layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
+        return feature_pyrdd, layer_metadata_py
 
     def _convert_scala_metadata(self, metadata_sc: JavaObject) -> geopyspark.Metadata:
         """
@@ -138,6 +170,170 @@ class S1BackscatterOrfeo:
             extent=extent_py, layout_definition=layout_definition_py
         )
 
+    # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
+    _coefficient_mapping = {
+        "beta0": "beta",
+        "sigma0-ellipsoid": "sigma",
+        "gamma0-ellipsoid": "gamma",
+    }
+
+    def _get_sar_calibration_lut(self, coefficient: str) -> str:
+        try:
+            return self._coefficient_mapping[coefficient]
+        except KeyError:
+            raise OpenEOApiException(
+                f"Backscatter coefficient {coefficient!r} is not supported. "
+                f"Use one of {list(self._coefficient_mapping.keys())}.")
+
+    def _debug_show_rdd_info(self, rdd):
+        with TimingLogger(title="Collect RDD info", logger=logger):
+            record_count = rdd.count()
+            key_ranges = {
+                k: rdd.map(lambda f: f["key"][k]).distinct().collect()
+                for k in ["col", "row", "instant"]
+            }
+            paths = rdd.map(lambda f: f["feature"]["id"]).distinct().count()
+            logger.info(f"RDD info: {record_count} records, {paths} creo paths, key_ranges: {key_ranges}")
+
+    @staticmethod
+    def _creo_scan_for_band_tiffs(creo_path: pathlib.Path, log_prefix: str) -> Dict[str, pathlib.Path]:
+        """
+        Scan given creodias path for TIFF files
+        :param creo_path: path to product root folder
+        :param log_prefix: prefix for logging
+        :return: dictionary mapping band name (vv, vh, ...) to tiff path
+        """
+        with TimingLogger(title=f"{log_prefix} Scan {creo_path}", logger=logger):
+            # We expect the desired geotiff files under `creo_path` at location like
+            #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
+            # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
+            band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
+            band_tiffs = {}
+            for tiff in creo_path.glob("measurement/*.tiff"):
+                match = band_regex.match(tiff.name)
+                if match:
+                    band_tiffs[match.group(1).lower()] = tiff
+            if not band_tiffs:
+                raise OpenEOApiException("No tiffs found")
+            logger.info(f"{log_prefix} Detected band tiffs: {band_tiffs}")
+        return band_tiffs
+
+    @staticmethod
+    def _get_dem_dir_context(sar_backscatter_arguments: SarBackscatterArgs, extent: dict, epsg: int):
+        """
+        Build context manager that sets up temporary dir with digital elevation model files
+        for given spatial extent.
+        """
+        elevation_model = sar_backscatter_arguments.elevation_model
+        if elevation_model:
+            elevation_model = elevation_model.lower()
+        if elevation_model in [None, "srtmgl1"]:
+            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+                srtm_root="/eodata/auxdata/SRTMGL1/dem",
+            )
+        elif elevation_model in ["geotiff", "mapzen"]:
+            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
+                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+                zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
+                dem_tile_size=512,
+                dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
+            )
+        elif elevation_model in ["off"]:
+            # Context that returns None when entering
+            dem_dir_context = nullcontext()
+        else:
+            raise FeatureUnsupportedException(
+                f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
+            )
+        return dem_dir_context
+
+    @staticmethod
+    def _orfeo_pipeline(
+            input_tiff: pathlib.Path,
+            extent: dict,
+            extent_epsg: int,
+            dem_dir: Union[str, None],
+            extent_width_px: int,
+            extent_height_px: int,
+            sar_calibration_lut: str,
+            noise_removal: bool,
+            elev_geoid: str,
+            elev_default: float = None,
+            log_prefix: str = "",
+    ):
+        logger.info(f"{log_prefix} Input tiff {input_tiff}")
+
+        utm_zone, utm_northhem = utm_zone_from_epsg(extent_epsg)
+        logger.info(f"{log_prefix} extent {extent} (UTM {utm_zone}, EPSG {extent_epsg})")
+
+        otb = _import_orfeo_toolbox()
+
+        def otb_param_dump(app):
+            return {
+                p: str(v) if app.GetParameterType(p) == otb.ParameterType_Choice else v
+                for (p, v) in app.GetParameters().items()
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+
+            with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
+                # SARCalibration
+                sar_calibration = otb.Registry.CreateApplication('SARCalibration')
+                sar_calibration.SetParameterString("in", str(input_tiff))
+                sar_calibration.SetParameterString("lut", sar_calibration_lut)
+                sar_calibration.SetParameterValue('noise', noise_removal)
+                sar_calibration.SetParameterInt('ram', 512)
+                logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
+                sar_calibration.Execute()
+
+                # OrthoRectification
+                ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
+                ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
+                if dem_dir:
+                    ortho_rect.SetParameterString("elev.dem", dem_dir)
+                if elev_geoid:
+                    ortho_rect.SetParameterString("elev.geoid", elev_geoid)
+                if elev_default is not None:
+                    ortho_rect.SetParameterFloat("elev.default", float(elev_default))
+                ortho_rect.SetParameterString("map", "utm")
+                ortho_rect.SetParameterInt("map.utm.zone", utm_zone)
+                ortho_rect.SetParameterValue("map.utm.northhem", utm_northhem)
+                ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
+                ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+                ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
+                ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
+                ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
+                ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
+                ortho_rect.SetParameterString("interpolator", "linear")
+                ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
+                ortho_rect.SetParameterInt("opt.ram", 512)
+                logger.info(f"{log_prefix} OrthoRectification params: {otb_param_dump(ortho_rect)}")
+                ortho_rect.Execute()
+
+                # TODO: extract numpy array directly (instead of through on disk files)
+                #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
+                #       but requires orfeo toolbox to be compiled with numpy support
+                #       (numpy header files must be available at compile time I guess)
+
+                out_path = os.path.join(temp_dir, "out.tiff")
+                logger.info(f"{log_prefix} Write orfeo pipeline output to temporary {out_path}")
+                ortho_rect.SetParameterString("io.out", out_path)
+                ortho_rect.ExecuteAndWriteOutput()
+
+            import rasterio
+            with rasterio.open(out_path) as ds:
+                logger.info(f"{log_prefix} Reading {out_path}: metadata: {ds.meta}, bounds {ds.bounds}")
+                assert (ds.count, ds.width, ds.height) == (1, extent_width_px, extent_height_px)
+                data = ds.read(1)
+                nodata = ds.nodata
+
+        logger.info(
+            f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
+            f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
+        )
+        return data, nodata
+
     def creodias(
             self,
             projected_polygons,
@@ -153,23 +349,10 @@ class S1BackscatterOrfeo:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
         """
+        logger.info(f"{self.__class__.__name__}.creodias()")
         # Initial argument checking
         bands = bands or ["VH", "VV"]
-
-        # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
-        coefficient_mapping = {
-            "beta0": "beta",
-            "sigma0-ellipsoid": "sigma",
-            "gamma0-ellipsoid": "gamma",
-        }
-
-        if sar_backscatter_arguments.coefficient in coefficient_mapping:
-            sar_calibration_lut = coefficient_mapping[sar_backscatter_arguments.coefficient]
-        else:
-            raise OpenEOApiException(
-                f"Backscatter coefficient {sar_backscatter_arguments.coefficient!r} is not supported. "
-                f"Use one of {list(coefficient_mapping.keys())}.")
-
+        sar_calibration_lut = self._get_sar_calibration_lut(sar_backscatter_arguments.coefficient)
         if sar_backscatter_arguments.mask:
             raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
         if sar_backscatter_arguments.contributing_area:
@@ -179,100 +362,48 @@ class S1BackscatterOrfeo:
         if sar_backscatter_arguments.ellipsoid_incidence_angle:
             raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
 
-        noise_removal = bool(sar_backscatter_arguments.noise_removal)
-
         # Tile size to use in the TiledRasterLayer.
-        tile_size = sar_backscatter_arguments.options.get("tile_size", 512)
+        tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
         # Geoid for orthorectification: get from options, fallback on config.
         elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
         elev_default = sar_backscatter_arguments.options.get("elev_default")
         logger.info(f"elev_geoid: {elev_geoid!r}")
 
-        # Build RDD of file metadata from Creodias catalog query.
-        # TODO openSearchLinkTitles?
-        attributeValues = {
-            "productType": "GRD",
-            "sensorMode": "IW",
-            "processingLevel": "LEVEL1",
-        }
-        allowed_extra_properties = ["orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness", "polarisation", "missionTakeId"]
-        filtered_extra_properties = {k: extra_properties[k] for k in allowed_extra_properties if k in extra_properties}
-        attributeValues.update(filtered_extra_properties)
+        noise_removal = bool(sar_backscatter_arguments.noise_removal)
+        debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
-        file_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
-            collection_id, [], attributeValues, correlation_id
+        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+            collection_id=collection_id, projected_polygons=projected_polygons,
+            from_date=from_date, to_date=to_date, extra_properties=extra_properties,
+            tile_size=tile_size, zoom=zoom, correlation_id=
+            correlation_id
         )
-        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
-            file_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
-            zoom=zoom, tile_size=tile_size
-        )
-        layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
-
-        if smart_bool(sar_backscatter_arguments.options.get("debug")):
-            with TimingLogger(title="Collect RDD info", logger=logger):
-                record_count = feature_pyrdd.count()
-                key_ranges = {
-                    k: feature_pyrdd.map(lambda f: f["key"][k]).distinct().collect()
-                    for k in ["col", "row", "instant"]
-                }
-                paths = feature_pyrdd.map(lambda f: f["feature"]["id"]).distinct().count()
-                logger.info(f"RDD info: {record_count} records, {paths} creo paths, key_ranges: {key_ranges}")
+        if debug_mode:
+            self._debug_show_rdd_info(feature_pyrdd)
 
         @epsel.ensure_info_logging
         @TimingLogger(title="process_feature", logger=logger)
         def process_feature(feature):
 
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
-            log_prefix = "p{p}-key({c},{r},{i}): ".format(p=os.getpid(), c=col, r=row, i=instant)
+            log_prefix = "p{p}-key({c},{r},{i})".format(p=os.getpid(), c=col, r=row, i=instant)
 
             key_ext = feature["key_extent"]
             key_epsg = feature["metadata"]["crs_epsg"]
             creo_path = pathlib.Path(feature["feature"]["id"])
-            logger.info(log_prefix + f"Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
+            logger.info(f"{log_prefix} Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
+            logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
             if not creo_path.exists():
                 raise OpenEOApiException("Creo path does not exist")
 
-            with TimingLogger(title=f"{log_prefix} scan {creo_path}", logger=logger):
-                # We expect the desired geotiff files under `creo_path` at location like
-                #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
-                # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
-                band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
-                band_tiffs = {}
-                for tiff in creo_path.glob("measurement/*.tiff"):
-                    match = band_regex.match(tiff.name)
-                    if match:
-                        band_tiffs[match.group(1).lower()] = tiff
-                if not band_tiffs:
-                    raise OpenEOApiException("No tiffs found")
-                logger.info(log_prefix + f"Detected band tiffs: {band_tiffs}")
+            band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
 
-            logger.info(log_prefix + f"sar_backscatter_arguments: {sar_backscatter_arguments!r}")
+            dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
+                sar_backscatter_arguments=sar_backscatter_arguments, extent=key_ext, epsg=key_epsg
+            )
 
-            elevation_model = sar_backscatter_arguments.elevation_model
-            if elevation_model:
-                elevation_model = elevation_model.lower()
-            if elevation_model in [None, "srtmgl1"]:
-                dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
-                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
-                    srtm_root="/eodata/auxdata/SRTMGL1/dem",
-                )
-            elif elevation_model in ["geotiff", "mapzen"]:
-                dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
-                    bbox=(key_ext["xmin"], key_ext["ymin"], key_ext["xmax"], key_ext["ymax"]), bbox_epsg=key_epsg,
-                    zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
-                    dem_tile_size=512,
-                    dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
-                )
-            elif elevation_model in ["off"]:
-                # Context that returns None when entering
-                dem_dir_context = nullcontext()
-            else:
-                raise FeatureUnsupportedException(
-                    f"Unsupported elevation model {sar_backscatter_arguments.elevation_model!r}"
-                )
-
-            msg = f"{log_prefix}Process {creo_path} and load into geopyspark Tile"
+            msg = f"{log_prefix} Process {creo_path} and load into geopyspark Tile"
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
                 tile_data = numpy.zeros((len(bands), tile_size, tile_size), dtype=result_dtype)
@@ -280,98 +411,29 @@ class S1BackscatterOrfeo:
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
                         raise OpenEOApiException(f"No tiff for band {band}")
-                    data, nodata = orfeo_pipeline(
-                        input_tiff=band_tiffs[band.lower()], key_extent=key_ext, key_epsg=key_epsg, dem_dir=dem_dir,
-                        tile_size=tile_size, log_prefix=log_prefix.replace(": ", f"-{band}: ")
+                    data, nodata = S1BackscatterOrfeo._orfeo_pipeline(
+                        input_tiff=band_tiffs[band.lower()],
+                        extent=key_ext, extent_epsg=key_epsg,
+                        dem_dir=dem_dir,
+                        extent_width_px=tile_size, extent_height_px=tile_size,
+                        sar_calibration_lut=sar_calibration_lut,
+                        noise_removal=noise_removal,
+                        elev_geoid=elev_geoid, elev_default=elev_default,
+                        log_prefix=f"{log_prefix}-{band}"
                     )
                     tile_data[b] = data
 
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
                     #       and require user to use standard openEO functionality (`apply` based conversion)?
-                    logger.info(log_prefix + "Converting backscatter intensity to decibel")
+                    logger.info(f"{log_prefix} Converting backscatter intensity to decibel")
                     tile_data = 10 * numpy.log10(tile_data)
 
                 key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
                 cell_type = geopyspark.CellType(tile_data.dtype.name)
-                logger.info(log_prefix + f"Create Tile for key {key} from {tile_data.shape}")
+                logger.info(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                 tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                 return key, tile
-
-        @TimingLogger(title="orfeo_pipeline", logger=logger)
-        def orfeo_pipeline(
-                input_tiff: pathlib.Path, key_extent, key_epsg, dem_dir: Union[str, None], tile_size: int = 512,
-                log_prefix: str = ""
-        ):
-            logger.info(log_prefix + f"Input tiff {input_tiff}")
-
-            key_utm_zone, key_utm_northhem = utm_zone_from_epsg(key_epsg)
-            logger.info(
-                log_prefix + ("extent {e} (UTM {u}, EPSG {c})").format(e=key_extent, u=key_utm_zone, c=key_epsg))
-
-            otb = _import_orfeo_toolbox()
-
-            def otb_param_dump(app):
-                return {
-                    p: str(v) if app.GetParameterType(p) == otb.ParameterType_Choice else v
-                    for (p, v) in app.GetParameters().items()
-                }
-
-            msg = f"{log_prefix}Orfeo processing pipeline on {input_tiff}"
-            with tempfile.TemporaryDirectory() as temp_dir, TimingLogger(title=msg, logger=logger):
-
-                # SARCalibration
-                sar_calibration = otb.Registry.CreateApplication('SARCalibration')
-                sar_calibration.SetParameterString("in", str(input_tiff))
-                sar_calibration.SetParameterString("lut", sar_calibration_lut)
-                sar_calibration.SetParameterValue('noise', noise_removal)
-                sar_calibration.SetParameterInt('ram', 512)
-                logger.info(log_prefix + f"SARCalibration params: {otb_param_dump(sar_calibration)}")
-                sar_calibration.Execute()
-
-                # OrthoRectification
-                ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
-                ortho_rect.SetParameterInputImage("io.in", sar_calibration.GetParameterOutputImage("out"))
-                if dem_dir:
-                    ortho_rect.SetParameterString("elev.dem", dem_dir)
-                if elev_geoid:
-                    ortho_rect.SetParameterString("elev.geoid", elev_geoid)
-                if elev_default is not None:
-                    ortho_rect.SetParameterFloat("elev.default", float(elev_default))
-                ortho_rect.SetParameterString("map", "utm")
-                ortho_rect.SetParameterInt("map.utm.zone", key_utm_zone)
-                ortho_rect.SetParameterValue("map.utm.northhem", key_utm_northhem)
-                ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
-                ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
-                ortho_rect.SetParameterInt("outputs.sizex", tile_size)
-                ortho_rect.SetParameterInt("outputs.sizey", tile_size)
-                ortho_rect.SetParameterInt("outputs.ulx", int(key_extent["xmin"]))
-                ortho_rect.SetParameterInt("outputs.uly", int(key_extent["ymax"]))
-                ortho_rect.SetParameterString("interpolator", "linear")
-                ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
-                ortho_rect.SetParameterInt("opt.ram", 512)
-                logger.info(log_prefix + f"OrthoRectification params: {otb_param_dump(ortho_rect)}")
-                ortho_rect.Execute()
-
-                # TODO: extract numpy array directly (instead of through on disk files)
-                #       with GetImageAsNumpyArray (https://www.orfeo-toolbox.org/CookBook/PythonAPI.html#numpy-array-processing)
-                #       but requires orfeo toolbox to be compiled with numpy support
-                #       (numpy header files must be available at compile time I guess)
-
-                out_path = os.path.join(temp_dir, "out.tiff")
-                ortho_rect.SetParameterString("io.out", out_path)
-                ortho_rect.ExecuteAndWriteOutput()
-
-                import rasterio
-                msg = f"{log_prefix}Reading orfeo output tiff: {out_path}"
-                with TimingLogger(title=msg, logger=logger), rasterio.open(out_path) as ds:
-                    logger.info(log_prefix + "Output tiff metadata: {m}, bounds {b}".format(m=ds.meta, b=ds.bounds))
-                    assert (ds.count, ds.width, ds.height) == (1, tile_size, tile_size)
-                    data = ds.read(1)
-                    nodata = ds.nodata
-
-            logger.info(log_prefix + f"Data: shape {data.shape}, min {numpy.nanmin(data)}, max {numpy.nanmax(data)}")
-            return data, nodata
 
         tile_rdd = feature_pyrdd.map(process_feature)
         if result_dtype:
@@ -455,3 +517,189 @@ class S1BackscatterOrfeo:
                         z.extractall(temp_dir.name)
 
         return temp_dir
+
+
+class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
+    """
+    EP-3730 optimization: instead of splitting input image in tiles and applying Orfeo pipeline to each tile,
+    do Orfeo processing on input image once and split up in tiles afterwards.
+    """
+
+    def creodias(
+            self,
+            projected_polygons,
+            from_date: str, to_date: str,
+            collection_id: str = "Sentinel1",
+            correlation_id: str = "NA",
+            sar_backscatter_arguments: SarBackscatterArgs = SarBackscatterArgs(),
+            bands=None,
+            zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
+            result_dtype="float32",
+            extra_properties={}
+    ) -> Dict[int, geopyspark.TiledRasterLayer]:
+        """
+        Implementation of S1 backscatter calculation with Orfeo in Creodias environment
+        """
+
+        # Initial argument checking
+        bands = bands or ["VH", "VV"]
+        sar_calibration_lut = self._get_sar_calibration_lut(sar_backscatter_arguments.coefficient)
+        if sar_backscatter_arguments.mask:
+            raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
+        if sar_backscatter_arguments.contributing_area:
+            raise FeatureUnsupportedException("sar_backscatter: contributing_area band is not supported")
+        if sar_backscatter_arguments.local_incidence_angle:
+            raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported")
+        if sar_backscatter_arguments.ellipsoid_incidence_angle:
+            raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
+
+        # Tile size to use in the TiledRasterLayer.
+        tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
+
+        # Geoid for orthorectification: get from options, fallback on config.
+        elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
+        elev_default = sar_backscatter_arguments.options.get("elev_default")
+        logger.info(f"elev_geoid: {elev_geoid!r}")
+
+        noise_removal = bool(sar_backscatter_arguments.noise_removal)
+        debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
+
+        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+            collection_id=collection_id, projected_polygons=projected_polygons,
+            from_date=from_date, to_date=to_date, extra_properties=extra_properties,
+            tile_size=tile_size, zoom=zoom, correlation_id=
+            correlation_id
+        )
+        if debug_mode:
+            self._debug_show_rdd_info(feature_pyrdd)
+
+        # Group multiple tiles by product id
+        def process_feature(feature: dict) -> Tuple[str, dict]:
+            creo_path = feature["feature"]["id"]
+            return creo_path, {
+                "key": feature["key"],
+                "key_extent": feature["key_extent"],
+                "key_epsg": feature["metadata"]["crs_epsg"]
+            }
+
+        per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
+
+        # TODO: still split if full layout extent is too large for processing as a whole?
+
+        # Apply Orfeo processing over product files as whole and splice up in tiles after that
+        @epsel.ensure_info_logging
+        @TimingLogger(title="process_product", logger=logger)
+        def process_product(product: Tuple[str, List[dict]]):
+            creo_path, features = product
+
+            # Short ad-hoc product id for logging purposes.
+            prod_id = re.sub(r"[^A-Z0-9]", "", creo_path.upper())[-10:]
+            log_prefix = f"p{os.getpid()}-prod{prod_id}"
+            logger.info(f"{log_prefix} creo path {creo_path}")
+            logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
+
+            creo_path = pathlib.Path(creo_path)
+            if not creo_path.exists():
+                raise OpenEOApiException("Creo path does not exist")
+
+            # Get whole extent of tile layout
+            col_min = min(f["key"]["col"] for f in features)
+            col_max = max(f["key"]["col"] for f in features)
+            cols = col_max - col_min + 1
+            row_min = min(f["key"]["row"] for f in features)
+            row_max = max(f["key"]["row"] for f in features)
+            rows = row_max - row_min + 1
+            instants = set(f["key"]["instant"] for f in features)
+            assert len(instants) == 1, f"Not single instant: {instants}"
+            instant = instants.pop()
+            logger.info(
+                f"{log_prefix} Layout key extent: col[{col_min}:{col_max}] row[{row_min}:{row_max}]"
+                f" ({cols}x{rows}={cols * rows} tiles) instant[{instant}]."
+            )
+
+            xmin_min = min(f["key_extent"]["xmin"] for f in features)
+            xmax_max = max(f["key_extent"]["xmax"] for f in features)
+            ymin_min = min(f["key_extent"]["ymin"] for f in features)
+            ymax_max = max(f["key_extent"]["ymax"] for f in features)
+            key_epsgs = set(f["key_epsg"] for f in features)
+            assert len(key_epsgs) == 1, f"Multiple key CRSs {key_epsgs}"
+            layout_extent = {"xmin": xmin_min, "xmax": xmax_max, "ymin": ymin_min, "ymax": ymax_max}
+            layout_epsg = key_epsgs.pop()
+            layout_width_px = tile_size * (col_max - col_min + 1)
+            layout_height_px = tile_size * (row_max - row_min + 1)
+            logger.info(
+                f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
+                f" {layout_width_px}x{layout_height_px}px"
+            )
+
+            band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
+
+            dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
+                sar_backscatter_arguments=sar_backscatter_arguments,
+                extent=layout_extent,
+                epsg=layout_epsg
+            )
+
+            msg = f"{log_prefix} Process {creo_path} "
+            with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
+                # Allocate numpy array tile
+                orfeo_bands = numpy.zeros((len(bands), layout_height_px, layout_width_px), dtype=result_dtype)
+
+                for b, band in enumerate(bands):
+                    if band.lower() not in band_tiffs:
+                        raise OpenEOApiException(f"No tiff for band {band}")
+                    data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
+                        input_tiff=band_tiffs[band.lower()],
+                        extent=layout_extent, extent_epsg=layout_epsg,
+                        dem_dir=dem_dir,
+                        extent_width_px=layout_width_px, extent_height_px=layout_height_px,
+                        sar_calibration_lut=sar_calibration_lut,
+                        noise_removal=noise_removal,
+                        elev_geoid=elev_geoid, elev_default=elev_default,
+                        log_prefix=f"{log_prefix}-{band}"
+                    )
+                    orfeo_bands[b] = data
+
+                if sar_backscatter_arguments.options.get("to_db", False):
+                    # TODO: keep this "to_db" shortcut feature or drop it
+                    #       and require user to use standard openEO functionality (`apply` based conversion)?
+                    logger.info(f"{log_prefix} Converting backscatter intensity to decibel")
+                    orfeo_bands = 10 * numpy.log10(orfeo_bands)
+
+                # Split orfeo output in tiles
+                logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
+                cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
+                tiles = []
+                for c in range(col_max - col_min + 1):
+                    for r in range(row_max - row_min + 1):
+                        col = col_min + c
+                        row = row_min + r
+                        key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+                        tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
+                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                        tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
+                        tiles.append((key, tile))
+
+            logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
+            return tiles
+
+        tile_rdd = per_product.flatMap(process_product)
+        if result_dtype:
+            layer_metadata_py.cell_type = result_dtype
+        logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
+        tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
+            layer_type=geopyspark.LayerType.SPACETIME,
+            numpy_rdd=tile_rdd,
+            metadata=layer_metadata_py
+        )
+        return {zoom: tile_layer}
+
+
+def get_implementation(version: str = "1", jvm=None) -> S1BackscatterOrfeo:
+    jvm = jvm or get_jvm()
+    if version == "1":
+        return S1BackscatterOrfeo(jvm=jvm)
+    elif version == "2":
+        return S1BackscatterOrfeoV2(jvm=jvm)
+    else:
+        raise ValueError(version)

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Callable, Tuple
 
 from openeo.util import TimingLogger
-from openeo_driver.save_result import ImageCollectionResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult
 from openeo_driver.utils import EvalEnv
 from openeo_driver.utils import read_json
 
@@ -135,6 +135,7 @@ def safe_repr(x, max_length=2000) -> str:
     return s
 
 
+@TimingLogger(title="main", logger=_log)
 def main(argv=None):
     logging.basicConfig(level=logging.INFO)
     process_graph, args = handle_cli(argv)
@@ -152,7 +153,7 @@ def main(argv=None):
         "user": None,  # TODO
         "require_bounds": True,
         "correlation_id": f"cli-pid{os.getpid()}",
-        "backend_implementation": GeoPySparkBackendImplementation(),
+        "backend_implementation": GeoPySparkBackendImplementation(use_zookeeper=False),
     })
 
     with TimingLogger(title="Evaluate process graph", logger=_log):
@@ -162,6 +163,12 @@ def main(argv=None):
         filename = args.output or f"result.{result.format}"
         with TimingLogger(title=f"Saving result to {filename!r}", logger=_log):
             result.save_result(filename)
+    elif isinstance(result, JSONResult):
+        if args.output:
+            with open(args.output, "w") as f:
+                json.dump(result.prepare_for_json(), f)
+        else:
+            print(result.prepare_for_json())
     elif isinstance(result, dict):
         # TODO: support storing JSON result to file
         print(result)
