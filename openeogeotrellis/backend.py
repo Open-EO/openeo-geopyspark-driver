@@ -927,7 +927,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         else None
                     )
 
-                    card4l = (sar_backscatter_arguments
+                    card4l = (sar_backscatter_arguments is not None
                               and sar_backscatter_arguments.coefficient == "gamma0-terrain"
                               and sar_backscatter_arguments.mask
                               and sar_backscatter_arguments.local_incidence_angle)
