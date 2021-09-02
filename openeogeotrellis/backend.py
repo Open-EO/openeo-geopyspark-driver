@@ -355,7 +355,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": "string",
                             "default": None,
                             "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
-                        }
+                        },
+                        "overviews": {
+                            "type": "string",
+                            "description": "Specifies the strategy to generate overviews. The default, AUTO, allows the backend to choose an optimal configuration, depending on the size of the generated tiff, and backend capabilities.",
+                            "default": "AUTO",
+                            "enum": ["AUTO", "OFF"]
+                        },
+                        "colormap": {
+                            "type": "object",
+                            "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
+                            "default": None
+                        },
                     },
                 },
                 "PNG": {
