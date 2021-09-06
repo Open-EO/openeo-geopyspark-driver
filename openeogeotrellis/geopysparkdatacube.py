@@ -1160,7 +1160,19 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     if( colormap is not None):
-                        gpsColormap = gps.ColorMap.build(breaks=colormap)
+                        def color_to_int(color):
+                            if isinstance(color,int):
+                                return color
+                            elif isinstance(color,list):
+                                import struct
+                                import builtins
+
+                                color_as_int = struct.unpack('>L',
+                                              bytes(map(lambda x: builtins.int(x * 255), color)))[0]
+                                return color_as_int
+
+                        converted_colors = { float(k):color_to_int(v) for k,v in colormap.items()}
+                        gpsColormap = gps.ColorMap.build(breaks=converted_colors)
                         gtiff_options.setColorMap(gpsColormap.cmap)
                     band_count = -1
                     if self.metadata.has_band_dimension():

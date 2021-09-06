@@ -106,6 +106,18 @@ class TestDownload:
         return res
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
+    def download_no_args_single_byte_band(self, tmp_path, format, format_options={}):
+        input = self.create_spacetime_layer().convert_data_type(gps.CellType.UINT8)
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
+        imagecollection.filter_bands(['band_one'])
+
+
+        res = imagecollection.save_result(str(tmp_path / "test_download_result_single_band.") + format, format=format, format_options=format_options)
+        print(res)
+        return res
+
     def download_masked(self, tmp_path, format):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
@@ -157,6 +169,9 @@ class TestDownload:
 
     def test_download_json_no_args(self, tmp_path):
         self.download_no_args(tmp_path, 'json')
+
+    def test_download_geotiff_colormap(self, tmp_path):
+        self.download_no_args_single_byte_band(tmp_path, 'gtiff', {'colormap':{"0":0,"1":[0.5,0.1,0.2,0.5],"2":40000}})
 
     def test_download_masked_geotiff(self, tmp_path):
         self.download_masked(tmp_path, 'gtiff')
