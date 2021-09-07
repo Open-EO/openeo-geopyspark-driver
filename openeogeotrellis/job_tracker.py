@@ -313,6 +313,8 @@ if __name__ == '__main__':
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 
+    # FIXME: there's no Java logging because log4j hasn't been set up for this process; make sure it outputs in JSON!
+
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--py4j-jarpath", default="venv36/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
     parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
