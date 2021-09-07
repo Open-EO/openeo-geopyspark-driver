@@ -723,7 +723,13 @@ class GeopysparkDataCube(DriverDataCube):
             for k, l in mask.pyramid.levels.items()
         }
         replacement = float(replacement) if replacement is not None else None
-        rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
+        if self._is_spatial() and mask._is_spatial():
+            raise NotImplementedError("Geotrellis backend does not yet support masking datacube without time dimension.")
+        elif mask._is_spatial():
+            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
+        else:
+            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
+
         return self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
