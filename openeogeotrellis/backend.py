@@ -576,13 +576,16 @@ class GpsBatchJobs(backend.BatchJobs):
 
             def retrier(request_id: str) -> Callable[[], None]:
                 def retry():
+                    assert request_id is not None, "retry is for PARTIAL statuses but a 'None' request_id is DONE"
+
                     logger.warning(f"retrying Sentinel Hub batch process {request_id} for batch job {job_id}",
                                    extra={'job_id': job_id})
                     batch_processing_service.restart_partially_failed_batch_process(request_id)
 
                 return retry
 
-            return [(batch_processing_service.get_batch_process_status(request_id), retrier(request_id))
+            return [(batch_processing_service.get_batch_process_status(request_id) if request_id else "DONE",
+                     retrier(request_id))
                     for request_id in batch_request_ids]
 
         dependencies = job_info.get('dependencies') or []
@@ -599,6 +602,27 @@ class GpsBatchJobs(backend.BatchJobs):
 
             job_info['status'] = 'error'  # TODO: avoid mutation
         elif all(status == "DONE" for status, _ in statuses):  # all good: resume batch job with available data
+            for dependency in dependencies:
+                collecting_folder = dependency.get('collecting_folder')
+
+                if collecting_folder:  # the results are at least partially cached
+                    caching_service = self._jvm.org.openeo.geotrellissentinelhub.CachingService()
+
+                    bucket_name = ConfigParams().sentinel_hub_batch_bucket
+                    subfolder = dependency.get('subfolder')
+
+                    if subfolder:  # there are new results
+                        caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
+
+                    assembled_folder = caching_service.upload_multiband_tiles(subfolder, collecting_folder, bucket_name)
+                    dependency['subfolder'] = assembled_folder
+
+                    try:
+                        shutil.rmtree(collecting_folder)
+                    except Exception as e:
+                        logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
+                                       extra={'job_id': job_id})
+
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'available')
 
@@ -686,10 +710,12 @@ class GpsBatchJobs(backend.BatchJobs):
             spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
 
+            cache = extra_options.get("cache-shub-batch-results", False)
+
             if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id)):
+                                                                    user_id, job_id, cache)):
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return
@@ -888,7 +914,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
+                                               job_registry: JobRegistry, user_id: str, job_id: str,
+                                               cache: bool) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -991,7 +1018,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     if card4l:
                         logger.info("deemed collection {c} request CARD4L compliant ({s})"
                                     .format(c=collection_id, s=sar_backscatter_arguments), extra={'job_id': job_id})
-                    elif not large_area():
+                    elif not (large_area() or cache):
                         continue  # skip SHub batch process and use sync approach instead
 
                     sample_type = self._jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
@@ -1032,6 +1059,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
 
+                    collecting_folder: Optional[str] = None
+
                     if card4l:
                         # TODO: not obvious but this does the validation as well
                         dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
@@ -1056,34 +1085,59 @@ class GpsBatchJobs(backend.BatchJobs):
                             request_group_id)
                         )
                     else:
-                        # TODO: pass subfolder explicitly (also a random UUID) instead of implicit batch request ID?
-                        batch_request_ids = [batch_processing_service.start_batch_process(
-                            layer_source_info['collection_id'],
-                            layer_source_info['dataset_id'],
-                            geometry,
-                            crs,
-                            from_date,
-                            to_date,
-                            shub_band_names,
-                            sample_type,
-                            metadata_properties(),
-                            (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
-                             else {})
-                        )]
+                        if cache and collection_id == 'SENTINEL2_L2A_SENTINELHUB':
+                            subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
+                            # collecting_folder must be writable from driver (cached tiles) and JobTracker (new tiles))
+                            collecting_folder = tempfile.mkdtemp(prefix='collecting_',
+                                                                 dir="/tmp_epod/openeo_collecting")
 
-                        subfolder = batch_request_ids[0]
+                            batch_request_id = batch_processing_service.start_batch_process_cached(
+                                layer_source_info['collection_id'],
+                                layer_source_info['dataset_id'],
+                                geometry,
+                                crs,
+                                from_date,
+                                to_date,
+                                shub_band_names,
+                                sample_type,
+                                metadata_properties(),
+                                (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
+                                 else {}),
+                                subfolder,
+                                collecting_folder
+                            )
+                        else:
+                            # TODO: handle None result
+                            batch_request_id = batch_processing_service.start_batch_process(
+                                layer_source_info['collection_id'],
+                                layer_source_info['dataset_id'],
+                                geometry,
+                                crs,
+                                from_date,
+                                to_date,
+                                shub_band_names,
+                                sample_type,
+                                metadata_properties(),
+                                (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
+                                 else {})
+                            )
+
+                            subfolder = batch_request_id
+
+                        batch_request_ids = [batch_request_id]
 
                     logger.info("scheduled Sentinel Hub batch process(es) {bs} for batch job {j} (CARD4L {c})"
                                 .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"),
                                 extra={'job_id': job_id})
 
-                    batch_process_dependencies.append({
-                        'collection_id': collection_id,
-                        'metadata_properties': metadata_properties(),
-                        'batch_request_ids': batch_request_ids,  # to poll SHub
-                        'subfolder': subfolder,  # where load_collection gets its data
-                        'card4l': card4l  # should the batch job expect CARD4L metadata?
-                    })
+                    batch_process_dependencies.append(dict_no_none(
+                        collection_id=collection_id,
+                        metadata_properties=metadata_properties(),
+                        batch_request_ids=batch_request_ids,  # to poll SHub
+                        collecting_folder=collecting_folder,  # temporary cached and new single band tiles, also a flag
+                        subfolder=subfolder,  # where load_collection gets its data
+                        card4l=card4l  # should the batch job expect CARD4L metadata?
+                    ))
 
         if batch_process_dependencies:
             job_registry.add_dependencies(job_id, user_id, batch_process_dependencies)
