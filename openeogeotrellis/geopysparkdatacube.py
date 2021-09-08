@@ -899,7 +899,7 @@ class GeopysparkDataCube(DriverDataCube):
         resample_method = self._get_resample_method(method)
 
         #IF projection is defined, we need to warp
-        if projection is not None:
+        if projection is not None and resolution==0.0:
             reprojected = self.apply_to_levels(lambda layer: gps.TiledRasterLayer(
                 layer.layer_type, layer.srdd.reproject(str(projection), resample_method, None)
             ))
