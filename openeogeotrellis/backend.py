@@ -710,6 +710,8 @@ class GpsBatchJobs(backend.BatchJobs):
             spec = json.loads(job_info['specification'])
             extra_options = spec.get('job_options', {})
 
+            logger.debug("job_options: {o!r}".format(o=extra_options))
+
             cache = extra_options.get("cache-shub-batch-results", False)
 
             if (batch_process_dependencies is None
@@ -1106,6 +1108,10 @@ class GpsBatchJobs(backend.BatchJobs):
                                 subfolder,
                                 collecting_folder
                             )
+
+                            logger.debug("start_batch_process_cached(subfolder={s}, collecting_folder={c}) returned "
+                                         "batch_request_id {b}".format(s=subfolder, c=collecting_folder,
+                                                                       b=batch_request_id))
                         else:
                             # TODO: handle None result
                             batch_request_id = batch_processing_service.start_batch_process(
