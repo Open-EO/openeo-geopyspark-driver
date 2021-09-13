@@ -1093,6 +1093,11 @@ class GpsBatchJobs(backend.BatchJobs):
                             collecting_folder = tempfile.mkdtemp(prefix='collecting_',
                                                                  dir="/tmp_epod/openeo_collecting")
 
+                            http_impl_property = "software.amazon.awssdk.http.service.impl"
+                            http_impl = self._jvm.System.getProperty(http_impl_property)
+                            logger.debug("Java System property {p} is set to {v}".format(p=http_impl_property,
+                                                                                         v=http_impl))
+
                             batch_request_id = batch_processing_service.start_batch_process_cached(
                                 layer_source_info['collection_id'],
                                 layer_source_info['dataset_id'],
