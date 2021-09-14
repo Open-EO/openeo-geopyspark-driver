@@ -829,6 +829,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         registry.set_application_id(job_id_truncated, user_id_truncated, application_id)
                 except ApiException as e:
                     print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                    registry.set_status(job_id, user_id, 'error')
 
             else:
                 submit_script = 'submit_batch_job.sh'
