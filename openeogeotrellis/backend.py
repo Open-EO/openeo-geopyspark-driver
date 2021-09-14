@@ -825,11 +825,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if('status' not in status_response):
                         logger.info("invalid status response: {status}".format(status=str(status_response)))
-                        registry.set_status(job_id_truncated, user_id_truncated, 'error')
+                        registry.set_status(job_id, user_id_truncated, 'error')
                     else:
                         application_id = status_response['status']['sparkApplicationId']
-                        logger.info("mapped job_id {a} to application ID {b}".format(a=job_id_truncated, b=application_id))
-                        registry.set_application_id(job_id_truncated, user_id_truncated, application_id)
+                        logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
+                        registry.set_application_id(job_id, user_id_truncated, application_id)
                 except ApiException as e:
                     print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
                     registry.set_status(job_id, user_id, 'error')
