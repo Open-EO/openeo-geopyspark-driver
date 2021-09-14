@@ -463,7 +463,7 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                 os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
                 logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
                 # TODO: move this to a OpenSearch factory?
-                if "oscars" in os_endpoint.lower() or "terrascope" in os_endpoint.lower():
+                if "oscars" in os_endpoint.lower() or "terrascope" in os_endpoint.lower() or "vito.be" in os_endpoint.lower():
                     opensearch = OpenSearchOscars(endpoint=os_endpoint)
                 elif "creodias" in os_endpoint.lower():
                     opensearch = OpenSearchCreodias(endpoint=os_endpoint)
