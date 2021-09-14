@@ -172,6 +172,9 @@ class JobTracker:
     @staticmethod
     def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
         from openeogeotrellis.utils import kube_client
+
+        user_id_truncated = user_id.split('@')[0][:20]
+        job_id_truncated = job_id.split('-')[0]
         try:
             api_instance = kube_client()
             status = api_instance.get_namespaced_custom_object(
@@ -179,7 +182,7 @@ class JobTracker:
                     "v1beta2",
                     "spark-jobs",
                     "sparkapplications",
-                    "job-{id}-{user}".format(id=job_id, user=user_id))
+                    "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated))
 
             return JobTracker._KubeStatus(
                 status['status']['applicationState']['state'],
