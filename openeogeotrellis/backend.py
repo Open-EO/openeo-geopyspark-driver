@@ -819,7 +819,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         retry+=1
                         time.sleep(10)
                         try:
-                            status_response = api_instance.get_namespaced_custom_object(" ", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated))
+                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated))
                         except ApiException as e:
                             print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
