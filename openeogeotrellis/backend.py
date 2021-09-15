@@ -626,6 +626,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     dependency['subfolder'] = assembled_folder
 
                     try:
+                        # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job can't
+                        #  be recovered by fiddling with its dependency_status.
                         shutil.rmtree(collecting_folder)
                     except Exception as e:
                         logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
