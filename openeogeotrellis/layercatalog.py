@@ -88,14 +88,24 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         extent = None
         spatial_bounds_present = all(b is not None for b in [west, south, east, north])
-        if spatial_bounds_present:
-            extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-            metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
-        elif env.get('require_bounds', False):
-            raise ProcessGraphComplexityException
-        else:
-            srs = "EPSG:4326"
-            extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
+
+        if not spatial_bounds_present:
+            if env.get('require_bounds', False):
+                raise ProcessGraphComplexityException
+            else:
+                #in this case, there's some debate on whether we should really try to process the whole world...
+                srs = "EPSG:4326"
+                west = -180.0
+                south = -90
+                east = 180
+                north = 90
+                spatial_bounds_present=True
+                #raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
+                #                         message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
+                #                             c=collection_id))
+
+        extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
+        metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
         polygons = load_params.aggregate_spatial_geometries
 
@@ -105,14 +115,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             projected_polygons = to_projected_polygons(jvm, polygons)
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
-        if spatial_bounds_present:
-            if( native_crs == 'UTM'):
-                target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
-            else:
-                target_epsg_code = int(native_crs.split(":")[-1])
-            projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
+
+        if( native_crs == 'UTM' ):
+            target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
         else:
-            raise OpenEOApiException(code="MissingSpatialFilter", status_code=400, message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(c=collection_id))
+            target_epsg_code = int(native_crs.split(":")[-1])
+        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
 
         datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
