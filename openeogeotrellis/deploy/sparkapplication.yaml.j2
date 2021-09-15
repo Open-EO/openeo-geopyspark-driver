@@ -45,11 +45,20 @@ spec:
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
       AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
+      AWS_VIRTUAL_HOSTING: "FALSE"
       SWIFT_URL: {{ swift_url }}
       SWIFT_BUCKET: {{ swift_bucket }}
       ZOOKEEPERNODES: {{ zookeeper_nodes }}
+      OPENEO_S1BACKSCATTER_ELEV_GEOID: "/opt/openeo-vito-aux-data/egm96.grd"
+      OTB_HOME: "/opt/orfeo-toolbox"
+      OTB_APPLICATION_PATH: "/opt/orfeo-toolbox/lib/otb/applications"
+      GDAL_NUM_THREADS: "2"
+      GDAL_CACHEMAX: "200"
+      GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+      VSI_CACHE: "TRUE"
     cores: {{ driver_cores }}
-    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.debug=true"
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.debug=true -Dpixels.treshold=1000000"
     memory: "{{ driver_memory }}"
     labels:
       version: 2.4.5
@@ -66,12 +75,22 @@ spec:
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
       AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
+      AWS_VIRTUAL_HOSTING: "FALSE"
       SWIFT_URL: {{ swift_url }}
       SWIFT_BUCKET: {{ swift_bucket }}
       ZOOKEEPERNODES: {{ zookeeper_nodes }}
+      OPENEO_S1BACKSCATTER_ELEV_GEOID: "/opt/openeo-vito-aux-data/egm96.grd"
+      OTB_HOME: "/opt/orfeo-toolbox"
+      OTB_APPLICATION_PATH: "/opt/orfeo-toolbox/lib/otb/applications"
+      GDAL_NUM_THREADS: "2"
+      GDAL_CACHEMAX: "200"
+      GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+      VSI_CACHE: "TRUE"
     cores: {{ executor_cores }}
     instances: 1
     memory: "{{ executor_memory }}"
+    javaOptions: "-Dlog4j.configuration=log4j.properties -Dscala.concurrent.context.numThreads=4 -Dscala.concurrent.context.maxThreads=4"
     labels:
       version: 2.4.5
     volumeMounts:
