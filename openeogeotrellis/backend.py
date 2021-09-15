@@ -1096,7 +1096,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
                             # collecting_folder must be writable from driver (cached tiles) and JobTracker (new tiles))
                             collecting_folder = f"/tmp_epod/openeo_collecting/{subfolder}"
-                            os.mkdir(collecting_folder, mode=0o770)
+                            os.mkdir(collecting_folder)
+                            os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
 
                             http_impl_property = "software.amazon.awssdk.http.service.impl"
                             http_impl = self._jvm.System.getProperty(http_impl_property)
