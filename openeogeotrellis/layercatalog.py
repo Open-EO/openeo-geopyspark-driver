@@ -111,6 +111,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             else:
                 target_epsg_code = int(native_crs.split(":")[-1])
             projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
+        else:
+            raise OpenEOApiException(code="MissingSpatialFilter", status_code=400, message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(c=collection_id))
 
         datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
