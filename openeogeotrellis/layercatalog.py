@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict
 
 import geopyspark
+from openeo_driver.dry_run import ProcessType
 from shapely.geometry import box
 
 from openeo.metadata import Band
@@ -79,10 +80,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         correlation_id = env.get("correlation_id", '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
+        logger.info("Detected process types:" + str(load_params.process_types))
+        default_temporal_resolution = "ByDay"
+        default_indexReduction = 8
+        if len(load_params.process_types)==1 and load_params.process_types[0] == ProcessType.GLOBAL_TIME:
+            #for pure timeseries processing, adjust partitioning strategy
+            default_temporal_resolution = "None"
+            default_indexReduction = 0
+
+
         experimental = load_params.get("featureflags",{}).get("experimental",False)
         tilesize = load_params.get("featureflags",{}).get("tilesize",256)
-        indexReduction = load_params.get("featureflags", {}).get("indexreduction", 8)
-        temporalResolution = load_params.get("featureflags", {}).get("temporalresolution", "ByDay")
+        indexReduction = load_params.get("featureflags", {}).get("indexreduction", default_indexReduction)
+        temporalResolution = load_params.get("featureflags", {}).get("temporalresolution", default_temporal_resolution)
 
         jvm = get_jvm()
 
