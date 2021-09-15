@@ -19,7 +19,6 @@ spec:
     - "{{ metadata_file }}"
     - "{{ api_version }}"
   sparkConf:
-    "spark.extraListeners": "org.openeo.sparklisteners.CancelRunawayJobListener"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
     "spark.driver.maxResultSize": "5g"
