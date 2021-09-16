@@ -780,7 +780,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 user_id_truncated = user_id.split('@')[0][:20]
                 job_id_truncated = job_id.split('-')[0]
 
-                output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id_truncated
+                output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
 
                 job_specification_file = output_dir + '/job_specification.json'
 
