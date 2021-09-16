@@ -46,9 +46,10 @@ def test_load_collection_sar_backscatter_compatible(get_jvm):
 
     factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited
     sample_type_mock = jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.return_value
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
 
     factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "S1GRD", "???", "!!!",
-                                         {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock)
+                                         {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock, cellsize_mock)
 
     jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
     factory_mock.return_value.datacube_seq.assert_called_once
