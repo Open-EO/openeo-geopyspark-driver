@@ -325,7 +325,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     client_secret,
                     sentinel_hub.processing_options(sar_backscatter_arguments),
                     sample_type,
-                    jvm.geotrellis.raster.CellSize(10, 10)  # TODO: Extract from collection metadata.
+                    jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: Extract from collection metadata.
                 )
 
                 return (
