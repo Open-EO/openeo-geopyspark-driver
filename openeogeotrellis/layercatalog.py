@@ -83,7 +83,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.info("Detected process types:" + str(load_params.process_types))
         default_temporal_resolution = "ByDay"
         default_indexReduction = 8
-        if len(load_params.process_types)==1 and load_params.process_types[0] == ProcessType.GLOBAL_TIME:
+        if len(load_params.process_types)==1 and ProcessType.GLOBAL_TIME in load_params.process_types:
             #for pure timeseries processing, adjust partitioning strategy
             default_temporal_resolution = "None"
             default_indexReduction = 0
