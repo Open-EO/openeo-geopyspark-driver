@@ -480,10 +480,10 @@ class GeopysparkDataCube(DriverDataCube):
         context = convert_node(context, env=env)
         if not isinstance(udf, str):
             raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
-        if dimension == self.metadata.temporal_dimension.name:
+        if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
             # EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
             return self.apply_tiles_spatiotemporal(udf, context)
-        elif dimension == self.metadata.band_dimension.name:
+        elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             return self.apply_tiles(udf, context)
         else:
             raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
