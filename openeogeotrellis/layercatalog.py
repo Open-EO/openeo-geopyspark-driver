@@ -11,12 +11,12 @@ from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.catalogs.creo import CatalogClient
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.catalogs.creo import CatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams

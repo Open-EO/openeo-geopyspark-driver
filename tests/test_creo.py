@@ -1,7 +1,7 @@
 import unittest
 import datetime
 
-from openeogeotrellis.catalogs.creo import CatalogClient
+from openeo_driver.catalogs.creo import CatalogClient
 
 
 class TestCreo(unittest.TestCase):
