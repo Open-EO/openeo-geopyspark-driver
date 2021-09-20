@@ -1,10 +1,10 @@
-from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import FeatureUnsupportedException
 
 
 def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     # TODO: split off validation so it can be used for CARD4L flow
+    # TODO: move this logic to geotrellis-extensions?
     """As a side-effect, also validates the arguments."""
 
     if sar_backscatter_arguments.coefficient == "gamma0-terrain":
@@ -31,8 +31,8 @@ def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     if not sar_backscatter_arguments.noise_removal:
         raise FeatureUnsupportedException("sar_backscatter: noise_removal cannot be disabled")
 
-    return dict_no_none(
+    return dict(
         backCoeff=backscatter_coefficient,
         orthorectify=orthorectify,
-        demInstance=sar_backscatter_arguments.elevation_model
+        demInstance=sar_backscatter_arguments.elevation_model or 'MAPZEN'
     )
