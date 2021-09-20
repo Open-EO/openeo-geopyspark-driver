@@ -806,6 +806,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     driver_memory=driver_memory,
                     executor_cores=executor_cores,
                     executor_memory=executor_memory,
+                    max_executors=max_executors,
                     api_version=api_version,
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
