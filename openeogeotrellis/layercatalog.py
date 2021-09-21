@@ -49,6 +49,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         native_crs = layer_source_info.get("native_crs","UTM")
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
+        cell_width = metadata.get("cube:dimensions", "x", "step", default=10.0)
+        cell_height = metadata.get("cube:dimensions", "y", "step", default=10.0)
 
         temporal_extent = load_params.temporal_extent
         from_date, to_date = [normalize_date(d) for d in temporal_extent]
@@ -200,16 +202,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        ))
 
         def file_oscars_pyramid():
-            cellWidth = metadata.get("cube:dimensions", "x", "step", default=10.0)
-            cellHeight = metadata.get("cube:dimensions", "y", "step", default=10.0)
             return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
                                 jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
                                                                                        opensearch_collection_id,
                                                                                        opensearch_link_titles,
                                                                                        root_path,
                                                                                        jvm.geotrellis.raster.CellSize(
-                                                                                           cellWidth,
-                                                                                           cellHeight),
+                                                                                           cell_width,
+                                                                                           cell_height),
                                                                                        experimental
                                                                                        ))
 
@@ -325,7 +325,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     client_secret,
                     sentinel_hub.processing_options(sar_backscatter_arguments),
                     sample_type,
-                    jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: Extract from collection metadata.
+                    jvm.geotrellis.raster.CellSize(cell_width, cell_height)
                 )
 
                 return (
