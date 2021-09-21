@@ -49,8 +49,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         native_crs = layer_source_info.get("native_crs","UTM")
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
-        cell_width = metadata.get("cube:dimensions", "x", "step", default=10.0)
-        cell_height = metadata.get("cube:dimensions", "y", "step", default=10.0)
+        cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
+        cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
         temporal_extent = load_params.temporal_extent
         from_date, to_date = [normalize_date(d) for d in temporal_extent]
