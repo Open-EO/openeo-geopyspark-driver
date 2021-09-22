@@ -876,7 +876,7 @@ class GeopysparkDataCube(DriverDataCube):
             if target.pyramid.layer_type == gps.LayerType.SPACETIME:
                 partitioner = max_level.srdd.rdd().partitioner
             level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(
-                max_level.srdd.rdd(), target_max_level.srdd.rdd().metadata.crs, target_max_level.srdd.rdd().metadata.layout, resample_method, partitioner)
+                max_level.srdd.rdd(), target_max_level.srdd.rdd().metadata().crs, target_max_level.srdd.rdd().metadata().layout, resample_method, partitioner)
         else:
             raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + self.pyramid.layer_type + ' and ' + target.pyramid.layer_type)
 
