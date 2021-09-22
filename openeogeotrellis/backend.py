@@ -1102,7 +1102,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             request_group_id)
                         )
                     else:
-                        if cache and collection_id == 'SENTINEL2_L2A_SENTINELHUB':
+                        if cache:
                             subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
 
                             # collecting_folder must be writable from driver (cached tiles) and JobTracker (new tiles))
