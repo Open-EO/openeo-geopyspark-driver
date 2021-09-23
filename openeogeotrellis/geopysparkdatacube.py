@@ -872,13 +872,19 @@ class GeopysparkDataCube(DriverDataCube):
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
             level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
         elif self.pyramid.layer_type == gps.LayerType.SPATIAL:
-            partitioner = target_max_level.srdd.rdd().partitioner
-            if target.pyramid.layer_type == gps.LayerType.SPACETIME:
-                partitioner = max_level.srdd.rdd().partitioner
-            level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(
-                max_level.srdd.rdd(), target_max_level.srdd.rdd().metadata().crs, target_max_level.srdd.rdd().metadata().layout, resample_method, partitioner)
+            partitioner = target_max_level.srdd.rdd().partitioner()
+            if target.pyramid.layer_type == gps.LayerType.SPACETIME or partitioner.isEmpty():
+                partitioner = max_level.srdd.rdd().partitioner()
+            if(partitioner.isEmpty()):
+                partitioner=None
+            else:
+                partitioner=partitioner.get()
+            layout = target_max_level.srdd.rdd().metadata().layout()
+            crs = target_max_level.srdd.rdd().metadata().crs()
+            level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
+                max_level.srdd.rdd(), crs, layout, resample_method, partitioner)
         else:
-            raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + self.pyramid.layer_type + ' and ' + target.pyramid.layer_type)
+            raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + str(self.pyramid.layer_type) + ' and ' + str(target.pyramid.layer_type))
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
