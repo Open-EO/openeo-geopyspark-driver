@@ -683,7 +683,16 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
             return tiles
 
-        tile_rdd = per_product.repartition(per_product.count()).flatMap(process_product)
+        paths = list(per_product.keys().collect())
+
+        def partitionByPath(tuple):
+            try:
+                return paths.index(tuple)
+            except Exception as e:
+                hashPartitioner = pyspark.rdd.portable_hash
+                return hashPartitioner(tuple)
+        grouped = per_product.partitionBy(per_product.count(),partitionByPath)
+        tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
             layer_metadata_py.cell_type = result_dtype
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))

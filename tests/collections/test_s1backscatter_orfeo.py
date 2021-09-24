@@ -33,7 +33,7 @@ from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
 def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expected_shape):
     catalog = GeoPySparkLayerCatalog(all_metadata=[{
         "id": "Creodias-S1-Backscatter",
-        "_vito": {"data_source": {"type": 'creodias-s1-backscatter'}},
+        "_vito": {"data_source": {"type": 'creodias-s1-backscatter',"sar_backscatter_compatible":True}},
         "cube:dimensions": {
             "x": {"type": "spatial", "axis": "x"},
             "y": {"type": "spatial", "axis": "y"},
@@ -45,9 +45,8 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expe
     load_params = LoadParameters(
         temporal_extent=temporal_extent, spatial_extent=spatial_extent,
         sar_backscatter=SarBackscatterArgs(
-            backscatter_coefficient="sigma0",
-            orthorectify=True,
-            options={"dem_zoom_level": 6}
+            coefficient="sigma0-ellipsoid",
+            options={"dem_zoom_level": 6,"implementation_version":"2","debug":True}
         )
     )
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
