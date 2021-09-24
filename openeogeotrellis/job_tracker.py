@@ -154,7 +154,8 @@ class JobTracker:
                 except Exception:
                     _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
                                  .format(j=job_id, e=traceback.format_exc()), extra={'job_id': job_id})
-                    # TODO: mark it as done to keep it from being considered further?
+                    registry.set_status(job_id, user_id, 'error')
+                    registry.mark_done(job_id, user_id)
 
     @staticmethod
     def yarn_available() -> bool:
