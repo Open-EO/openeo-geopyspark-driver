@@ -13,7 +13,7 @@ from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
 from .data import get_test_data_file, TEST_DATA_ROOT
 
-os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent.parent / "layercatalog.json")
+os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
 
 
 @pytest.hookimpl(trylast=True)

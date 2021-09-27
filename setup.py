@@ -30,7 +30,6 @@ setup(
     packages=find_packages(exclude=('tests', 'scripts')),
     include_package_data = True,
     data_files=[
-        'layercatalog.json',
         'log4j.properties',
         'scripts/submit_batch_job_log4j.properties',
         'scripts/batch_job_log4j.properties'
