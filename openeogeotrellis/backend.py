@@ -9,16 +9,17 @@ import sys
 import tempfile
 import traceback
 import uuid
-from datetime import datetime
+import datetime
 from functools import reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Tuple, Optional, List, Union
+from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable
 
 import geopyspark as gps
 import pkg_resources
 from geopyspark import TiledRasterLayer, LayerType
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.save_result import ImageCollectionResult
 from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
@@ -28,7 +29,7 @@ from shapely.geometry import Polygon, GeometryCollection
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band
-from openeo.util import dict_no_none, rfc3339
+from openeo.util import dict_no_none, rfc3339, deep_get
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -40,6 +41,8 @@ from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis import sentinel_hub
+import openeogeotrellis.catalogs.creo
+import openeogeotrellis.catalogs.oscars
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -99,7 +102,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         self.service_registry.stop_service(user_id=user_id, service_id=service_id)
         self._unproxy_service(service_id)
 
-    def remove_services_before(self, upper: datetime) -> None:
+    def remove_services_before(self, upper: datetime.datetime) -> None:
         user_services = self.service_registry.get_metadata_all_before(upper)
 
         for user_id, service in user_services:
@@ -142,7 +145,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
             enabled=True,
             attributes={},
             configuration=configuration,
-            created=datetime.utcnow()), api_version)
+            created=datetime.datetime.utcnow()), api_version)
 
         secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
 
@@ -216,7 +219,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         return SecondaryService(host=host, port=wmts.getPort(), server=wmts)
 
     def restore_services(self):
-        for user_id, service_metadata in self.service_registry.get_metadata_all_before(upper=datetime.max):
+        for user_id, service_metadata in self.service_registry.get_metadata_all_before(upper=datetime.datetime.max):
             if service_metadata.enabled:
                 try:
                     self.start_service(user_id=user_id, service_id=service_metadata.id)
@@ -509,6 +512,63 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return ErrorSummary(error, is_client_error, summary)
 
         return error
+
+    def extra_validation(
+            self, process_graph: dict, result, source_constraints: List[SourceConstraint]
+    ) -> Iterable[dict]:
+
+        for source_id, constraints in source_constraints:
+            if source_id[0] == "load_collection":
+                collection_id = source_id[1][0]
+                collection_properties = source_id[1][1]
+                metadata = self.catalog.get_collection_metadata(collection_id=collection_id)
+                source_info = deep_get(metadata, "_vito", "data_source", default={})
+                check_missing_products = source_info.get("check_missing_products")
+                if check_missing_products:
+                    temporal_extent = constraints.get("temporal_extent")
+                    spatial_extent = constraints.get("spatial_extent")
+                    query_kwargs = {
+                        "start_date": datetime.datetime.combine(
+                            rfc3339.parse_date_or_datetime(temporal_extent[0]),
+                            datetime.time.min
+                        ),
+                        "end_date": datetime.datetime.combine(
+                            rfc3339.parse_date_or_datetime(temporal_extent[1]),
+                            datetime.time.max
+                        ),
+                        "ulx": spatial_extent["west"],
+                        "brx": spatial_extent["east"],
+                        "bry": spatial_extent["south"],
+                        "uly": spatial_extent["north"],
+                    }
+
+                    if check_missing_products == "creo":
+                        creo_catalog = openeogeotrellis.catalogs.creo.CatalogClient(
+                            mission=source_info["opensearch_collection_id"],
+                            product_type=collection_properties.get("productType")
+                        )
+                        for p in creo_catalog.query_offline(**query_kwargs):
+                            yield {
+                                "code": "MissingProduct",
+                                "message": f"Tile {p.getTileId()} in collection {collection_id} is not available."
+                            }
+                    elif check_missing_products == "terrascope":
+                        creo_l1c_catalog = openeogeotrellis.catalogs.creo.CatalogClient(
+                            mission=openeogeotrellis.catalogs.creo.CatalogConstants.missionSentinel2,
+                            level=openeogeotrellis.catalogs.creo.CatalogConstants.level1C
+                        )
+                        expected_tiles = {p.getTileId() for p in creo_l1c_catalog.query(**query_kwargs)}
+                        oscars_catalog = openeogeotrellis.catalogs.oscars.CatalogClient(
+                            collection=source_info["opensearch_collection_id"]
+                        )
+                        terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
+                        for tile_id in expected_tiles.difference(terrascope_tiles):
+                            yield {
+                                "code": "MissingProduct",
+                                "message": f"Tile {tile_id} in collection {collection_id} is not available."
+                            }
+                    else:
+                        raise ValueError(check_missing_products)
 
 
 class GpsBatchJobs(backend.BatchJobs):

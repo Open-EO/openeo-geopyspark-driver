@@ -1081,3 +1081,18 @@ def test_udf_invalid_signature(api100, user_defined_process_registry, udf_code):
 
     # TODO: improve status code, error code and message
     response.assert_error(status_code=500, error_code=None, message="No UDF found")
+
+
+def test_extra_validation(api100, requests_mock):
+    pg = {"lc": {
+        "process_id": "load_collection",
+        "arguments": {
+            "id": "TERRASCOPE_S2_TOC_V2",
+            "temporal_extent": ["2020-03-01", "2020-03-10"],
+            "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
+        },
+        "result": True
+    }}
+
+    response = api100.validation(pg)
+    assert response.json == []

@@ -1,3 +1,5 @@
+from typing import List
+
 import re
 from datetime import datetime, time
 from pathlib import Path
@@ -78,7 +80,7 @@ class CatalogClient(CatalogClientBase):
         return Polygon([(ulx, uly), (brx, uly), (brx, bry), (ulx, bry), (ulx, uly)])
 
     @staticmethod
-    def _parse_product_ids(response):
+    def _parse_product_ids(response) -> List[CatalogEntry]:
         result = []
         for hit in response['features']:
             if hit['properties']['status'] == 0 or hit['properties']['status'] == 34 or hit['properties'][
@@ -90,8 +92,8 @@ class CatalogClient(CatalogClientBase):
                     CatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.ORDERABLE))
         return result
 
-    def __init__(self, mission, level):
-        super().__init__(mission, level)
+    def __init__(self, mission, level=None, product_type=None):
+        super().__init__(mission, level, product_type)
         self.itemsperpage = 100
         self.maxpages = 100  # elasticsearch has a 10000 limit on the paged search
 
@@ -105,6 +107,7 @@ class CatalogClient(CatalogClientBase):
                     from_index):
 
         query_params = [('processingLevel', self.level),
+                        ('productType', self.product_type),
                         ('startDate', start_date.isoformat()),
                         ('cloudCover', '[0,' + str(int(cldPrcnt)) + ']'),
                         ('page', str(from_index)),
@@ -145,7 +148,7 @@ class CatalogClient(CatalogClientBase):
     def _query_per_tile(self, start_date, end_date,
                         tile_id,
                         ulx, uly, brx, bry,
-                        cldPrcnt):
+                        cldPrcnt) -> List[CatalogEntry]:
 
         result = []
 
@@ -170,7 +173,7 @@ class CatalogClient(CatalogClientBase):
     def query(self, start_date, end_date,
               tile_ids=None,
               ulx=-180, uly=90, brx=180, bry=-90,
-              cldPrcnt=100.):
+              cldPrcnt=100.) -> List[CatalogEntry]:
 
         result = []
         if tile_ids is None:
@@ -182,6 +185,12 @@ class CatalogClient(CatalogClientBase):
         self.logger.info('Number of products found: ' + str(len(result)))
 
         return result
+
+    def query_offline(self, start_date, end_date, ulx=-180, uly=90, brx=180, bry=-90) -> List[CatalogEntry]:
+        return [
+            p for p in self.query(start_date=start_date, end_date=end_date, ulx=ulx, uly=uly, brx=brx, bry=bry)
+            if p.getStatus() == CatalogStatus.ORDERABLE
+        ]
 
     def query_product_paths(self, start_date, end_date, ulx, uly, brx, bry):
         products = self.query(start_date, datetime.combine(end_date, time.max), ulx=ulx, uly=uly, brx=brx, bry=bry)

@@ -64,9 +64,10 @@ class CatalogEntryBase:
 
 class CatalogClientBase:
 
-    def __init__(self, mission, level):
+    def __init__(self, mission, level, product_type):
         self.mission = mission
         self.level = level
+        self.product_type = product_type
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractclassmethod
