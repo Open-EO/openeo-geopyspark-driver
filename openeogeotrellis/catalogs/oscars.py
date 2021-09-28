@@ -1,9 +1,10 @@
+from typing import List
+
 import re
 import requests
 
 
-class CatalogEntry:
-    # TODO: put "oscars" in class name
+class OscarsCatalogEntry:
     def __init__(self, product_id):
         self._product_id = product_id
 
@@ -15,15 +16,14 @@ class CatalogEntry:
         return m.group(1)
 
 
-class CatalogClient:
-    # TODO: put "oscars" in class name
+class OscarsCatalogClient:
 
     def __init__(self, collection):
         self._collection = collection
 
     @staticmethod
-    def _parse_product_ids(response):
-        return [CatalogEntry(f['properties']['title']) for f in response['features']]
+    def _parse_product_ids(response) -> List[OscarsCatalogEntry]:
+        return [OscarsCatalogEntry(f['properties']['title']) for f in response['features']]
 
     def _query_page(self, start_date, end_date,
               ulx=-180, uly=90, brx=180, bry=-90, from_index=1):
@@ -45,7 +45,7 @@ class CatalogClient:
         return response
 
     def query(self, start_date, end_date,
-              ulx=-180, uly=90, brx=180, bry=-90):
+              ulx=-180, uly=90, brx=180, bry=-90) -> List[OscarsCatalogEntry]:
 
         result = []
 

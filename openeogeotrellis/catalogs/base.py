@@ -2,22 +2,6 @@ import logging
 from abc import abstractclassmethod, abstractproperty
 from enum import Enum
 
-
-class CatalogConstantsBase:
-    # TODO: is this abstract base class useful at the moment?
-
-    @abstractproperty
-    def missionSentinel2(self): pass
-
-    @abstractproperty
-    def level1C(self): pass
-
-    @abstractproperty
-    def level2A(self): pass
-
-    def getMissionString(self,mission): return getattr(self,mission)
-    def getLevelString(self,level): return getattr(self,level)
-    
     
 class CatalogStatus(Enum):
     NOT_FOUND=1

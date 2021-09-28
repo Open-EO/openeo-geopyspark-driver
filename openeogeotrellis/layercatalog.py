@@ -16,7 +16,7 @@ from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiExcep
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.catalogs.creo import CatalogClient
+from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
@@ -338,7 +338,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def creo_pyramid():
             mission = layer_source_info['mission']
             level = layer_source_info['level']
-            catalog = CatalogClient(mission, level)
+            catalog = CreoCatalogClient(mission=mission, level=level)
             product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
                                                         datetime.strptime(to_date[:10], "%Y-%m-%d"),
                                                         ulx=west, uly=north,

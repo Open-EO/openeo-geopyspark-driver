@@ -41,8 +41,8 @@ from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis import sentinel_hub
-import openeogeotrellis.catalogs.creo
-import openeogeotrellis.catalogs.oscars
+from openeogeotrellis.catalogs.creo import CreoCatalogClient
+from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -544,7 +544,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     }
 
                     if check_missing_products == "creo":
-                        creo_catalog = openeogeotrellis.catalogs.creo.CatalogClient(
+                        creo_catalog = CreoCatalogClient(
                             mission=source_info["opensearch_collection_id"],
                             product_type=collection_properties.get("productType")
                         )
@@ -554,12 +554,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                 "message": f"Tile {p.getTileId()!r} in collection {collection_id!r} is not available."
                             }
                     elif check_missing_products == "terrascope":
-                        creo_l1c_catalog = openeogeotrellis.catalogs.creo.CatalogClient(
-                            mission=openeogeotrellis.catalogs.creo.CatalogConstants.missionSentinel2,
-                            level=openeogeotrellis.catalogs.creo.CatalogConstants.level1C
+                        creo_l1c_catalog = CreoCatalogClient(
+                            mission=CreoCatalogClient.MISSION_SENTINEL2,
+                            level=CreoCatalogClient.LEVEL1C
                         )
                         expected_tiles = {p.getTileId() for p in creo_l1c_catalog.query(**query_kwargs)}
-                        oscars_catalog = openeogeotrellis.catalogs.oscars.CatalogClient(
+                        oscars_catalog = OscarsCatalogClient(
                             collection=source_info["opensearch_collection_id"]
                         )
                         terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
