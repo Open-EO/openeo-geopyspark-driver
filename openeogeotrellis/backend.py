@@ -518,9 +518,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     ) -> Iterable[dict]:
 
         for source_id, constraints in source_constraints:
-            if source_id[0] == "load_collection":
-                collection_id = source_id[1][0]
-                collection_properties = source_id[1][1]
+            source_id_proc, source_id_args = source_id
+            if source_id_proc == "load_collection":
+                collection_id = source_id_args[0]
+                collection_properties = dict(source_id_args[1])
                 metadata = self.catalog.get_collection_metadata(collection_id=collection_id)
                 source_info = deep_get(metadata, "_vito", "data_source", default={})
                 check_missing_products = source_info.get("check_missing_products")
@@ -550,7 +551,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         for p in creo_catalog.query_offline(**query_kwargs):
                             yield {
                                 "code": "MissingProduct",
-                                "message": f"Tile {p.getTileId()} in collection {collection_id} is not available."
+                                "message": f"Tile {p.getTileId()!r} in collection {collection_id!r} is not available."
                             }
                     elif check_missing_products == "terrascope":
                         creo_l1c_catalog = openeogeotrellis.catalogs.creo.CatalogClient(
@@ -565,7 +566,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         for tile_id in expected_tiles.difference(terrascope_tiles):
                             yield {
                                 "code": "MissingProduct",
-                                "message": f"Tile {tile_id} in collection {collection_id} is not available."
+                                "message": f"Tile {tile_id!r} in collection {collection_id!r} is not available."
                             }
                     else:
                         raise ValueError(check_missing_products)

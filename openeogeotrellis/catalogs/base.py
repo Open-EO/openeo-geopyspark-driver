@@ -4,7 +4,8 @@ from enum import Enum
 
 
 class CatalogConstantsBase:
-    
+    # TODO: is this abstract base class useful at the moment?
+
     @abstractproperty
     def missionSentinel2(self): pass
 
@@ -25,6 +26,7 @@ class CatalogStatus(Enum):
     
 
 class CatalogEntryBase:
+    # TODO: is this abstract base class useful at the moment?
 
     @abstractclassmethod
     def __init__(self, product_id, s3_bucket, s3_key): pass
@@ -63,6 +65,7 @@ class CatalogEntryBase:
 
 
 class CatalogClientBase:
+    # TODO: is this abstract base class useful at the moment?
 
     def __init__(self, mission, level, product_type):
         self.mission = mission

@@ -18,6 +18,7 @@ class CatalogConstants(CatalogConstantsBase):
 
 
 class CatalogEntry(CatalogEntryBase):
+    # TODO put "Creo" in class name
     # product_id expected as one of:
     #   /eodata/Sentinel-2/MSI/L2A/2019/11/17/S2B_MSIL2A_20191117T105229_N0213_R051_T31UET_20191117T134337.SAFE
     #   S2B_MSIL2A_20191117T105229_N0213_R051_T31UET_20191117T134337
@@ -74,6 +75,7 @@ class CatalogEntry(CatalogEntryBase):
 
 
 class CatalogClient(CatalogClientBase):
+    # TODO put "Creo" in class name
 
     @staticmethod
     def _build_polygon(ulx, uly, brx, bry):
@@ -83,8 +85,13 @@ class CatalogClient(CatalogClientBase):
     def _parse_product_ids(response) -> List[CatalogEntry]:
         result = []
         for hit in response['features']:
-            if hit['properties']['status'] == 0 or hit['properties']['status'] == 34 or hit['properties'][
-                'status'] == 37:
+            # https://creodias.eu/eo-data-finder-api-manual:
+            # 31 means that product is orderable and waiting for download to our cache,
+            # 32 means that product is ordered and processing is in progress,
+            # 34 means that product is downloaded in cache,
+            # 37 means that product is processed by our platform,
+            # 0 means that already processed product is waiting in our platform
+            if hit['properties']['status'] in {0, 34, 37}:
                 result.append(
                     CatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.AVAILABLE))
             else:
@@ -152,15 +159,12 @@ class CatalogClient(CatalogClientBase):
 
         result = []
 
-        # get first page
-        response = self._query_page(start_date, end_date, tile_id, ulx, uly, brx, bry, cldPrcnt, 1)
-        # since int(response['properties']['totalResults']) does not always return exact count, therefore need to query until features is empty
-        self.logger.debug("Hits in catalogs: " + str(response['properties']['totalResults']) + " exact: " + str(
-            response['properties']['exactCount']))
-        # if total_hits>10000:
-        #    raise Exception("Total hits larger than 10000, which is not supported by paging: either split your job to multiple smaller or implement scroll or search_after.")
         for i in range(self.maxpages):
             response = self._query_page(start_date, end_date, tile_id, ulx, uly, brx, bry, cldPrcnt, i + 1)
+            if i == 1:
+                self.logger.debug(
+                    f"Hits in catalogs: {response.get('properties', {}).get('totalResults')} exact: {response.get('properties', {}).get('exactCount')}"
+                )
             chunk = CatalogClient._parse_product_ids(response)
             if len(chunk) == 0: break
             result = result + chunk

@@ -3,6 +3,7 @@ import requests
 
 
 class CatalogEntry:
+    # TODO: put "oscars" in class name
     def __init__(self, product_id):
         self._product_id = product_id
 
@@ -15,6 +16,8 @@ class CatalogEntry:
 
 
 class CatalogClient:
+    # TODO: put "oscars" in class name
+
     def __init__(self, collection):
         self._collection = collection
 

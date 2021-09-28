@@ -257,7 +257,146 @@
       "data_source": {
         "type": "file-s2",
         "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+        "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+        "check_missing_products": "terrascope"
+      }
+    }
+  },
+  {
+    "id": "SENTINEL2_L2A",
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -90,
+            180,
+            90
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2015-07-04",
+            null
+          ]
+        ]
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x"
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y"
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02",
+          "B03",
+          "B04",
+          "B05",
+          "B06",
+          "B07",
+          "B08",
+          "B8A",
+          "B09",
+          "B10",
+          "B11",
+          "B12",
+          "SCL",
+          "AOT",
+          "WVP",
+          "TCI"
+        ]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B01"
+        },
+        {
+          "name": "B02"
+        },
+        {
+          "name": "B03"
+        },
+        {
+          "name": "B04"
+        },
+        {
+          "name": "B05"
+        },
+        {
+          "name": "B06"
+        },
+        {
+          "name": "B07"
+        },
+        {
+          "name": "B08"
+        },
+        {
+          "name": "B8A"
+        },
+        {
+          "name": "B09"
+        },
+        {
+          "name": "B10"
+        },
+        {
+          "name": "B11"
+        },
+        {
+          "name": "B12"
+        },
+        {
+          "name": "SCL"
+        },
+        {
+          "name": "AOT"
+        },
+        {
+          "name": "WVP"
+        },
+        {
+          "name": "TCI"
+        }
+      ]
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s2",
+        "opensearch_collection_id": "Sentinel2",
+        "opensearch_endpoint": "https://finder.creodias.eu",
+        "root_path": "/eodata",
+        "check_missing_products": "creo"
+      },
+      "properties": {
+        "productType": {
+          "process_graph": {
+            "asc": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "L2A"
+              },
+              "result": true
+            }
+          }
+        }
       }
     }
   },
