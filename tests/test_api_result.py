@@ -1081,3 +1081,126 @@ def test_udf_invalid_signature(api100, user_defined_process_registry, udf_code):
 
     # TODO: improve status code, error code and message
     response.assert_error(status_code=500, error_code=None, message="No UDF found")
+
+
+def test_extra_validation_creo(api100, requests_mock):
+    pg = {"lc": {
+        "process_id": "load_collection",
+        "arguments": {
+            "id": "SENTINEL2_L2A",
+            "temporal_extent": ["2020-03-01", "2020-03-10"],
+            "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
+        },
+        "result": True
+    }}
+
+    requests_mock.get(
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        json={
+            "type": "FeatureCollection",
+            "properties": {"totalResults": 28, "itemsPerPage": 28},
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "status": 0,
+                        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2020/03/01/S2A_MSIL2A_20200301T173231_N0214_R055_T16WEV_20200301T220803.SAFE",
+                        "title": "S2A_MSIL2A_20200301T173231_N0214_R055_T16WEV_20200301T220803.SAFE",
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "status": 31,
+                        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2020/03/01/S2A_MSIL2A_20200301T173231_N0214_R055_T16WDA_20200301T220803.SAFE",
+                        "title": "S2A_MSIL2A_20200301T173231_N0214_R055_T16WDA_20200301T220803.SAFE",
+                    }
+                },
+            ],
+        }
+    )
+    requests_mock.get(
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        json={
+            "type": "FeatureCollection",
+            "properties": {"totalResults": 28, "itemsPerPage": 28},
+            "features": [],
+        }
+    )
+
+    response = api100.validation(pg)
+    assert response.json == {'errors': [
+        {'code': 'MissingProduct', 'message': "Tile '16WDA' in collection 'SENTINEL2_L2A' is not available."}
+    ]}
+
+
+def test_extra_validation_terrascope(api100, requests_mock):
+    pg = {"lc": {
+        "process_id": "load_collection",
+        "arguments": {
+            "id": "TERRASCOPE_S2_TOC_V2",
+            "temporal_extent": ["2020-03-01", "2020-03-10"],
+            "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
+        },
+        "result": True
+    }}
+
+    requests_mock.get(
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        json={
+            "type": "FeatureCollection",
+            "properties": {"totalResults": 28, "itemsPerPage": 28},
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "status": 0,
+                        "productIdentifier": "/eodata/Sentinel-2/MSI/L1C/2020/03/01/S2A_MSIL1C_20200301T173231_N0209_R055_T16WEA_20200301T210331.SAFE",
+                        "title": "S2A_MSIL1C_20200301T173231_N0209_R055_T16WEA_20200301T210331",
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "status": 0,
+                        "productIdentifier": "/eodata/Sentinel-2/MSI/L1C/2020/03/01/S2A_MSIL1C_20200301T173231_N0209_R055_T16WDA_20200301T210331.SAFE",
+                        "title": "S2A_MSIL1C_20200301T1732…DA_20200301T210331.SAFE",
+                    }
+                },
+            ],
+        }
+    )
+    requests_mock.get(
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        json={
+            "type": "FeatureCollection",
+            "properties": {"totalResults": 28, "itemsPerPage": 28},
+            "features": [],
+        }
+    )
+    requests_mock.get(
+        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=1&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999",
+        json={
+            "type": "FeatureCollection",
+            "properties": {},
+            "features": [
+                {"type": "Feature", "properties": {
+                    "title": "S2A_20200301T173231_16WEA_TOC_V200",
+                    "identifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200301T173231_16WEA_TOC_V200",
+                }}
+            ]
+        }
+    )
+    requests_mock.get(
+        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=2&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999",
+        json={
+            "type": "FeatureCollection",
+            "properties": {},
+            "features": []
+        }
+    )
+
+    response = api100.validation(pg)
+    assert response.json == {'errors': [
+        {'code': 'MissingProduct', 'message': "Tile '16WDA' in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
+    ]}

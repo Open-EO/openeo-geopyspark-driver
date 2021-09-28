@@ -2,21 +2,6 @@ import logging
 from abc import abstractclassmethod, abstractproperty
 from enum import Enum
 
-
-class CatalogConstantsBase:
-    
-    @abstractproperty
-    def missionSentinel2(self): pass
-
-    @abstractproperty
-    def level1C(self): pass
-
-    @abstractproperty
-    def level2A(self): pass
-
-    def getMissionString(self,mission): return getattr(self,mission)
-    def getLevelString(self,level): return getattr(self,level)
-    
     
 class CatalogStatus(Enum):
     NOT_FOUND=1
@@ -25,6 +10,7 @@ class CatalogStatus(Enum):
     
 
 class CatalogEntryBase:
+    # TODO: is this abstract base class useful at the moment?
 
     @abstractclassmethod
     def __init__(self, product_id, s3_bucket, s3_key): pass
@@ -63,10 +49,12 @@ class CatalogEntryBase:
 
 
 class CatalogClientBase:
+    # TODO: is this abstract base class useful at the moment?
 
-    def __init__(self, mission, level):
+    def __init__(self, mission, level, product_type):
         self.mission = mission
         self.level = level
+        self.product_type = product_type
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractclassmethod

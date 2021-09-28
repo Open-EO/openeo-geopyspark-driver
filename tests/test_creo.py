@@ -1,13 +1,13 @@
 import unittest
 import datetime
 
-from openeogeotrellis.catalogs.creo import CatalogClient
+from openeogeotrellis.catalogs.creo import CreoCatalogClient
 
 
 class TestCreo(unittest.TestCase):
 
     def setUp(self):
-        self.l2a_catalog = CatalogClient("Sentinel2", "LEVEL2A")
+        self.l2a_catalog = CreoCatalogClient(mission="Sentinel2", level="LEVEL2A")
 
     def test_creo_catalog(self):
         date = datetime.date(2018, 4, 1)

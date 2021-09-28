@@ -1,3 +1,5 @@
+from typing import List
+
 import re
 from datetime import datetime, time
 from pathlib import Path
@@ -5,17 +7,11 @@ from pathlib import Path
 import requests
 from shapely.geometry import Polygon
 
-from openeogeotrellis.catalogs.base import CatalogClientBase, CatalogConstantsBase, CatalogEntryBase, CatalogStatus
+from openeogeotrellis.catalogs.base import CatalogClientBase, CatalogEntryBase, CatalogStatus
 from openeogeotrellis.catalogs.creo_ordering import CreoOrder
 
 
-class CatalogConstants(CatalogConstantsBase):
-    missionSentinel2 = 'Sentinel2'
-    level1C = 'LEVEL1C'
-    level2A = 'LEVEL2A'
-
-
-class CatalogEntry(CatalogEntryBase):
+class CreoCatalogEntry(CatalogEntryBase):
     # product_id expected as one of:
     #   /eodata/Sentinel-2/MSI/L2A/2019/11/17/S2B_MSIL2A_20191117T105229_N0213_R051_T31UET_20191117T134337.SAFE
     #   S2B_MSIL2A_20191117T105229_N0213_R051_T31UET_20191117T134337
@@ -71,32 +67,41 @@ class CatalogEntry(CatalogEntryBase):
         return self.relfilerelpathbuffer.replace('@BAND@', band)
 
 
-class CatalogClient(CatalogClientBase):
+class CreoCatalogClient(CatalogClientBase):
+
+    MISSION_SENTINEL2 = 'Sentinel2'
+    LEVEL1C = 'LEVEL1C'
+    LEVEL2A = 'LEVEL2A'
 
     @staticmethod
     def _build_polygon(ulx, uly, brx, bry):
         return Polygon([(ulx, uly), (brx, uly), (brx, bry), (ulx, bry), (ulx, uly)])
 
     @staticmethod
-    def _parse_product_ids(response):
+    def _parse_product_ids(response) -> List[CreoCatalogEntry]:
         result = []
         for hit in response['features']:
-            if hit['properties']['status'] == 0 or hit['properties']['status'] == 34 or hit['properties'][
-                'status'] == 37:
+            # https://creodias.eu/eo-data-finder-api-manual:
+            # 31 means that product is orderable and waiting for download to our cache,
+            # 32 means that product is ordered and processing is in progress,
+            # 34 means that product is downloaded in cache,
+            # 37 means that product is processed by our platform,
+            # 0 means that already processed product is waiting in our platform
+            if hit['properties']['status'] in {0, 34, 37}:
                 result.append(
-                    CatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.AVAILABLE))
+                    CreoCatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.AVAILABLE))
             else:
                 result.append(
-                    CatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.ORDERABLE))
+                    CreoCatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.ORDERABLE))
         return result
 
-    def __init__(self, mission, level):
-        super().__init__(mission, level)
+    def __init__(self, mission, level=None, product_type=None):
+        super().__init__(mission, level, product_type)
         self.itemsperpage = 100
         self.maxpages = 100  # elasticsearch has a 10000 limit on the paged search
 
     def catalogEntryFromProductId(self, product_id):
-        return CatalogEntry(product_id, CatalogStatus.AVAILABLE)
+        return CreoCatalogEntry(product_id, CatalogStatus.AVAILABLE)
 
     def _query_page(self, start_date, end_date,
                     tile_id,
@@ -105,6 +110,7 @@ class CatalogClient(CatalogClientBase):
                     from_index):
 
         query_params = [('processingLevel', self.level),
+                        ('productType', self.product_type),
                         ('startDate', start_date.isoformat()),
                         ('cloudCover', '[0,' + str(int(cldPrcnt)) + ']'),
                         ('page', str(from_index)),
@@ -118,7 +124,7 @@ class CatalogClient(CatalogClientBase):
         if end_date is not None:
             query_params.append(('completionDate', end_date.isoformat()))
         if tile_id is None:
-            polygon = CatalogClient._build_polygon(ulx, uly, brx, bry)
+            polygon = CreoCatalogClient._build_polygon(ulx, uly, brx, bry)
             query_params.append(('geometry', polygon.wkt))
         else:
             query_params.append(('productIdentifier', '%_T' + tile_id + '_%'))
@@ -145,20 +151,17 @@ class CatalogClient(CatalogClientBase):
     def _query_per_tile(self, start_date, end_date,
                         tile_id,
                         ulx, uly, brx, bry,
-                        cldPrcnt):
+                        cldPrcnt) -> List[CreoCatalogEntry]:
 
         result = []
 
-        # get first page
-        response = self._query_page(start_date, end_date, tile_id, ulx, uly, brx, bry, cldPrcnt, 1)
-        # since int(response['properties']['totalResults']) does not always return exact count, therefore need to query until features is empty
-        self.logger.debug("Hits in catalogs: " + str(response['properties']['totalResults']) + " exact: " + str(
-            response['properties']['exactCount']))
-        # if total_hits>10000:
-        #    raise Exception("Total hits larger than 10000, which is not supported by paging: either split your job to multiple smaller or implement scroll or search_after.")
         for i in range(self.maxpages):
             response = self._query_page(start_date, end_date, tile_id, ulx, uly, brx, bry, cldPrcnt, i + 1)
-            chunk = CatalogClient._parse_product_ids(response)
+            if i == 1:
+                self.logger.debug(
+                    f"Hits in catalogs: {response.get('properties', {}).get('totalResults')} exact: {response.get('properties', {}).get('exactCount')}"
+                )
+            chunk = CreoCatalogClient._parse_product_ids(response)
             if len(chunk) == 0: break
             result = result + chunk
         if len(result) >= self.itemsperpage * self.maxpages:
@@ -170,7 +173,7 @@ class CatalogClient(CatalogClientBase):
     def query(self, start_date, end_date,
               tile_ids=None,
               ulx=-180, uly=90, brx=180, bry=-90,
-              cldPrcnt=100.):
+              cldPrcnt=100.) -> List[CreoCatalogEntry]:
 
         result = []
         if tile_ids is None:
@@ -182,6 +185,12 @@ class CatalogClient(CatalogClientBase):
         self.logger.info('Number of products found: ' + str(len(result)))
 
         return result
+
+    def query_offline(self, start_date, end_date, ulx=-180, uly=90, brx=180, bry=-90) -> List[CreoCatalogEntry]:
+        return [
+            p for p in self.query(start_date=start_date, end_date=end_date, ulx=ulx, uly=uly, brx=brx, bry=bry)
+            if p.getStatus() == CatalogStatus.ORDERABLE
+        ]
 
     def query_product_paths(self, start_date, end_date, ulx, uly, brx, bry):
         products = self.query(start_date, datetime.combine(end_date, time.max), ulx=ulx, uly=uly, brx=brx, bry=bry)
