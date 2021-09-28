@@ -25,7 +25,7 @@ from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm
+from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +266,11 @@ class S1BackscatterOrfeo:
 
         utm_zone, utm_northhem = utm_zone_from_epsg(extent_epsg)
         logger.info(f"{log_prefix} extent {extent} (UTM {utm_zone}, EPSG {extent_epsg})")
+
+        max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
+
+        if max_total_memory_in_bytes:
+            set_max_memory(int(max_total_memory_in_bytes))
 
         otb = _import_orfeo_toolbox()
 
