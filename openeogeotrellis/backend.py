@@ -521,10 +521,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
-                collection_properties = dict(source_id_args[1])
                 metadata = self.catalog.get_collection_metadata(collection_id=collection_id)
                 source_info = deep_get(metadata, "_vito", "data_source", default={})
                 check_missing_products = source_info.get("check_missing_products")
+
                 if check_missing_products:
                     temporal_extent = constraints.get("temporal_extent")
                     spatial_extent = constraints.get("spatial_extent")
@@ -543,31 +543,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "uly": spatial_extent["north"],
                     }
 
-                    if check_missing_products == "creo":
-                        creo_catalog = CreoCatalogClient(
-                            mission=source_info["opensearch_collection_id"],
-                            product_type=collection_properties.get("productType")
-                        )
+                    def missing_product(tile_id):
+                        return {
+                            "code": "MissingProduct",
+                            "message": f"Tile {tile_id!r} in collection {collection_id!r} is not available."
+                        }
+
+                    if check_missing_products["method"] == "creo":
+                        creo_catalog = CreoCatalogClient(**check_missing_products["creo_catalog"])
                         for p in creo_catalog.query_offline(**query_kwargs):
-                            yield {
-                                "code": "MissingProduct",
-                                "message": f"Tile {p.getTileId()!r} in collection {collection_id!r} is not available."
-                            }
-                    elif check_missing_products == "terrascope":
-                        creo_l1c_catalog = CreoCatalogClient(
-                            mission=CreoCatalogClient.MISSION_SENTINEL2,
-                            level=CreoCatalogClient.LEVEL1C
-                        )
-                        expected_tiles = {p.getTileId() for p in creo_l1c_catalog.query(**query_kwargs)}
-                        oscars_catalog = OscarsCatalogClient(
-                            collection=source_info["opensearch_collection_id"]
-                        )
+                            yield missing_product(tile_id=p.getTileId())
+                    elif check_missing_products["method"] == "terrascope":
+                        creo_catalog = CreoCatalogClient(**check_missing_products["creo_catalog"])
+                        expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
+                        oscars_catalog = OscarsCatalogClient(collection=source_info.get("opensearch_collection_id"))
                         terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
                         for tile_id in expected_tiles.difference(terrascope_tiles):
-                            yield {
-                                "code": "MissingProduct",
-                                "message": f"Tile {tile_id!r} in collection {collection_id!r} is not available."
-                            }
+                            yield missing_product(tile_id=tile_id)
                     else:
                         raise ValueError(check_missing_products)
 
