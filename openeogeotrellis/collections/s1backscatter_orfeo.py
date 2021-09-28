@@ -681,9 +681,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         row = row_min + r
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                         tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
-                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
-                        tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
-                        tiles.append((key, tile))
+                        if not (tile==nodata).all():
+                            logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                            tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
+                            tiles.append((key, tile))
 
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
             return tiles
