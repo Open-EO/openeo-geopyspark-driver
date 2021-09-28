@@ -121,7 +121,10 @@ def backend_implementation() -> 'GeoPySparkBackendImplementation':
 
 @pytest.fixture
 def flask_app(backend_implementation) -> flask.Flask:
-    app = build_app(backend_implementation=backend_implementation)
+    app = build_app(
+        backend_implementation=backend_implementation,
+        # error_handling=False,
+    )
     app.config['TESTING'] = True
     app.config['SERVER_NAME'] = 'oeo.net'
     return app
