@@ -221,7 +221,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                         ConfigParams().default_opensearch_endpoint)
 
             return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(opensearch_endpoint,
-                layer_source_info.get('opensearch_collection_id'), layer_source_info.get('root_path')) \
+                                                                       layer_source_info.get('opensearch_collection_id'), layer_source_info.get('root_path'),jvm.geotrellis.raster.CellSize(cell_width, cell_height)) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
         def file_pyramid(pyramid_factory):
