@@ -529,8 +529,11 @@ def _merge_layers_with_common_name(metadata):
         default_metadata = next(filter(lambda m: deep_get(m, "_vito", "data_source", "default_provider:backend", default=False), common_name_metadatas))
         default_metadata = default_metadata or common_name_metadatas[0]
         new_metadata = deepcopy(default_metadata)
+        new_metadata["_vito"]["data_source"].pop("default_provider:backend", None)
+        new_metadata["_vito"]["data_source"]["provider:backend"] = [new_metadata["_vito"]["data_source"]["provider:backend"]]
         for common_name_metadata in common_name_metadatas:
             if not common_name_metadata["id"] == new_metadata["id"]:
+                new_metadata["_vito"]["data_source"]["provider:backend"] += [common_name_metadata["_vito"]["data_source"]["provider:backend"]]
                 new_metadata["providers"] += common_name_metadata["providers"]
                 new_metadata["links"] += common_name_metadata["links"]
                 for b in common_name_metadata["cube:dimensions"]["bands"]["values"]:
