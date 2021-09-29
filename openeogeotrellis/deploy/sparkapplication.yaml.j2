@@ -85,11 +85,12 @@ spec:
       GDAL_CACHEMAX: "200"
       GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
-      PYTHON_MAX_MEMORY: "3221225472"
+      PYTHON_MAX_MEMORY: "{{ python_max_memory }}"
       VSI_CACHE: "TRUE"
     cores: {{ executor_cores }}
     instances: {{ max_executors }}
     memory: "{{ executor_memory }}"
+    memoryOverhead: "{{ executor_memory_overhead }}"
     javaOptions: "-Dlog4j.configuration=/opt/log4j.properties -Dscala.concurrent.context.numThreads=4 -Dscala.concurrent.context.maxThreads=4 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
     labels:
       version: 2.4.5

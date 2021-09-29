@@ -846,6 +846,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:
                     api_version = '0.4.0'
 
+                memOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes(executor_memory_overhead)
+                jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("512m")
+                python_max = memOverheadBytes - jvmOverheadBytes
+
+
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
                 rendered = Template(open(jinja_template).read()).render(
                     job_name="job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated),
@@ -859,6 +864,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     driver_memory=driver_memory,
                     executor_cores=executor_cores,
                     executor_memory=executor_memory,
+                    executor_memory_overhead=executor_memory_overhead,
+                    python_max_memory = python_max,
                     max_executors=max_executors,
                     api_version=api_version,
                     current_time=int(time.time()),
