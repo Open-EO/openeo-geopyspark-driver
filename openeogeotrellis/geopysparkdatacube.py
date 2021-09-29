@@ -299,7 +299,7 @@ class GeopysparkDataCube(DriverDataCube):
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
         if dimension != self.metadata.temporal_dimension.name:
             raise FeatureUnsupportedException('Reduce on dimension {d!r} not supported'.format(d=dimension))
-        if reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE","MEDIAN"]:
+        if reducer.upper() in ["MIN", "MAX", "SUM", "MEAN", "VARIANCE", "MEDIAN", "FIRST", "LAST"]:
             reducer = reducer.lower().capitalize()
         elif reducer.upper() == "SD":
             reducer = "StandardDeviation"
