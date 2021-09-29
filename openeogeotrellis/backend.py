@@ -687,6 +687,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                        extra={'job_id': job_id})
 
             with JobRegistry() as registry:
+                registry.set_dependencies(job_id, user_id, dependencies)
                 registry.set_dependency_status(job_id, user_id, 'available')
 
             self._start_job(job_id, user_id, dependencies)
@@ -1228,7 +1229,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     ))
 
         if batch_process_dependencies:
-            job_registry.add_dependencies(job_id, user_id, batch_process_dependencies)
+            job_registry.set_dependencies(job_id, user_id, batch_process_dependencies)
             return True
 
         return False
@@ -1376,14 +1377,48 @@ class GpsBatchJobs(backend.BatchJobs):
         except FileNotFoundError:  # nothing to delete, not an error
             pass
         except Exception as e:
+            # always log because the exception doesn't show the job directory
             logger.warning("Could not recursively delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
             if propagate_errors:
                 raise
 
         with JobRegistry() as registry:
+            job_info = registry.get_job(job_id, user_id)
+
+        self.delete_batch_process_results(job_info, propagate_errors)
+
+        with JobRegistry() as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
+
+    def delete_batch_process_results(self, job_info: dict, propagate_errors: bool):
+        job_id = job_info['job_id']
+        s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
+        bucket_name = ConfigParams().sentinel_hub_batch_bucket
+
+        subfolders = [dependency.get('subfolder')
+                      or dependency['batch_request_id']
+                      for dependency in job_info.get('dependencies') or []]
+
+        for subfolder in subfolders:
+            try:
+                s3_service.delete_batch_process_results(bucket_name, subfolder)
+            except Py4JJavaError as e:
+                java_exception = e.java_exception
+
+                if (java_exception.getClass().getName() ==
+                        'org.openeo.geotrellissentinelhub.S3Service$UnknownFolderException'):
+                    logger.warning("Could not delete unknown result folder s3://{b}/{f}"
+                                   .format(b=bucket_name, f=subfolder), extra={'job_id': job_id})
+                elif propagate_errors:
+                    raise
+                else:
+                    logger.warning("Could not delete result folder s3://{b}/{f}"
+                                   .format(b=bucket_name, f=subfolder), exc_info=e, extra={'job_id': job_id})
+
+        logger.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+                    extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
         with JobRegistry() as registry:

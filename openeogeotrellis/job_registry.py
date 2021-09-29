@@ -99,7 +99,7 @@ class JobRegistry:
         self.patch(job_id, user_id, dependency_status=dependency_status)
         _log.debug("batch job {j} dependency -> {s}".format(j=job_id, s=dependency_status))
 
-    def add_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
+    def set_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
         self.patch(job_id, user_id, dependencies=dependencies)
 
     def remove_dependencies(self, job_id: str, user_id: str):
