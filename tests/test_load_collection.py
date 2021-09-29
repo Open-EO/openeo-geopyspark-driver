@@ -207,13 +207,34 @@ def test_load_collection_data_cube_params(get_jvm):
     assert len(collection.metadata.bands) == 1
     assert collection.metadata.bands[0].name == 'temperature-mean'
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory
-    projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
-    datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_collection_common_name(get_jvm):
+    catalog = get_layer_catalog()
 
-    jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
+    jvm_mock = get_jvm.return_value
+    raster_layer = MagicMock()
+    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+    raster_layer.layerMetadata.return_value = '{' \
+                                              '"crs":"EPSG:4326",\n' \
+                                              '"cellType":"uint8",\n' \
+                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
+                                              '"layoutDefinition":{\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
+                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
+                                              '}' \
+                                              '}'
 
-    factory_mock.assert_called_once_with('/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif', ['temperature-mean'], '.+_(\\d{4})(\\d{2})(\\d{2})\\.tif')
-    factory_mock.return_value.datacube_seq.assert_called_once_with(projected_polys, '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '',datacubeParams)
-    getattr(datacubeParams,'tileSize_$eq').assert_called_once_with(1)
-    getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')
+    load_params = LoadParameters(bands=['B03'],
+                                 temporal_extent=('2019-01-01', '2019-01-01'),
+                                 spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
+                                 )
+    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
+
+    assert collection.metadata.get('id') == 'SENTINEL2_L2A_SENTINELHUB'
+
+    load_params.backend_provider = 'terrascope'
+    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
+
+    assert collection.metadata.get('id') == 'TERRASCOPE_S2_TOC_V2'
+
