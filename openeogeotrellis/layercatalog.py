@@ -4,7 +4,7 @@ import traceback
 from copy import deepcopy
 from datetime import datetime
 from dateutil.tz import tzutc
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import geopyspark
 from openeo_driver.dry_run import ProcessType
@@ -56,7 +56,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_info = metadata.get("_vito", "data_source", default={})
 
-        if load_params.sar_backscatter is not None and not layer_source_info.get("sar_backscatter_compatible", False):
+        sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
+
+        if load_params.sar_backscatter is not None and not sar_backscatter_compatible:
             raise OpenEOApiException(message="""Process "sar_backscatter" is not applicable for collection {c}."""
                                      .format(c=collection_id), status_code=400)
 
@@ -274,6 +276,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             nonlocal metadata
 
             dependencies = env.get('dependencies', {})
+            sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
+                (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
+                else None
+            )
 
             if dependencies:
                 subfolder, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
@@ -300,12 +306,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     lat_lon
                 )
 
-                sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
-
-                if sar_backscatter_arguments.mask:
+                if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                     metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
 
-                if sar_backscatter_arguments.local_incidence_angle:
+                if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
                     metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
                                                          wavelength_um=None))
 
@@ -320,15 +324,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                     layer_source_info.get('sample_type', 'UINT16'))
 
-                sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
-
                 shub_band_names = metadata.band_names
 
-                if sar_backscatter_arguments.mask:
+                if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                     metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
                     shub_band_names.append('dataMask')
 
-                if sar_backscatter_arguments.local_incidence_angle:
+                if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
                     metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
@@ -339,7 +341,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     dataset_id,
                     client_id,
                     client_secret,
-                    sentinel_hub.processing_options(sar_backscatter_arguments),
+                    sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,
                     jvm.geotrellis.raster.CellSize(cell_width, cell_height)
                 )
