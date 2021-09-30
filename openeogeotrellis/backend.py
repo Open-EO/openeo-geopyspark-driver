@@ -528,6 +528,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if check_missing_products:
                     temporal_extent = constraints.get("temporal_extent")
                     spatial_extent = constraints.get("spatial_extent")
+                    if temporal_extent is None:
+                        yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
+                    if spatial_extent is None:
+                        yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
+                    if temporal_extent is None or spatial_extent is None:
+                        return
                     query_kwargs = {
                         "start_date": datetime.datetime.combine(
                             rfc3339.parse_date_or_datetime(temporal_extent[0]),
