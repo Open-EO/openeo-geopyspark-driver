@@ -328,10 +328,12 @@
     "summaries": {
       "eo:bands": [
         {
-          "name": "B01"
+          "name": "B01",
+          "aliases": ["IMG_DATA_Band_B01_60m_Tile1_Data"]
         },
         {
-          "name": "B02"
+          "name": "B02",
+          "aliases": ["IMG_DATA_Band_B02_10m_Tile1_Data"]
         },
         {
           "name": "B03"
