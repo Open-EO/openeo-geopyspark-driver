@@ -1415,16 +1415,17 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 if (java_exception.getClass().getName() ==
                         'org.openeo.geotrellissentinelhub.S3Service$UnknownFolderException'):
-                    logger.warning("Could not delete unknown result folder s3://{b}/{f}"
+                    logger.warning("Could not delete unknown Sentinel Hub result folder s3://{b}/{f}"
                                    .format(b=bucket_name, f=subfolder), extra={'job_id': job_id})
                 elif propagate_errors:
                     raise
                 else:
-                    logger.warning("Could not delete result folder s3://{b}/{f}"
+                    logger.warning("Could not delete Sentinel Hub result folder s3://{b}/{f}"
                                    .format(b=bucket_name, f=subfolder), exc_info=e, extra={'job_id': job_id})
 
-        logger.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id),
-                    extra={'job_id': job_id})
+        if subfolders:
+            logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+                        extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
         with JobRegistry() as registry:
