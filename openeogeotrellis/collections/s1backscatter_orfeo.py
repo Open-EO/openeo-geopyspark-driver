@@ -287,7 +287,7 @@ class S1BackscatterOrfeo:
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
                 sar_calibration.SetParameterString("in", str(input_tiff))
                 sar_calibration.SetParameterString("lut", sar_calibration_lut)
-                sar_calibration.SetParameterValue('removenoise', noise_removal)
+                #sar_calibration.SetParameterValue('removenoise', noise_removal)
                 sar_calibration.SetParameterInt('ram', 256)
                 logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
                 sar_calibration.Execute()
