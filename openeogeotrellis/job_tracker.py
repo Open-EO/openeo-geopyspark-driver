@@ -45,6 +45,9 @@ class JobTracker:
         self._jvm = jvm
 
     def loop_update_statuses(self, interval_s: int = 60):
+        with self._job_registry() as registry:
+            registry.ensure_paths()
+
         try:
             i = 0
 
@@ -68,6 +71,8 @@ class JobTracker:
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
+            registry.ensure_paths()
+
             jobs_to_track = registry.get_running_jobs()
 
             for job_info in jobs_to_track:
