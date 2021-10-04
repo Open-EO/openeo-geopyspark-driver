@@ -1,4 +1,5 @@
 import os
+from pprint import pformat
 
 
 class ConfigParams:
@@ -24,3 +25,6 @@ class ConfigParams:
         self.sentinel_hub_batch_bucket = "openeo-sentinelhub"
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
+
+    def __str__(self) -> str:
+        return pformat(vars(self))
