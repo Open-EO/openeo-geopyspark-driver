@@ -261,6 +261,7 @@ class S1BackscatterOrfeo:
             elev_geoid: str,
             elev_default: float = None,
             log_prefix: str = "",
+            orfeo_memory:int = 512
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
 
@@ -288,7 +289,7 @@ class S1BackscatterOrfeo:
                 sar_calibration.SetParameterString("in", str(input_tiff))
                 sar_calibration.SetParameterString("lut", sar_calibration_lut)
                 #sar_calibration.SetParameterValue('removenoise', noise_removal)
-                sar_calibration.SetParameterInt('ram', 512)
+                sar_calibration.SetParameterInt('ram', orfeo_memory)
                 logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
                 sar_calibration.Execute()
 
@@ -312,7 +313,7 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
                 ortho_rect.SetParameterString("interpolator", "linear")
                 ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
-                ortho_rect.SetParameterInt("opt.ram", 512)
+                ortho_rect.SetParameterInt("opt.ram", orfeo_memory)
                 logger.info(f"{log_prefix} OrthoRectification params: {otb_param_dump(ortho_rect)}")
                 ortho_rect.Execute()
 
@@ -560,6 +561,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
+        orfeo_memory = sar_backscatter_arguments.options.get("otb_memory", 512)
 
         # Geoid for orthorectification: get from options, fallback on config.
         elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
@@ -661,7 +663,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         sar_calibration_lut=sar_calibration_lut,
                         noise_removal=noise_removal,
                         elev_geoid=elev_geoid, elev_default=elev_default,
-                        log_prefix=f"{log_prefix}-{band}"
+                        log_prefix=f"{log_prefix}-{band}",
+                        orfeo_memory=orfeo_memory
                     )
                     orfeo_bands[b] = data
 
