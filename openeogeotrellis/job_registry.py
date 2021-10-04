@@ -17,8 +17,9 @@ _log = logging.getLogger(__name__)
 
 class JobRegistry:
     # TODO: improve encapsulation
-    def __init__(self, zookeeper_hosts: str=','.join(ConfigParams().zookeepernodes)):
-        self._root = '/openeo/jobs'
+    def __init__(self, root_path: str = ConfigParams().batch_jobs_zookeeper_root_path,
+                 zookeeper_hosts: str = ','.join(ConfigParams().zookeepernodes)):
+        self._root = root_path
         self._zk = KazooClient(hosts=zookeeper_hosts)
 
     def ensure_paths(self):
@@ -27,7 +28,7 @@ class JobRegistry:
 
     def register(
             self, job_id: str, user_id: str, api_version: str, specification: dict,
-            title:str=None, description:str=None
+            title: str = None, description: str = None
     ) -> dict:
         """Registers a to-be-run batch job."""
         # TODO: use `BatchJobMetadata` instead of free form dict here?
@@ -81,7 +82,7 @@ class JobRegistry:
             end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
             instruments=job_info.get("instruments", []),
             epsg=job_info.get("epsg"),
-            links = job_info.get("links",[])
+            links=job_info.get("links", [])
         )
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
@@ -214,7 +215,8 @@ class JobRegistry:
                     job_info = json.loads(data.decode())
 
                     updated = job_info.get('updated')
-                    job_date = rfc3339.parse_datetime(updated) if updated else datetime.utcfromtimestamp(stat.last_modified)
+                    job_date = (rfc3339.parse_datetime(updated) if updated
+                                else datetime.utcfromtimestamp(stat.last_modified))
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
@@ -225,7 +227,7 @@ class JobRegistry:
         # note: consider ongoing as well because that's where abandoned (never started) jobs are
         return get_jobs_in(self._ongoing) + get_jobs_in(self._done)
 
-    def _create(self, job_info: Dict, done: bool=False) -> None:
+    def _create(self, job_info: Dict, done: bool = False) -> None:
         job_id = job_info['job_id']
         user_id = job_info['user_id']
 
@@ -260,7 +262,7 @@ class JobRegistry:
 
         self._zk.set(path, data, version)
 
-    def _ongoing(self, user_id: str=None, job_id: str=None) -> str:
+    def _ongoing(self, user_id: str = None, job_id: str = None) -> str:
         if job_id:
             return "{r}/ongoing/{u}/{j}".format(r=self._root, u=user_id, j=job_id)
         elif user_id:
@@ -268,7 +270,7 @@ class JobRegistry:
 
         return "{r}/ongoing".format(r=self._root)
 
-    def _done(self, user_id: str=None, job_id: str=None) -> str:
+    def _done(self, user_id: str = None, job_id: str = None) -> str:
         if job_id:
             return "{r}/done/{u}/{j}".format(r=self._root, u=user_id, j=job_id)
         elif user_id:

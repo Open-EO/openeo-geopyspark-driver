@@ -9,6 +9,8 @@ class ConfigParams:
             'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
         ).split(',')
 
+        self.batch_jobs_zookeeper_root_path = env.get("BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs")
+
         # Are we running in a unittest or continuous integration context?
         self.is_ci_context = any(v in env for v in ['TRAVIS', 'PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])
 
