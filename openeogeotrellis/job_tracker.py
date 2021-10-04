@@ -292,6 +292,8 @@ if __name__ == '__main__':
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 
+    _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
+
     # FIXME: there's no Java logging because log4j hasn't been set up for this process; make sure it outputs in JSON!
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
