@@ -81,7 +81,7 @@ class S1BackscatterOrfeo:
     Collection loader that uses Orfeo pipeline to calculate Sentinel-1 Backscatter on the fly.
     """
 
-    _DEFAULT_TILE_SIZE = 512
+    _DEFAULT_TILE_SIZE = 256
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
@@ -288,7 +288,7 @@ class S1BackscatterOrfeo:
                 sar_calibration = otb.Registry.CreateApplication('SARCalibration')
                 sar_calibration.SetParameterString("in", str(input_tiff))
                 sar_calibration.SetParameterString("lut", sar_calibration_lut)
-                #sar_calibration.SetParameterValue('removenoise', noise_removal)
+                sar_calibration.SetParameterValue('removenoise', noise_removal)
                 sar_calibration.SetParameterInt('ram', orfeo_memory)
                 logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
                 sar_calibration.Execute()
