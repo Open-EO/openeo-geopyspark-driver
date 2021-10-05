@@ -6,6 +6,7 @@ from py4j.java_gateway import JavaGateway, JVMView
 
 import openeogeotrellis.backend
 from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,8 @@ def remove_secondary_services_before(upper: datetime) -> None:
 
 
 def main():
+    _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
+
     parser = argparse.ArgumentParser(usage="OpenEO Cleaner", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
     parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
