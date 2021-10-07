@@ -42,7 +42,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
 
-        if metadata.get("common_name"):
+        if metadata.get("common_name") == collection_id:
             common_name_metadatas = [GeopysparkCubeMetadata(m) for m in self.get_collection_with_common_name(metadata.get("common_name"))]
 
             backend_provider = load_params.backend_provider
@@ -531,7 +531,7 @@ def _merge_layers_with_common_name(metadata):
         default_metadata = next(filter(lambda m: deep_get(m, "_vito", "data_source", "default_provider:backend", default=False), common_name_metadatas))
         default_metadata = default_metadata or common_name_metadatas[0]
         new_metadata = deepcopy(default_metadata)
-        new_metadata["_vito"]["data_source"].pop("default_provider:backend", None)
+        default_metadata["_vito"]["data_source"].pop("default_provider:backend", None)
         new_metadata["_vito"]["data_source"]["provider:backend"] = [new_metadata["_vito"]["data_source"]["provider:backend"]]
         for common_name_metadata in common_name_metadatas:
             if not common_name_metadata["id"] == new_metadata["id"]:
@@ -542,6 +542,12 @@ def _merge_layers_with_common_name(metadata):
                     if b not in new_metadata["cube:dimensions"]["bands"]["values"]:
                         new_metadata["cube:dimensions"]["bands"]["values"] += [b]
                         new_metadata["summaries"]["eo:bands"] += list(filter(lambda m: m["name"] == b, common_name_metadata["summaries"]["eo:bands"]))
+                    else:
+                        new_metadata_band = next(filter(lambda m: m["name"] == b, new_metadata["summaries"]["eo:bands"]))
+                        common_metadata_band = next(filter(lambda m: m["name"] == b, common_name_metadata["summaries"]["eo:bands"]))
+                        new_metadata_band["aliases"] = (new_metadata_band.get("aliases") or []) + \
+                                                       (common_metadata_band.get("aliases") or [])
+
                 new_metadata_spatial_extent = new_metadata["extent"]["spatial"]["bbox"]
                 common_name_metadata_spatial_extent = common_name_metadata["extent"]["spatial"]["bbox"]
                 new_metadata["extent"]["spatial"]["bbox"] = [[min(new_metadata_spatial_extent[0][0], common_name_metadata_spatial_extent[0][0]),
