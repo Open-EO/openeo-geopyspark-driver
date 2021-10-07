@@ -7,6 +7,7 @@ import schema
 
 from openeo.util import deep_get
 from openeo_driver.utils import read_json
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import get_layer_catalog
 
 
@@ -41,6 +42,16 @@ def test_layer_metadata(id, layer):
         },
         "temporal": {"interval": [[schema.Or(str, None)]]}
     }).validate(layer["extent"])
+
+    gps_metadata = GeopysparkCubeMetadata(layer)
+    gps_metadata = gps_metadata.filter_bands([ cube_dimension_bands[0] ])
+    titles = gps_metadata.opensearch_link_titles
+    if gps_metadata.band_dimension.band_aliases[0] is not None and len(gps_metadata.band_dimension.band_aliases[0])>0:
+        assert titles[0] == gps_metadata.band_dimension.band_aliases[0][0]
+    else:
+        assert titles[0] == cube_dimension_bands[0]
+
+
 
 
 def test_get_layer_catalog_with_updates():

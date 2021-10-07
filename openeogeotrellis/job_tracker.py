@@ -2,7 +2,7 @@ import logging
 import subprocess
 import sys
 from subprocess import CalledProcessError
-from typing import Callable, Union, List
+from typing import Callable, Union
 import traceback
 import time
 from collections import namedtuple
@@ -12,7 +12,6 @@ import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339
 import re
 from py4j.java_gateway import JavaGateway, JVMView
-from py4j.protocol import Py4JJavaError
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeogeotrellis.job_registry import JobRegistry
@@ -46,6 +45,9 @@ class JobTracker:
         self._jvm = jvm
 
     def loop_update_statuses(self, interval_s: int = 60):
+        with self._job_registry() as registry:
+            registry.ensure_paths()
+
         try:
             i = 0
 
@@ -69,6 +71,8 @@ class JobTracker:
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
+            registry.ensure_paths()
+
             jobs_to_track = registry.get_running_jobs()
 
             for job_info in jobs_to_track:
@@ -134,11 +138,7 @@ class JobTracker:
                                     registry.patch(job_id, user_id, **result_metadata)
 
                                     if new_status == 'finished':
-                                        subfolders = [dependency.get('subfolder')
-                                                      or dependency['batch_request_id']
-                                                      for dependency in job_info.get('dependencies') or []]
-
-                                        self._delete_batch_process_results(job_id, subfolders)
+                                        self._batch_jobs.delete_batch_process_results(job_info, propagate_errors=False)
                                         registry.remove_dependencies(job_id, user_id)
 
                                     registry.mark_done(job_id, user_id)
@@ -284,26 +284,6 @@ class JobTracker:
         else:
             _log.warning("No Kerberos principal/keytab: will not refresh TGT")
 
-    def _delete_batch_process_results(self, job_id: str, subfolders: List[str]):
-        s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
-        bucket_name = ConfigParams().sentinel_hub_batch_bucket
-
-        for subfolder in subfolders:
-            try:
-                s3_service.delete_batch_process_results(bucket_name, subfolder)
-            except Py4JJavaError as e:
-                java_exception = e.java_exception
-
-                if (java_exception.getClass().getName() ==
-                        'org.openeo.geotrellissentinelhub.S3Service$UnknownFolderException'):
-                    _log.warning("could not delete unknown result folder s3://{b}/{f}"
-                                 .format(b=bucket_name, f=subfolder), extra={'job_id': job_id})
-                else:
-                    raise e
-
-        _log.info("deleted result folders {fs} for batch job {j}".format(fs=subfolders, j=job_id),
-                  extra={'job_id': job_id})
-
 
 if __name__ == '__main__':
     import argparse
@@ -316,6 +296,8 @@ if __name__ == '__main__':
 
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
+
+    _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
     # FIXME: there's no Java logging because log4j hasn't been set up for this process; make sure it outputs in JSON!
 
