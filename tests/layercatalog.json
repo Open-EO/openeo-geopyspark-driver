@@ -271,7 +271,7 @@
     }
   },
   {
-    "id": "SENTINEL2_L2A",
+    "id": "SENTINEL2_L2A_CREO",
     "extent": {
       "spatial": {
         "bbox": [

@@ -243,6 +243,11 @@ def test_load_collection_common_name(get_jvm):
                                  )
     collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
 
+    assert collection.metadata.get('id') == 'SENTINEL2_L2A'
+
+    load_params.backend_provider = 'sentinelhub'
+    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
+
     assert collection.metadata.get('id') == 'SENTINEL2_L2A_SENTINELHUB'
 
     load_params.backend_provider = 'terrascope'
