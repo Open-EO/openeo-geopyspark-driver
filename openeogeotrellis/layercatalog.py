@@ -1,4 +1,5 @@
 import logging
+import requests
 import traceback
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -499,6 +500,14 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                     opensearch_metadata[cid] = opensearch.get_metadata(collection_id=os_cid)
                 except Exception as e:
                     logger.error(traceback.format_exc())
+            elif data_source.get("type") == "sentinel-hub":
+                sh_cid = data_source.get("collection_id")
+                try:
+                    sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
+                    sh_collection = next(filter(lambda c: c["id"] == sh_cid, sh_collections))
+                    opensearch_metadata[cid] = requests.get(sh_collection["link"]).json()
+                except StopIteration:
+                    logger.error(f"No STAC data available for collection with id {sh_cid}")
 
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
