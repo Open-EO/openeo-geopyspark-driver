@@ -103,7 +103,7 @@ class JobTracker:
                                               (job_id, current_status, new_status), extra={'job_id': job_id})
 
                                 if state == "COMPLETED":
-                                    # FIXME: do we support SHub batch processes in this environment? The AWS
+                                    # TODO: do we support SHub batch processes in this environment? The AWS
                                     #  credentials conflict.
                                     download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
 
@@ -299,7 +299,8 @@ if __name__ == '__main__':
 
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
-    # FIXME: there's no Java logging because log4j hasn't been set up for this process; make sure it outputs in JSON!
+    # FIXME: there's no Java output because Py4J redirects the JVM's stdout/stderr to /dev/null unless JavaGateway's
+    #  redirect_stdout/redirect_stderr are set (EP-4018)
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
