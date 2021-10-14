@@ -141,7 +141,9 @@ class JobTracker:
                                         registry.remove_dependencies(job_id, user_id)
 
                                         subfolders = JobRegistry.get_dependency_subfolders(job_info)
-                                        async_task.schedule_delete_batch_process_results(job_id, subfolders)
+
+                                        if subfolders:
+                                            async_task.schedule_delete_batch_process_results(job_id, subfolders)
 
                                     registry.mark_done(job_id, user_id)
 

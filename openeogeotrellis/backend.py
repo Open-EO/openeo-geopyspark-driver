@@ -1392,7 +1392,8 @@ class GpsBatchJobs(backend.BatchJobs):
             job_info = registry.get_job(job_id, user_id)
             subfolders = JobRegistry.get_dependency_subfolders(job_info)
 
-        self.delete_batch_process_results(job_id, subfolders, propagate_errors)
+        if subfolders:
+            self.delete_batch_process_results(job_id, subfolders, propagate_errors)
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
@@ -1419,9 +1420,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning("Could not delete Sentinel Hub result folder s3://{b}/{f}"
                                    .format(b=bucket_name, f=subfolder), exc_info=e, extra={'job_id': job_id})
 
-        if subfolders:
-            logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=subfolders, j=job_id),
-                        extra={'job_id': job_id})
+        logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+                    extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
         with JobRegistry() as registry:
