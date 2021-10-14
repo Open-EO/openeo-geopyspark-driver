@@ -85,6 +85,12 @@ class JobRegistry:
             links=job_info.get("links", [])
         )
 
+    @staticmethod
+    def get_dependency_subfolders(job_info: dict) -> List[str]:
+        return [dependency.get('subfolder')
+                or dependency['batch_request_id']
+                for dependency in job_info.get('dependencies') or []]
+
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
 

@@ -1390,22 +1390,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
+            subfolders = JobRegistry.get_dependency_subfolders(job_info)
 
-        self.delete_batch_process_results(job_info, propagate_errors)
+        self.delete_batch_process_results(job_id, subfolders, propagate_errors)
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
 
-    def delete_batch_process_results(self, job_info: dict, propagate_errors: bool):
-        job_id = job_info['job_id']
+    def delete_batch_process_results(self, job_id: str, subfolders: List[str], propagate_errors: bool):
         s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
-
-        subfolders = [dependency.get('subfolder')
-                      or dependency['batch_request_id']
-                      for dependency in job_info.get('dependencies') or []]
 
         for subfolder in subfolders:
             try:

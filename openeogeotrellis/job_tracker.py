@@ -18,7 +18,7 @@ from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis import utils
+from openeogeotrellis import utils, async_task
 
 _log = logging.getLogger(__name__)
 
@@ -138,8 +138,10 @@ class JobTracker:
                                     registry.patch(job_id, user_id, **result_metadata)
 
                                     if new_status == 'finished':
-                                        self._batch_jobs.delete_batch_process_results(job_info, propagate_errors=False)
                                         registry.remove_dependencies(job_id, user_id)
+
+                                        subfolders = JobRegistry.get_dependency_subfolders(job_info)
+                                        async_task.schedule_delete_batch_process_results(job_id, subfolders)
 
                                     registry.mark_done(job_id, user_id)
 
