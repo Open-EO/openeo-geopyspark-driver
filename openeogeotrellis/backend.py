@@ -40,7 +40,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis import async_task, sentinel_hub
+from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.configparams import ConfigParams
@@ -756,6 +756,8 @@ class GpsBatchJobs(backend.BatchJobs):
         self._start_job(job_id, user.user_id)
 
     def _start_job(self, job_id: str, user_id: str, batch_process_dependencies: Union[list, None] = None):
+        from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
+
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
