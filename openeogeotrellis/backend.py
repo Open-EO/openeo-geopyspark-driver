@@ -25,7 +25,7 @@ from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.version import __version__ as pysparkversion
-from shapely.geometry import Polygon, GeometryCollection
+from shapely.geometry import Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band
@@ -40,7 +40,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis import sentinel_hub
+from openeogeotrellis import async_task, sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.configparams import ConfigParams
@@ -616,11 +616,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return JobRegistry.job_info_to_metadata(job_info)
 
-    def poll_sentinelhub_batch_processes(self, job_info: dict) -> bool:
-        """ Returns True if this job depends on ongoing SHub batch processes. """
-        if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
-            return False
-
+    def poll_sentinelhub_batch_processes(self, job_info: dict):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
@@ -720,8 +716,6 @@ class GpsBatchJobs(backend.BatchJobs):
         else:  # still some in progress and none FAILED yet: continue polling
             pass
 
-        return True
-
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with JobRegistry() as registry:
             return [
@@ -788,6 +782,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
                                                                     user_id, job_id, cache)):
+                async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id)
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return

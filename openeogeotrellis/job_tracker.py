@@ -80,11 +80,6 @@ class JobTracker:
                     job_id, user_id = job_info['job_id'], job_info['user_id']
                     application_id, current_status = job_info['application_id'], job_info['status']
 
-                    if self._batch_jobs.poll_sentinelhub_batch_processes(job_info):
-                        # either this job does not depend on SHub batch processes or a Spark job was scheduled and
-                        # it's too soon to check its status
-                        continue
-
                     if application_id:
                         try:
                             if ConfigParams().is_kube_deploy:
