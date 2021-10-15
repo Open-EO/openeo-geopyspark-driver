@@ -1311,17 +1311,19 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in ['created', 'queued']:
             return []
 
-        log_file = self._get_job_output_dir(job_id) / "log"
-        with log_file.open('r') as f:
+        log_entries = []
+        with (self._get_job_output_dir(job_id) / "log").open('r') as f:
             log_file_contents = f.read()
         # TODO: provide log line per line, with correct level?
-        return [
-            {
+        # TODO: support offset
+        if log_file_contents.strip():
+            log_entries.append({
                 'id': "0",
                 'level': 'error',
                 'message': log_file_contents
-            }
-        ]
+            })
+
+        return log_entries
 
     def cancel_job(self, job_id: str, user_id: str):
         with JobRegistry() as registry:
