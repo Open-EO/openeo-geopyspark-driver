@@ -18,4 +18,4 @@ task_json="$1"
 extensions="$(bash geotrellis-extensions-jar.sh)"
 classpath="$extensions:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':')"
 
-venv/bin/python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --task "$task_json" 2>&1
+venv/bin/python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --task "$task_json"
