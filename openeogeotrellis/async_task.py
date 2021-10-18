@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import sys
 import time
 from typing import List
@@ -16,7 +15,6 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 
 _log = logging.getLogger(__name__)
 
-ASYNC_TASK_ENDPOINT = "http://127.0.0.1:7180/asynctask"
 SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S = 60
 
 TASK_DELETE_BATCH_PROCESS_RESULTS = 'delete_batch_process_results'
@@ -36,20 +34,13 @@ def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str):
                    arguments={
                        'batch_job_id': batch_job_id,
                        'user_id': user_id
-                   },
-                   environment={
-                       'BATCH_JOBS_ZOOKEEPER_ROOT_PATH': ConfigParams().batch_jobs_zookeeper_root_path
                    })
 
 
-def _schedule_task(task_id: str, arguments: dict, environment=None):
-    if environment is None:
-        environment = {}
-
-    resp = requests.post(url=ASYNC_TASK_ENDPOINT, json={
+def _schedule_task(task_id: str, arguments: dict):
+    resp = requests.post(url=ConfigParams().async_task_endpoint, json={
         'task_id': task_id,
-        'arguments': arguments,
-        'environment': environment
+        'arguments': arguments
     })
 
     resp.raise_for_status()
@@ -69,6 +60,7 @@ def main():
     root_logger.addHandler(handler)
 
     _log.info("argv: {a!r}".format(a=sys.argv))
+    _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
     try:
         parser = argparse.ArgumentParser(usage="OpenEO AsyncTask --task <task>",
@@ -86,12 +78,6 @@ def main():
             raise ValueError(f'unsupported task_id "{task_id}"')
 
         arguments = task.get('arguments', {})
-
-        # clunky but ConfigParams needs it
-        for envar, value in task.get('environment', {}).items():
-            os.environ[envar] = value
-
-        _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
         def batch_jobs() -> GpsBatchJobs:
             java_opts = [
