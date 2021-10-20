@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 import time
+import traceback
 from typing import List
 
 import openeogeotrellis
@@ -133,7 +134,18 @@ def main():
                 if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
                     break
                 else:
-                    batch_jobs().poll_sentinelhub_batch_processes(job_info)
+                    try:
+                        batch_jobs().poll_sentinelhub_batch_processes(job_info)
+                    except Exception:
+                        # TODO: retry in Nifi? How to mark this job as 'error' then?
+                        _log.error("failed to handle polling batch job {j}:\n{e}"
+                                   .format(j=batch_job_id, e=traceback.format_exc()),
+                                   extra={'job_id': batch_job_id})
+
+                        with JobRegistry() as registry:
+                            registry.set_status(batch_job_id, user_id, 'error')
+                            registry.mark_done(batch_job_id, user_id)
+
         else:
             raise AssertionError(f'unexpected task_id "{task_id}"')
     except Exception as e:
