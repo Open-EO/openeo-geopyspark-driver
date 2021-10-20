@@ -8,6 +8,7 @@ import openeogeotrellis
 from kafka import KafkaProducer
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.layercatalog import get_layer_catalog
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.job_registry import JobRegistry
@@ -84,6 +85,9 @@ def main():
         parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
         parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
                             help='Classpath used to launch the Java Gateway')
+        parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
+        parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
+                            help="The full path to the file that contains the keytab for the principal")
         parser.add_argument("--task", required=True, dest="task_json", help="The task description in JSON")
 
         args = parser.parse_args()
@@ -106,7 +110,8 @@ def main():
                                                       javaopts=java_opts,
                                                       die_on_exit=True)
 
-            return GpsBatchJobs(catalog=None, jvm=java_gateway.jvm, principal=None, key_tab=None)
+            return GpsBatchJobs(get_layer_catalog(opensearch_enrich=False), java_gateway.jvm, args.principal,
+                                args.keytab)
 
         if task_id == TASK_DELETE_BATCH_PROCESS_RESULTS:
             batch_job_id = arguments['batch_job_id']

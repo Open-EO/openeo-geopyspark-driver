@@ -678,6 +678,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
 
                     assembled_folder = caching_service.upload_multiband_tiles(subfolder, collecting_folder, bucket_name)
+                    # FIXME: this means the original subfolder is never deleted by the JobTracker
                     dependency['subfolder'] = assembled_folder
 
                     try:
