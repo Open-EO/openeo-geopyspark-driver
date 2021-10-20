@@ -64,7 +64,8 @@ setup(
         'Bottleneck==1.3.2',
         'python-json-logger',
         'rlguard-lib',  # TODO this currently depends on custom packaging, see https://github.com/sentinel-hub/rate-limiting-guard/issues/5 and https://jira.vito.be/browse/EP-4001
-        'jep==3.9.1'
+        'jep==3.9.1',
+        'kafka-python==1.4.6'
     ],
     extras_require={
         "dev": tests_require,

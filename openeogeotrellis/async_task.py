@@ -5,7 +5,7 @@ import time
 from typing import List
 
 import openeogeotrellis
-import requests
+from kafka import KafkaProducer
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from py4j.java_gateway import JavaGateway
@@ -38,12 +38,28 @@ def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str):
 
 
 def _schedule_task(task_id: str, arguments: dict):
-    resp = requests.post(url=ConfigParams().async_task_endpoint, json={
+    message = {
         'task_id': task_id,
         'arguments': arguments
-    })
+    }
 
-    resp.raise_for_status()
+    env = ConfigParams().async_task_handler_environment
+
+    def encode(s: str) -> bytes:
+        return s.encode('utf-8')
+
+    producer = KafkaProducer(
+        bootstrap_servers="epod-master1.vgt.vito.be:6668,epod-master2.vgt.vito.be:6668,epod-master3.vgt.vito.be:6668",
+        security_protocol='PLAINTEXT',
+        acks='all'
+    )
+
+    try:
+        producer.send(topic="openeo-async-tasks",
+                      value=encode(json.dumps(message)),
+                      headers=[('env', encode(env))] if env else None).get(timeout=120)
+    finally:
+        producer.close()
 
 
 # TODO: DRY this, cleaner.sh and job_tracker.sh

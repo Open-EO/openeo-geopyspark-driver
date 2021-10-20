@@ -11,7 +11,7 @@ class ConfigParams:
         ).split(',')
 
         self.batch_jobs_zookeeper_root_path = env.get("BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs")
-        self.async_task_endpoint = env.get("ASYNC_TASK_ENDPOINT")
+        self.async_task_handler_environment = env.get("ASYNC_TASK_HANDLER_ENV")
 
         # Are we running in a unittest or continuous integration context?
         self.is_ci_context = any(v in env for v in ['TRAVIS', 'PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])
