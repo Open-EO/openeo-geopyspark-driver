@@ -497,8 +497,6 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
         logger.info(f"Reading layer catalog metadata from {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
 
-    metadata = _merge_layers_with_common_name(metadata)
-
     if opensearch_enrich:
         opensearch_metadata = {}
         for cid, collection_metadata in metadata.items():
@@ -529,6 +527,8 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
+
+    metadata = _merge_layers_with_common_name(metadata)
 
     return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()))
 
