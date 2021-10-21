@@ -20,7 +20,7 @@ def remove_batch_jobs_before(upper: datetime, jvm: JVMView) -> None:
     _log.info("removing batch jobs before {d}...".format(d=upper))
 
     # TODO: how to cope with unneeded arguments?
-    batch_jobs = GpsBatchJobs(catalog=None, jvm=jvm, principal=None, key_tab=None)
+    batch_jobs = GpsBatchJobs(catalog=None, jvm=jvm, principal="", key_tab="")
     batch_jobs.delete_jobs_before(upper)
 
 

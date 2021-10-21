@@ -53,7 +53,7 @@ def main():
             with JobRegistry() as job_registry:
                 job_registry.ensure_paths()
 
-            job_tracker = JobTracker(JobRegistry, "", "")
+            job_tracker = JobTracker(JobRegistry, principal="", keytab="")
             threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
 
     def on_started():

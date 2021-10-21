@@ -11,14 +11,12 @@ from datetime import datetime
 import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339
 import re
-from py4j.java_gateway import JavaGateway, JVMView
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
-from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis import utils, async_task
+from openeogeotrellis import async_task
 
 _log = logging.getLogger(__name__)
 
@@ -33,16 +31,11 @@ class JobTracker:
                                             'aggregate_resource_allocation'])
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
-    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str,
-                 jvm: JVMView = None):
-        if jvm is None:
-            jvm = utils.get_jvm()
-
+    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
-        self._batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=False), jvm, principal, keytab)
-        self._jvm = jvm
+        self._batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=principal, key_tab=keytab)
 
     def loop_update_statuses(self, interval_s: int = 60):
         with self._job_registry() as registry:
@@ -298,31 +291,14 @@ if __name__ == '__main__':
 
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
-    # FIXME: there's no Java output because Py4J redirects the JVM's stdout/stderr to /dev/null unless JavaGateway's
-    #  redirect_stdout/redirect_stderr are set (EP-4018)
-
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.9.2.jar", help='Path to the Py4J jar')
-    parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
-                        help='Classpath used to launch the Java Gateway')
     parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
     parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
-    # TODO: make this configurable as well?
-    java_opts = [
-        "-client",
-        "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
-    ]
-
     try:
-        java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
-                                                  classpath=args.py4j_classpath,
-                                                  javaopts=java_opts,
-                                                  die_on_exit=True)
-
-        JobTracker(JobRegistry, args.principal, args.keytab, java_gateway.jvm).update_statuses()
+        JobTracker(JobRegistry, args.principal, args.keytab).update_statuses()
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e
