@@ -146,6 +146,8 @@ def main():
                             registry.set_status(batch_job_id, user_id, 'error')
                             registry.mark_done(batch_job_id, user_id)
 
+                        raise
+
         else:
             raise AssertionError(f'unexpected task_id "{task_id}"')
     except Exception as e:
