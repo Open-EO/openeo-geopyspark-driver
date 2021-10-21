@@ -1087,7 +1087,7 @@ def test_extra_validation_creo(api100, requests_mock):
     pg = {"lc": {
         "process_id": "load_collection",
         "arguments": {
-            "id": "SENTINEL2_L2A",
+            "id": "SENTINEL2_L2A_CREO",
             "temporal_extent": ["2020-03-01", "2020-03-10"],
             "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
         },
@@ -1130,7 +1130,7 @@ def test_extra_validation_creo(api100, requests_mock):
 
     response = api100.validation(pg)
     assert response.json == {'errors': [
-        {'code': 'MissingProduct', 'message': "Tile '16WDA' in collection 'SENTINEL2_L2A' is not available."}
+        {'code': 'MissingProduct', 'message': "Tile '16WDA' in collection 'SENTINEL2_L2A_CREO' is not available."}
     ]}
 
 

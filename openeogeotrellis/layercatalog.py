@@ -1,7 +1,10 @@
+import dateutil.parser as dp
 import logging
 import requests
 import traceback
+from copy import deepcopy
 from datetime import datetime
+from dateutil.tz import tzutc
 from typing import List, Dict, Optional
 
 import geopyspark
@@ -39,6 +42,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
 
         metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
+
+        if metadata.get("common_name") == collection_id:
+            common_name_metadatas = [GeopysparkCubeMetadata(m) for m in self.get_collection_with_common_name(metadata.get("common_name"))]
+
+            backend_provider = load_params.backend_provider
+            if backend_provider:
+                metadata = next(filter(lambda m: backend_provider.lower() == m.get("_vito", "data_source", "provider:backend"), common_name_metadatas), None)
+            else:
+                metadata = next(filter(lambda m: m.get("_vito", "data_source", "default_provider:backend"), common_name_metadatas), None)
+
+            if not metadata:
+                metadata = common_name_metadatas[0]
+
         layer_source_info = metadata.get("_vito", "data_source", default={})
 
         sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
@@ -481,6 +497,8 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
         logger.info(f"Reading layer catalog metadata from {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
 
+    metadata = _merge_layers_with_common_name(metadata)
+
     if opensearch_enrich:
         opensearch_metadata = {}
         for cid, collection_metadata in metadata.items():
@@ -515,3 +533,52 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
     return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()))
 
 
+def _merge_layers_with_common_name(metadata):
+    common_names = set(map(lambda f: f["common_name"], filter(lambda m: m.get("common_name"), metadata.values())))
+    for common_name in common_names:
+        common_name_metadatas = list(filter(lambda c: c.get("common_name") == common_name, metadata.values()))
+        default_metadata = next(filter(lambda m: deep_get(m, "_vito", "data_source", "default_provider:backend", default=False), common_name_metadatas))
+        default_metadata = default_metadata or common_name_metadatas[0]
+        new_metadata = deepcopy(default_metadata)
+        default_metadata["_vito"]["data_source"].pop("default_provider:backend", None)
+        new_metadata["_vito"]["data_source"]["provider:backend"] = [new_metadata["_vito"]["data_source"]["provider:backend"]]
+        for common_name_metadata in common_name_metadatas:
+            if not common_name_metadata["id"] == new_metadata["id"]:
+                new_metadata["_vito"]["data_source"]["provider:backend"] += [common_name_metadata["_vito"]["data_source"]["provider:backend"]]
+                new_metadata["providers"] += common_name_metadata["providers"]
+                new_metadata["links"] += common_name_metadata["links"]
+                for b in common_name_metadata["cube:dimensions"]["bands"]["values"]:
+                    if b not in new_metadata["cube:dimensions"]["bands"]["values"]:
+                        new_metadata["cube:dimensions"]["bands"]["values"] += [b]
+                        new_metadata["summaries"]["eo:bands"] += list(filter(lambda m: m["name"] == b, common_name_metadata["summaries"]["eo:bands"]))
+                    else:
+                        new_metadata_band = next(filter(lambda m: m["name"] == b, new_metadata["summaries"]["eo:bands"]))
+                        common_metadata_band = next(filter(lambda m: m["name"] == b, common_name_metadata["summaries"]["eo:bands"]))
+                        new_metadata_band["aliases"] = (new_metadata_band.get("aliases") or []) + \
+                                                       (common_metadata_band.get("aliases") or [])
+
+                new_metadata_spatial_extent = new_metadata["extent"]["spatial"]["bbox"]
+                common_name_metadata_spatial_extent = common_name_metadata["extent"]["spatial"]["bbox"]
+                new_metadata["extent"]["spatial"]["bbox"] = [[min(new_metadata_spatial_extent[0][0], common_name_metadata_spatial_extent[0][0]),
+                                                              min(new_metadata_spatial_extent[0][1], common_name_metadata_spatial_extent[0][1]),
+                                                              max(new_metadata_spatial_extent[0][2], common_name_metadata_spatial_extent[0][2]),
+                                                              max(new_metadata_spatial_extent[0][3], common_name_metadata_spatial_extent[0][3])]]
+                new_metadata_temporal_extent = new_metadata["extent"]["temporal"]["interval"]
+                common_name_metadata_temporal_extent = common_name_metadata["extent"]["temporal"]["interval"]
+                default_date = datetime(2017, 1, 1, tzinfo=tzutc())
+                new_start = min(dp.parse(new_metadata_temporal_extent[0][0], default=default_date), dp.parse(common_name_metadata_temporal_extent[0][0], default=default_date)).isoformat()
+                if not new_metadata_temporal_extent[0][1]:
+                    new_end = common_name_metadata_temporal_extent[0][1]
+                elif not common_name_metadata_temporal_extent[0][1]:
+                    new_end = new_metadata_temporal_extent[0][1]
+                else:
+                    new_end = max(dp.parse(new_metadata_temporal_extent[0][1], default=default_date), dp.parse(common_name_metadata_temporal_extent[0][1], default=default_date))
+                if new_end:
+                    new_end = new_end.isoformat()
+                new_metadata["extent"]["temporal"]["interval"] = [[new_start, new_end]]
+
+        new_metadata["id"] = common_name
+
+        metadata[common_name] = new_metadata
+
+    return metadata

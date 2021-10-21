@@ -39,6 +39,7 @@
   {
     "id": "TERRASCOPE_S2_TOC_V2",
     "name": "TERRASCOPE_S2_TOC_V2",
+    "common_name": "SENTINEL2_L2A",
     "title": "Sentinel-2 L2A V2",
     "description": "Sentinel-2 Level 2A product, processed from L1C by Sen2Cor.",
     "license": "proprietary",
@@ -264,12 +265,13 @@
             "mission": "Sentinel2",
             "level": "LEVEL1C"
           }
-        }
+        },
+        "provider:backend": "terrascope"
       }
     }
   },
   {
-    "id": "SENTINEL2_L2A",
+    "id": "SENTINEL2_L2A_CREO",
     "extent": {
       "spatial": {
         "bbox": [
@@ -636,5 +638,359 @@
         ]
       }
     }
+  },
+  {
+    "id": "SENTINEL2_L2A_SENTINELHUB",
+    "name": "SENTINEL2_L2A",
+    "common_name": "SENTINEL2_L2A",
+    "title": "Sentinel-2 top of canopy, 10m resolution with 5 day temporal revisit, full archive provided by EuroDataCube.",
+    "description": "Sentinel-2 is a wide-swath, high-resolution, multi-spectral\nimaging mission supporting Copernicus Land Monitoring studies,\nincluding the monitoring of vegetation, soil and water cover,\nas well as observation of inland waterways and coastal areas.\n\nThe Sentinel-2 data contain 13 UINT16 spectral bands representing\nTOA reflectance scaled by 10000. See the [Sentinel-2 User Handbook](https://sentinel.esa.int/documents/247904/685211/Sentinel-2_User_Handbook)\nfor details. In addition, three QA bands are present where one\n(QA60) is a bitmask band with cloud mask information. For more\ndetails, [see the full explanation of how cloud masks are computed.](https://sentinel.esa.int/web/sentinel/technical-guides/sentinel-2-msi/level-1c/cloud-masks)\n\nEach Sentinel-2 product (zip archive) may contain multiple\ngranules. Each granule becomes a separate Earth Engine asset.\nEE asset ids for Sentinel-2 assets have the following format:\nCOPERNICUS/S2/20151128T002653_20151128T102149_T56MNN. Here the\nfirst numeric part represents the sensing date and time, the\nsecond numeric part represents the product generation date and\ntime, and the final 6-character string is a unique granule identifier\nindicating its UTM grid reference (see [MGRS](https://en.wikipedia.org/wiki/Military_Grid_Reference_System)).\n\nFor more details on Sentinel-2 radiometric resoltuon, [see this page](https://earth.esa.int/web/sentinel/user-guides/sentinel-2-msi/resolutions/radiometric).\n",
+    "_vito": {
+      "data_source": {
+        "type": "sentinel-hub",
+        "endpoint": "https://services.sentinel-hub.com",
+        "dataset_id": "S2L2A",
+        "collection_id": "sentinel-2-l2a",
+        "client_id": "b667f624-3330-4bb8-a69e-6b0700d518a7",
+        "client_secret": ">(SI]~wL5^qX_)EV.@A{!%ef[*+Dka!f>FN7y$?3",
+        "provider:backend": "sentinelhub",
+        "default_provider:backend": true
+      }
+    },
+    "keywords": [
+      "copernicus",
+      "esa",
+      "eu",
+      "msi",
+      "radiance",
+      "sentinel"
+    ],
+    "providers": [
+      {
+        "name": "ESA",
+        "roles": [
+          "producer"
+        ],
+        "url": "https://esa.int/"
+      },
+      {
+        "name": "AWS",
+        "roles": [
+          "host"
+        ],
+        "url": "https://aws.amazon.com/"
+      },
+      {
+        "name": "Sinergise",
+        "roles": [
+          "processor"
+        ],
+        "url": "https://www.sinergise.com/"
+      }
+    ],
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180.0, -56.0, 180.0, 83.0]]},
+      "temporal": {"interval": [["2016-11-01T00:00:00Z", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x"},
+      "y": {"type": "spatial", "axis": "y"},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12", "AOT", "SCL", "SNW", "CLD", "CLP", "CLM", "sunAzimuthAngles", "sunZenithAngles", "viewAzimuthMean", "viewZenithMean"]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B01",
+          "common_name": "coastal",
+          "center_wavelength": 0.4427,
+          "full_width_half_max": 0.021
+        },
+        {
+          "name": "B02",
+          "common_name": "blue",
+          "center_wavelength": 0.4924,
+          "full_width_half_max": 0.066
+        },
+        {
+          "name": "B03",
+          "common_name": "green",
+          "center_wavelength": 0.5598,
+          "full_width_half_max": 0.036
+        },
+        {
+          "name": "B04",
+          "common_name": "red",
+          "center_wavelength": 0.6646,
+          "full_width_half_max": 0.031
+        },
+        {
+          "name": "B05",
+          "center_wavelength": 0.7041,
+          "full_width_half_max": 0.015
+        },
+        {
+          "name": "B06",
+          "center_wavelength": 0.7405,
+          "full_width_half_max": 0.015
+        },
+        {
+          "name": "B07",
+          "center_wavelength": 0.7828,
+          "full_width_half_max": 0.02
+        },
+        {
+          "name": "B08",
+          "common_name": "nir",
+          "center_wavelength": 0.8328,
+          "full_width_half_max": 0.106
+        },
+        {
+          "name": "B8A",
+          "common_name": "nir08",
+          "center_wavelength": 0.8647,
+          "full_width_half_max": 0.021
+        },
+        {
+          "name": "B09",
+          "common_name": "nir09",
+          "center_wavelength": 0.9451,
+          "full_width_half_max": 0.02
+        },
+        {
+          "name": "B10",
+          "common_name": "cirrus",
+          "center_wavelength": 1.3735,
+          "full_width_half_max": 0.031
+        },
+        {
+          "name": "B11",
+          "common_name": "swir16",
+          "center_wavelength": 1.6137,
+          "full_width_half_max": 0.091
+        },
+        {
+          "name": "B12",
+          "common_name": "swir22",
+          "center_wavelength": 2.2024,
+          "full_width_half_max": 0.175
+        },
+        {
+          "name": "AOT"
+        },
+        {
+          "name": "SCL"
+        },
+        {
+          "name": "SNW"
+        },
+        {
+          "name": "CLD"
+        },
+        {
+          "name": "CLP"
+        },
+        {
+          "name": "CLM"
+        },
+        {
+          "name": "sunAzimuthAngles",
+          "type": "float32",
+          "unit": "Degrees"
+        },
+        {
+          "name": "sunZenithAngles",
+          "type": "float32",
+          "unit": "Degrees"
+        },
+        {
+          "name": "viewAzimuthMean",
+          "type": "float32",
+          "unit": "Degrees"
+        },
+        {
+          "name": "viewZenithMean",
+          "type": "float32",
+          "unit": "Degrees"
+        }
+      ],
+      "constellation": [
+        "sentinel-2"
+      ],
+      "crs": [
+        "http://www.opengis.net/def/crs/OGC/1.3/CRS84",
+        "http://www.opengis.net/def/crs/EPSG/0/2154",
+        "http://www.opengis.net/def/crs/EPSG/0/2180",
+        "http://www.opengis.net/def/crs/EPSG/0/2193",
+        "http://www.opengis.net/def/crs/EPSG/0/3003",
+        "http://www.opengis.net/def/crs/EPSG/0/3004",
+        "http://www.opengis.net/def/crs/EPSG/0/3031",
+        "http://www.opengis.net/def/crs/EPSG/0/3035",
+        "http://www.opengis.net/def/crs/EPSG/0/4326",
+        "http://www.opengis.net/def/crs/EPSG/0/4346",
+        "http://www.opengis.net/def/crs/EPSG/0/4416",
+        "http://www.opengis.net/def/crs/EPSG/0/4765",
+        "http://www.opengis.net/def/crs/EPSG/0/4794",
+        "http://www.opengis.net/def/crs/EPSG/0/4844",
+        "http://www.opengis.net/def/crs/EPSG/0/4857",
+        "http://www.opengis.net/def/crs/EPSG/0/3912",
+        "http://www.opengis.net/def/crs/EPSG/0/3995",
+        "http://www.opengis.net/def/crs/EPSG/0/4026",
+        "http://www.opengis.net/def/crs/EPSG/0/55142",
+        "http://www.opengis.net/def/crs/EPSG/0/28992",
+        "http://www.opengis.net/def/crs/EPSG/0/32601",
+        "http://www.opengis.net/def/crs/EPSG/0/32602",
+        "http://www.opengis.net/def/crs/EPSG/0/32603",
+        "http://www.opengis.net/def/crs/EPSG/0/32604",
+        "http://www.opengis.net/def/crs/EPSG/0/32605",
+        "http://www.opengis.net/def/crs/EPSG/0/32606",
+        "http://www.opengis.net/def/crs/EPSG/0/32607",
+        "http://www.opengis.net/def/crs/EPSG/0/32608",
+        "http://www.opengis.net/def/crs/EPSG/0/32609",
+        "http://www.opengis.net/def/crs/EPSG/0/32610",
+        "http://www.opengis.net/def/crs/EPSG/0/32611",
+        "http://www.opengis.net/def/crs/EPSG/0/32612",
+        "http://www.opengis.net/def/crs/EPSG/0/32613",
+        "http://www.opengis.net/def/crs/EPSG/0/32614",
+        "http://www.opengis.net/def/crs/EPSG/0/32615",
+        "http://www.opengis.net/def/crs/EPSG/0/32616",
+        "http://www.opengis.net/def/crs/EPSG/0/32617",
+        "http://www.opengis.net/def/crs/EPSG/0/32618",
+        "http://www.opengis.net/def/crs/EPSG/0/32619",
+        "http://www.opengis.net/def/crs/EPSG/0/32620",
+        "http://www.opengis.net/def/crs/EPSG/0/32621",
+        "http://www.opengis.net/def/crs/EPSG/0/32622",
+        "http://www.opengis.net/def/crs/EPSG/0/32623",
+        "http://www.opengis.net/def/crs/EPSG/0/32624",
+        "http://www.opengis.net/def/crs/EPSG/0/32625",
+        "http://www.opengis.net/def/crs/EPSG/0/32626",
+        "http://www.opengis.net/def/crs/EPSG/0/32627",
+        "http://www.opengis.net/def/crs/EPSG/0/32628",
+        "http://www.opengis.net/def/crs/EPSG/0/32629",
+        "http://www.opengis.net/def/crs/EPSG/0/32630",
+        "http://www.opengis.net/def/crs/EPSG/0/32631",
+        "http://www.opengis.net/def/crs/EPSG/0/32632",
+        "http://www.opengis.net/def/crs/EPSG/0/32633",
+        "http://www.opengis.net/def/crs/EPSG/0/32634",
+        "http://www.opengis.net/def/crs/EPSG/0/32635",
+        "http://www.opengis.net/def/crs/EPSG/0/32636",
+        "http://www.opengis.net/def/crs/EPSG/0/32637",
+        "http://www.opengis.net/def/crs/EPSG/0/32638",
+        "http://www.opengis.net/def/crs/EPSG/0/32639",
+        "http://www.opengis.net/def/crs/EPSG/0/32640",
+        "http://www.opengis.net/def/crs/EPSG/0/32641",
+        "http://www.opengis.net/def/crs/EPSG/0/32642",
+        "http://www.opengis.net/def/crs/EPSG/0/32643",
+        "http://www.opengis.net/def/crs/EPSG/0/32644",
+        "http://www.opengis.net/def/crs/EPSG/0/32645",
+        "http://www.opengis.net/def/crs/EPSG/0/32646",
+        "http://www.opengis.net/def/crs/EPSG/0/32647",
+        "http://www.opengis.net/def/crs/EPSG/0/32648",
+        "http://www.opengis.net/def/crs/EPSG/0/32649",
+        "http://www.opengis.net/def/crs/EPSG/0/32650",
+        "http://www.opengis.net/def/crs/EPSG/0/32651",
+        "http://www.opengis.net/def/crs/EPSG/0/32652",
+        "http://www.opengis.net/def/crs/EPSG/0/32653",
+        "http://www.opengis.net/def/crs/EPSG/0/32654",
+        "http://www.opengis.net/def/crs/EPSG/0/32655",
+        "http://www.opengis.net/def/crs/EPSG/0/32656",
+        "http://www.opengis.net/def/crs/EPSG/0/32657",
+        "http://www.opengis.net/def/crs/EPSG/0/32658",
+        "http://www.opengis.net/def/crs/EPSG/0/32659",
+        "http://www.opengis.net/def/crs/EPSG/0/32660",
+        "http://www.opengis.net/def/crs/EPSG/0/32701",
+        "http://www.opengis.net/def/crs/EPSG/0/32702",
+        "http://www.opengis.net/def/crs/EPSG/0/32703",
+        "http://www.opengis.net/def/crs/EPSG/0/32704",
+        "http://www.opengis.net/def/crs/EPSG/0/32705",
+        "http://www.opengis.net/def/crs/EPSG/0/32706",
+        "http://www.opengis.net/def/crs/EPSG/0/32707",
+        "http://www.opengis.net/def/crs/EPSG/0/32708",
+        "http://www.opengis.net/def/crs/EPSG/0/32709",
+        "http://www.opengis.net/def/crs/EPSG/0/32710",
+        "http://www.opengis.net/def/crs/EPSG/0/32711",
+        "http://www.opengis.net/def/crs/EPSG/0/32712",
+        "http://www.opengis.net/def/crs/EPSG/0/32713",
+        "http://www.opengis.net/def/crs/EPSG/0/32714",
+        "http://www.opengis.net/def/crs/EPSG/0/32715",
+        "http://www.opengis.net/def/crs/EPSG/0/32716",
+        "http://www.opengis.net/def/crs/EPSG/0/32717",
+        "http://www.opengis.net/def/crs/EPSG/0/32718",
+        "http://www.opengis.net/def/crs/EPSG/0/32719",
+        "http://www.opengis.net/def/crs/EPSG/0/32720",
+        "http://www.opengis.net/def/crs/EPSG/0/32721",
+        "http://www.opengis.net/def/crs/EPSG/0/32722",
+        "http://www.opengis.net/def/crs/EPSG/0/32723",
+        "http://www.opengis.net/def/crs/EPSG/0/32724",
+        "http://www.opengis.net/def/crs/EPSG/0/32725",
+        "http://www.opengis.net/def/crs/EPSG/0/32726",
+        "http://www.opengis.net/def/crs/EPSG/0/32727",
+        "http://www.opengis.net/def/crs/EPSG/0/32728",
+        "http://www.opengis.net/def/crs/EPSG/0/32729",
+        "http://www.opengis.net/def/crs/EPSG/0/32730",
+        "http://www.opengis.net/def/crs/EPSG/0/32731",
+        "http://www.opengis.net/def/crs/EPSG/0/32732",
+        "http://www.opengis.net/def/crs/EPSG/0/32733",
+        "http://www.opengis.net/def/crs/EPSG/0/32734",
+        "http://www.opengis.net/def/crs/EPSG/0/32735",
+        "http://www.opengis.net/def/crs/EPSG/0/32736",
+        "http://www.opengis.net/def/crs/EPSG/0/32737",
+        "http://www.opengis.net/def/crs/EPSG/0/32738",
+        "http://www.opengis.net/def/crs/EPSG/0/32739",
+        "http://www.opengis.net/def/crs/EPSG/0/32740",
+        "http://www.opengis.net/def/crs/EPSG/0/32741",
+        "http://www.opengis.net/def/crs/EPSG/0/32742",
+        "http://www.opengis.net/def/crs/EPSG/0/32743",
+        "http://www.opengis.net/def/crs/EPSG/0/32744",
+        "http://www.opengis.net/def/crs/EPSG/0/32745",
+        "http://www.opengis.net/def/crs/EPSG/0/32746",
+        "http://www.opengis.net/def/crs/EPSG/0/32746",
+        "http://www.opengis.net/def/crs/EPSG/0/32748",
+        "http://www.opengis.net/def/crs/EPSG/0/32749",
+        "http://www.opengis.net/def/crs/EPSG/0/32750",
+        "http://www.opengis.net/def/crs/EPSG/0/32751",
+        "http://www.opengis.net/def/crs/EPSG/0/32752",
+        "http://www.opengis.net/def/crs/EPSG/0/32753",
+        "http://www.opengis.net/def/crs/EPSG/0/32754",
+        "http://www.opengis.net/def/crs/EPSG/0/32755",
+        "http://www.opengis.net/def/crs/EPSG/0/32756",
+        "http://www.opengis.net/def/crs/EPSG/0/32757",
+        "http://www.opengis.net/def/crs/EPSG/0/32758",
+        "http://www.opengis.net/def/crs/EPSG/0/32759",
+        "http://www.opengis.net/def/crs/EPSG/0/32760",
+        "http://www.opengis.net/def/crs/SR-ORG/0/98739"
+      ],
+      "eo:gsd": [
+        10,
+        30,
+        60
+      ],
+      "instruments": [
+        "msi"
+      ],
+      "platform": [
+        "sentinel-2a",
+        "sentinel-2b"
+      ]
+    },
+    "links": [
+      {
+        "href": "https://services.sentinel-hub.com/api/v1/catalog/collections/sentinel-2-l2a",
+        "rel": "self"
+      },
+      {
+        "href": "https://services.sentinel-hub.com/api/v1/catalog/collections/sentinel-2-l2a/items",
+        "rel": "items"
+      },
+      {
+        "href": "https://scihub.copernicus.eu/twiki/pub/SciHubWebPortal/TermsConditions/Sentinel_Data_Terms_and_Conditions.pdf",
+        "rel": "license",
+        "title": "Legal notice on the use of Copernicus Sentinel Data and Service Information"
+      }
+    ]
   }
 ]
