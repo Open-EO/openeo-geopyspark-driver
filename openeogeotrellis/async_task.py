@@ -40,7 +40,7 @@ def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str):
 
 
 def _schedule_task(task_id: str, arguments: dict):
-    message = {
+    task = {
         'task_id': task_id,
         'arguments': arguments
     }
@@ -57,9 +57,12 @@ def _schedule_task(task_id: str, arguments: dict):
     )
 
     try:
+        task_message = json.dumps(task)
         producer.send(topic="openeo-async-tasks",
-                      value=encode(json.dumps(message)),
+                      value=encode(task_message),
                       headers=[('env', encode(env))] if env else None).get(timeout=120)
+
+        _log.info(f"scheduled task {task_message} on env {env}")
     finally:
         producer.close()
 
