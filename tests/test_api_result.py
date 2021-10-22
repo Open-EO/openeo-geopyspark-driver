@@ -8,7 +8,7 @@ from numpy.testing import assert_equal
 
 from openeo_driver.testing import TEST_USER
 from openeogeotrellis.testing import random_name
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis.utils import get_jvm, UtcNowClock
 
 _log = logging.getLogger(__name__)
 
@@ -1224,3 +1224,34 @@ def test_extra_validation_unlimited_extent(api100, lc_args, expected):
     pg = {"lc": {"process_id": "load_collection", "arguments": lc_args, "result": True}}
     response = api100.validation(pg)
     assert response.json == {'errors': [{'code': 'UnlimitedExtent', 'message': m} for m in expected]}
+
+
+@pytest.mark.parametrize(["temporal_extent", "expected"], [
+    (("2020-01-01", None), ("2020-01-05 00:00:00", "2020-02-15 00:00:00")),
+    ((None, "2019-01-10"), ("2000-01-05 00:00:00", "2019-01-05 00:00:00")),
+    ((None, None), ("2000-01-05 00:00:00", "2020-02-15 00:00:00")),
+])
+def test_load_collection_open_temporal_extent(api100, temporal_extent, expected):
+    with UtcNowClock.mock(now="2020-02-20"):
+        response = api100.check_result({
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": temporal_extent,
+                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                    "bands": ["Day"]
+                },
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                "result": True,
+            }
+        })
+
+    result = response.assert_status_code(200).json
+    # _log.info(repr(result))
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    dates = result["coords"]["t"]["data"]
+    assert (min(dates), max(dates)) == expected

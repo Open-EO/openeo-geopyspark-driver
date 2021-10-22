@@ -53,7 +53,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
-from openeogeotrellis.utils import normalize_date, kerberos, zk_client, to_projected_polygons
+from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -440,7 +440,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
         temporal_extent = load_params.temporal_extent
-        from_date, to_date = [normalize_date(d) for d in temporal_extent]
+        from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
         spatial_extent = load_params.spatial_extent
@@ -1106,7 +1106,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     sample_type = self._jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                         layer_source_info.get('sample_type', 'UINT16'))
 
-                    from_date, to_date = [normalize_date(d) for d in constraints['temporal_extent']]
+                    from_date, to_date = normalize_temporal_extent(constraints['temporal_extent'])
 
                     west = spatial_extent['west']
                     south = spatial_extent['south']

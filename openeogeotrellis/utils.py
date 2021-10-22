@@ -1,5 +1,6 @@
 import collections
 import contextlib
+import datetime
 import grp
 import logging
 import math
@@ -8,10 +9,10 @@ import pwd
 import resource
 import stat
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple, Callable
 
 import pytz
-from dateutil.parser import parse
+import dateutil.parser
 from kazoo.client import KazooClient
 from py4j.java_gateway import JavaGateway, JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
@@ -108,13 +109,47 @@ def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
     return result
 
 
-def normalize_date(date_string):
+def normalize_date(date_string: Union[str, None]) -> Union[str, None]:
     if date_string is not None:
-        date = parse(date_string)
+        date = dateutil.parser.parse(date_string)
         if date.tzinfo is None:
             date = date.replace(tzinfo=pytz.UTC)
         return date.isoformat()
     return None
+
+
+def normalize_temporal_extent(temporal_extent: Tuple[Union[str, None], Union[str, None]]) -> Tuple[str, str]:
+    start, end = temporal_extent
+    return (
+        normalize_date(start or "2000-01-01"),  # TODO: better fallback start date?
+        normalize_date(end or utcnow().isoformat())
+    )
+
+
+class UtcNowClock:
+    """
+    Helper class to have a mockable wrapper for datetime.datetime.utcnow
+    (which is not straightforward to mock directly).
+    """
+    _utcnow = _utcnow_orig = datetime.datetime.utcnow
+
+    @classmethod
+    def utcnow(cls) -> datetime.datetime:
+        return cls._utcnow()
+
+    @classmethod
+    @contextlib.contextmanager
+    def mock(cls, now: Union[datetime.datetime, str]):
+        """Context manager to mock the return value of `utcnow()`."""
+        if isinstance(now, str):
+            now = dateutil.parser.parse(now)
+        cls._utcnow = lambda: now
+        yield
+        cls._utcnow = cls._utcnow_orig
+
+
+# Alias for general usage
+utcnow = UtcNowClock.utcnow
 
 
 def describe_path(path: Union[Path, str]) -> dict:

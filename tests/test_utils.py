@@ -1,9 +1,11 @@
+import datetime
 import getpass
 from pathlib import Path
 
 import pytest
 
-from openeogeotrellis.utils import dict_merge_recursive, describe_path, lonlat_to_mercator_tile_indices, nullcontext
+from openeogeotrellis.utils import dict_merge_recursive, describe_path, lonlat_to_mercator_tile_indices, nullcontext, \
+    utcnow, UtcNowClock
 
 
 @pytest.mark.parametrize(["a", "b", "expected"], [
@@ -109,3 +111,24 @@ def test_lonlat_to_mercator_tile_indices(lon, lat, zoom, flip_y, expected):
 def test_nullcontext():
     with nullcontext() as n:
         assert n is None
+
+
+class TestUtcNowClock:
+
+    def test_default(self):
+        now = utcnow()
+        real_now = datetime.datetime.utcnow()
+        assert isinstance(now, datetime.datetime)
+        assert (real_now - now).total_seconds() < 1
+
+    def test_mock(self):
+        with UtcNowClock.mock(now=datetime.datetime(2012, 3, 4, 5, 6)):
+            assert utcnow() == datetime.datetime(2012, 3, 4, 5, 6)
+
+    def test_mock_str_date(self):
+        with UtcNowClock.mock(now="2021-10-22"):
+            assert utcnow() == datetime.datetime(2021, 10, 22)
+
+    def test_mock_str_datetime(self):
+        with UtcNowClock.mock(now="2021-10-22 12:34:56"):
+            assert utcnow() == datetime.datetime(2021, 10, 22, 12, 34, 56)

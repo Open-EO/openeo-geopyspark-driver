@@ -26,7 +26,7 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearchOscars, OpenSearchCreodias
-from openeogeotrellis.utils import dict_merge_recursive, normalize_date, to_projected_polygons, get_jvm
+from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
         temporal_extent = load_params.temporal_extent
-        from_date, to_date = [normalize_date(d) for d in temporal_extent]
+        from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
         spatial_extent = load_params.spatial_extent
