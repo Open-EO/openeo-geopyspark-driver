@@ -800,23 +800,18 @@ class GpsBatchJobs(backend.BatchJobs):
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
 
-            def serialize_dependencies():
+            def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
 
-                if not dependencies:
-                    return 'no_dependencies'  # TODO: clean this up
+                def as_arg_element(dependency: dict) -> dict:
+                    return {
+                        'collection_id': dependency['collection_id'],
+                        'metadata_properties': dependency.get('metadata_properties', {}),
+                        'subfolder': dependency.get('subfolder') or dependency['batch_request_id'],
+                        'card4l': dependency.get('card4l', False)
+                    }
 
-                def serialize_properties(metadata_properties: dict) -> str:
-                    pairs = [f"{property_name}={value}" for property_name, value in metadata_properties.items()]
-                    return "&".join(pairs)
-
-                tuples = ["{c}:{ps}:{f}:{m}".format(c=dependency['collection_id'],
-                                                    ps=serialize_properties(dependency.get('metadata_properties', {})),
-                                                    f=dependency.get('subfolder') or dependency['batch_request_id'],
-                                                    m=dependency.get('card4l', False))
-                          for dependency in dependencies]
-
-                return ",".join(tuples)
+                return json.dumps([as_arg_element(dependency) for dependency in dependencies])
 
             if not ConfigParams().is_kube_deploy:
                 kerberos(self._principal, self._key_tab, self._jvm)

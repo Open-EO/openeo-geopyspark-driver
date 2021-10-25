@@ -211,20 +211,12 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
 
 
 def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (subfolder, card4l)
-    if not arg or arg == 'no_dependencies':  # TODO: clean this up
-        return {}
+    dependencies = json.loads(arg)
 
-    def deserialize_properties(s: str) -> List[tuple]:
-        if not s:
-            return []
-
-        def deserialize_property(p: str) -> tuple:
-            return tuple(p.split("="))
-
-        return [deserialize_property(p) for p in s.split("&")]
-
-    tuples = [t.split(":") for t in arg.split(",")]
-    return {(t[0], to_hashable(deserialize_properties(t[1]))): (t[2], t[3] == "True") for t in tuples}
+    return {
+        (dependency['collection_id'], to_hashable(dependency['metadata_properties'])):
+            (dependency['subfolder'], dependency['card4l']) for dependency in dependencies
+    }
 
 
 def main(argv: List[str]) -> None:

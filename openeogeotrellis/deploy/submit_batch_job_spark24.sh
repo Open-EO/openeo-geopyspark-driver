@@ -39,7 +39,7 @@ executorcores=${15-2}
 drivermemoryoverhead=${16-8G}
 queue=${17-default}
 profile=${18-false}
-dependencies=${19-"no_dependencies"}
+dependencies=${19-"[]"}
 pyfiles=${20}
 maxexecutors=${21-500}
 

@@ -424,7 +424,7 @@ class TestBatchJobs:
             assert batch_job_args[10] == api.api_version
             assert batch_job_args[11:17] == ['12G', '2G', '3G', '5', '2', '2G']
             assert batch_job_args[17:] == [
-                'default', 'false', 'no_dependencies',
+                'default', 'false', '[]',
                 "__pyfiles__/custom_processes.py,foolib.whl",'500'
             ]
             assert batch_job_args[21] == '500'
@@ -541,7 +541,7 @@ class TestBatchJobs:
             assert batch_job_args[10] == api.api_version
             assert batch_job_args[11:17] == ['3g', '11g', '3G', '5', '4', '10000G']
             assert batch_job_args[17:] == [
-                'somequeue', 'false', 'no_dependencies',
+                'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '500'
             ]
 
