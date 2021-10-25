@@ -67,7 +67,7 @@ openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
 
-sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2\
+sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
  -Dhdp.version=3.1.4.0-315\
