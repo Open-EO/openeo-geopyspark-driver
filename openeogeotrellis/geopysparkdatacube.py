@@ -113,7 +113,6 @@ class GeopysparkDataCube(DriverDataCube):
     ):
         super().__init__(metadata=metadata or GeopysparkCubeMetadata({}))
         self.pyramid = pyramid
-        self.tms = None
 
     def _get_jvm(self) -> JVMView:
         # TODO: cache this?
@@ -1674,33 +1673,6 @@ class GeopysparkDataCube(DriverDataCube):
                     break
 
                 f.write(chunk)
-
-    def _proxy_tms(self,tms):
-        if ConfigParams().is_ci_context:
-            return tms.url_pattern
-        else:
-            host = tms.host
-            port = tms.port
-            self._proxy(host, port)
-            url = "http://openeo.vgt.vito.be/tile/{z}/{x}/{y}.png"
-            return url
-
-    def _proxy(self, host, port):
-        from kazoo.client import KazooClient
-        zk = KazooClient(hosts=self._zookeepers())
-        zk.start()
-        try:
-            zk.ensure_path("discovery/services/openeo-viewer-test")
-            # id = uuid.uuid4()
-            # print(id)
-            id = 0
-            zk.ensure_path("discovery/services/openeo-viewer-test/" + str(id))
-            zk.set("discovery/services/openeo-viewer-test/" + str(id), str.encode(json.dumps(
-                {"name": "openeo-viewer-test", "id": str(id), "address": host, "port": port, "sslPort": None,
-                 "payload": None, "registrationTimeUTC": datetime.utcnow().strftime('%s'), "serviceType": "DYNAMIC"})))
-        finally:
-            zk.stop()
-            zk.close()
 
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
         return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi_v04(**kwargs)
