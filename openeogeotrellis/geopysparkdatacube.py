@@ -528,7 +528,7 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
                 numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
-                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
+                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata)),preservesPartitioning=True
                 )
                 metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
                 return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
