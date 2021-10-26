@@ -784,6 +784,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     registry.set_status(job_id, user_id, 'created')
 
             spec = json.loads(job_info['specification'])
+            job_title = spec.get('title', '')
             extra_options = spec.get('job_options', {})
 
             logger.debug("job_options: {o!r}".format(o=extra_options))
@@ -932,8 +933,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     temp_input_file.flush()
 
                     # TODO: implement a saner way of passing arguments
+                    job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
                     args = [script_location,
-                            "OpenEO batch job {j} user {u}".format(j=job_id, u=user_id),
+                            job_name,
                             temp_input_file.name,
                             str(self._get_job_output_dir(job_id)),
                             "out",  # TODO: how support multiple output files?
