@@ -283,29 +283,45 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             )
 
             if dependencies:
-                subfolder, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
+                dependency_source, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
 
-                s3_uri = "s3://{b}/{f}/".format(b=ConfigParams().sentinel_hub_batch_bucket, f=subfolder)
-                key_regex = r".+\.tif"
                 # date_regex supports:
                 #  - original: _20210223.tif
                 #  - CARD4L: s1_rtc_0446B9_S07E035_2021_02_03_MULTIBAND.tif
                 #  - tiles assembled from cache: 31UDS_7_2-20190921.tif
                 date_regex = r".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif"
-                recursive = True
                 interpret_as_cell_type = "float32ud0"
                 lat_lon = card4l
 
-                logger.info("Sentinel Hub pyramid from {u}".format(u=s3_uri))
+                if dependency_source.startswith("file:"):
+                    assembled_folder_uri = dependency_source
+                    glob_pattern = f"{assembled_folder_uri}/*.tif"
 
-                pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
-                    s3_uri,
-                    key_regex,
-                    date_regex,
-                    recursive,
-                    interpret_as_cell_type,
-                    lat_lon
-                )
+                    logger.info(f"Sentinel Hub pyramid from {glob_pattern}")
+
+                    pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(
+                        glob_pattern,
+                        date_regex,
+                        interpret_as_cell_type,
+                        lat_lon
+                    )
+                else:
+                    subfolder = dependency_source
+
+                    s3_uri = f"s3://{ConfigParams().sentinel_hub_batch_bucket}/{subfolder}/"
+                    key_regex = r".+\.tif"
+                    recursive = True
+
+                    logger.info(f"Sentinel Hub pyramid from {s3_uri}")
+
+                    pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_s3(
+                        s3_uri,
+                        key_regex,
+                        date_regex,
+                        recursive,
+                        interpret_as_cell_type,
+                        lat_lon
+                    )
 
                 if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                     metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))

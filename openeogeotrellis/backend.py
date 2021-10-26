@@ -17,6 +17,7 @@ from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable
 
 import geopyspark as gps
 import pkg_resources
+from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
@@ -668,18 +669,16 @@ class GpsBatchJobs(backend.BatchJobs):
             for dependency in dependencies:
                 collecting_folder = dependency.get('collecting_folder')
 
-                if collecting_folder:  # the results are at least partially cached
+                if collecting_folder:  # the collection is at least partially cached
                     caching_service = self._jvm.org.openeo.geotrellissentinelhub.CachingService()
 
                     bucket_name = ConfigParams().sentinel_hub_batch_bucket
-                    subfolder = dependency.get('subfolder')
+                    subfolder = dependency['subfolder']
 
-                    if subfolder:  # there are new results
-                        caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
-
-                    assembled_folder = caching_service.upload_multiband_tiles(subfolder, collecting_folder, bucket_name)
-                    # FIXME: this means the original subfolder is never deleted by the JobTracker
-                    dependency['subfolder'] = assembled_folder
+                    caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
+                    assembled_folder = caching_service.assemble_multiband_tiles(subfolder, collecting_folder,
+                                                                                bucket_name)
+                    dependency['assembled_folder'] = assembled_folder
 
                     try:
                         # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job can't
@@ -688,6 +687,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     except Exception as e:
                         logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
                                        extra={'job_id': job_id})
+                else:  # no caching involved, the collection is fully defined by these batch process results
+                    pass
 
             with JobRegistry() as registry:
                 registry.set_dependencies(job_id, user_id, dependencies)
@@ -807,7 +808,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     return {
                         'collection_id': dependency['collection_id'],
                         'metadata_properties': dependency.get('metadata_properties', {}),
-                        'subfolder': dependency.get('subfolder') or dependency['batch_request_id'],
+                        'source': (dependency.get('assembled_folder') or dependency.get('subfolder')
+                                   or dependency['batch_request_id']),
                         'card4l': dependency.get('card4l', False)
                     }
 
@@ -1170,11 +1172,6 @@ class GpsBatchJobs(backend.BatchJobs):
                             os.mkdir(collecting_folder)
                             os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
 
-                            http_impl_property = "software.amazon.awssdk.http.service.impl"
-                            http_impl = self._jvm.System.getProperty(http_impl_property)
-                            logger.debug("Java System property {p} is set to {v}".format(p=http_impl_property,
-                                                                                         v=http_impl))
-
                             batch_request_id = batch_processing_service.start_batch_process_cached(
                                 layer_source_info['collection_id'],
                                 layer_source_info['dataset_id'],
@@ -1223,7 +1220,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         metadata_properties=metadata_properties(),
                         batch_request_ids=batch_request_ids,  # to poll SHub
                         collecting_folder=collecting_folder,  # temporary cached and new single band tiles, also a flag
-                        subfolder=subfolder,  # where load_collection gets its data
+                        subfolder=subfolder,  # where load_collection gets its data (no caching)
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
 
@@ -1385,23 +1382,37 @@ class GpsBatchJobs(backend.BatchJobs):
 
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
-            subfolders = JobRegistry.get_dependency_subfolders(job_info)
+            dependency_sources = JobRegistry.get_dependency_sources(job_info)
 
-        if subfolders:
-            self.delete_batch_process_results(job_id, subfolders, propagate_errors)
+        if dependency_sources:
+            self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
 
         with JobRegistry() as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
 
+    @deprecated("call delete_batch_process_dependency_sources instead")
     def delete_batch_process_results(self, job_id: str, subfolders: List[str], propagate_errors: bool):
+        dependency_sources = subfolders
+        self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
+
+    def delete_batch_process_dependency_sources(self, job_id: str, dependency_sources: List[str], propagate_errors: bool):
         s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
         bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
+        def is_disk_source(dependency_source: str) -> bool:
+            return dependency_source.startswith("file:")
+
+        def is_s3_source(dependency_source: str) -> bool:
+            return not is_disk_source(dependency_source)
+
+        subfolders = [source for source in dependency_sources if is_s3_source(source)]
+        assembled_folders = [source for source in dependency_sources if is_disk_source(source)]
+
         for subfolder in subfolders:
             try:
-                s3_service.delete_batch_process_results(bucket_name, subfolder)
+                s3_service.delete_batch_process_dependency_sources(bucket_name, subfolder)
             except Py4JJavaError as e:
                 java_exception = e.java_exception
 
@@ -1415,8 +1426,20 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning("Could not delete Sentinel Hub result folder s3://{b}/{f}"
                                    .format(b=bucket_name, f=subfolder), exc_info=e, extra={'job_id': job_id})
 
-        logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=subfolders, j=job_id),
-                    extra={'job_id': job_id})
+        if subfolders:
+            logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+                        extra={'job_id': job_id})
+
+        for assembled_folder in assembled_folders:
+            try:
+                shutil.rmtree(assembled_folder)
+            except Exception as e:
+                logger.warning("Could not recursively delete {p}".format(p=assembled_folder), exc_info=e,
+                               extra={'job_id': job_id})
+
+        if assembled_folders:
+            logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
+                        .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
         with JobRegistry() as registry:

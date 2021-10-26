@@ -210,12 +210,12 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (subfolder, card4l)
+def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (source, card4l)
     dependencies = json.loads(arg)
 
     return {
         (dependency['collection_id'], to_hashable(dependency['metadata_properties'])):
-            (dependency['subfolder'], dependency['card4l']) for dependency in dependencies
+            (dependency['source'], dependency['card4l']) for dependency in dependencies
     }
 
 

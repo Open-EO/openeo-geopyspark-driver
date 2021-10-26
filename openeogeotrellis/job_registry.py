@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Callable, Union
 import logging
 
+from deprecated import deprecated
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
 
@@ -86,10 +87,19 @@ class JobRegistry:
         )
 
     @staticmethod
+    def get_dependency_sources(job_info: dict) -> List[str]:
+        def sources(dependency: dict) -> List[str]:
+            subfolder = dependency.get('subfolder') or dependency['batch_request_id']
+            assembled_folder = dependency.get('assembled_folder')
+
+            return [subfolder, assembled_folder] if assembled_folder else [subfolder]
+
+        return [source for dependency in (job_info.get('dependencies') or []) for source in sources(dependency)]
+
+    @staticmethod
+    @deprecated("call get_dependency_sources instead")
     def get_dependency_subfolders(job_info: dict) -> List[str]:
-        return [dependency.get('subfolder')
-                or dependency['batch_request_id']
-                for dependency in job_info.get('dependencies') or []]
+        return JobRegistry.get_dependency_sources(job_info)
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
