@@ -1412,7 +1412,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for subfolder in subfolders:
             try:
-                s3_service.delete_batch_process_dependency_sources(bucket_name, subfolder)
+                s3_service.delete_batch_process_results(bucket_name, subfolder)
             except Py4JJavaError as e:
                 java_exception = e.java_exception
 
