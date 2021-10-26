@@ -682,10 +682,11 @@ class GpsBatchJobs(backend.BatchJobs):
                     os.mkdir(assembled_folder)
                     os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
 
-                    caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder, bucket_name,
-                                                             subfolder)
+                    assembled_uri = caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder,
+                                                                             bucket_name, subfolder)
 
-                    dependency['assembled_folder'] = assembled_folder
+                    # TODO: rename this property?
+                    dependency['assembled_folder'] = assembled_uri
 
                     try:
                         # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job can't
@@ -1196,6 +1197,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                 collecting_folder
                             )
 
+                            # TODO: batch_request_id None schedules batch process polling further on
                             logger.debug("start_batch_process_cached(subfolder={s}, collecting_folder={c}) returned "
                                          "batch_request_id {b}".format(s=subfolder, c=collecting_folder,
                                                                        b=batch_request_id))
