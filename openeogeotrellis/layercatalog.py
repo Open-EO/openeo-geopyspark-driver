@@ -294,8 +294,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 lat_lon = card4l
 
                 if dependency_source.startswith("file:"):
-                    assembled_folder_uri = dependency_source
-                    glob_pattern = f"{assembled_folder_uri}/*.tif"
+                    assembled_uri = dependency_source
+                    glob_pattern = f"{assembled_uri}/*.tif"
 
                     logger.info(f"Sentinel Hub pyramid from {glob_pattern}")
 

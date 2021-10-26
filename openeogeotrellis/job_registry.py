@@ -90,9 +90,9 @@ class JobRegistry:
     def get_dependency_sources(job_info: dict) -> List[str]:
         def sources(dependency: dict) -> List[str]:
             subfolder = dependency.get('subfolder') or dependency['batch_request_id']
-            assembled_folder = dependency.get('assembled_folder')
+            assembled_uri = dependency.get('assembled_uri')
 
-            return [subfolder, assembled_folder] if assembled_folder else [subfolder]
+            return [subfolder, assembled_uri] if assembled_uri else [subfolder]
 
         return [source for dependency in (job_info.get('dependencies') or []) for source in sources(dependency)]
 

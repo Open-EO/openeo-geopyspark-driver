@@ -14,6 +14,7 @@ from functools import reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable
+from urllib.parse import urlparse
 
 import geopyspark as gps
 import pkg_resources
@@ -685,8 +686,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     assembled_uri = caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder,
                                                                              bucket_name, subfolder)
 
-                    # TODO: rename this property?
-                    dependency['assembled_folder'] = assembled_uri
+                    dependency['assembled_uri'] = assembled_uri
 
                     try:
                         # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job can't
@@ -817,7 +817,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     return {
                         'collection_id': dependency['collection_id'],
                         'metadata_properties': dependency.get('metadata_properties', {}),
-                        'source': (dependency.get('assembled_folder') or dependency.get('subfolder')
+                        'source': (dependency.get('assembled_uri') or dependency.get('subfolder')
                                    or dependency['batch_request_id']),
                         'card4l': dependency.get('card4l', False)
                     }
@@ -1420,7 +1420,7 @@ class GpsBatchJobs(backend.BatchJobs):
             return not is_disk_source(dependency_source)
 
         subfolders = [source for source in dependency_sources if is_s3_source(source)]
-        assembled_folders = [source for source in dependency_sources if is_disk_source(source)]
+        assembled_folders = [urlparse(source).path for source in dependency_sources if is_disk_source(source)]
 
         for subfolder in subfolders:
             try:
@@ -1446,8 +1446,11 @@ class GpsBatchJobs(backend.BatchJobs):
             try:
                 shutil.rmtree(assembled_folder)
             except Exception as e:
-                logger.warning("Could not recursively delete {p}".format(p=assembled_folder), exc_info=e,
-                               extra={'job_id': job_id})
+                if propagate_errors:
+                    raise
+                else:
+                    logger.warning("Could not recursively delete {p}".format(p=assembled_folder), exc_info=e,
+                                   extra={'job_id': job_id})
 
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
