@@ -676,8 +676,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     subfolder = dependency['subfolder']
 
                     caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
-                    assembled_folder = caching_service.assemble_multiband_tiles(subfolder, collecting_folder,
-                                                                                bucket_name)
+
+                    # assembled_folder must be readable from batch job driver (load_collection)
+                    assembled_folder = f"/tmp_epod/openeo_assembled/{uuid.uuid4()}"
+                    os.mkdir(assembled_folder)
+                    os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
+
+                    caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder, bucket_name,
+                                                             subfolder)
+
                     dependency['assembled_folder'] = assembled_folder
 
                     try:
@@ -1167,7 +1174,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         if cache:
                             subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
 
-                            # collecting_folder must be writable from driver (cached tiles) and JobTracker (new tiles))
+                            # collecting_folder must be writable from driver (cached tiles) and async_task
+                            # handler (new tiles))
                             collecting_folder = f"/tmp_epod/openeo_collecting/{subfolder}"
                             os.mkdir(collecting_folder)
                             os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
