@@ -1199,7 +1199,6 @@ class GpsBatchJobs(backend.BatchJobs):
                                 collecting_folder
                             )
 
-                            # TODO: batch_request_id None schedules batch process polling further on
                             logger.debug("start_batch_process_cached(subfolder={s}, collecting_folder={c}) returned "
                                          "batch_request_id {b}".format(s=subfolder, c=collecting_folder,
                                                                        b=batch_request_id))
