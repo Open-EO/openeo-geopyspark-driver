@@ -22,4 +22,5 @@ pythonPipeline {
   test_module_name = 'openeogeotrellis'
   extras_require = 'dev'
   upload_dev_wheels = false
+  pep440 = true
 }
