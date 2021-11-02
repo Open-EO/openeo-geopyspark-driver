@@ -283,7 +283,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             )
 
             if dependencies:
-                dependency_source, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
+                source_location, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
 
                 # date_regex supports:
                 #  - original: _20210223.tif
@@ -293,8 +293,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 interpret_as_cell_type = "float32ud0"
                 lat_lon = card4l
 
-                if dependency_source.startswith("file:"):
-                    assembled_uri = dependency_source
+                if source_location.startswith("file:"):
+                    assembled_uri = source_location
                     glob_pattern = f"{assembled_uri}/*.tif"
 
                     logger.info(f"Sentinel Hub pyramid from {glob_pattern}")
@@ -306,9 +306,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         lat_lon
                     )
                 else:
-                    subfolder = dependency_source
-
-                    s3_uri = f"s3://{ConfigParams().sentinel_hub_batch_bucket}/{subfolder}/"
+                    s3_uri = source_location
                     key_regex = r".+\.tif"
                     recursive = True
 

@@ -6,10 +6,12 @@ import logging
 from deprecated import deprecated
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
+from urllib.parse import urlparse
 
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis import sentinel_hub
 from openeo_driver.errors import JobNotFoundException
 
 
@@ -88,18 +90,25 @@ class JobRegistry:
 
     @staticmethod
     def get_dependency_sources(job_info: dict) -> List[str]:
+        """Returns dependency source locations as URIs."""
         def sources(dependency: dict) -> List[str]:
-            subfolder = dependency.get('subfolder') or dependency['batch_request_id']
-            assembled_uri = dependency.get('assembled_uri')
+            results_location = (dependency.get('results_location')
+                                or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{dependency.get('subfolder') or dependency['batch_request_id']}")
+            assembled_location = dependency.get('assembled_location')
 
-            return [subfolder, assembled_uri] if assembled_uri else [subfolder]
+            return [results_location, assembled_location] if assembled_location else [results_location]
 
         return [source for dependency in (job_info.get('dependencies') or []) for source in sources(dependency)]
 
     @staticmethod
     @deprecated("call get_dependency_sources instead")
     def get_dependency_subfolders(job_info: dict) -> List[str]:
-        return JobRegistry.get_dependency_sources(job_info)
+        def subfolder(results_location: str):
+            uri_parts = urlparse(results_location)
+            return uri_parts.path[1:]
+
+        return [subfolder(location) for location in JobRegistry.get_dependency_sources(job_info)
+                if location.startswith("s3:")]
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""

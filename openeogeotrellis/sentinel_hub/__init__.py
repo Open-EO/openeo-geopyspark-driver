@@ -2,6 +2,8 @@ from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import FeatureUnsupportedException
 
+OG_BATCH_RESULTS_BUCKET = "openeo-sentinelhub"
+
 
 def processing_options(sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     # TODO: split off validation so it can be used for CARD4L flow

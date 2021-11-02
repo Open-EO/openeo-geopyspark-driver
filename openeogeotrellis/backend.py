@@ -630,11 +630,12 @@ class GpsBatchJobs(backend.BatchJobs):
             layer_source_info = metadata.get("_vito", "data_source", default={})
 
             endpoint = layer_source_info['endpoint']
+            bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
             client_id = layer_source_info['client_id']
             client_secret = layer_source_info['client_secret']
 
             batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                endpoint, ConfigParams().sentinel_hub_batch_bucket, client_id, client_secret)
+                endpoint, bucket_name, client_id, client_secret)
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
                                  [batch_process_dependency['batch_request_id']])
@@ -673,8 +674,15 @@ class GpsBatchJobs(backend.BatchJobs):
                 if collecting_folder:  # the collection is at least partially cached
                     caching_service = self._jvm.org.openeo.geotrellissentinelhub.CachingService()
 
-                    bucket_name = ConfigParams().sentinel_hub_batch_bucket
-                    subfolder = dependency['subfolder']
+                    results_location = dependency.get('results_location')
+
+                    if results_location is not None:
+                        uri_parts = urlparse(results_location)
+                        bucket_name = uri_parts.hostname
+                        subfolder = uri_parts.path[1:]
+                    else:
+                        bucket_name = sentinel_hub.OG_BATCH_RESULTS_BUCKET
+                        subfolder = dependency['subfolder']
 
                     caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
 
@@ -683,10 +691,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     os.mkdir(assembled_folder)
                     os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
 
-                    assembled_uri = caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder,
-                                                                             bucket_name, subfolder)
+                    caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder, bucket_name,
+                                                             subfolder)
 
-                    dependency['assembled_uri'] = assembled_uri
+                    dependency['assembled_location'] = f"file://{assembled_folder}/"
 
                     try:
                         # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job can't
@@ -814,11 +822,14 @@ class GpsBatchJobs(backend.BatchJobs):
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
 
                 def as_arg_element(dependency: dict) -> dict:
+                    source_location = (dependency.get('assembled_location')  # cached
+                                       or dependency.get('results_location')  # not cached
+                                       or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
+
                     return {
                         'collection_id': dependency['collection_id'],
                         'metadata_properties': dependency.get('metadata_properties', {}),
-                        'source': (dependency.get('assembled_uri') or dependency.get('subfolder')
-                                   or dependency['batch_request_id']),
+                        'source_location': source_location,
                         'card4l': dependency.get('card4l', False)
                     }
 
@@ -1121,10 +1132,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     north = spatial_extent['north']
                     bbox = self._jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
 
+                    bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
+
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                         layer_source_info['endpoint'],
-                        ConfigParams().sentinel_hub_batch_bucket,
-                        layer_source_info['client_id'], layer_source_info['client_secret'])
+                        bucket_name,
+                        layer_source_info['client_id'],
+                        layer_source_info['client_secret'])
 
                     shub_band_names = metadata.band_names
 
@@ -1231,7 +1245,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         metadata_properties=metadata_properties(),
                         batch_request_ids=batch_request_ids,  # to poll SHub
                         collecting_folder=collecting_folder,  # temporary cached and new single band tiles, also a flag
-                        subfolder=subfolder,  # where load_collection gets its data (no caching)
+                        results_location=f"s3://{bucket_name}/{subfolder}",  # new multiband tiles
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
 
@@ -1405,23 +1419,27 @@ class GpsBatchJobs(backend.BatchJobs):
 
     @deprecated("call delete_batch_process_dependency_sources instead")
     def delete_batch_process_results(self, job_id: str, subfolders: List[str], propagate_errors: bool):
-        dependency_sources = subfolders
+        dependency_sources = [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}" for subfolder in subfolders]
         self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
 
-    def delete_batch_process_dependency_sources(self, job_id: str, dependency_sources: List[str], propagate_errors: bool):
-        s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
-        bucket_name = ConfigParams().sentinel_hub_batch_bucket
-
+    def delete_batch_process_dependency_sources(self, job_id: str, dependency_sources: List[str],
+                                                propagate_errors: bool):
         def is_disk_source(dependency_source: str) -> bool:
             return dependency_source.startswith("file:")
 
         def is_s3_source(dependency_source: str) -> bool:
             return not is_disk_source(dependency_source)
 
-        subfolders = [source for source in dependency_sources if is_s3_source(source)]
+        results_locations = [source for source in dependency_sources if is_s3_source(source)]
         assembled_folders = [urlparse(source).path for source in dependency_sources if is_disk_source(source)]
 
-        for subfolder in subfolders:
+        s3_service = self._jvm.org.openeo.geotrellissentinelhub.S3Service()
+
+        for results_location in results_locations:
+            uri_parts = urlparse(results_location)
+            bucket_name = uri_parts.hostname
+            subfolder = uri_parts.path[1:]
+
             try:
                 s3_service.delete_batch_process_results(bucket_name, subfolder)
             except Py4JJavaError as e:
@@ -1437,8 +1455,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning("Could not delete Sentinel Hub result folder s3://{b}/{f}"
                                    .format(b=bucket_name, f=subfolder), exc_info=e, extra={'job_id': job_id})
 
-        if subfolders:
-            logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=subfolders, j=job_id),
+        if results_locations:
+            logger.info("Deleted Sentinel Hub result folder(s) {fs} for batch job {j}".format(fs=results_locations,
+                                                                                              j=job_id),
                         extra={'job_id': job_id})
 
         for assembled_folder in assembled_folders:

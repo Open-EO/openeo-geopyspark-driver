@@ -210,12 +210,12 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (source, card4l)
+def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (source_location, card4l)
     dependencies = json.loads(arg)
 
     return {
         (dependency['collection_id'], to_hashable(dependency['metadata_properties'])):
-            (dependency['source'], dependency['card4l']) for dependency in dependencies
+            (dependency['source_location'], dependency['card4l']) for dependency in dependencies
     }
 
 
@@ -373,16 +373,19 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         logger.debug("awaiting Sentinel Hub CARD4L data...")
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
-        bucket_name = ConfigParams().sentinel_hub_batch_bucket
 
         poll_interval_secs = 10
         max_delay_secs = 600
 
-        card4l_dependencies = [(collection_id, request_group_id) for
-                               (collection_id, metadata_properties), (request_group_id, card4l)
+        card4l_dependencies = [(collection_id, source_location) for
+                               (collection_id, metadata_properties), (source_location, card4l)
                                in dependencies.items() if card4l]
 
-        for collection_id, request_group_id in card4l_dependencies:
+        for collection_id, source_location in card4l_dependencies:
+            uri_parts = urlparse(source_location)
+            bucket_name = uri_parts.hostname
+            request_group_id = uri_parts.path[1:]
+
             try:
                 # FIXME: incorporate collection_id and metadata_properties to make sure the files don't clash
                 s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,

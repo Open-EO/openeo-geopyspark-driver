@@ -8,6 +8,7 @@ from typing import List
 import openeogeotrellis
 from deprecated import deprecated
 from kafka import KafkaProducer
+from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
@@ -134,7 +135,8 @@ def main():
 
         if task_id in [TASK_DELETE_BATCH_PROCESS_RESULTS, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
             batch_job_id = arguments['batch_job_id']
-            dependency_sources = arguments.get('dependency_sources') or arguments['subfolders']
+            dependency_sources = (arguments.get('dependency_sources') or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
+                                                                          for subfolder in arguments['subfolders']])
 
             _log.info(f"removing dependency sources {dependency_sources} for batch job {batch_job_id}...",
                       extra={'job_id': batch_job_id})
