@@ -53,7 +53,7 @@ setup(
         'rasterio~=1.1.8',
         'h5py==2.10.0',
         'h5netcdf',
-        'requests~=2.24.0',
+        'requests>=2.26.0,<3.0',
         'python_dateutil',
         'pytz',
         'affine',
