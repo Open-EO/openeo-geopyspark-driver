@@ -300,6 +300,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "authorization_code+pkce",
                 "urn:ietf:params:oauth:grant-type:device_code+pkce",
                 "refresh_token",
+            ],
+            "redirect_urls": [
+                "https://editor.openeo.org",
+                "http://localhost:1410/",
             ]
         }
         return [
