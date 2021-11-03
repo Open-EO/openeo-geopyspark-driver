@@ -536,6 +536,11 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                     sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
                     sh_collection = next(filter(lambda c: c["id"] == sh_cid, sh_collections))
                     opensearch_metadata[cid] = requests.get(sh_collection["link"]).json()
+                    if not data_source.get("endpoint"):
+                        endpoint = opensearch_metadata[cid]["providers"][0]["url"]
+                        endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
+                        data_source["endpoint"] = endpoint
+                    data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
                 except StopIteration:
                     logger.error(f"No STAC data available for collection with id {sh_cid}")
 
