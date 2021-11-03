@@ -297,6 +297,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         default_client_egi = {
             "id": "vito-default-client",
             "grant_types": [
+                "authorization_code+pkce",
                 "urn:ietf:params:oauth:grant-type:device_code+pkce",
                 "refresh_token",
             ]
