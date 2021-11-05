@@ -27,6 +27,7 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
+from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.datastructs import ResolutionMergeArgs
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -1213,37 +1214,39 @@ class GeopysparkDataCube(DriverDataCube):
                         filename = str(directory)
                         compression = self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
-                        asset_paths = None
+
                         if tile_grid:
-                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level.srdd.rdd(), filename,
-                                tile_grid, compression)
+                            timestamped_paths = (self._get_jvm()
+                                .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
+                                max_level.srdd.rdd(), filename, tile_grid, compression))
                         elif sample_by_feature:
                             #EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
                             geometries = format_options['geometries']
                             projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
                             labels = self.get_labels(geometries)
-                            asset_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(max_level.srdd.rdd(), filename,projected_polygons,labels,compression)
-                            asset_paths = [pathlib.Path(asset_paths.get(i)) for i in range(len(asset_paths))]
+                            timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
+                                max_level.srdd.rdd(), filename, projected_polygons, labels, compression)
                         else:
-                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(max_level.srdd.rdd(),
-                                                                                                  filename, zlevel,
-                                                                                                  self._get_jvm().scala.Option.apply(
-                                                                                                      crop_extent),gtiff_options)
+                            timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(
+                                max_level.srdd.rdd(), filename, zlevel, self._get_jvm().scala.Option.apply(crop_extent),
+                                gtiff_options)
+
                         assets = {}
 
+                        # noinspection PyProtectedMember
+                        timestamped_paths = [
+                            (datetime.utcfromtimestamp(timestamped_path._1().getEpochSecond()),
+                             pathlib.Path(timestamped_path._2())) for timestamped_path in timestamped_paths]
 
-                        if asset_paths == None:
-                            asset_paths = directory.glob('openEO*.tif')
-
-                        for p in asset_paths:
-                            assets[p.name] = {
-                                "href": str(p),
+                        for timestamp, path in timestamped_paths:
+                            assets[path.name] = {
+                                "href": str(path),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                                 'bands': bands,
-                                'nodata': nodata
+                                'nodata': nodata,
+                                'datetime': rfc3339.datetime(timestamp)
                             }
                         return assets
 
@@ -1265,7 +1268,8 @@ class GeopysparkDataCube(DriverDataCube):
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
                                     'bands': bands,
-                                    'nodata': nodata
+                                    'nodata': nodata,
+                                    'datetime': None
                                 }
                             }
             else:
