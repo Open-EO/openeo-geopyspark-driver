@@ -1127,7 +1127,7 @@ class GeopysparkDataCube(DriverDataCube):
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution
-        spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level = self.pyramid.levels[self.pyramid.max_zoom]
 
         if self.metadata.spatial_extent:
             bbox = self.metadata.spatial_extent
@@ -1135,7 +1135,7 @@ class GeopysparkDataCube(DriverDataCube):
             if isinstance(crs, int):
                 crs = "EPSG:%d" % crs
             crop_bounds = self._reproject_extent(
-                src_crs="+init=" + crs, dst_crs=spatial_rdd.layer_metadata.crs,
+                src_crs="+init=" + crs, dst_crs=max_level.layer_metadata.crs,
                 xmin=bbox["west"], ymin=bbox["south"], xmax=bbox["east"], ymax=bbox["north"]
             )
         else:
@@ -1158,22 +1158,22 @@ class GeopysparkDataCube(DriverDataCube):
         colormap = format_options.get("colormap", None)
 
         if format in ["GTIFF", "PNG"]:
-            if spatial_rdd.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
-                spatial_rdd = spatial_rdd.to_spatial_layer()
+            if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
+                max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
                 zlevel = format_options.get("ZLEVEL",6)
                 if catalog:
                     _log.info("save_result (catalog) save_on_executors")
-                    self._save_on_executors(spatial_rdd, filename)
+                    self._save_on_executors(max_level, filename)
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
-                        filenames = self._save_stitched_tile_grid(spatial_rdd, filename, tile_grid, crop_bounds, zlevel=zlevel)
+                        filenames = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds, zlevel=zlevel)
                         return {str(pathlib.Path(filename).name): {"href": filename} for filename in filenames}
                     else:
                         _log.info("save_result save_stitched")
-                        self._save_stitched(spatial_rdd, filename, crop_bounds, zlevel=zlevel)
+                        self._save_stitched(max_level, filename, crop_bounds, zlevel=zlevel)
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -1206,10 +1206,9 @@ class GeopysparkDataCube(DriverDataCube):
                     bands = []
                     if self.metadata.has_band_dimension():
                         bands = [b._asdict() for b in self.metadata.bands]
-                    max_level = self.pyramid.levels[self.pyramid.max_zoom]
                     nodata = max_level.layer_metadata.no_data_value
 
-                    if batch_mode and spatial_rdd.layer_type != gps.LayerType.SPATIAL:
+                    if batch_mode and max_level.layer_type != gps.LayerType.SPATIAL:
                         directory = pathlib.Path(filename).parent
                         filename = str(directory)
                         compression = self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
@@ -1217,7 +1216,7 @@ class GeopysparkDataCube(DriverDataCube):
                         asset_paths = None
                         if tile_grid:
                             self._get_jvm().org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                spatial_rdd.srdd.rdd(), filename,
+                                max_level.srdd.rdd(), filename,
                                 tile_grid, compression)
                         elif sample_by_feature:
                             #EP-3874 user requests to output data by polygon
@@ -1225,10 +1224,10 @@ class GeopysparkDataCube(DriverDataCube):
                             geometries = format_options['geometries']
                             projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
                             labels = self.get_labels(geometries)
-                            asset_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(spatial_rdd.srdd.rdd(), filename,projected_polygons,labels,compression)
+                            asset_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(max_level.srdd.rdd(), filename,projected_polygons,labels,compression)
                             asset_paths = [pathlib.Path(asset_paths.get(i)) for i in range(len(asset_paths))]
                         else:
-                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(spatial_rdd.srdd.rdd(),
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(max_level.srdd.rdd(),
                                                                                                   filename, zlevel,
                                                                                                   self._get_jvm().scala.Option.apply(
                                                                                                       crop_extent),gtiff_options)
@@ -1250,7 +1249,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                     else:
                         if tile_grid:
-                            filenames = self._save_stitched_tile_grid(spatial_rdd, filename, tile_grid, crop_bounds,
+                            filenames = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
                                                                       zlevel=zlevel)
                             return {str(pathlib.Path(filename).name): {"href": filename,
                                                                        "type": "image/tiff; application=geotiff",
@@ -1259,7 +1258,7 @@ class GeopysparkDataCube(DriverDataCube):
                             originalName = pathlib.Path(filename)
 
                             filePath = originalName.parent / ("openEO.tif" if originalName.name == "out" else originalName.name)
-                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(spatial_rdd.srdd.rdd(),band_count,str(filePath),zlevel,self._get_jvm().scala.Option.apply(crop_extent),gtiff_options)
+                            self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(max_level.srdd.rdd(),band_count,str(filePath),zlevel,self._get_jvm().scala.Option.apply(crop_extent),gtiff_options)
                             return {
                                 str(filePath.name): {
                                     "href": str(filePath),
@@ -1274,9 +1273,9 @@ class GeopysparkDataCube(DriverDataCube):
                     filename = filename + ".png"
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
-                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename, crop_extent)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), filename, crop_extent)
                 else:
-                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(spatial_rdd.srdd.rdd(), filename)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), filename)
                 return {
                     str(pathlib.Path(filename).name): {
                         "href": filename,
@@ -1295,7 +1294,6 @@ class GeopysparkDataCube(DriverDataCube):
                 dim_names['bands'] = self.metadata.band_dimension.name
             if self.metadata.has_temporal_dimension():
                 dim_names['t'] = self.metadata.temporal_dimension.name
-            max_level = self.pyramid.levels[self.pyramid.max_zoom]
             nodata = max_level.layer_metadata.no_data_value
             global_metadata = format_options.get("file_metadata",{})
             zlevel = format_options.get("ZLEVEL", 6)
@@ -1306,8 +1304,8 @@ class GeopysparkDataCube(DriverDataCube):
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = self.get_labels(geometries)
                 directory = pathlib.Path(filename).parent
-                if(spatial_rdd.layer_type != gps.LayerType.SPATIAL):
-                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(spatial_rdd.srdd.rdd(),
+                if(max_level.layer_type != gps.LayerType.SPATIAL):
+                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(max_level.srdd.rdd(),
                                                                                                     str(directory),
                                                                                                     projected_polygons,
                                                                                                     labels,
@@ -1316,7 +1314,7 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                                     )
                 else:
                     asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
-                        spatial_rdd.srdd.rdd(),
+                        max_level.srdd.rdd(),
                         str(directory),
                         projected_polygons,
                         labels,
@@ -1329,15 +1327,15 @@ class GeopysparkDataCube(DriverDataCube):
                 if not stitch:
                     originalName = pathlib.Path(filename)
                     filename = str(originalName.parent / ("openEO.nc" if originalName.name == "out" else originalName.name))
-                    if(spatial_rdd.layer_type != gps.LayerType.SPATIAL):
-                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(spatial_rdd.srdd.rdd(),
+                    if(max_level.layer_type != gps.LayerType.SPATIAL):
+                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(max_level.srdd.rdd(),
                             filename,
                             band_names,
                             dim_names,global_metadata,zlevel
                         )
                     else:
                         asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
-                            spatial_rdd.srdd.rdd(),
+                            max_level.srdd.rdd(),
                             filename,
                             band_names,
                             dim_names, global_metadata, zlevel
@@ -1346,9 +1344,9 @@ class GeopysparkDataCube(DriverDataCube):
 
                 else:
                     if not tiled:
-                        result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+                        result=self._collect_as_xarray(max_level, crop_bounds, crop_dates)
                     else:
-                        result=self._collect_as_xarray(spatial_rdd)
+                        result=self._collect_as_xarray(max_level)
 
 
                     if batch_mode:
@@ -1370,9 +1368,9 @@ class GeopysparkDataCube(DriverDataCube):
             # saving to json, this is potentially big in memory
             # get result as xarray
             if not tiled:
-                result=self._collect_as_xarray(spatial_rdd, crop_bounds, crop_dates)
+                result=self._collect_as_xarray(max_level, crop_bounds, crop_dates)
             else:
-                result=self._collect_as_xarray(spatial_rdd)
+                result=self._collect_as_xarray(max_level)
                 
             XarrayIO.to_json_file(array=result, path=filename)
 
