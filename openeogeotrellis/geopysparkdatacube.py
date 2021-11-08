@@ -1125,12 +1125,13 @@ class GeopysparkDataCube(DriverDataCube):
         format = format.upper()
         format_options = format_options or {}
         _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))
+        strict_cropping = format_options.get("strict_cropping", True)
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution
         max_level = self.pyramid.levels[self.pyramid.max_zoom]
 
-        if self.metadata.spatial_extent:
+        if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
             crs = bbox.get("crs") or "EPSG:4326"
             if isinstance(crs, int):
