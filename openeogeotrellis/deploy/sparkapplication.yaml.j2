@@ -10,6 +10,7 @@ spec:
   mode: cluster
   image: {{ image_name }}
   imagePullPolicy: Always
+  timeToLiveSeconds: 604800
   mainApplicationFile: local:///usr/local/lib/python3.7/dist-packages/openeogeotrellis/deploy/batch_job.py
   arguments:
     - "{{ job_specification }}"
