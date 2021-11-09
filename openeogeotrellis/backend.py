@@ -439,6 +439,33 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if glob_pattern.startswith("hdfs:"):
             kerberos(self._principal, self._key_tab)
 
+        def pyramid_factory(jvm: JVMView):
+            return jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
+
+        return self._load_collection(pyramid_factory, load_params)
+
+    def load_result(self, job_id: str, user_id: str, load_params: LoadParameters) -> GeopysparkDataCube:
+        logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
+
+        timestamped_paths = {asset["href"]: asset.get("datetime")
+                             for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
+                             if asset["type"] == "image/tiff; application=geotiff"}
+
+        if len(timestamped_paths) == 0:
+            raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
+                                     status_code=501)
+
+        if not all(timestamp is not None for timestamp in timestamped_paths.values()):
+            raise OpenEOApiException(
+                message=f"Cannot load results of job {job_id} because they lack timestamp information.",
+                status_code=400)
+
+        def pyramid_factory(jvm: JVMView):
+            return jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(timestamped_paths)
+
+        return self._load_collection(pyramid_factory, load_params)
+
+    def _load_collection(self, pyramid_factory, load_params: LoadParameters) -> GeopysparkDataCube:
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
             SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
@@ -475,8 +502,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
             if spatial_bounds_present else None
 
-        pyramid = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex) \
-            .pyramid_seq(extent, crs, from_date, to_date)
+        pyramid = pyramid_factory(jvm).pyramid_seq(extent, crs, from_date, to_date)
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option

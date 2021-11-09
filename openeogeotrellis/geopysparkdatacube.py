@@ -27,7 +27,6 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
-from openeo.util import rfc3339
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.datastructs import ResolutionMergeArgs
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -1236,9 +1235,8 @@ class GeopysparkDataCube(DriverDataCube):
                         assets = {}
 
                         # noinspection PyProtectedMember
-                        timestamped_paths = [
-                            (datetime.utcfromtimestamp(timestamped_path._1().getEpochSecond()),
-                             pathlib.Path(timestamped_path._2())) for timestamped_path in timestamped_paths]
+                        timestamped_paths = [(timestamped_path, pathlib.Path(timestamped_path._2()))
+                                             for timestamped_path in timestamped_paths]
 
                         for timestamp, path in timestamped_paths:
                             assets[path.name] = {
@@ -1247,7 +1245,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 "roles": ["data"],
                                 'bands': bands,
                                 'nodata': nodata,
-                                'datetime': rfc3339.datetime(timestamp)
+                                'datetime': timestamp
                             }
                         return assets
 
