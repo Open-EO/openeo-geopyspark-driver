@@ -203,12 +203,13 @@ class TestDownload:
             "batch_mode":True
         })
         assert 1 == len(res)
-        name,asset = res.popitem()
-        file = asset['href']
+        name, asset = res.popitem()
+        assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
         assert 'image/tiff; application=geotiff' == asset['type']
+        assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
     with get_test_data_file("geometries/polygons02.geojson").open() as f:
         features = json.load(f)
@@ -229,11 +230,12 @@ class TestDownload:
         })
         assert len(res) == 3
         name,asset = res.popitem()
-        file = asset['href']
+        assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
         assert 'image/tiff; application=geotiff' == asset['type']
+        assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
     def test_write_assets_samples_netcdf(self, tmp_path):
         input = self.create_spacetime_layer()
