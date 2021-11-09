@@ -1235,10 +1235,10 @@ class GeopysparkDataCube(DriverDataCube):
                         assets = {}
 
                         # noinspection PyProtectedMember
-                        timestamped_paths = [(timestamped_path, pathlib.Path(timestamped_path._2()))
+                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2())
                                              for timestamped_path in timestamped_paths]
 
-                        for timestamp, path in timestamped_paths:
+                        for path, timestamp in timestamped_paths:
                             assets[path.name] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
