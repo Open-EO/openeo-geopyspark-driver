@@ -151,7 +151,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
         else:
             target_epsg_code = int(native_crs.split(":")[-1])
-        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.reproject(projected_polygons, target_epsg_code)
+        projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
+                                         .reproject(projected_polygons, target_epsg_code))
 
         datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         #WTF simple assignment to a var in a scala class doesn't work??
