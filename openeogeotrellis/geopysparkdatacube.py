@@ -119,7 +119,7 @@ class GeopysparkDataCube(DriverDataCube):
         return gps.get_spark_context()._gateway.jvm
 
     def _is_spatial(self):
-        return self.pyramid.levels[self.pyramid.max_zoom].layer_type == gps.LayerType.SPATIAL
+        return self.get_max_level().layer_type == gps.LayerType.SPATIAL
 
     def apply_to_levels(self, func, metadata: GeopysparkCubeMetadata = None) -> 'GeopysparkDataCube':
         """
@@ -703,7 +703,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = self.__reproject_polygon(mask, "+init=" + srs, layer_crs)
         # TODO should we warn when masking generates an empty collection?
@@ -866,7 +866,7 @@ class GeopysparkDataCube(DriverDataCube):
             raise FeatureUnsupportedException(message='This backend does not support resampling between full '
                                                       'pyramids, for instance used by viewing services. Batch jobs '
                                                       'should work.')
-        max_level:TiledRasterLayer = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level:TiledRasterLayer = self.get_max_level()
         target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
             level_rdd_tuple = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
@@ -920,7 +920,7 @@ class GeopysparkDataCube(DriverDataCube):
             return reprojected
         elif resolution != 0.0:
 
-            max_level = self.pyramid.levels[self.pyramid.max_zoom]
+            max_level = self.get_max_level()
             extent = max_level.layer_metadata.layout_definition.extent
 
             if projection is not None:
@@ -985,7 +985,7 @@ class GeopysparkDataCube(DriverDataCube):
         return rescaled
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level = self.get_max_level()
         (x_layer,y_layer) = pyproj.transform(pyproj.Proj(init=srs),pyproj.Proj(max_level.layer_metadata.crs),x,y)
         points = [
             Point(x_layer, y_layer),
@@ -1012,12 +1012,14 @@ class GeopysparkDataCube(DriverDataCube):
         Outputs polygons, where polygons are formed from homogeneous zones of four-connected neighbors
         @return:
         """
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level = self.get_max_level()
         with tempfile.NamedTemporaryFile(suffix=".json.tmp",delete=False) as temp_file:
             gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(),temp_file.name)
             #postpone turning into an actual collection upon usage
             return DelayedVector(temp_file.name)
 
+    def get_max_level(self):
+        return self.pyramid.levels[self.pyramid.max_zoom]
 
     def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
         # TODO: rename to aggregate_spatial?
@@ -1030,7 +1032,7 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
 
-        highest_level = self.pyramid.levels[self.pyramid.max_zoom]
+        highest_level = self.get_max_level()
         layer_metadata = highest_level.layer_metadata
         scala_data_cube = highest_level.srdd.rdd()
         polygons = to_projected_polygons(self._get_jvm(), regions)
@@ -1101,7 +1103,7 @@ class GeopysparkDataCube(DriverDataCube):
         return java_object
 
     def _to_xarray(self):
-        spatial_rdd = self.pyramid.levels[self.pyramid.max_zoom]
+        spatial_rdd = self.get_max_level()
         return self._collect_as_xarray(spatial_rdd)
 
     def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
@@ -1128,7 +1130,7 @@ class GeopysparkDataCube(DriverDataCube):
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level = self.get_max_level()
 
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
@@ -1627,7 +1629,7 @@ class GeopysparkDataCube(DriverDataCube):
         from affine import Affine
         import rasterio._warp as rwarp
 
-        max_level = self.pyramid.levels[self.pyramid.max_zoom]
+        max_level = self.get_max_level()
 
         spatial_rdd = spatial_rdd.persist()
 
