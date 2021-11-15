@@ -158,6 +158,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #WTF simple assignment to a var in a scala class doesn't work??
         getattr(datacubeParams, "tileSize_$eq")(tilesize)
         getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
+        datacubeParams.setMaskingCube(load_params.data_mask)
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
         if single_level:
