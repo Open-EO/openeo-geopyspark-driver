@@ -905,7 +905,7 @@ class GpsBatchJobs(backend.BatchJobs):
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "3G")
             driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
-            max_executors = extra_options.get("max-executors", "500")
+            max_executors = extra_options.get("max-executors", "200")
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
 
