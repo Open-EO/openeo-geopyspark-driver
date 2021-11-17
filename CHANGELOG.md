@@ -10,6 +10,19 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+
+## 2021-11-17
+
+### Feature
+
+- Support load_result
+- Allow raster masks to filter a collection before loading any data
+- Caching of Sentinelhub data
+- Streaming writing of netCDF files
+- Support filter_spatial
+- Support first and last processes
+- Jep based UDF implementation
+
 ## 2021-07-14
 
 ### Changed
