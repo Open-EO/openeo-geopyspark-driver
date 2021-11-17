@@ -137,6 +137,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             area = (get_jvm()
                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(agg_geometry.path)
                     .areaInSquareMeters())
+        else:
+            logger.warning("Unsupported geometry to calculate area: " + str(agg_geometry))
 
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]

@@ -181,7 +181,7 @@ def to_projected_polygons(jvm, *args):
         return to_projected_polygons(jvm, args[0].path)
     elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
         # Multiple polygons
-        polygon_wkts = [str(x) for x in args[0]]
+        polygon_wkts = [str(x) for x in args[0].geoms]
         polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
