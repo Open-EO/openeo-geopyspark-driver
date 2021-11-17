@@ -1,5 +1,6 @@
 import os
 from pprint import pformat
+from typing import Optional
 
 
 class ConfigParams:
@@ -12,6 +13,7 @@ class ConfigParams:
 
         self.batch_jobs_zookeeper_root_path = env.get("BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs")
         self.async_task_handler_environment = env.get("ASYNC_TASK_HANDLER_ENV")
+        self.cache_shub_batch_results = ConfigParams._as_boolean(env.get("CACHE_SHUB_BATCH_RESULTS"))
 
         # Are we running in a unittest or continuous integration context?
         self.is_ci_context = any(v in env for v in ['TRAVIS', 'PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])
@@ -27,3 +29,10 @@ class ConfigParams:
 
     def __str__(self) -> str:
         return pformat(vars(self))
+
+    @staticmethod
+    def _as_boolean(envar_value: Optional[str]) -> bool:
+        if envar_value and envar_value.lower() == "true":
+            return True
+
+        return False

@@ -888,7 +888,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             logger.debug("job_options: {o!r}".format(o=extra_options))
 
-            cache = extra_options.get("cache-shub-batch-results", False)
+            cache = ConfigParams().cache_shub_batch_results
 
             if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
