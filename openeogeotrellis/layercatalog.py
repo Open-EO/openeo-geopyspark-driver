@@ -212,9 +212,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-        def file_s2_radiometry_pyramid():
-            return jvm.org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory() \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_s2_pyramid():
             return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
@@ -420,12 +417,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = s3_pyramid()
         elif layer_source_type == 's3-jp2':
             pyramid = s3_jp2_pyramid()
-        elif layer_source_type == 'file-s2-radiometry':
-            pyramid = file_s2_radiometry_pyramid()
         elif layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
-        elif layer_source_type == 'file-s5p':
-            pyramid = file_s5p_pyramid()
         elif layer_source_type == 'file-probav':
             pyramid = file_probav_pyramid()
         elif layer_source_type == 'geotiff':
