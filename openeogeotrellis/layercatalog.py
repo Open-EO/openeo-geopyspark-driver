@@ -123,7 +123,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if not spatial_bounds_present:
             if env.get('require_bounds', False):
-                raise ProcessGraphComplexityException
+                raise OpenEOApiException("Your request does not seem to specify any spatial filtering, which is mandatory for this type of request. A spatial extent can be specified for instance in load_collection.",status_code=400,code="NoSpatialFilter")
             else:
                 #in this case, there's some debate on whether we should really try to process the whole world...
                 srs = "EPSG:4326"
