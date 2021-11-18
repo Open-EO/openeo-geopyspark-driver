@@ -114,6 +114,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         tilesize = load_params.get("featureflags",{}).get("tilesize",256)
         indexReduction = load_params.get("featureflags", {}).get("indexreduction", default_indexReduction)
         temporalResolution = load_params.get("featureflags", {}).get("temporalresolution", default_temporal_resolution)
+        globalbounds = load_params.get("featureflags", {}).get("global_bounds", False)
 
         jvm = get_jvm()
 
@@ -162,6 +163,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
+
+        if globalbounds:
+            ge = load_params.global_extent
+            datacubeParams.setGlobalExtent(ge["west"],ge["south"],ge["east"],ge["north"],ge["crs"])
+
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
