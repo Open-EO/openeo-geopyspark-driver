@@ -16,7 +16,7 @@ def test_load_collection_bands_missing_required_extent():
     catalog = get_layer_catalog()
     load_params = LoadParameters(bands=['TOC-B03_10M'])
     env = EvalEnv({'require_bounds': True})
-    with pytest.raises(ProcessGraphComplexityException):
+    with pytest.raises(OpenEOApiException):
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
 
