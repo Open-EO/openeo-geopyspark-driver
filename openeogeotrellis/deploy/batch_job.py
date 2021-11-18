@@ -311,6 +311,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
         'user': User(user_id=user_id),
+        'require_bounds': True,
         'correlation_id': correlation_id,
         'dependencies': dependencies,
         "backend_implementation": backend_implementation,

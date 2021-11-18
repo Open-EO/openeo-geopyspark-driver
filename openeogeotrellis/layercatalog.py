@@ -123,18 +123,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if not spatial_bounds_present:
             if env.get('require_bounds', False):
-                raise OpenEOApiException("Your request does not seem to specify any spatial filtering, which is mandatory for this type of request. A spatial extent can be specified for instance in load_collection.",status_code=400,code="NoSpatialFilter")
+                raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
+                                         message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
+                                             c=collection_id))
             else:
-                #in this case, there's some debate on whether we should really try to process the whole world...
+                #whole world processing, for instance in viewing services
                 srs = "EPSG:4326"
                 west = -180.0
                 south = -90
                 east = 180
                 north = 90
                 spatial_bounds_present=True
-                #raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
-                #                         message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
-                #                             c=collection_id))
 
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
