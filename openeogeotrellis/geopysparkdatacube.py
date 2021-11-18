@@ -312,6 +312,36 @@ class GeopysparkDataCube(DriverDataCube):
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
 
+    def drop_dimension(self, dimension: str = "other"):
+        if dimension not in ['bands', 'temporal']:
+            raise OpenEOApiException(status_code=400, message=
+                """'drop_dimension' is only supported for dimension types 'bands' and 'temporal'.""")
+
+        if dimension == 'temporal':
+            pyramid = Pyramid(map(lambda l: l.to_spatial_layer(), self.pyramid.levels))
+            return GeopysparkDataCube(
+                pyramid=pyramid,
+                metadata=self.metadata.drop_dimension(type=dimension)
+            )
+        else:
+            if not len(self.metadata.bands) == 1:
+                raise OpenEOApiException(status_code=400, message=
+                    """Band dimension can only be dropped if there is only 1 band left in the datacube""")
+            else:
+                return GeopysparkDataCube(
+                    pyramid=self.pyramid,
+                    metadata=self.metadata.drop_dimension(type=dimension)
+                )
+
+    def dimension_labels(self, dimension: str = "other"):
+        if dimension == 'bands':
+            return self.metadata.band_names
+        elif dimension == 'temporal':
+            return list(set(map(lambda k: k.instant, self.pyramid.levels[self.pyramid.max_zoom].collect_keys())))
+        else:
+            raise OpenEOApiException(status_code=400, message=
+                """'dimension_labels' is only supported for dimension types 'bands' and 'temporal'.""")
+
     def rename_labels(self, dimension: str, target: list, source: list=None) -> 'GeopysparkDataCube':
         """ Renames the labels of the specified dimension in the data cube from source to target.
 
