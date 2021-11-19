@@ -312,34 +312,41 @@ class GeopysparkDataCube(DriverDataCube):
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
 
-    def drop_dimension(self, dimension: str = "other"):
-        if dimension not in ['bands', 'temporal']:
-            raise OpenEOApiException(status_code=400, message=
-                """'drop_dimension' is only supported for dimension types 'bands' and 'temporal'.""")
+    def drop_dimension(self, name: str):
+        if name not in self.metadata.dimension_names():
+            raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
+                """Dimension with name '{}' does not exist""".format(name))
 
-        if dimension == 'temporal':
+        if self.metadata.has_temporal_dimension() and self.metadata.temporal_dimension.name == name:
             pyramid = Pyramid(map(lambda l: l.to_spatial_layer(), self.pyramid.levels))
             return GeopysparkDataCube(
                 pyramid=pyramid,
-                metadata=self.metadata.drop_dimension(type=dimension)
+                metadata=self.metadata.drop_dimension(name=name)
             )
-        else:
+        elif self.metadata.has_band_dimension() and self.metadata.band_dimension.name == name:
             if not len(self.metadata.bands) == 1:
-                raise OpenEOApiException(status_code=400, message=
+                raise OpenEOApiException(status_code=400, code="DimensionLabelCountMismatch", message=
                     """Band dimension can only be dropped if there is only 1 band left in the datacube""")
             else:
                 return GeopysparkDataCube(
                     pyramid=self.pyramid,
-                    metadata=self.metadata.drop_dimension(type=dimension)
+                    metadata=self.metadata.drop_dimension(name=name)
                 )
-
-    def dimension_labels(self, dimension: str = "other"):
-        if dimension == 'bands':
-            return self.metadata.band_names
-        elif dimension == 'temporal':
-            return list(set(map(lambda k: k.instant, self.pyramid.levels[self.pyramid.max_zoom].collect_keys())))
         else:
-            raise OpenEOApiException(status_code=400, message=
+            raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
+                """'drop_dimension' is only supported for dimension types 'bands' and 'temporal'.""")
+
+    def dimension_labels(self, dimension: str):
+        if dimension not in self.metadata.dimension_names():
+            raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
+                """Dimension with name '{}' does not exist""".format(dimension))
+
+        if self.metadata.has_temporal_dimension() and self.metadata.temporal_dimension.name == dimension:
+            return sorted(set(map(lambda k: k.instant, self.pyramid.levels[self.pyramid.max_zoom].collect_keys())))
+        elif self.metadata.has_band_dimension() and self.metadata.band_dimension.name == dimension:
+            return self.metadata.band_names
+        else:
+            raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
                 """'dimension_labels' is only supported for dimension types 'bands' and 'temporal'.""")
 
     def rename_labels(self, dimension: str, target: list, source: list=None) -> 'GeopysparkDataCube':
