@@ -514,6 +514,8 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
     if opensearch_enrich:
         opensearch_metadata = {}
+        sh_collections = None
+
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
             os_cid = data_source.get("opensearch_collection_id")
@@ -534,7 +536,9 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
             elif data_source.get("type") == "sentinel-hub":
                 sh_cid = data_source.get("collection_id")
                 try:
-                    sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
+                    if sh_collections is None:
+                        sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
+
                     sh_collection = next(filter(lambda c: c["id"] == sh_cid, sh_collections))
                     opensearch_metadata[cid] = requests.get(sh_collection["link"]).json()
                     if not data_source.get("endpoint"):
