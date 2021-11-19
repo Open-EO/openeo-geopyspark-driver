@@ -165,7 +165,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if globalbounds:
             ge = load_params.global_extent
-            datacubeParams.setGlobalExtent(ge["west"],ge["south"],ge["east"],ge["north"],ge["crs"])
+            datacubeParams.setGlobalExtent(float(ge["west"]),float(ge["south"]),float(ge["east"]),float(ge["north"]),ge["crs"])
 
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
