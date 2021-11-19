@@ -888,12 +888,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
             logger.debug("job_options: {o!r}".format(o=extra_options))
 
-            cache = ConfigParams().cache_shub_batch_results
+            allow_cache = ConfigParams().cache_shub_batch_results
 
             if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id, cache)):
+                                                                    user_id, job_id, allow_cache)):
                 async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id)
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
@@ -1106,7 +1106,7 @@ class GpsBatchJobs(backend.BatchJobs):
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
                                                job_registry: JobRegistry, user_id: str, job_id: str,
-                                               cache: bool) -> bool:
+                                               allow_cache: bool) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -1160,6 +1160,8 @@ class GpsBatchJobs(backend.BatchJobs):
                               and sar_backscatter_arguments.coefficient == "gamma0-terrain"
                               and sar_backscatter_arguments.mask
                               and sar_backscatter_arguments.local_incidence_angle)
+
+                    cache = allow_cache and layer_source_info.get('cacheable', False)
 
                     spatial_extent = constraints['spatial_extent']
                     crs = spatial_extent['crs']
