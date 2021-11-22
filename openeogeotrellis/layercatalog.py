@@ -114,7 +114,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         tilesize = load_params.get("featureflags",{}).get("tilesize",256)
         indexReduction = load_params.get("featureflags", {}).get("indexreduction", default_indexReduction)
         temporalResolution = load_params.get("featureflags", {}).get("temporalresolution", default_temporal_resolution)
-        globalbounds = load_params.get("featureflags", {}).get("global_bounds", False)
+        globalbounds = load_params.get("featureflags", {}).get("global_bounds", True)
 
         jvm = get_jvm()
 
