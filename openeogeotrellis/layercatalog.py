@@ -16,7 +16,7 @@ from openeo.util import TimingLogger, deep_get
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
@@ -514,7 +514,7 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
     if opensearch_enrich:
         opensearch_metadata = {}
-        sh_collections = None
+        sh_collection_metadatas = None
 
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
@@ -537,22 +537,19 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
             elif data_source.get("type") == "sentinel-hub":
                 sh_cid = data_source.get("collection_id")
                 try:
-                    if sh_collections is None:
+                    if sh_collection_metadatas is None:
                         sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
+                        sh_collection_metadatas = [requests.get(c["link"]).json() for c in sh_collections]
 
-                    # FIXME: this is wrong; the sh_cid should be compared against the SHub collection's "datasource_type",
-                    #  not its "id", as witnessed by "ERROR:openeogeotrellis.layercatalog:No STAC data available for collection with id landsat-ot-l1".
-                    #  Note that this makes it necessary to fetch each and every collection in sh_collections, instead
-                    #  of just the ones in our layercatalog.json.
-                    sh_collection = next(filter(lambda c: c["id"] == sh_cid, sh_collections))
-                    opensearch_metadata[cid] = requests.get(sh_collection["link"]).json()
+                    sh_metadata = next(filter(lambda m: m["datasource_type"] == sh_cid, sh_collection_metadatas))
+                    opensearch_metadata[cid] = sh_metadata
                     if not data_source.get("endpoint"):
                         endpoint = opensearch_metadata[cid]["providers"][0]["url"]
                         endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
                         data_source["endpoint"] = endpoint
                     data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
                 except StopIteration:
-                    logger.error(f"No STAC data available for collection with id {sh_cid}")
+                    logger.warning(f"No STAC data available for collection with id {sh_cid}")
 
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
