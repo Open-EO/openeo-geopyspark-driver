@@ -524,6 +524,7 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                 logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
                 # TODO: move this to a OpenSearch factory?
                 if "oscars" in os_endpoint.lower() or "terrascope" in os_endpoint.lower() or "vito.be" in os_endpoint.lower():
+                    # TODO: each of these new instances holds a separate cache of their collections
                     opensearch = OpenSearchOscars(endpoint=os_endpoint)
                 elif "creodias" in os_endpoint.lower():
                     opensearch = OpenSearchCreodias(endpoint=os_endpoint)
@@ -539,6 +540,10 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                     if sh_collections is None:
                         sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
 
+                    # FIXME: this is wrong; the sh_cid should be compared against the SHub collection's "datasource_type",
+                    #  not its "id", as witnessed by "ERROR:openeogeotrellis.layercatalog:No STAC data available for collection with id landsat-ot-l1".
+                    #  Note that this makes it necessary to fetch each and every collection in sh_collections, instead
+                    #  of just the ones in our layercatalog.json.
                     sh_collection = next(filter(lambda c: c["id"] == sh_cid, sh_collections))
                     opensearch_metadata[cid] = requests.get(sh_collection["link"]).json()
                     if not data_source.get("endpoint"):
