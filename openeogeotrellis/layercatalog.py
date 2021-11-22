@@ -25,7 +25,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation 
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.opensearch import OpenSearchOscars, OpenSearchCreodias
+from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
 
 logger = logging.getLogger(__name__)
@@ -515,6 +515,24 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
+        opensearch_instances = {}
+
+        def opensearch_instance(endpoint: str) -> OpenSearch:
+            endpoint = endpoint.lower()
+            opensearch = opensearch_instances.get(os_endpoint)
+
+            if opensearch is not None:
+                return opensearch
+
+            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint:
+                opensearch = OpenSearchOscars(endpoint=endpoint)
+            elif "creodias" in endpoint:
+                opensearch = OpenSearchCreodias(endpoint=endpoint)
+            else:
+                raise ValueError(endpoint)
+
+            opensearch_instances[endpoint] = opensearch
+            return opensearch
 
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
@@ -522,18 +540,10 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
             if os_cid:
                 os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
                 logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
-                # TODO: move this to a OpenSearch factory?
-                if "oscars" in os_endpoint.lower() or "terrascope" in os_endpoint.lower() or "vito.be" in os_endpoint.lower():
-                    # TODO: each of these new instances holds a separate cache of their collections
-                    opensearch = OpenSearchOscars(endpoint=os_endpoint)
-                elif "creodias" in os_endpoint.lower():
-                    opensearch = OpenSearchCreodias(endpoint=os_endpoint)
-                else:
-                    raise ValueError(os_endpoint)
                 try:
-                    opensearch_metadata[cid] = opensearch.get_metadata(collection_id=os_cid)
-                except Exception as e:
-                    logger.error(traceback.format_exc())
+                    opensearch_metadata[cid] = opensearch_instance(os_endpoint).get_metadata(collection_id=os_cid)
+                except Exception:
+                    logger.warning(traceback.format_exc())
             elif data_source.get("type") == "sentinel-hub":
                 sh_cid = data_source.get("collection_id")
                 try:
