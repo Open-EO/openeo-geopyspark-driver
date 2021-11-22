@@ -163,7 +163,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
 
-        if globalbounds:
+        if globalbounds and len(load_params.global_extent)>0:
             ge = load_params.global_extent
             datacubeParams.setGlobalExtent(float(ge["west"]),float(ge["south"]),float(ge["east"]),float(ge["north"]),ge["crs"])
 
