@@ -230,8 +230,8 @@
       ]
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
-      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -295,11 +295,13 @@
     "cube:dimensions": {
       "x": {
         "type": "spatial",
-        "axis": "x"
+        "axis": "x",
+        "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}
       },
       "y": {
         "type": "spatial",
-        "axis": "y"
+        "axis": "y",
+        "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}
       },
       "t": {
         "type": "temporal"
@@ -424,8 +426,8 @@
       "temporal": {"interval": [["2014-10-06", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": "AUTO:42001"},
-      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": "AUTO:42001"},
+      "x": {"type": "spatial", "axis": "x", "step": 10, "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "step": 10, "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -504,8 +506,8 @@
       ]
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "reference_system": 4326, "step": 0.1},
-      "y": {"type": "spatial", "axis": "y", "reference_system": 4326, "step": 0.1},
+      "x": {"type": "spatial", "axis": "x", "step": 0.1},
+      "y": {"type": "spatial", "axis": "y", "step": 0.1},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -525,8 +527,7 @@
       "data_source": {
         "type": "file-agera5",
         "data_glob": "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif",
-        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif",
-        "native_crs": "EPSG:4326"
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif"
       }
     }
   },
@@ -558,8 +559,8 @@
       "temporal": {"interval": [["2010-12-12", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "step": 0.002777777777777778, "reference_system": 4326},
-      "y": {"type": "spatial", "axis": "y", "step": 0.002777777777777778, "reference_system": 4326},
+      "x": {"type": "spatial", "axis": "x", "step": 0.002777777777777778},
+      "y": {"type": "spatial", "axis": "y", "step": 0.002777777777777778},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",
@@ -577,8 +578,7 @@
       "data_source": {
         "type": "file-oscars",
         "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG",
-        "native_crs": "EPSG:4326"
+        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG"
       }
     }
   },
@@ -592,11 +592,13 @@
     "cube:dimensions": {
       "x": {
         "type": "spatial",
-        "axis": "x"
+        "axis": "x",
+        "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}
       },
       "y": {
         "type": "spatial",
-        "axis": "y"
+        "axis": "y",
+        "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}
       },
       "t": {
         "type": "temporal"
@@ -694,8 +696,8 @@
       "temporal": {"interval": [["2016-11-01T00:00:00Z", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x"},
-      "y": {"type": "spatial", "axis": "y"},
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",

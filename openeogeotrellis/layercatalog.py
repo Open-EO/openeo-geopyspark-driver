@@ -16,7 +16,7 @@ from openeo.util import TimingLogger, deep_get
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
@@ -25,7 +25,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation 
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.opensearch import OpenSearchOscars, OpenSearchCreodias
+from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
-        native_crs = layer_source_info.get("native_crs","UTM")
+        native_crs = self._native_crs(metadata)
+
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
@@ -147,7 +148,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
-        if( native_crs == 'UTM' ):
+        if native_crs == 'UTM':
             target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
         else:
             target_epsg_code = int(native_crs.split(":")[-1])
@@ -355,6 +356,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
 
+                band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
+                cell_size = (jvm.geotrellis.raster.CellSize(min([float(gsd[0]) for gsd in band_gsds]),
+                                                            min([float(gsd[1]) for gsd in band_gsds]))
+                             if len(band_gsds) > 0
+                             else jvm.geotrellis.raster.CellSize(cell_width, cell_height))
+
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited(
                     endpoint,
                     shub_collection_id,
@@ -363,7 +370,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     client_secret,
                     sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,
-                    jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+                    cell_size
                 )
 
                 return (
@@ -497,6 +504,31 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return image_collection
 
+    def _native_crs(self, metadata: GeopysparkCubeMetadata) -> str:
+        dimension_crss = [d.crs for d in metadata.spatial_dimensions]
+
+        if len(dimension_crss) > 0:
+            crs = dimension_crss[0]
+            if isinstance(crs, dict):  # PROJJSON
+                crs_id = crs['id']
+                authority: str = crs_id['authority']
+                code: str = crs_id['code']
+
+                if authority.lower() == 'ogc' and code.lower() == 'auto42001':
+                    return "UTM"
+
+                if authority.lower() == 'epsg':
+                    return f"EPSG:{code}"
+
+                raise NotImplementedError(f"unsupported CRS: {crs}")
+
+            if isinstance(crs, int):  # EPSG code
+                return f"EPSG:{crs}"
+
+            raise NotImplementedError(f"unsupported CRS format: {crs}")
+
+        return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
+
 
 def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
     """
@@ -514,36 +546,55 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
     if opensearch_enrich:
         opensearch_metadata = {}
+        sh_collection_metadatas = None
+        opensearch_instances = {}
+
+        def opensearch_instance(endpoint: str) -> OpenSearch:
+            endpoint = endpoint.lower()
+            opensearch = opensearch_instances.get(os_endpoint)
+
+            if opensearch is not None:
+                return opensearch
+
+            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint:
+                opensearch = OpenSearchOscars(endpoint=endpoint)
+            elif "creodias" in endpoint:
+                opensearch = OpenSearchCreodias(endpoint=endpoint)
+            else:
+                raise ValueError(endpoint)
+
+            opensearch_instances[endpoint] = opensearch
+            return opensearch
+
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
             os_cid = data_source.get("opensearch_collection_id")
             if os_cid:
                 os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
                 logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
-                # TODO: move this to a OpenSearch factory?
-                if "oscars" in os_endpoint.lower() or "terrascope" in os_endpoint.lower() or "vito.be" in os_endpoint.lower():
-                    opensearch = OpenSearchOscars(endpoint=os_endpoint)
-                elif "creodias" in os_endpoint.lower():
-                    opensearch = OpenSearchCreodias(endpoint=os_endpoint)
-                else:
-                    raise ValueError(os_endpoint)
                 try:
-                    opensearch_metadata[cid] = opensearch.get_metadata(collection_id=os_cid)
-                except Exception as e:
-                    logger.error(traceback.format_exc())
+                    opensearch_metadata[cid] = opensearch_instance(os_endpoint).get_metadata(collection_id=os_cid)
+                except Exception:
+                    logger.warning(traceback.format_exc())
             elif data_source.get("type") == "sentinel-hub":
                 sh_cid = data_source.get("collection_id")
                 try:
-                    sh_collections = requests.get("https://collections.eurodatacube.com/stac/index.json").json()
-                    sh_collection = next(filter(lambda c: c["id"] == sh_cid, sh_collections))
-                    opensearch_metadata[cid] = requests.get(sh_collection["link"]).json()
+                    sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
+
+                    if sh_collection_metadatas is None:
+                        sh_collections = requests.get(sh_stac_endpoint).json()
+                        sh_collection_metadatas = [requests.get(c["link"]).json() for c in sh_collections]
+
+                    sh_metadata = next(filter(lambda m: m["datasource_type"] == sh_cid, sh_collection_metadatas))
+                    logger.info(f"Updating {cid} metadata from {sh_stac_endpoint}:{sh_metadata['id']}")
+                    opensearch_metadata[cid] = sh_metadata
                     if not data_source.get("endpoint"):
                         endpoint = opensearch_metadata[cid]["providers"][0]["url"]
                         endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
                         data_source["endpoint"] = endpoint
                     data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
                 except StopIteration:
-                    logger.error(f"No STAC data available for collection with id {sh_cid}")
+                    logger.warning(f"No STAC data available for collection with id {sh_cid}")
 
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
