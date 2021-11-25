@@ -355,6 +355,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
 
+                band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
+                cell_size = (jvm.geotrellis.raster.CellSize(min([float(gsd[0]) for gsd in band_gsds]),
+                                                            min([float(gsd[1]) for gsd in band_gsds]))
+                             if len(band_gsds) > 0
+                             else jvm.geotrellis.raster.CellSize(cell_width, cell_height))
+
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited(
                     endpoint,
                     shub_collection_id,
@@ -363,7 +369,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     client_secret,
                     sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,
-                    jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+                    cell_size
                 )
 
                 return (
