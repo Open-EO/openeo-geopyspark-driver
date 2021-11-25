@@ -26,6 +26,18 @@ def test_health(api):
 
 
 class TestCollections:
+    _CRS_AUTO_42001 = {'$schema': 'https://proj.org/schemas/v0.2/projjson.schema.json', 'type': 'GeodeticCRS',
+                       'name': 'AUTO 42001 (Universal Transverse Mercator)',
+                       'datum': {'type': 'GeodeticReferenceFrame', 'name': 'World Geodetic System 1984',
+                                 'ellipsoid': {'name': 'WGS 84', 'semi_major_axis': 6378137,
+                                               'inverse_flattening': 298.257223563}},
+                       'coordinate_system': {'subtype': 'ellipsoidal', 'axis': [
+                           {'name': 'Geodetic latitude', 'abbreviation': 'Lat', 'direction': 'north', 'unit': 'degree'},
+                           {'name': 'Geodetic longitude', 'abbreviation': 'Lon', 'direction': 'east',
+                            'unit': 'degree'}]}, 'area': 'World',
+                       'bbox': {'south_latitude': -90, 'west_longitude': -180, 'north_latitude': 90,
+                                'east_longitude': 180},
+                       'id': {'authority': 'OGC', 'version': '1.3', 'code': 'Auto42001'}}
 
     def test_all_collections(self, api):
         collections = api.get('/collections').assert_status_code(200).json["collections"]
@@ -211,12 +223,12 @@ class TestCollections:
                                              't': {'extent': ['2015-07-06T00:00:00Z', None], 'type': 'temporal'},
                                              'x': {'axis': 'x',
                                                    'extent': [-180, 180],
-                                                   'reference_system': 'AUTO:42001',
+                                                   'reference_system': TestCollections._CRS_AUTO_42001,
                                                    'step': 10,
                                                    'type': 'spatial'},
                                              'y': {'axis': 'y',
                                                    'extent': [-56, 83],
-                                                   'reference_system': 'AUTO:42001',
+                                                   'reference_system': TestCollections._CRS_AUTO_42001,
                                                    'step': 10,
                                                    'type': 'spatial'}}
             for f in eo_bands[0].keys():
@@ -245,11 +257,11 @@ class TestCollections:
                                                                           'VZA']},
                                                      't': {'type': 'temporal'},
                                                      'x': {'axis': 'x',
-                                                           'reference_system': 'AUTO:42001',
+                                                           'reference_system': TestCollections._CRS_AUTO_42001,
                                                            'step': 10,
                                                            'type': 'spatial'},
                                                      'y': {'axis': 'y',
-                                                           'reference_system': 'AUTO:42001',
+                                                           'reference_system': TestCollections._CRS_AUTO_42001,
                                                            'step': 10,
                                                            'type': 'spatial'}}
 

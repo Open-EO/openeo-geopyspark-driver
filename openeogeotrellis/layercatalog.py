@@ -65,7 +65,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
-        native_crs = layer_source_info.get("native_crs","UTM")
+        native_crs = self._native_crs(metadata)
+
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
@@ -147,7 +148,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
-        if( native_crs == 'UTM' ):
+        if native_crs == 'UTM':
             target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
         else:
             target_epsg_code = int(native_crs.split(":")[-1])
@@ -502,6 +503,31 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             image_collection = image_collection.filter_bands(band_indices)
 
         return image_collection
+
+    def _native_crs(self, metadata: GeopysparkCubeMetadata) -> str:
+        dimension_crss = [d.crs for d in metadata.spatial_dimensions]
+
+        if len(dimension_crss) > 0:
+            crs = dimension_crss[0]
+            if isinstance(crs, dict):  # PROJJSON
+                crs_id = crs['id']
+                authority: str = crs_id['authority']
+                code: str = crs_id['code']
+
+                if authority.lower() == 'ogc' and code.lower() == 'auto42001':
+                    return "UTM"
+
+                if authority.lower() == 'epsg':
+                    return f"EPSG:{code}"
+
+                raise NotImplementedError(f"unsupported CRS: {crs}")
+
+            if isinstance(crs, int):  # EPSG code
+                return f"EPSG:{crs}"
+
+            raise NotImplementedError(f"unsupported CRS format: {crs}")
+
+        return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
 def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
