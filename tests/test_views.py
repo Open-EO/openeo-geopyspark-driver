@@ -184,7 +184,7 @@ class TestCollections:
                     },
                     {
                       "name": "RAA",
-                      "aliases": ["RAA_60M"],
+                      "aliases": ["RAA_60M", "relativeAzimuthAngle"],
                       "gsd": 60
                     },
                     {
