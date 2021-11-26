@@ -178,13 +178,13 @@ class TestCollections:
                       "unit": "1"
                     },
                     {
-                      "name": "SCENECLASSIFICATION",
+                      "name": "SCL",
                       "aliases": ["SCENECLASSIFICATION_20M"],
                       "gsd": 20
                     },
                     {
-                      "name": "RAA",
-                      "aliases": ["RAA_60M", "relativeAzimuthAngle"],
+                      "name": "RAA_60M",
+                      "aliases": ["relativeAzimuthAngle"],
                       "gsd": 60
                     },
                     {
@@ -216,8 +216,8 @@ class TestCollections:
                                                                   'B8A',
                                                                   'B11',
                                                                   'B12',
-                                                                  'SCENECLASSIFICATION',
-                                                                  'RAA',
+                                                                  'SCL',
+                                                                  'RAA_60M',
                                                                   'sunZenithAngles',
                                                                   'viewZenithAngles']},
                                              't': {'extent': ['2015-07-06T00:00:00Z', None], 'type': 'temporal'},
@@ -251,8 +251,8 @@ class TestCollections:
                                                                           'B8A',
                                                                           'B11',
                                                                           'B12',
-                                                                          'SCENECLASSIFICATION',
-                                                                          'RAA',
+                                                                          'SCL',
+                                                                          'RAA_60M',
                                                                           'sunZenithAngles',
                                                                           'viewZenithAngles']},
                                                      't': {'type': 'temporal'},
