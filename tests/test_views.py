@@ -188,13 +188,13 @@ class TestCollections:
                       "gsd": 60
                     },
                     {
-                      "name": "SZA",
+                      "name": "sunZenithAngles",
                       "aliases": ["SZA_60M"],
                       "gsd": 60
                     },
                     {
-                      "name": "VZA",
-                      "aliases": ["VZA_60M"],
+                      "name": "viewZenithAngles",
+                      "aliases": ["VZA_60M", "viewZenithApproximate"],
                       "gsd": 60
                     }
                   ]
@@ -218,8 +218,8 @@ class TestCollections:
                                                                   'B12',
                                                                   'SCENECLASSIFICATION',
                                                                   'RAA',
-                                                                  'SZA',
-                                                                  'VZA']},
+                                                                  'sunZenithAngles',
+                                                                  'viewZenithAngles']},
                                              't': {'extent': ['2015-07-06T00:00:00Z', None], 'type': 'temporal'},
                                              'x': {'axis': 'x',
                                                    'extent': [-180, 180],
@@ -253,8 +253,8 @@ class TestCollections:
                                                                           'B12',
                                                                           'SCENECLASSIFICATION',
                                                                           'RAA',
-                                                                          'SZA',
-                                                                          'VZA']},
+                                                                          'sunZenithAngles',
+                                                                          'viewZenithAngles']},
                                                      't': {'type': 'temporal'},
                                                      'x': {'axis': 'x',
                                                            'reference_system': TestCollections._CRS_AUTO_42001,

@@ -218,13 +218,13 @@
           "gsd": 60
         },
         {
-          "name": "SZA",
+          "name": "sunZenithAngles",
           "aliases": ["SZA_60M"],
           "gsd": 60
         },
         {
-          "name": "VZA",
-          "aliases": ["VZA_60M"],
+          "name": "viewZenithAngles",
+          "aliases": ["VZA_60M", "viewZenithApproximate"],
           "gsd": 60
         }
       ]
@@ -249,8 +249,8 @@
           "B12",
           "SCENECLASSIFICATION",
           "RAA",
-          "SZA",
-          "VZA"
+          "sunZenithAngles",
+          "viewZenithAngles"
         ]
       }
     },
@@ -816,6 +816,7 @@
         },
         {
           "name": "viewZenithMean",
+          "aliases": ["viewZenithApproximate"],
           "type": "float32",
           "unit": "Degrees"
         }
