@@ -213,7 +213,7 @@
           "gsd": 20
         },
         {
-          "name": "relativeAzimuthAngle",
+          "name": "relativeAzimuthAngles",
           "aliases": ["RAA_60M"],
           "gsd": 60
         },
@@ -248,7 +248,7 @@
           "B11",
           "B12",
           "SCL",
-          "RAA_60M",
+          "relativeAzimuthAngles",
           "sunZenithAngles",
           "viewZenithAngles"
         ]

@@ -183,8 +183,8 @@ class TestCollections:
                       "gsd": 20
                     },
                     {
-                      "name": "RAA_60M",
-                      "aliases": ["relativeAzimuthAngle"],
+                      "name": "relativeAzimuthAngles",
+                      "aliases": ["RAA_60M"],
                       "gsd": 60
                     },
                     {
@@ -217,7 +217,7 @@ class TestCollections:
                                                                   'B11',
                                                                   'B12',
                                                                   'SCL',
-                                                                  'RAA_60M',
+                                                                  'relativeAzimuthAngles',
                                                                   'sunZenithAngles',
                                                                   'viewZenithAngles']},
                                              't': {'extent': ['2015-07-06T00:00:00Z', None], 'type': 'temporal'},
@@ -252,7 +252,7 @@ class TestCollections:
                                                                           'B11',
                                                                           'B12',
                                                                           'SCL',
-                                                                          'RAA_60M',
+                                                                          'relativeAzimuthAngles',
                                                                           'sunZenithAngles',
                                                                           'viewZenithAngles']},
                                                      't': {'type': 'temporal'},
