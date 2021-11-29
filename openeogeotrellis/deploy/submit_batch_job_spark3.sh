@@ -48,7 +48,7 @@ pysparkPython="venv/bin/python"
 kinit -kt ${keyTab} ${principal} || true
 
 export HDP_VERSION=3.1.4.0-315
-export SPARK_HOME=/opt/spark3_1_1
+export SPARK_HOME=/opt/spark3_2_0
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="venv/lib64"
@@ -56,6 +56,7 @@ export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.8/site-packages:venv/lib/python3.8/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
+# TODO: something wrong with this logic, when the file is missing, backend_assembly is not passed to spark-submit
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ ! -f ${backend_assembly} ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
@@ -73,7 +74,8 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
-sparkExecutorJavaOptions="-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
 if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
   run_as="--proxy-user ${proxyUser}"
@@ -107,10 +109,11 @@ spark-submit \
  --conf spark.dynamicAllocation.maxExecutors=${maxexecutors} \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64 \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:venv/lib64/python3.6/site-packages/jep \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
  --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
  --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
+ --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -118,9 +121,9 @@ spark-submit \
  --conf spark.ui.view.acls.groups=vito \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:20210507-60 \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:20210507-60 \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
  --files layercatalog.json,"${processGraphFile}" \
  --py-files "${pyfiles}" \
