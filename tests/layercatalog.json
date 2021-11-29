@@ -213,8 +213,8 @@
           "gsd": 20
         },
         {
-          "name": "RAA_60M",
-          "aliases": ["relativeAzimuthAngle"],
+          "name": "relativeAzimuthAngle",
+          "aliases": ["RAA_60M"],
           "gsd": 60
         },
         {
