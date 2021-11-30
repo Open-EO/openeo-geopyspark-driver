@@ -289,7 +289,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def health_check(self) -> str:
         sc = SparkContext.getOrCreate()
-        count = sc.parallelize([1, 2, 3]).map(lambda x: x * x).sum()
+        count = sc.parallelize([1, 2, 3],2).map(lambda x: x * x).sum()
         return 'Health check: ' + str(count)
 
     def oidc_providers(self) -> List[OidcProvider]:
