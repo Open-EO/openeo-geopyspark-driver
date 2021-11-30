@@ -110,12 +110,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             default_temporal_resolution = "None"
             default_indexReduction = 0
 
-
-        experimental = load_params.get("featureflags",{}).get("experimental",False)
-        tilesize = load_params.get("featureflags",{}).get("tilesize",256)
-        indexReduction = load_params.get("featureflags", {}).get("indexreduction", default_indexReduction)
-        temporalResolution = load_params.get("featureflags", {}).get("temporalresolution", default_temporal_resolution)
-        globalbounds = load_params.get("featureflags", {}).get("global_bounds", True)
+        feature_flags = load_params.get("featureflags", {})
+        experimental = feature_flags.get("experimental", False)
+        tilesize = feature_flags.get("tilesize", 256)
+        indexReduction = feature_flags.get("indexreduction", default_indexReduction)
+        temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
+        globalbounds = feature_flags.get("global_bounds", True)
 
         jvm = get_jvm()
 
@@ -337,9 +337,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, None, None))
             else:
+                if collection_id == 'PLANETSCOPE':
+                    # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
+                    shub_collection_id = feature_flags['byoc_collection_id']
+                    dataset_id = shub_collection_id
+                else:
+                    shub_collection_id = layer_source_info['collection_id']
+                    dataset_id = layer_source_info['dataset_id']
+
                 endpoint = layer_source_info['endpoint']
-                shub_collection_id = layer_source_info['collection_id']
-                dataset_id = layer_source_info['dataset_id']
                 client_id = layer_source_info['client_id']
                 client_secret = layer_source_info['client_secret']
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
