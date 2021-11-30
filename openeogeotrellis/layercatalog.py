@@ -584,6 +584,10 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                     logger.warning(traceback.format_exc())
             elif data_source.get("type") == "sentinel-hub":
                 sh_cid = data_source.get("collection_id")
+
+                if sh_cid is None:
+                    continue
+
                 try:
                     sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
 
