@@ -46,6 +46,7 @@ def _setup_app_logging() -> None:
     logger.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
 
+    logging.getLogger().setLevel(logging.INFO)
     logging.getLogger("openeo").setLevel(logging.INFO)
     logging.getLogger("openeo").addHandler(console_handler)
     logging.getLogger("openeo_driver").setLevel(logging.INFO)
