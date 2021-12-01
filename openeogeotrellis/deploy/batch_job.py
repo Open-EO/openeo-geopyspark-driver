@@ -74,7 +74,8 @@ def _create_job_dir(job_dir: Path):
 
 
 def _add_permissions(path: Path, mode: int):
-    # FIXME: maybe umask is a better/cleaner option
+    # TODO: accept PathLike etc as well
+    # TODO: maybe umask is a better/cleaner option
     if path.exists():
         current_permission_bits = os.stat(path).st_mode
         os.chmod(path, current_permission_bits | mode)
@@ -282,16 +283,25 @@ def main(argv: List[str]) -> None:
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id
                 )
             
-            if sc.getConf().get('spark.python.profile', 'false').lower()=='true':
+            if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
-                driver_profile=BasicProfiler(sc)
+                driver_profile = BasicProfiler(sc)
                 driver_profile.profile(run_driver)
                 # running the driver code and adding driver's profiling results as "RDD==-1"
                 sc.profiler_collector.add_profiler(-1, driver_profile)
                 # collect profiles into a zip file
-                sc.dump_profiles(str(job_dir / 'profile_dumps'))
-                profile_zip=shutil.make_archive(str(job_dir / 'profile_dumps'), 'gztar', str(job_dir / 'profile_dumps'))
-                logger.info("Saving profiling info to: "+profile_zip)
+                profile_dumps_dir = job_dir / 'profile_dumps'
+
+                sc.dump_profiles(profile_dumps_dir)
+                _add_permissions(profile_dumps_dir, stat.S_IWGRP)
+                for entry in profile_dumps_dir.glob("**/*"):
+                    _add_permissions(entry, stat.S_IWGRP)
+
+                profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
+                                                  root_dir=profile_dumps_dir)
+                _add_permissions(Path(profile_zip), stat.S_IWGRP)
+
+                logger.info("Saved profiling info to: " + profile_zip)
             else:
                 run_driver()
                 
