@@ -18,6 +18,12 @@ def sum_composite(tiles: Iterable[gps.Tile]):
     return composite(fadd, tiles)  # ignores NaN (<=> add)
 
 
+def product_composite(tiles: Iterable[gps.Tile]):
+    def fadd(a_cells, b_cells):
+        return np.multiply(np.nan_to_num(a_cells), np.nan_to_num(b_cells))
+
+    return composite(fadd, tiles)  # ignores NaN
+
 def var_composite(tiles: Iterable[gps.Tile]) -> gps.Tile:
     cube = np.array([tile.cells for tile in tiles])
     reduced = np.nanvar(cube, axis=0)  # ignores NaN (<=> var)
