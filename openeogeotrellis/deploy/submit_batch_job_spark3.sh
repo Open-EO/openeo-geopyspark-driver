@@ -111,8 +111,8 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:venv/lib64/python3.6/site-packages/jep \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
- --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
- --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" \
+ --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
+ --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
