@@ -13,7 +13,7 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
-from shapely.geometry import mapping, Polygon, GeometryCollection
+from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
 from openeo.util import ensure_dir, Rfc3339, TimingLogger
@@ -291,15 +291,16 @@ def main(argv: List[str]) -> None:
                 sc.profiler_collector.add_profiler(-1, driver_profile)
                 # collect profiles into a zip file
                 profile_dumps_dir = job_dir / 'profile_dumps'
-
                 sc.dump_profiles(profile_dumps_dir)
-                _add_permissions(profile_dumps_dir, stat.S_IWGRP)
-                for entry in profile_dumps_dir.glob("**/*"):
-                    _add_permissions(entry, stat.S_IWGRP)
 
                 profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
                                                   root_dir=profile_dumps_dir)
                 _add_permissions(Path(profile_zip), stat.S_IWGRP)
+
+                shutil.rmtree(profile_dumps_dir,
+                              onerror=lambda func, path, exc_info:
+                              logger.warning(f"could not recursively delete {profile_dumps_dir}: {func} {path} failed",
+                                             exc_info=exc_info))
 
                 logger.info("Saved profiling info to: " + profile_zip)
             else:
