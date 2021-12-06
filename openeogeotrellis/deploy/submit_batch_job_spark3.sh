@@ -42,6 +42,8 @@ profile=${18-false}
 dependencies=${19-"[]"}
 pyfiles=${20}
 maxexecutors=${21-500}
+userId=${22}
+batchJobId=${23}
 
 pysparkPython="venv/bin/python"
 
@@ -115,9 +117,13 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
  --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
+ --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
+ --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+ --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
+ --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \

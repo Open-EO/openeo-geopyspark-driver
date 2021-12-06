@@ -1068,6 +1068,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(serialize_dependencies())
                     args.append(self.get_submit_py_files())
                     args.append(max_executors)
+                    args.append(user_id)
+                    args.append(job_id)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})

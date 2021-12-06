@@ -42,6 +42,8 @@ profile=${18-false}
 dependencies=${19-"[]"}
 pyfiles=${20}
 maxexecutors=${21-500}
+userId=${22}
+batchJobId=${23}
 
 pysparkPython="venv/bin/python"
 
@@ -108,10 +110,14 @@ spark-submit \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal:venv/lib64/python3.6/site-packages/jep \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64:/tmp_epod/gdal \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
+ --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
+ --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.executorEnv.PROJ_LIB=/tmp_epod/gdal/data --conf spark.yarn.appMasterEnv.PROJ_LIB=/tmp_epod/gdal/data \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+ --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
+ --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
  --files layercatalog.json,"${processGraphFile}" \
