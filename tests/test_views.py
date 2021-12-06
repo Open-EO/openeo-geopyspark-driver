@@ -435,11 +435,11 @@ class TestBatchJobs:
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
             assert batch_job_args[11:17] == ['12G', '2G', '3G', '5', '2', '2G']
-            assert batch_job_args[17:] == [
+            assert batch_job_args[17:22] == [
                 'default', 'false', '[]',
-                "__pyfiles__/custom_processes.py,foolib.whl",'200'
+                "__pyfiles__/custom_processes.py,foolib.whl", '200'
             ]
-            assert batch_job_args[21] == '200'
+            assert batch_job_args[22:] == [TEST_USER, job_id]
 
             # Check metadata in zookeeper
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
@@ -552,10 +552,11 @@ class TestBatchJobs:
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
             assert batch_job_args[11:17] == ['3g', '11g', '3G', '5', '4', '10000G']
-            assert batch_job_args[17:] == [
+            assert batch_job_args[17:22] == [
                 'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '200'
             ]
+            assert batch_job_args[22:] == [TEST_USER, job_id]
 
     def test_cancel_job(self, api, tmp_path):
         with self._mock_kazoo_client() as zk:
