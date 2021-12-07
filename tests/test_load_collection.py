@@ -8,6 +8,7 @@ from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiExcep
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
 
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.layercatalog import get_layer_catalog
 import geopyspark as gps
 
@@ -130,6 +131,19 @@ def test_create_params():
     datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
     datacubeParams.tileSize = 256
     assert datacubeParams.tileSize == 256
+
+
+def test_reprojection():
+    """
+    It is important that reprojection in Python and Geotrellis give the same result, for alignment of bounding boxes!
+    @return:
+    """
+    reprojected = GeopysparkDataCube._reproject_extent("EPSG:4326","EPSG:32631",5.071, 51.21,5.1028,51.23)
+    print(reprojected)
+    assert reprojected.xmin == 644594.8230399278
+    assert reprojected.ymin == 5675216.271413178
+    assert reprojected.xmax == 646878.5028127492
+    assert reprojected.ymax == 5677503.191395153
 
 
 @mock.patch('openeogeotrellis.layercatalog.get_jvm')
