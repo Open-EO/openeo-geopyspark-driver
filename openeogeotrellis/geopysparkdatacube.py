@@ -1607,10 +1607,13 @@ class GeopysparkDataCube(DriverDataCube):
                 x, y
             )
 
-        reprojected_xmin, reprojected_ymin = reproject_point(xmin, ymin)
-        reprojected_xmax, reprojected_ymax = reproject_point(xmax, ymax)
+        reprojected_xmin1, reprojected_ymin1 = reproject_point(xmin, ymin)
+        reprojected_xmax1, reprojected_ymax1 = reproject_point(xmax, ymax)
+        reprojected_xmin2, reprojected_ymax2 = reproject_point(xmin, ymax)
+        reprojected_xmax2, reprojected_ymin2 = reproject_point(xmax, ymin)
         crop_bounds = \
-            Extent(xmin=reprojected_xmin, ymin=reprojected_ymin, xmax=reprojected_xmax, ymax=reprojected_ymax)
+            Extent(xmin=min(reprojected_xmin1,reprojected_xmin2), ymin=min(reprojected_ymin1,reprojected_ymin2),
+                   xmax=max(reprojected_xmax1,reprojected_xmax2), ymax=max(reprojected_ymax1,reprojected_ymax2))
         return crop_bounds
 
     def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path,zlevel=6):
