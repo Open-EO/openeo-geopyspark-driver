@@ -476,9 +476,9 @@ class GeopysparkDataCube(DriverDataCube):
         # Early compile to detect syntax errors
         compiled_code = compile(function,'UDF.py',mode='exec')
 
-        def tile_function(tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]],
-                         metadata:Metadata,
-                         openeo_metadata: GeopysparkCubeMetadata
+        def tile_function(metadata:Metadata,
+                          openeo_metadata: GeopysparkCubeMetadata,
+                          tiles: Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]
             ) -> 'List[Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]]':
             tile_list = list(tiles[1])
             # Sort by instant
@@ -510,7 +510,7 @@ class GeopysparkDataCube(DriverDataCube):
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.now()),
                          Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
-        def rdd_function(rdd: TiledRasterLayer, openeo_metadata: GeopysparkCubeMetadata) -> TiledRasterLayer:
+        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
             float_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
 
             def to_spatial_key(tile: Tuple[SpaceTimeKey, Tile]):
@@ -522,16 +522,15 @@ class GeopysparkDataCube(DriverDataCube):
             spatially_grouped = float_rdd.map(lambda tile: to_spatial_key(tile)).groupByKey()
 
             # Apply the tile_function to all tiles with the same spatial key.
-            rdd_metadata = rdd.layer_metadata
             numpy_rdd = spatially_grouped.flatMap(
-                lambda tiles: log_memory(tile_function(tiles, rdd_metadata, openeo_metadata))
+                log_memory(partial(tile_function, rdd.layer_metadata, openeo_metadata))
             )
 
             # Convert the result back to a TiledRasterLayer.
             metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
-        return self.apply_to_levels(lambda rdd: rdd_function(rdd, self.metadata))
+        return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def reduce_dimension(
             self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
@@ -599,7 +598,8 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer):
                 """
-                Apply a user defined function to every tile in a TiledRasterLayer and return the transformed TiledRasterLayer.
+                Apply a user defined function to every tile in a TiledRasterLayer
+                and return the transformed TiledRasterLayer.
                 """
                 def tile_function(geotrellis_tile: Tuple[SpaceTimeKey, Tile],
                                   metadata: Metadata,
