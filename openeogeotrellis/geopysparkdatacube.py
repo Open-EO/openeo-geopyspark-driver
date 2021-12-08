@@ -393,37 +393,59 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
     @classmethod
-    def _tile_to_datacube(
-            cls, bands_numpy: np.ndarray, extent: SpatialExtent,
-            band_dimension: openeo.metadata.BandDimension, start_times=None
+    def _numpy_to_xarraydatacube(
+            cls,
+            bands_numpy: np.ndarray, extent: SpatialExtent,
+            band_coordinates: List[str],
+            time_coordinates: pd.DatetimeIndex = None
     ) -> XarrayDataCube:
+        """
+        Converts a numpy array representing a tile to an XarrayDataCube by adding coordinates and dimension labels.
+
+        :param bands_numpy:
+            The numpy array with shape = (a,b,c,d).
+            With,
+                a: time     (#dates) (if exists)
+                b: bands    (#bands) (if exists)
+                c: y-axis   (#cells)
+                d: x-axis   (#cells)
+            E.g. (5,2,256,256) has tiles of 256x256 cells, each with 2 bands for 5 given dates.
+        :param extent:
+            The SpatialExtent of the tile in order to calculate the coordinates for the x and y dimensions.
+            If None then the resulting xarray will have no x,y coordinates.
+            E.g. SpatialExtent(bottom: 140, top: 145, left: 60, right: 65, height: 256, width: 256)
+        :param band_coordinates: A list of band names to act as coordinates for the band dimension (if exists).
+        :param time_coordinates: A list of dates to act as coordinates for the time dimension (if exists).
+        :return: An XarrayDatacube containing the given numpy array with the correct labels and coordinates.
+        """
 
         coords = {}
         dims = ('bands','y', 'x')
-        
+
         # time coordinates if exists
         if len(bands_numpy.shape) == 4:
             #we have a temporal dimension
-            coords = {'t':start_times}
+            coords = {'t':time_coordinates}
             dims = ('t' ,'bands','y', 'x')
-        
-        # band names if exists 
-        if band_dimension:
+
+        # Set the band names as xarray coordinates if exists.
+        if band_coordinates:
             # TODO: also use the band dimension name (`band_dimension.name`) instead of hardcoded "bands"?
-            coords['bands'] = band_dimension.band_names
+            coords['bands'] = band_coordinates
+            # Make sure the numpy array has the right shape.
             band_count = bands_numpy.shape[dims.index('bands')]
-            if band_count != len(band_dimension.band_names):
+            if band_count != len(band_coordinates):
                 raise OpenEOApiException(status_code=400,message=
                 """In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels. 
                 These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct."""
-                                         .format(b=band_count, len_dim = len(band_dimension.band_names), labels=str(band_dimension.band_names)))
-        
-        # X and Y coordinates
-        # this is tricky because if apply_neghborhood is used, then extent is the area without overlap
-        # in addition the coordinates are computed to cell center
+                                         .format(b=band_count, len_dim = len(band_coordinates), labels=str(band_coordinates)))
+
+        # Set the X and Y coordinates.
+        # this is tricky because if apply_neighborhood is used, then extent is the area without overlap
+        # in addition the coordinates are computed to cell center.
         #
         # VERY IMPORTANT NOTE: building x,y coordinates assumes that extent and bands_numpy is compatible
-        # as if it is conatining an image:
+        # as if it is concatenating an image:
         #  * spatial dimension order is [y,x] <- row-column order
         #  * origin is upper left corner
         #
@@ -441,23 +463,25 @@ class GeopysparkDataCube(DriverDataCube):
             coords['x']=np.linspace(xmin+0.5*gridx,xmax-0.5*gridx,bands_numpy.shape[-1],dtype=np.float32)
             coords['y']=np.linspace(ymax-0.5*gridy,ymin+0.5*gridy,bands_numpy.shape[-2],dtype=np.float32)
 
-        # create&wrap the underlying xarray
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
-    def apply_tiles_spatiotemporal(self, function, context={}) -> 'GeopysparkDataCube':
+    def apply_tiles_spatiotemporal(self, function: str, context={}) -> 'GeopysparkDataCube':
         """
-        Apply a function to a group of tiles with the same spatial key.
-        :param function:
-        :return:
+        Group tiles by SpatialKey, then apply a Python function to every group of tiles.
+        :param function: A string containing a Python function that handles groups of tiles, each labeled by date.
+        :return: The original data cube with its tiles transformed by the function.
         """
 
-        #early compile to detect syntax errors
+        # Early compile to detect syntax errors
         compiled_code = compile(function,'UDF.py',mode='exec')
 
-        def tilefunction(metadata:Metadata, openeo_metadata: GeopysparkCubeMetadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
+        def tile_function(tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]],
+                         metadata:Metadata,
+                         openeo_metadata: GeopysparkCubeMetadata
+            ) -> 'List[Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]]':
             tile_list = list(tiles[1])
-            #sort by instant
+            # Sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
             dates = map(lambda t: t[0].instant, tile_list)
             arrays = map(lambda t: t[1].cells, tile_list)
@@ -465,36 +489,49 @@ class GeopysparkDataCube(DriverDataCube):
 
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
 
-            datacube: XarrayDataCube = GeopysparkDataCube._tile_to_datacube(
+            datacube: XarrayDataCube = GeopysparkDataCube._numpy_to_xarraydatacube(
                 multidim_array,
                 extent=extent,
-                band_dimension=openeo_metadata.band_dimension if openeo_metadata.has_band_dimension() else None,
-                start_times=pd.DatetimeIndex(dates)
+                band_coordinates=openeo_metadata.band_dimension.band_names if openeo_metadata.has_band_dimension() else None,
+                time_coordinates=pd.DatetimeIndex(dates)
             )
 
             data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
             result_data = run_udf_code(code=function, data=data)
             cubes = result_data.get_datacube_list()
-            if len(cubes)!=1:
-                raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
-            result_array:xr.DataArray = cubes[0].array
+            if len(cubes) != 1:
+                raise ValueError("The provided UDF should return one datacube, but got: " + str(cubes))
+            result_array: xr.DataArray = cubes[0].array
             if 't' in result_array.dims:
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=pd.Timestamp(timestamp)),
-                  Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value)) for timestamp, array_slice in result_array.groupby('t')]
+                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
+                         Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
+                        for timestamp, array_slice in result_array.groupby('t')]
             else:
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=datetime.now()),
-                  Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
+                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.now()),
+                         Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
-        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
-            floatrdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
-            spatially_grouped = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
+        def rdd_function(rdd: TiledRasterLayer, openeo_metadata: GeopysparkCubeMetadata) -> TiledRasterLayer:
+            float_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
+
+            def to_spatial_key(tile: Tuple[SpaceTimeKey, Tile]):
+                key: SpatialKey = gps.SpatialKey(tile[0].col, tile[0].row)
+                value: Tuple[SpaceTimeKey, Tile] = (tile[0], tile[1])
+                return (key, value)
+
+            # Group all tiles by SpatialKey. Save the SpaceTimeKey in the value with the Tile.
+            spatially_grouped = float_rdd.map(lambda tile: to_spatial_key(tile)).groupByKey()
+
+            # Apply the tile_function to all tiles with the same spatial key.
+            rdd_metadata = rdd.layer_metadata
             numpy_rdd = spatially_grouped.flatMap(
-                log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
+                lambda tiles: log_memory(tile_function(tiles, rdd_metadata, openeo_metadata))
             )
+
+            # Convert the result back to a TiledRasterLayer.
             metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        return self.apply_to_levels(lambda rdd: rdd_function(rdd, self.metadata))
 
     def reduce_dimension(
             self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
