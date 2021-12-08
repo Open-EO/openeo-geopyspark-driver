@@ -285,17 +285,28 @@ class GeopysparkDataCube(DriverDataCube):
             result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
-    def _apply_bands_dimension(self,pgVisitor):
-        pysc = gps.get_spark_context()
+    def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
+        """
+        Apply a process graph to every tile, with tile.bands (List[Tile]) as process input.
+        """
+        # All processing is done with float32 as cell type.
         float_datacube = self.apply_to_levels(lambda layer: layer.convert_data_type("float32"))
-        result = float_datacube._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
+
+        # Apply process to every tile, with tile.bands (List[Tile]) as process input.
+        # This is done for the entire pyramid.
+        pysc = gps.get_spark_context()
+        result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level:
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder)
+        )
+
+        # Convert/Restrict cell type after processing.
+        def convert_celltype(layer, cell_type):
+            tiled_raster_layer = TiledRasterLayer(layer.layer_type, layer.srdd.convertDataType(cell_type))
+            tiled_raster_layer = GeopysparkDataCube._transform_metadata(tiled_raster_layer, cellType=cell_type)
+            return tiled_raster_layer
         target_cell_type = pgVisitor.builder.getOutputCellType().name()
-        result = result.apply_to_levels(
-            lambda layer: GeopysparkDataCube._transform_metadata(TiledRasterLayer(layer.layer_type,
-                             layer.srdd.convertDataType(target_cell_type)),
-                                                                 cellType=target_cell_type))
-        return result
+        return result_cube.apply_to_levels(lambda layer: convert_celltype(layer, target_cell_type))
 
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
         if dimension != self.metadata.temporal_dimension.name:
