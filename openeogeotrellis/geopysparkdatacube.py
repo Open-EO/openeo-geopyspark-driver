@@ -1595,8 +1595,8 @@ class GeopysparkDataCube(DriverDataCube):
         return result
 
         
-
-    def _reproject_extent(self, src_crs, dst_crs, xmin, ymin, xmax, ymax):
+    @classmethod
+    def _reproject_extent(cls, src_crs, dst_crs, xmin, ymin, xmax, ymax):
         src_proj = pyproj.Proj(src_crs)
         dst_proj = pyproj.Proj(dst_crs)
 
@@ -1604,7 +1604,8 @@ class GeopysparkDataCube(DriverDataCube):
             return pyproj.transform(
                 src_proj,
                 dst_proj,
-                x, y
+                x, y,
+                always_xy=True
             )
 
         reprojected_xmin1, reprojected_ymin1 = reproject_point(xmin, ymin)
