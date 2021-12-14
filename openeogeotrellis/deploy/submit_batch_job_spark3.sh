@@ -58,10 +58,15 @@ export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.8/site-packages:venv/lib/python3.8/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
-# TODO: something wrong with this logic, when the file is missing, backend_assembly is not passed to spark-submit
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
-if [ ! -f ${backend_assembly} ]; then
+if [ -z "${backend_assembly}" ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
+fi
+logging_jar=$(ls openeo-logging-*.jar) || true
+
+files="layercatalog.json,${processGraphFile}"
+if [ -n "${logging_jar}" ]; then
+  files="${files},${logging_jar}"
 fi
 
 echo "Downloading ${OPENEO_VENV_ZIP}"
@@ -133,7 +138,9 @@ spark-submit \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw \
- --files layercatalog.json,"${processGraphFile}" \
+ --conf spark.driver.extraClassPath=${logging_jar:-} \
+ --conf spark.executor.extraClassPath=${logging_jar:-} \
+ --files "${files}" \
  --py-files "${pyfiles}" \
  --archives "${openeo_zip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
