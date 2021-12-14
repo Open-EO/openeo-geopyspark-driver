@@ -62,11 +62,11 @@ backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ -z "${backend_assembly}" ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.7-openeo.jar
 fi
-logging=$(ls openeo-logging-*.jar) || true
+logging_jar=$(ls openeo-logging-*.jar) || true
 
 files="layercatalog.json,${processGraphFile}"
-if [ -n "${logging}" ]; then
-  files="${files},${logging}"
+if [ -n "${logging_jar}" ]; then
+  files="${files},${logging_jar}"
 fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
@@ -125,6 +125,8 @@ spark-submit \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
+ --conf spark.driver.extraClassPath=${logging_jar:-} \
+ --conf spark.executor.extraClassPath=${logging_jar:-} \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
