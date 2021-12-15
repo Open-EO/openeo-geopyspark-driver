@@ -1239,7 +1239,7 @@ class GeopysparkDataCube(DriverDataCube):
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
-                        for index in range(1,len(self.metadata.band_dimension.band_names)+1):
+                        for index in range(0,len(self.metadata.band_dimension.band_names)):
                             gtiff_options.addBandTag(index,"DESCRIPTION",self.metadata.band_dimension.band_names[index-1])
                     if crop_bounds:
                         crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
