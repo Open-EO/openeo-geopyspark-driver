@@ -123,8 +123,8 @@ spark-submit \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:venv/lib64/python3.8/site-packages/jep \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
- --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
- --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
+ --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
+ --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
