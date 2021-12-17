@@ -534,6 +534,43 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
+    def chunk_polygon(
+            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: Union[List[Polygon], List[MultiPolygon]],
+            env: EvalEnv, context: dict = None,
+    ) -> 'GeopysparkDataCube':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(reducer, dict):
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+        jvm = self._get_jvm()
+
+        result_collection = None
+        if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
+            from openeo_driver.ProcessGraphDeserializer import convert_node
+            udf = reducer.udf_args.get('udf', None)
+            context: dict = reducer.udf_args.get('context', {})
+            context: dict = convert_node(context, env=env) # Resolve "from_parameter" references in context object
+            if not isinstance(udf, str):
+                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            # Polygons should use the same projection as the rdd.
+            reprojected_polygons: jvm.org.openeo.geotrellis.ProjectedPolygons \
+                = to_projected_polygons(jvm, GeometryCollection(chunks))
+            band_names = self.metadata.band_dimension.band_names
+
+            def rdd_function(rdd, _zoom):
+                return jvm.org.openeo.geotrellis.udf.Udf.runChunkPolygonUserCode(
+                    udf, rdd, reprojected_polygons, band_names, context
+                )
+
+            # All JEP implementation work with the float datatype.
+            float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
+            result_collection = float_cube._apply_to_levels_geotrellis_rdd(
+                rdd_function, self.metadata, gps.LayerType.SPACETIME
+            )
+        else:
+            # Use OpenEOProcessScriptBuilder.
+            raise NotImplementedError()
+        return result_collection
+
     def reduce_dimension(
             self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
             binary=False, context=None,
