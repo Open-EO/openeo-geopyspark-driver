@@ -131,6 +131,12 @@ class GeopysparkDataCube(DriverDataCube):
         pyramid = Pyramid({k: func(l) for k, l in self.pyramid.levels.items()})
         return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
 
+    @staticmethod
+    def _convert_celltype(layer: TiledRasterLayer, cell_type: CellType):
+        tiled_raster_layer = TiledRasterLayer(layer.layer_type, layer.srdd.convertDataType(cell_type))
+        tiled_raster_layer = GeopysparkDataCube._transform_metadata(tiled_raster_layer, cellType=cell_type)
+        return tiled_raster_layer
+
     def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
         jvm = self._get_jvm()
         spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
@@ -301,12 +307,8 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
         # Convert/Restrict cell type after processing.
-        def convert_celltype(layer, cell_type):
-            tiled_raster_layer = TiledRasterLayer(layer.layer_type, layer.srdd.convertDataType(cell_type))
-            tiled_raster_layer = GeopysparkDataCube._transform_metadata(tiled_raster_layer, cellType=cell_type)
-            return tiled_raster_layer
         target_cell_type = pgVisitor.builder.getOutputCellType().name()
-        return result_cube.apply_to_levels(lambda layer: convert_celltype(layer, target_cell_type))
+        return result_cube.apply_to_levels(lambda layer: self._convert_celltype(layer, target_cell_type))
 
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
         if dimension != self.metadata.temporal_dimension.name:
@@ -577,24 +579,16 @@ class GeopysparkDataCube(DriverDataCube):
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
         if runtime == 'Python-Jep':
-            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer):
-                """
-                Apply a user defined function to every tile in a TiledRasterLayer and return the transformed TiledRasterLayer.
-                """
-                # Perform the UDF in Scala so that it can use the JEP library.
-                # This removes the need to copy datacubes from scala to python processes on hadoop worker nodes.
+            band_names = self.metadata.band_dimension.band_names
+
+            def rdd_function(rdd, _zoom):
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
-                scala_rdd = rdd.srdd.rdd() # Unwrap the Scala RDD from the python TiledRasterLayer wrapper.
-                band_names = openeo_metadata.band_dimension.band_names
-                result_layer = udf.runUserCode(function, scala_rdd, band_names, context)
+                return udf.runUserCode(function, rdd, band_names, context)
 
-                # Transform the result back to a TiledRasterLayer.
-                temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-                option = jvm.scala.Option
-                return gps.TiledRasterLayer(
-                        gps.LayerType.SPACETIME,
-                        temporal_tiled_raster_layer(option.apply(rdd.zoom_level), result_layer))
+            # All JEP implementation work with the float datatype.
+            float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
+            return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPATIAL)
         else:
             def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer):
                 """
