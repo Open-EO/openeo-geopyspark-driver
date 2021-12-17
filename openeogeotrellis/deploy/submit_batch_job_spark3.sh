@@ -85,6 +85,8 @@ sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/bat
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=6"
 
+image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"}
+
 if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
   run_as="--proxy-user ${proxyUser}"
 else
@@ -110,7 +112,7 @@ spark-submit \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
- --conf spark.blacklist.enabled=true \
+ --conf spark.excludeOnFailure.enabled=true \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \
  --conf spark.speculation.multiplier=8 \
@@ -136,12 +138,15 @@ spark-submit \
  --conf spark.ui.view.acls.groups=vito \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${image} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${image} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw \
  --conf spark.driver.extraClassPath=${logging_jar:-} \
  --conf spark.executor.extraClassPath=${logging_jar:-} \
+ --conf spark.hadoop.yarn.timeline-service.enabled=false \
+ --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
+ --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --archives "${openeo_zip}#venv" \
