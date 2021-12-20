@@ -64,7 +64,7 @@ if [ -z "${backend_assembly}" ]; then
 fi
 logging_jar=$(ls openeo-logging-*.jar) || true
 
-files="layercatalog.json,${processGraphFile}"
+files="layercatalog.json,${processGraphFile},client.conf"
 if [ -n "${logging_jar}" ]; then
   files="${files},${logging_jar}"
 fi
