@@ -632,9 +632,9 @@ class GeopysparkDataCube(DriverDataCube):
                 Apply a user defined function to every tile in a TiledRasterLayer
                 and return the transformed TiledRasterLayer.
                 """
-                def tile_function(geotrellis_tile: Tuple[SpaceTimeKey, Tile],
-                                  metadata: Metadata,
+                def tile_function(metadata: Metadata,
                                   openeo_metadata: GeopysparkCubeMetadata,
+                                  geotrellis_tile: Tuple[SpaceTimeKey, Tile]
                                   ) -> 'Tuple[SpaceTimeKey, Tile]':
                     """
                     Apply a user defined function to a geopyspark.geotrellis.Tile and return the transformed tile.
@@ -672,7 +672,7 @@ class GeopysparkDataCube(DriverDataCube):
                 # if rdd.layer_metadata is passed directly in lambda function it will try to serialize the entire rdd!
                 rdd_metadata = rdd.layer_metadata
                 numpy_rdd = numpy_rdd.map(
-                    lambda tile: log_memory(tile_function(tile, rdd_metadata, openeo_metadata)),
+                    log_memory(partial(tile_function, rdd_metadata, openeo_metadata)),
                     preservesPartitioning=True
                 )
 
