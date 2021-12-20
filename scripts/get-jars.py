@@ -42,11 +42,11 @@ def main():
 
     download_jar(
         jar_dir,
-        "https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.2.0-SNAPSHOT/geotrellis-extensions-2.2.0-SNAPSHOT.jar"
+        "https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.3.0_2.12-SNAPSHOT/geotrellis-extensions-2.3.0_2.12-SNAPSHOT.jar"
     )
     download_jar(
         jar_dir,
-        "https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.7-openeo.jar"
+        "https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar"
     )
 
     logger.info("Listing of {j}:".format(j=jar_dir))
