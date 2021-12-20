@@ -313,6 +313,7 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict, user_id:str=None):
+    logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
 
     backend_implementation = GeoPySparkBackendImplementation()

@@ -58,17 +58,22 @@ export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.8/site-packages:venv/lib/python3.8/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
-# TODO: something wrong with this logic, when the file is missing, backend_assembly is not passed to spark-submit
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
-if [ ! -f ${backend_assembly} ]; then
+if [ -z "${backend_assembly}" ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
+fi
+logging_jar=$(ls openeo-logging-*.jar) || true
+
+files="layercatalog.json,${processGraphFile}"
+if [ -n "${logging_jar}" ]; then
+  files="${files},${logging_jar}"
 fi
 
 echo "Downloading ${OPENEO_VENV_ZIP}"
 curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
 openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
 
-main_py_file='venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
+main_py_file='venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
@@ -77,7 +82,10 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
 sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
- -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+ -Dscala.concurrent.context.numThreads=6"
+
+image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"}
 
 if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
   run_as="--proxy-user ${proxyUser}"
@@ -96,6 +104,7 @@ spark-submit \
  --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
  --conf spark.kryoserializer.buffer.max=1G \
+ --conf spark.kryo.classesToRegister=org.openeo.geotrellis.layers.BandCompositeRasterSource,geotrellis.raster.RasterRegion,geotrellis.raster.geotiff.GeoTiffResampleRasterSource,geotrellis.raster.RasterSource,geotrellis.raster.SourceName,geotrellis.raster.geotiff.GeoTiffPath \
  --conf spark.rpc.message.maxSize=200 \
  --conf spark.rdd.compress=true \
  --conf spark.driver.cores=${drivercores} \
@@ -103,10 +112,10 @@ spark-submit \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
- --conf spark.blacklist.enabled=true \
+ --conf spark.excludeOnFailure.enabled=true \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \
- --conf spark.speculation.multiplier=4 \
+ --conf spark.speculation.multiplier=8 \
  --conf spark.dynamicAllocation.minExecutors=5 \
  --conf spark.dynamicAllocation.maxExecutors=${maxexecutors} \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
@@ -114,8 +123,8 @@ spark-submit \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:venv/lib64/python3.8/site-packages/jep \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
- --conf "spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
- --conf "spark.executorEnv.JAVA_HOME=/usr/lib/jvm/jre-1.8.0-openjdk" \
+ --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
+ --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
@@ -124,15 +133,21 @@ spark-submit \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
  --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
- --conf spark.dynamicAllocation.shuffleTracking.enabled=true --conf spark.dynamicAllocation.enabled=true \
+ --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.dynamicAllocation.enabled=true \
+ --conf spark.shuffle.service.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${image} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro \
- --files layercatalog.json,"${processGraphFile}" \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${image} \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw \
+ --conf spark.driver.extraClassPath=${logging_jar:-} \
+ --conf spark.executor.extraClassPath=${logging_jar:-} \
+ --conf spark.hadoop.yarn.timeline-service.enabled=false \
+ --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
+ --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
+ --files "${files}" \
  --py-files "${pyfiles}" \
  --archives "${openeo_zip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \

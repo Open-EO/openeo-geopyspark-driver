@@ -561,7 +561,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
-        orfeo_memory = sar_backscatter_arguments.options.get("otb_memory", 512)
+        orfeo_memory = sar_backscatter_arguments.options.get("otb_memory", 256)
 
         # Geoid for orthorectification: get from options, fallback on config.
         elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid

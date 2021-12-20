@@ -58,10 +58,15 @@ export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
-# TODO: something wrong with this logic, when the file is missing, backend_assembly is not passed to spark-submit
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
-if [ ! -f ${backend_assembly} ]; then
+if [ -z "${backend_assembly}" ]; then
    backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.7-openeo.jar
+fi
+logging_jar=$(ls openeo-logging-*.jar) || true
+
+files="layercatalog.json,${processGraphFile}"
+if [ -n "${logging_jar}" ]; then
+  files="${files},${logging_jar}"
 fi
 
 main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_job.py'
@@ -120,7 +125,9 @@ spark-submit \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
- --files layercatalog.json,"${processGraphFile}" \
+ --conf spark.driver.extraClassPath=${logging_jar:-} \
+ --conf spark.executor.extraClassPath=${logging_jar:-} \
+ --files "${files}" \
  --py-files "${pyfiles}" \
  --archives "${OPENEO_VENV_ZIP}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
