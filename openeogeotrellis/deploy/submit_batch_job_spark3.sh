@@ -64,9 +64,12 @@ if [ -z "${backend_assembly}" ]; then
 fi
 logging_jar=$(ls openeo-logging-*.jar) || true
 
-files="layercatalog.json,${processGraphFile},client.conf"
+files="layercatalog.json,${processGraphFile}"
 if [ -n "${logging_jar}" ]; then
   files="${files},${logging_jar}"
+fi
+if [ -n "client.conf" ]; then
+  files="${files},client.conf"
 fi
 
 echo "Downloading ${OPENEO_VENV_ZIP}"
