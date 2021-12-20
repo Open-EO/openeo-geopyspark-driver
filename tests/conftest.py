@@ -1,6 +1,8 @@
 import os
 import sys
+import warnings
 from pathlib import Path
+from importlib.util import find_spec
 
 import flask
 import pytest
@@ -21,8 +23,26 @@ def pytest_configure(config):
     """Pytest configuration hook"""
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
+    _ensure_spark_home()
+    _ensure_jep()
     _ensure_geopyspark(terminal_reporter)
     _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
+
+
+def _ensure_spark_home():
+    if "SPARK_HOME" not in os.environ:
+        import pyspark.find_spark_home
+        spark_home = pyspark.find_spark_home._find_spark_home()
+        warnings.warn("Env var SPARK_HOME was not set, setting it to {h!r}".format(h=spark_home))
+        os.environ["SPARK_HOME"] = spark_home
+
+
+def _ensure_jep():
+    if "LD_LIBRARY_PATH" not in os.environ:
+        try:
+            os.environ["LD_LIBRARY_PATH"] = os.path.dirname(find_spec("jep").origin)
+        except ImportError:
+            pass
 
 
 def _ensure_geopyspark(out: TerminalReporter):
