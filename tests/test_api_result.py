@@ -1130,7 +1130,7 @@ def test_extra_validation_creo(api100, requests_mock):
 
     response = api100.validation(pg)
     assert response.json == {'errors': [
-        {'code': 'MissingProduct', 'message': "Tile '16WDA' in collection 'SENTINEL2_L2A_CREO' is not available."}
+        {'code': 'MissingProduct', 'message': "Tile 'S2A_MSIL2A_20200301T173231_N0214_R055_T16WDA_20200301T220803' in collection 'SENTINEL2_L2A_CREO' is not available."}
     ]}
 
 
