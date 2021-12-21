@@ -22,6 +22,7 @@ tests_require = [
     'scipy>=1.3.0',
     'requests-mock>=1.8.0',
     'openeo_udf>=1.0.0rc3',
+    'gdal==3.1.4; python_version>="3.8"',
 ]
 
 setup(
@@ -41,7 +42,6 @@ setup(
         'openeo_driver>=0.14.9.dev',
         'pyspark==3.2.0; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
-        'gdal==3.1.2; python_version>="3.8"',
         'geopyspark==0.4.7+openeo',
         'py4j',
         'numpy>=1.17.0,<1.19.0',
