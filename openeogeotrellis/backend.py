@@ -654,7 +654,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     if check_missing_products["method"] == "creo":
                         creo_catalog = CreoCatalogClient(**check_missing_products["creo_catalog"])
                         for p in creo_catalog.query_offline(**query_kwargs):
-                            yield missing_product(tile_id=p.getTileId())
+                            yield missing_product(tile_id=p.getProductId())
                     elif check_missing_products["method"] == "terrascope":
                         creo_catalog = CreoCatalogClient(**check_missing_products["creo_catalog"])
                         expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
