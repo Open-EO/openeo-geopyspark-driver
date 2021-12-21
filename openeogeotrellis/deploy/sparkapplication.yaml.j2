@@ -11,7 +11,7 @@ spec:
   image: {{ image_name }}
   imagePullPolicy: Always
   timeToLiveSeconds: 604800
-  mainApplicationFile: local:///usr/local/lib/python3.7/dist-packages/openeogeotrellis/deploy/batch_job.py
+  mainApplicationFile: local:///opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/kube.py
   arguments:
     - "{{ job_specification }}"
     - "{{ output_dir }}"
