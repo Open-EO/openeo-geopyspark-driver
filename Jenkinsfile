@@ -23,5 +23,5 @@ pythonPipeline {
   extras_require = 'dev'
   upload_dev_wheels = false
   pep440 = true
-  venv_rpm_deps = ['gcc', 'gdal', 'gdal-devel']
+  venv_rpm_deps = ['gcc-c++', 'gdal', 'gdal-devel']
 }
