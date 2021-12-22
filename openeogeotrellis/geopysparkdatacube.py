@@ -535,12 +535,13 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def chunk_polygon(
-            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: Union[List[Polygon], List[MultiPolygon]],
+            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: MultiPolygon,
             env: EvalEnv, context: dict = None,
     ) -> 'GeopysparkDataCube':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+        chunks: List[Polygon] = chunks.geoms
         jvm = self._get_jvm()
 
         result_collection = None
