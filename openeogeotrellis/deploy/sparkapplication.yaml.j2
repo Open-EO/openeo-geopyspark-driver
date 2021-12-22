@@ -27,7 +27,7 @@ spec:
     "spark.speculation": "true"
     "spark.speculation.interval": "5000ms"
     "spark.speculation.multiplier": "4"
-  sparkVersion: "2.4.5"
+  sparkVersion: "3.2.0"
   restartPolicy:
     type: OnFailure
     onFailureRetries: 0
@@ -62,7 +62,7 @@ spec:
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
     memory: "{{ driver_memory }}"
     labels:
-      version: 2.4.5
+      version: 3.2.0
       name: {{ job_id }}-driver
     serviceAccount: openeo
     volumeMounts:
@@ -95,14 +95,14 @@ spec:
     memoryOverhead: "{{ executor_memory_overhead }}"
     javaOptions: "-Dlog4j.configuration=/opt/log4j.properties -Dscala.concurrent.context.numThreads=4 -Dscala.concurrent.context.maxThreads=4 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
     labels:
-      version: 2.4.5
+      version: 3.2.0
     volumeMounts:
       - name: "eodata"
         mountPath: "/eodata"
   deps:
     jars:
-      - 'local:///opt/geotrellis-extensions-2.2.0-SNAPSHOT.jar'
-      - 'local:///opt/geotrellis-backend-assembly-0.4.7-openeo.jar'
+      - 'local:///opt/geotrellis-extensions-2.3.0_2.12-SNAPSHOT.jar'
+      - 'local:///opt/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar'
     files:
       - 'local:///opt/layercatalog.json'
   monitoring:
