@@ -131,6 +131,12 @@ class GeopysparkDataCube(DriverDataCube):
         pyramid = Pyramid({k: func(l) for k, l in self.pyramid.levels.items()})
         return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
 
+    @staticmethod
+    def _convert_celltype(layer: TiledRasterLayer, cell_type: CellType):
+        tiled_raster_layer = TiledRasterLayer(layer.layer_type, layer.srdd.convertDataType(cell_type))
+        tiled_raster_layer = GeopysparkDataCube._transform_metadata(tiled_raster_layer, cellType=cell_type)
+        return tiled_raster_layer
+
     def _create_tilelayer(self,contextrdd, layer_type, zoom_level):
         jvm = self._get_jvm()
         spatial_tiled_raster_layer = jvm.geopyspark.geotrellis.SpatialTiledRasterLayer
@@ -285,17 +291,24 @@ class GeopysparkDataCube(DriverDataCube):
             result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
-    def _apply_bands_dimension(self,pgVisitor):
-        pysc = gps.get_spark_context()
+    def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
+        """
+        Apply a process graph to every tile, with tile.bands (List[Tile]) as process input.
+        """
+        # All processing is done with float32 as cell type.
         float_datacube = self.apply_to_levels(lambda layer: layer.convert_data_type("float32"))
-        result = float_datacube._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder))
+
+        # Apply process to every tile, with tile.bands (List[Tile]) as process input.
+        # This is done for the entire pyramid.
+        pysc = gps.get_spark_context()
+        result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level:
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder)
+        )
+
+        # Convert/Restrict cell type after processing.
         target_cell_type = pgVisitor.builder.getOutputCellType().name()
-        result = result.apply_to_levels(
-            lambda layer: GeopysparkDataCube._transform_metadata(TiledRasterLayer(layer.layer_type,
-                             layer.srdd.convertDataType(target_cell_type)),
-                                                                 cellType=target_cell_type))
-        return result
+        return result_cube.apply_to_levels(lambda layer: self._convert_celltype(layer, target_cell_type))
 
     def _normalize_temporal_reducer(self, dimension: str, reducer: str) -> str:
         if dimension != self.metadata.temporal_dimension.name:
@@ -382,37 +395,59 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
     @classmethod
-    def _tile_to_datacube(
-            cls, bands_numpy: np.ndarray, extent: SpatialExtent,
-            band_dimension: openeo.metadata.BandDimension, start_times=None
+    def _numpy_to_xarraydatacube(
+            cls,
+            bands_numpy: np.ndarray, extent: SpatialExtent,
+            band_coordinates: List[str],
+            time_coordinates: pd.DatetimeIndex = None
     ) -> XarrayDataCube:
+        """
+        Converts a numpy array representing a tile to an XarrayDataCube by adding coordinates and dimension labels.
+
+        :param bands_numpy:
+            The numpy array with shape = (a,b,c,d).
+            With,
+                a: time     (#dates) (if exists)
+                b: bands    (#bands) (if exists)
+                c: y-axis   (#cells)
+                d: x-axis   (#cells)
+            E.g. (5,2,256,256) has tiles of 256x256 cells, each with 2 bands for 5 given dates.
+        :param extent:
+            The SpatialExtent of the tile in order to calculate the coordinates for the x and y dimensions.
+            If None then the resulting xarray will have no x,y coordinates.
+            E.g. SpatialExtent(bottom: 140, top: 145, left: 60, right: 65, height: 256, width: 256)
+        :param band_coordinates: A list of band names to act as coordinates for the band dimension (if exists).
+        :param time_coordinates: A list of dates to act as coordinates for the time dimension (if exists).
+        :return: An XarrayDatacube containing the given numpy array with the correct labels and coordinates.
+        """
 
         coords = {}
         dims = ('bands','y', 'x')
-        
+
         # time coordinates if exists
         if len(bands_numpy.shape) == 4:
             #we have a temporal dimension
-            coords = {'t':start_times}
+            coords = {'t':time_coordinates}
             dims = ('t' ,'bands','y', 'x')
-        
-        # band names if exists 
-        if band_dimension:
+
+        # Set the band names as xarray coordinates if exists.
+        if band_coordinates:
             # TODO: also use the band dimension name (`band_dimension.name`) instead of hardcoded "bands"?
-            coords['bands'] = band_dimension.band_names
+            coords['bands'] = band_coordinates
+            # Make sure the numpy array has the right shape.
             band_count = bands_numpy.shape[dims.index('bands')]
-            if band_count != len(band_dimension.band_names):
+            if band_count != len(band_coordinates):
                 raise OpenEOApiException(status_code=400,message=
                 """In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels. 
                 These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct."""
-                                         .format(b=band_count, len_dim = len(band_dimension.band_names), labels=str(band_dimension.band_names)))
-        
-        # X and Y coordinates
-        # this is tricky because if apply_neghborhood is used, then extent is the area without overlap
-        # in addition the coordinates are computed to cell center
+                                         .format(b=band_count, len_dim = len(band_coordinates), labels=str(band_coordinates)))
+
+        # Set the X and Y coordinates.
+        # this is tricky because if apply_neighborhood is used, then extent is the area without overlap
+        # in addition the coordinates are computed to cell center.
         #
         # VERY IMPORTANT NOTE: building x,y coordinates assumes that extent and bands_numpy is compatible
-        # as if it is conatining an image:
+        # as if it is concatenating an image:
         #  * spatial dimension order is [y,x] <- row-column order
         #  * origin is upper left corner
         #
@@ -430,23 +465,25 @@ class GeopysparkDataCube(DriverDataCube):
             coords['x']=np.linspace(xmin+0.5*gridx,xmax-0.5*gridx,bands_numpy.shape[-1],dtype=np.float32)
             coords['y']=np.linspace(ymax-0.5*gridy,ymin+0.5*gridy,bands_numpy.shape[-2],dtype=np.float32)
 
-        # create&wrap the underlying xarray
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
-    def apply_tiles_spatiotemporal(self, function, context={}) -> 'GeopysparkDataCube':
+    def apply_tiles_spatiotemporal(self, function: str, context={}) -> 'GeopysparkDataCube':
         """
-        Apply a function to a group of tiles with the same spatial key.
-        :param function:
-        :return:
+        Group tiles by SpatialKey, then apply a Python function to every group of tiles.
+        :param function: A string containing a Python function that handles groups of tiles, each labeled by date.
+        :return: The original data cube with its tiles transformed by the function.
         """
 
-        #early compile to detect syntax errors
+        # Early compile to detect syntax errors
         compiled_code = compile(function,'UDF.py',mode='exec')
 
-        def tilefunction(metadata:Metadata, openeo_metadata: GeopysparkCubeMetadata, tiles:Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]):
+        def tile_function(metadata:Metadata,
+                          openeo_metadata: GeopysparkCubeMetadata,
+                          tiles: Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]
+            ) -> 'List[Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]]':
             tile_list = list(tiles[1])
-            #sort by instant
+            # Sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
             dates = map(lambda t: t[0].instant, tile_list)
             arrays = map(lambda t: t[1].cells, tile_list)
@@ -454,36 +491,86 @@ class GeopysparkDataCube(DriverDataCube):
 
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
 
-            datacube: XarrayDataCube = GeopysparkDataCube._tile_to_datacube(
+            datacube: XarrayDataCube = GeopysparkDataCube._numpy_to_xarraydatacube(
                 multidim_array,
                 extent=extent,
-                band_dimension=openeo_metadata.band_dimension if openeo_metadata.has_band_dimension() else None,
-                start_times=pd.DatetimeIndex(dates)
+                band_coordinates=openeo_metadata.band_dimension.band_names if openeo_metadata.has_band_dimension() else None,
+                time_coordinates=pd.DatetimeIndex(dates)
             )
 
             data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
             result_data = run_udf_code(code=function, data=data)
             cubes = result_data.get_datacube_list()
-            if len(cubes)!=1:
-                raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
-            result_array:xr.DataArray = cubes[0].array
+            if len(cubes) != 1:
+                raise ValueError("The provided UDF should return one datacube, but got: " + str(cubes))
+            result_array: xr.DataArray = cubes[0].array
             if 't' in result_array.dims:
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=pd.Timestamp(timestamp)),
-                  Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value)) for timestamp, array_slice in result_array.groupby('t')]
+                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
+                         Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
+                        for timestamp, array_slice in result_array.groupby('t')]
             else:
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row,instant=datetime.now()),
-                  Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
+                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.now()),
+                         Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
-        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
-            floatrdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
-            spatially_grouped = floatrdd.map(lambda t: (gps.SpatialKey(t[0].col, t[0].row), (t[0], t[1]))).groupByKey()
+        def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
+            float_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
+
+            def to_spatial_key(tile: Tuple[SpaceTimeKey, Tile]):
+                key: SpatialKey = gps.SpatialKey(tile[0].col, tile[0].row)
+                value: Tuple[SpaceTimeKey, Tile] = (tile[0], tile[1])
+                return (key, value)
+
+            # Group all tiles by SpatialKey. Save the SpaceTimeKey in the value with the Tile.
+            spatially_grouped = float_rdd.map(lambda tile: to_spatial_key(tile)).groupByKey()
+
+            # Apply the tile_function to all tiles with the same spatial key.
             numpy_rdd = spatially_grouped.flatMap(
-                log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata))
+                log_memory(partial(tile_function, rdd.layer_metadata, openeo_metadata))
             )
+
+            # Convert the result back to a TiledRasterLayer.
             metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
         return self.apply_to_levels(partial(rdd_function, self.metadata))
+
+    def chunk_polygon(
+            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: MultiPolygon,
+            env: EvalEnv, context: dict = None,
+    ) -> 'GeopysparkDataCube':
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        if isinstance(reducer, dict):
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+        chunks: List[Polygon] = chunks.geoms
+        jvm = self._get_jvm()
+
+        result_collection = None
+        if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
+            from openeo_driver.ProcessGraphDeserializer import convert_node
+            udf = reducer.udf_args.get('udf', None)
+            context: dict = reducer.udf_args.get('context', {})
+            context: dict = convert_node(context, env=env) # Resolve "from_parameter" references in context object
+            if not isinstance(udf, str):
+                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            # Polygons should use the same projection as the rdd.
+            reprojected_polygons: jvm.org.openeo.geotrellis.ProjectedPolygons \
+                = to_projected_polygons(jvm, GeometryCollection(chunks))
+            band_names = self.metadata.band_dimension.band_names
+
+            def rdd_function(rdd, _zoom):
+                return jvm.org.openeo.geotrellis.udf.Udf.runChunkPolygonUserCode(
+                    udf, rdd, reprojected_polygons, band_names, context
+                )
+
+            # All JEP implementation work with the float datatype.
+            float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
+            result_collection = float_cube._apply_to_levels_geotrellis_rdd(
+                rdd_function, self.metadata, gps.LayerType.SPACETIME
+            )
+        else:
+            # Use OpenEOProcessScriptBuilder.
+            raise NotImplementedError()
+        return result_collection
 
     def reduce_dimension(
             self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
@@ -529,49 +616,72 @@ class GeopysparkDataCube(DriverDataCube):
     def apply_tiles(self, function, context={}, runtime="python") -> 'GeopysparkDataCube':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
-
-        def tilefunction(metadata: Metadata, openeo_metadata: GeopysparkCubeMetadata,
-                         geotrellis_tile: Tuple[SpaceTimeKey, Tile]):
-
-            key = geotrellis_tile[0]
-            extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, key)
-
-            datacube: XarrayDataCube = GeopysparkDataCube._tile_to_datacube(
-                geotrellis_tile[1].cells,
-                extent=extent,
-                band_dimension=openeo_metadata.band_dimension
-            )
-
-            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
-            result_data = run_udf_code(code=function, data=data)
-            cubes = result_data.get_datacube_list()
-            if len(cubes)!=1:
-                raise ValueError("The provided UDF should return one datacube, but got: "+ str(cubes))
-            result_array:xr.DataArray = cubes[0].array
-            _log.info(f"apply_tiles tilefunction result dims: {result_array.dims}")
-            return (key,Tile(result_array.values, geotrellis_tile[1].cell_type,geotrellis_tile[1].no_data_value))
-
         if runtime == 'Python-Jep':
-            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
-                band_names = openeo_metadata.band_dimension.band_names
+            band_names = self.metadata.band_dimension.band_names
+
+            def rdd_function(rdd, _zoom):
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
-                result_layer = udf.runUserCode(function, rdd.srdd.rdd(), band_names, context)
+                return udf.runUserCode(function, rdd, band_names, context)
 
-                temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-                option = jvm.scala.Option
-                return gps.TiledRasterLayer(
-                        gps.LayerType.SPACETIME,
-                        temporal_tiled_raster_layer(option.apply(rdd.zoom_level), result_layer)
-                    )
+            # All JEP implementation work with the float datatype.
+            float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
+            return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPATIAL)
         else:
-            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd):
-                numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd().map(
-                    log_memory(partial(tilefunction, rdd.layer_metadata, openeo_metadata)),preservesPartitioning=True
+            def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer):
+                """
+                Apply a user defined function to every tile in a TiledRasterLayer
+                and return the transformed TiledRasterLayer.
+                """
+                def tile_function(metadata: Metadata,
+                                  openeo_metadata: GeopysparkCubeMetadata,
+                                  geotrellis_tile: Tuple[SpaceTimeKey, Tile]
+                                  ) -> 'Tuple[SpaceTimeKey, Tile]':
+                    """
+                    Apply a user defined function to a geopyspark.geotrellis.Tile and return the transformed tile.
+                    """
+
+                    # Setup the UDF input data.
+                    key = geotrellis_tile[0]
+                    extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, key)
+                    datacube: XarrayDataCube = GeopysparkDataCube._numpy_to_xarraydatacube(
+                        geotrellis_tile[1].cells,
+                        extent=extent,
+                        band_coordinates=openeo_metadata.band_dimension.band_names
+                    )
+                    data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
+
+                    # Run UDF.
+                    result_data = run_udf_code(code=function, data=data)
+
+                    # Handle the resulting xarray datacube.
+                    cubes: List[XarrayDataCube] = result_data.get_datacube_list()
+                    if len(cubes) != 1:
+                        raise ValueError("The provided UDF should return one datacube, but got: " + str(cubes))
+                    result_array: xr.DataArray = cubes[0].array
+                    _log.info(f"apply_tiles tilefunction result dims: {result_array.dims}")
+                    result_tile = Tile(result_array.values,
+                                       geotrellis_tile[1].cell_type,
+                                       geotrellis_tile[1].no_data_value)
+                    return (key, result_tile)
+
+                # Convert TiledRasterLayer to PySpark RDD to access the Scala RDD cell values in Python.
+                numpy_rdd = rdd.convert_data_type(CellType.FLOAT32).to_numpy_rdd()
+
+                # Apply the UDF to every tile in the RDD.
+                # Note rdd_metadata variable:
+                # if rdd.layer_metadata is passed directly in lambda function it will try to serialize the entire rdd!
+                rdd_metadata = rdd.layer_metadata
+                numpy_rdd = numpy_rdd.map(
+                    log_memory(partial(tile_function, rdd_metadata, openeo_metadata)),
+                    preservesPartitioning=True
                 )
+
+                # Return the result back as a TiledRasterLayer.
                 metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
                 return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
 
+        # Apply the UDF to every tile for every zoom level of the pyramid.
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
@@ -634,7 +744,7 @@ class GeopysparkDataCube(DriverDataCube):
 
 
     @classmethod
-    def _transform_metadata(cls,layer_or_metadata, cellType = None):
+    def _transform_metadata(cls, layer_or_metadata, cellType = None):
         layer = None
         if hasattr(layer_or_metadata,'layer_metadata'):
             layer=layer_or_metadata

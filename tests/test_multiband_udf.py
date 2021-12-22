@@ -53,10 +53,10 @@ class TestMultiBandUDF(TestCase):
                  'type': 'int16', 'unit': '1'}
             ]
             }})
-        datacube = GeopysparkDataCube._tile_to_datacube(
+        datacube = GeopysparkDataCube._numpy_to_xarraydatacube(
             TestMultiBandUDF.tile.cells,
             None,
-            band_dimension=metadata.band_dimension
+            band_coordinates=metadata.band_dimension.band_names
         )
         the_array = datacube.get_array()
         assert the_array is not None
@@ -86,10 +86,10 @@ class TestMultiBandUDF(TestCase):
                  'type': 'int16', 'unit': '1'}
             ]
             }})
-        datacube = GeopysparkDataCube._tile_to_datacube(
+        datacube = GeopysparkDataCube._numpy_to_xarraydatacube(
             TestMultiBandUDF.tile.cells,
             SpatialExtent(bottom=100, top=110, left=200, right=220, height=1, width=2),
-            band_dimension=metadata.band_dimension
+            band_coordinates=metadata.band_dimension.band_names
         )
         the_array = datacube.get_array()
         assert the_array is not None
