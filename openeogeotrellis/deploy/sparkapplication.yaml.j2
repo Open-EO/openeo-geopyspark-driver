@@ -56,6 +56,7 @@ spec:
       GDAL_CACHEMAX: "200"
       GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+      PYTHON_PATH: "$PYTHONPATH:/opt/openeo/lib64/python3.8/site-packages"
       VSI_CACHE: "TRUE"
     cores: {{ driver_cores }}
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
