@@ -23,6 +23,6 @@ pythonPipeline {
   extras_require = 'dev'
   upload_dev_wheels = false
   pep440 = true
-  venv_rpm_deps = ['gcc-c++', 'gdal', 'gdal-devel']
+  venv_rpm_deps = ['gcc-c++', 'gdal', 'gdal-devel', 'kstart']
   custom_test_image = 'vito-docker.artifactory.vgt.vito.be/centos8-spark-py-openeo:3.2.0'
 }
