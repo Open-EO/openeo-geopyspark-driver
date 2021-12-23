@@ -32,6 +32,8 @@ spec:
     "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
     "spark.dynamicAllocation.enabled": "true"
     "spark.dynamicAllocation.shuffleTracking.enabled": "true"
+    "spark.decommission.enabled": "true"
+    "spark.storage.decommission.shuffleBlocks.enabled": "true"
   sparkVersion: "3.2.0"
   restartPolicy:
     type: OnFailure
