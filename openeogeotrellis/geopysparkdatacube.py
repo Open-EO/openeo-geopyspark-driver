@@ -788,23 +788,28 @@ class GeopysparkDataCube(DriverDataCube):
         #we may need to align datacubes automatically?
         #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
         pysc = gps.get_spark_context()
-        
+
+        leftBandNames = []
+        rightBandNames = []
         if self.metadata.has_band_dimension() != other.metadata.has_band_dimension():
             raise InternalException(message="one cube has band dimension, while the other doesn't: self=%s, other=%s"%(
                 str(self.metadata.has_band_dimension()),
                 str(other.metadata.has_band_dimension())
             ))
+        elif self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
+            leftBandNames = self.metadata.band_names
+            rightBandNames = other.metadata.band_names
 
         if other.pyramid.levels.keys() != self.pyramid.levels.keys():
             raise OpenEOApiException(message="Trying to merge two cubes with different levels, perhaps you had to use 'resample_cube_spatial'? Levels of this cube: " + str(self.pyramid.levels.keys()) +
                                              " are merged with %s" % str(other.pyramid.levels.keys()))
 
         # TODO properly combine bbox and temporal extents in metadata?
-
+        pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
         if self._is_spatial() and other._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level:
-                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeSpatialCubes(
+                pr.mergeSpatialCubes(
                     rdd,
                     other.pyramid.levels[level].srdd.rdd(),
                     overlaps_resolver
@@ -813,7 +818,7 @@ class GeopysparkDataCube(DriverDataCube):
         elif self._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level:
-                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes_SpaceTime_Spatial(
+                pr.mergeCubes_SpaceTime_Spatial(
                     other.pyramid.levels[level].srdd.rdd(),
                     rdd,
                     overlaps_resolver,
@@ -823,7 +828,7 @@ class GeopysparkDataCube(DriverDataCube):
         elif other._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level:
-                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes_SpaceTime_Spatial(
+                pr.mergeCubes_SpaceTime_Spatial(
                     rdd,
                     other.pyramid.levels[level].srdd.rdd(),
                     overlaps_resolver,
@@ -831,13 +836,19 @@ class GeopysparkDataCube(DriverDataCube):
                 )
             )
         else:
+            def merge(rdd,other,level):
+                left = pr.wrapCube(rdd)
+                left.openEOMetadata().setBandNames(leftBandNames)
+                right = pr.wrapCube(other.pyramid.levels[level].srdd.rdd())
+                right.openEOMetadata().setBandNames(rightBandNames)
+                return pr.mergeCubes(
+                    left,
+                    right,
+                    overlaps_resolver
+                )
+
             merged_data=self._apply_to_levels_geotrellis_rdd(
-                lambda rdd, level:
-                    pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mergeCubes(
-                        rdd,
-                        other.pyramid.levels[level].srdd.rdd(),
-                        overlaps_resolver
-                    )
+                lambda rdd, level:merge(rdd,other,level)
             )
 
         if self.metadata.has_band_dimension() and other.metadata.has_band_dimension():

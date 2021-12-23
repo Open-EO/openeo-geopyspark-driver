@@ -12,6 +12,8 @@ if "SPARK_HOME" not in os.environ:
 
 if "LD_LIBRARY_PATH" not in os.environ:
     try:
-        os.environ["LD_LIBRARY_PATH"] = os.path.dirname(find_spec("jep").origin)
+        spec = find_spec("jep")
+        if spec is not None:
+            os.environ["LD_LIBRARY_PATH"] = os.path.dirname(spec.origin)
     except ImportError:
         pass
