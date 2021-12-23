@@ -27,6 +27,9 @@ spec:
     "spark.speculation": "true"
     "spark.speculation.interval": "5000ms"
     "spark.speculation.multiplier": "4"
+    "spark.kryoserializer.buffer.max": "1g"
+    "spark.kryo.classesToRegister": "org.openeo.geotrellis.layers.BandCompositeRasterSource,geotrellis.raster.RasterRegion,geotrellis.raster.geotiff.GeoTiffResampleRasterSource,geotrellis.raster.RasterSource,geotrellis.raster.SourceName,geotrellis.raster.geotiff.GeoTiffPath"
+    "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
     "spark.dynamicAllocation.enabled": "true"
     "spark.dynamicAllocation.shuffleTracking.enabled": "true"
   sparkVersion: "3.2.0"
@@ -92,6 +95,7 @@ spec:
       PYTHON_MAX_MEMORY: "{{ python_max_memory }}"
       PYTHONPATH: "$PYTHONPATH:/opt/openeo/lib64/python3.8/site-packages"
       VSI_CACHE: "TRUE"
+      CPL_DEBUG: "ON"
     cores: {{ executor_cores }}
     instances: {{ max_executors }}
     memory: "{{ executor_memory }}"
