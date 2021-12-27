@@ -21,8 +21,7 @@ tests_require = [
     'schema',
     'scipy>=1.3.0',
     'requests-mock>=1.8.0',
-    'openeo_udf>=1.0.0rc3',
-    'gdal==3.1.4; python_version>="3.8"',
+    'openeo_udf>=1.0.0rc3'
 ]
 
 setup(
