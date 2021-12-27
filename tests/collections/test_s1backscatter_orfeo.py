@@ -76,7 +76,7 @@ def test_run_orfeo(tmp_path):
         extent={}, extent_epsg=32631,
         dem_dir=None,
         extent_width_px=100, extent_height_px=100,
-        sar_calibration_lut="gamma0",
+        sar_calibration_lut="gamma",
         noise_removal=True,
         elev_geoid=None, elev_default=0,
         log_prefix="test",
