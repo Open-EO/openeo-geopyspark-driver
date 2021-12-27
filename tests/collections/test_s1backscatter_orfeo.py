@@ -13,7 +13,7 @@ from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo, _import_orfeo_toolbox, \
-    _instant_ms_to_day
+    _instant_ms_to_day, S1BackscatterOrfeoV2
 from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
 
 
@@ -56,6 +56,33 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expe
     with rasterio.open(filename) as ds:
         assert ds.read().shape == expected_shape
 
+def test_run_orfeo(tmp_path):
+    input = Path("/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2021/05/17/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.zip")
+
+    import zipfile
+    import os
+
+    target_location = r's1_grd'
+
+    with zipfile.ZipFile(input) as zip_file:
+        for member in zip_file.namelist():
+            if os.path.exists(target_location + r'/' + member) or os.path.isfile(target_location + r'/' + member):
+                print('Error: ', member, ' exists.')
+            else:
+                zip_file.extract(member, target_location)
+
+    extent = {'xmin':506986, 'ymin':5672070, 'xmax':534857, 'ymax':5683305 }
+    data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
+        input_tiff=Path("s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"),
+        extent=extent, extent_epsg=32631,
+        dem_dir=None,
+        extent_width_px=100, extent_height_px=100,
+        sar_calibration_lut="gamma",
+        noise_removal=True,
+        elev_geoid=None, elev_default=0,
+        log_prefix="test",
+        orfeo_memory=512
+    )
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg"], [
     ((3.1, 51.2, 3.5, 51.3), 4326),
