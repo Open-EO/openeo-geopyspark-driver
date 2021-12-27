@@ -25,4 +25,7 @@ pythonPipeline {
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'gdal', 'gdal-devel', 'kstart']
   custom_test_image = 'vito-docker.artifactory.vgt.vito.be/centos8-spark-py-openeo:3.2.0'
+  extra_container_volumes = [
+    '/data/MTDA:/data/MTDA:ro'
+  ]
 }
