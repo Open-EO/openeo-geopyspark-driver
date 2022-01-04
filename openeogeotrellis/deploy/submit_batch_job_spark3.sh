@@ -74,7 +74,7 @@ fi
 
 openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
 
-if [ -f "${openeo_zip}" ]; then
+if [ ! -f "${openeo_zip}" ]; then
   echo "Downloading ${OPENEO_VENV_ZIP}"
   curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
 fi
