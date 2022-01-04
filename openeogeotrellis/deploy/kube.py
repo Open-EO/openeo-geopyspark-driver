@@ -7,7 +7,7 @@ import os
 import threading
 from logging.config import dictConfig
 
-from openeo_driver.server import run_gunicorn
+from openeo_driver.server import run_gunicorn, build_backend_deploy_metadata
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.configparams import ConfigParams
@@ -73,6 +73,22 @@ def main():
             Data is read directly from the CreoDIAS data offer through object storage. Processing is limited by the processing
             capacity of the Kubernetes cluster running on DIAS. Contact VITO for experiments with higher resource needs.
         """,
+        OPENEO_BACKEND_DEPLOY_METADATA=build_backend_deploy_metadata(
+            packages=[
+                "openeo",
+                "openeo_driver",
+                "openeo-geopyspark",
+                "openeo_udf",
+                "geopyspark",
+                "cropsar",
+                "nextland_services",
+                "biopar",
+                "cropsar_px",
+            ]
+        ),
+        SIGNED_URL=True,
+        SIGNED_URL_SECRET=os.environ.get("SIGNED_URL_SECRET"),
+        SIGNED_URL_EXPIRATION=int(os.environ.get( "SIGNED_URL_EXPIRATION",str(7 * 24 * 60 * 60)))
     )
 
     host, _ = get_socket()
