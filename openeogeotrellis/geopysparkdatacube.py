@@ -1,4 +1,5 @@
 import collections
+import collections.abc
 import json
 import logging
 import math
@@ -1563,7 +1564,11 @@ class GeopysparkDataCube(DriverDataCube):
     def get_labels(self, geometries):
         if isinstance(geometries,DelayedVector):
             geometries = list(geometries.geometries)
-        return [str(x) for x in range(len(geometries))]
+
+        if isinstance(geometries, collections.abc.Sized):
+            return [str(x) for x in range(len(geometries))]
+        else:
+            return ["0"]
 
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
