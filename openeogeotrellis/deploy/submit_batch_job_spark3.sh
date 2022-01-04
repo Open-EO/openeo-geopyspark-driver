@@ -68,13 +68,16 @@ files="layercatalog.json,${processGraphFile}"
 if [ -n "${logging_jar}" ]; then
   files="${files},${logging_jar}"
 fi
-if [ -n "client.conf" ]; then
+if [ -f "client.conf" ]; then
   files="${files},client.conf"
 fi
 
-echo "Downloading ${OPENEO_VENV_ZIP}"
-curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
 openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
+
+if [ -f "${openeo_zip}" ]; then
+  echo "Downloading ${OPENEO_VENV_ZIP}"
+  curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
+fi
 
 main_py_file='venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
 
