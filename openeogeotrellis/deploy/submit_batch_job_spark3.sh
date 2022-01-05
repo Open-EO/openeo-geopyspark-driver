@@ -93,7 +93,10 @@ sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/bat
 
 image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"}
 
-if PYTHONPATH= ipa -v user-find --login "${proxyUser}"; then
+ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
+ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
+ipa_user_count=$(echo "${ipa_response}" | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["result"]["count"])')
+if [ "${ipa_user_count}" != "0" ]; then
   run_as="--proxy-user ${proxyUser}"
 else
   run_as="--principal ${principal} --keytab ${keyTab}"
