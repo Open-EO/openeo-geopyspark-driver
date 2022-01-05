@@ -884,7 +884,7 @@ class GeopysparkDataCube(DriverDataCube):
         }
         replacement = float(replacement) if replacement is not None else None
         if self._is_spatial() and mask._is_spatial():
-            raise NotImplementedError("Geotrellis backend does not yet support masking datacube without time dimension.")
+            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
         elif mask._is_spatial():
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
         else:
