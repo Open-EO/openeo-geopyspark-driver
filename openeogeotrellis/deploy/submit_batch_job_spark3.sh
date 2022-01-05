@@ -95,6 +95,7 @@ image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker-private.artifactory.vg
 
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
+echo "${ipa_response}"
 ipa_user_count=$(echo "${ipa_response}" | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["result"]["count"])')
 if [ "${ipa_user_count}" != "0" ]; then
   run_as="--proxy-user ${proxyUser}"
