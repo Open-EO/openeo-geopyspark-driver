@@ -1444,7 +1444,8 @@ class GpsBatchJobs(backend.BatchJobs):
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             try:
                 kill_spark_job = subprocess.run(
-                    ["yarn", "application", "-kill", application_id],
+                    ["curl", "--negotiate", "-u", ":", "--insecure", "-X", "PUT", "-d", '{"state": "KILLED"}',
+                     f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}"],
                     timeout=20,
                     check=True,
                     universal_newlines=True,
