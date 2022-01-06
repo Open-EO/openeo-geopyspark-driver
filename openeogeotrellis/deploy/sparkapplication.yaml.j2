@@ -99,6 +99,7 @@ spec:
       VSI_CACHE: "TRUE"
       CPL_DEBUG: "ON"
     cores: {{ executor_cores }}
+    coreRequest: {{ executor_corerequest }}
     instances: {{ max_executors }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"

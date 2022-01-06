@@ -903,6 +903,9 @@ class GpsBatchJobs(backend.BatchJobs):
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "3G")
             driver_cores =extra_options.get("driver-cores", "5")
             executor_cores =extra_options.get("executor-cores", "2")
+            executor_corerequest = extra_options.get("executor-request-cores", "NONE")
+            if executor_corerequest == "NONE":
+                executor_corerequest = str(int(executor_cores)/2*1000)+"m"
             max_executors = extra_options.get("max-executors", "200")
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
@@ -974,6 +977,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     driver_cores=driver_cores,
                     driver_memory=driver_memory,
                     executor_cores=executor_cores,
+                    executor_corerequest=executor_corerequest,
                     executor_memory=executor_memory,
                     executor_memory_overhead=executor_memory_overhead,
                     python_max_memory = python_max,
