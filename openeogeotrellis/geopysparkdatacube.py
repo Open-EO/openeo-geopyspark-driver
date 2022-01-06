@@ -1229,7 +1229,10 @@ class GeopysparkDataCube(DriverDataCube):
                 with open(temp_file.name, encoding='utf-8') as f:
                     timeseries = json.load(f)
         else:
-            raise ValueError(func)
+            raise OpenEOApiException(
+                message=f"Reducer {func} is not supported in aggregate_spatial",
+                code="ReducerUnsupported", status_code=400
+            )
 
         return AggregatePolygonResult(
             timeseries=timeseries,
