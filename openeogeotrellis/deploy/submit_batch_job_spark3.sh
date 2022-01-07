@@ -132,6 +132,7 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
  --conf spark.executorEnv.LD_LIBRARY_PATH=venv/lib64:venv/lib64/python3.8/site-packages/jep \
+ --conf spark.executorEnv.PATH=venv/bin:$PATH \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=venv/lib64 \
  --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
