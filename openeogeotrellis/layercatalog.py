@@ -171,12 +171,21 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
-        def metadata_properties() -> Dict[str, object]:
+        def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
 
-            return {property_name: filter_properties.extract_literal_match(condition)
-                    for property_name, condition in {**layer_properties, **custom_properties}.items()}
+            all_properties = {property_name: filter_properties.extract_literal_match(condition)
+                        for property_name, condition in {**layer_properties, **custom_properties}.items()}
+
+            def eq_value(criterion: Dict[str, object]) -> object:
+                if len(criterion) != 1:
+                    raise ValueError(f'expected a single "eq" criterion, was {criterion}')
+
+                return criterion['eq']
+
+            return ({property_name: eq_value(criterion) for property_name, criterion in all_properties.items()}
+                    if flatten_eqs else all_properties)
 
         def accumulo_pyramid():
             pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
@@ -379,12 +388,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     cell_size
                 )
 
+                unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
+
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
                                                  projected_polygons_native_crs.crs(), from_date, to_date,
-                                                 shub_band_names, metadata_properties(), datacubeParams) if single_level
+                                                 shub_band_names, unflattened_metadata_properties,
+                                                 datacubeParams) if single_level
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
-                                                     metadata_properties()))
+                                                     unflattened_metadata_properties))
 
         def creo_pyramid():
             mission = layer_source_info['mission']
