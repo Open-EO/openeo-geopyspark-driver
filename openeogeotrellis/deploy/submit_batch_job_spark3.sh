@@ -89,7 +89,7 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
 
 sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
- -Dscala.concurrent.context.numThreads=6"
+ -Dscala.concurrent.context.numThreads=6 -Djava.library.path=venv/lib/python3.8/site-packages/jep"
 
 image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"}
 
