@@ -1405,14 +1405,22 @@ class GeopysparkDataCube(DriverDataCube):
                                              for timestamped_path in timestamped_paths]
 
                         for path, timestamp in timestamped_paths:
-                            assets[path.name] = {
-                                "href": str(path),
-                                "type": "image/tiff; application=geotiff",
-                                "roles": ["data"],
-                                'bands': bands,
-                                'nodata': nodata,
-                                'datetime': timestamp
-                            }
+                            if path.name.endswith("_item.json"):
+                                assets[path.name] = {
+                                    "href": str(path),
+                                    "title": "STAC item",
+                                    "type": "application/json",
+                                    "roles": ["metadata"]
+                                }
+                            else:
+                                assets[path.name] = {
+                                    "href": str(path),
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"],
+                                    'bands': bands,
+                                    'nodata': nodata,
+                                    'datetime': timestamp
+                                }
                         return assets
 
                     else:
