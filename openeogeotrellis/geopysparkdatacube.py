@@ -536,7 +536,7 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def chunk_polygon(
-            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: MultiPolygon,
+            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: MultiPolygon, mask_value: float,
             env: EvalEnv, context: dict = None,
     ) -> 'GeopysparkDataCube':
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
@@ -560,10 +560,10 @@ class GeopysparkDataCube(DriverDataCube):
 
             def rdd_function(rdd, _zoom):
                 return jvm.org.openeo.geotrellis.udf.Udf.runChunkPolygonUserCode(
-                    udf, rdd, reprojected_polygons, band_names, context
+                    udf, rdd, reprojected_polygons, band_names, context, mask_value
                 )
 
-            # All JEP implementation work with the float datatype.
+            # All JEP implementation work with float cell types.
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             result_collection = float_cube._apply_to_levels_geotrellis_rdd(
                 rdd_function, self.metadata, gps.LayerType.SPACETIME

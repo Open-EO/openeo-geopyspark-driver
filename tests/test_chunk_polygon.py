@@ -38,7 +38,7 @@ def test_chunk_polygon(imagecollection_with_two_bands_and_three_dates):
     polygon1 = Extent(0.0, 0.0, 4.0, 4.0).to_polygon
     chunks = MultiPolygon([polygon1])
     cube: GeopysparkDataCube = imagecollection_with_two_bands_and_three_dates
-    result_cube: GeopysparkDataCube = cube.chunk_polygon(udf_add_to_bands, chunks=chunks, env=env)
+    result_cube: GeopysparkDataCube = cube.chunk_polygon(udf_add_to_bands, chunks=chunks, mask_value=None, env=env)
     result_layer: TiledRasterLayer = result_cube.pyramid.levels[0]
 
     assert result_layer.layer_type == LayerType.SPACETIME
