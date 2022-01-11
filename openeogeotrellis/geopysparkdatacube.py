@@ -1287,6 +1287,7 @@ class GeopysparkDataCube(DriverDataCube):
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
         filename = str(filename)
+        s3_filename = "s3://OpenEO-data{}".format(filename)
         format = format.upper()
         format_options = format_options or {}
         _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))
@@ -1324,6 +1325,8 @@ class GeopysparkDataCube(DriverDataCube):
         overviews = format_options.get("overviews", "OFF")
         colormap = format_options.get("colormap", None)
 
+        save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy else filename
+
         if format in ["GTIFF", "PNG"]:
             if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
                 max_level = max_level.to_spatial_layer()
@@ -1336,11 +1339,11 @@ class GeopysparkDataCube(DriverDataCube):
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
-                        filenames = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds, zlevel=zlevel)
+                        filenames = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds, zlevel=zlevel)
                         return {str(pathlib.Path(filename).name): {"href": filename} for filename in filenames}
                     else:
                         _log.info("save_result save_stitched")
-                        self._save_stitched(max_level, filename, crop_bounds, zlevel=zlevel)
+                        self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -1384,7 +1387,7 @@ class GeopysparkDataCube(DriverDataCube):
                         if tile_grid:
                             timestamped_paths = (self._get_jvm()
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level.srdd.rdd(), filename, tile_grid, compression))
+                                max_level.srdd.rdd(), save_filename, tile_grid, compression))
                         elif sample_by_feature:
                             #EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
@@ -1392,10 +1395,10 @@ class GeopysparkDataCube(DriverDataCube):
                             projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
                             labels = self.get_labels(geometries)
                             timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
-                                max_level.srdd.rdd(), filename, projected_polygons, labels, compression)
+                                max_level.srdd.rdd(), save_filename, projected_polygons, labels, compression)
                         else:
                             timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(
-                                max_level.srdd.rdd(), filename, zlevel, self._get_jvm().scala.Option.apply(crop_extent),
+                                max_level.srdd.rdd(), save_filename, zlevel, self._get_jvm().scala.Option.apply(crop_extent),
                                 gtiff_options)
 
                         assets = {}
@@ -1450,9 +1453,9 @@ class GeopysparkDataCube(DriverDataCube):
                     filename = filename + ".png"
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
-                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), filename, crop_extent)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, crop_extent)
                 else:
-                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), filename)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename)
                 return {
                     str(pathlib.Path(filename).name): {
                         "href": filename,
