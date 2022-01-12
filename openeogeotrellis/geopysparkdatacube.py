@@ -289,7 +289,7 @@ class GeopysparkDataCube(DriverDataCube):
         """
         result = self._apply_bands_dimension(pgVisitor)
         if result.metadata.has_band_dimension():
-            result.metadata.reduce_dimension(result.metadata.band_dimension.name)
+            result.metadata = result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
     def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
