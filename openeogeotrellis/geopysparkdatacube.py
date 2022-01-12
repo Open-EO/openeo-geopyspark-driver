@@ -1380,7 +1380,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                     if batch_mode and max_level.layer_type != gps.LayerType.SPATIAL:
                         directory = pathlib.Path(filename).parent
-                        filename = str(directory)
+                        save_filename = str(directory)
                         compression = self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
 
