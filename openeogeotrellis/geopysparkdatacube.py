@@ -587,7 +587,7 @@ class GeopysparkDataCube(DriverDataCube):
             context = reducer.udf_args.get('context', {})
             result_collection = self._run_udf_dimension(udf, context, dimension, env)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
-            result_collection = self.reduce_bands(reducer)
+            result_collection = self._apply_bands_dimension(reducer)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
             result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
         else:
