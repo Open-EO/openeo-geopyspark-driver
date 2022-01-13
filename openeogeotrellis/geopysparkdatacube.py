@@ -208,7 +208,7 @@ class GeopysparkDataCube(DriverDataCube):
             #apply should leave metadata intact, so can do a simple call?
             # Note: It's not obvious from its name, but `reduce_bands` not only supports reduce operations,
             # also `apply` style local unary mapping operations.
-            return self.reduce_bands(process)
+            return  self._apply_bands_dimension(process)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf = process.udf_args.get('udf', None)
             context = process.udf_args.get('context', {})
@@ -996,7 +996,7 @@ class GeopysparkDataCube(DriverDataCube):
             if temporal_size is None or temporal_size.get('value', None) is None:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
             elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
-                result_collection = self.reduce_bands(process)
+                result_collection = self._apply_bands_dimension(process)
             else:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
         else:
