@@ -513,7 +513,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if (postprocessing_band_graph != None):
             from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
             visitor = GeotrellisTileProcessGraphVisitor()
-            image_collection = image_collection._apply_bands_dimension(visitor.accept_process_graph(postprocessing_band_graph))
+            image_collection = image_collection.apply_dimension(visitor.accept_process_graph(postprocessing_band_graph),image_collection.metadata.band_dimension.name)
 
         if still_needs_band_filter:
             # TODO: avoid this `still_needs_band_filter` ugliness.
