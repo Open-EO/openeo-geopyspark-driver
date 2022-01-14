@@ -100,7 +100,7 @@ spec:
       GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
       PYTHON_MAX_MEMORY: "{{ python_max_memory }}"
-      PYTHONPATH: "$PYTHONPATH:/opt/openeo/lib64/python3.8/site-packages"
+      PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib64/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
       CPL_DEBUG: "ON"
     cores: {{ executor_cores }}
