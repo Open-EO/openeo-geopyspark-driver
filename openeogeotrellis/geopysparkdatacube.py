@@ -792,14 +792,16 @@ class GeopysparkDataCube(DriverDataCube):
 
         leftBandNames = []
         rightBandNames = []
-        if self.metadata.has_band_dimension() != other.metadata.has_band_dimension():
-            raise InternalException(message="one cube has band dimension, while the other doesn't: self=%s, other=%s"%(
-                str(self.metadata.has_band_dimension()),
-                str(other.metadata.has_band_dimension())
-            ))
-        elif self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
+        if self.metadata.has_band_dimension():
             leftBandNames = self.metadata.band_names
+        else:
+            leftBandNames = [ "left_band_unnamed"]
+
+        if other.metadata.has_band_dimension():
             rightBandNames = other.metadata.band_names
+        else:
+            rightBandNames = [ "right_band_unnamed"]
+
 
         if other.pyramid.levels.keys() != self.pyramid.levels.keys():
             raise OpenEOApiException(message="Trying to merge two cubes with different levels, perhaps you had to use 'resample_cube_spatial'? Levels of this cube: " + str(self.pyramid.levels.keys()) +
@@ -1861,24 +1863,7 @@ class GeopysparkDataCube(DriverDataCube):
                 f.write(chunk)
 
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
-        return self._ndvi_v10(**kwargs) if 'target_band' in kwargs else self._ndvi_v04(**kwargs)
-
-    def _ndvi_v04(self, name: str = None) -> 'GeopysparkDataCube':
-        """0.4-style of ndvi process"""
-        try:
-            red_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'red']
-            nir_index, = [i for i, b in enumerate(self.metadata.bands) if b.common_name == 'nir']
-        except ValueError:
-            raise ValueError("Failed to detect 'red' and 'nir' bands")
-
-        ndvi_collection = self._ndvi_collection(red_index, nir_index)
-
-        # a single band that defaults to 'ndvi'
-        ndvi_metadata = self.metadata \
-            .reduce_dimension("bands") \
-            .add_dimension(type="bands", name="bands", label=name or 'ndvi')
-
-        return GeopysparkDataCube(pyramid=ndvi_collection.pyramid, metadata=ndvi_metadata)
+        return self._ndvi_v10(**kwargs)
 
     def _ndvi_v10(self, nir: str = None, red: str = None, target_band: str = None) -> 'GeopysparkDataCube':
         """1.0-style of ndvi process"""

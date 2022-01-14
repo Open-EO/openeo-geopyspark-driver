@@ -439,11 +439,15 @@ def test_reduce_bands_arrayelement():
     print(stitched)
     assert 3.0 == stitched.cells[0][0][0]
 
-def test_ndvi():
+@pytest.mark.parametrize("target_band", [None,"ndvi"])
+def test_ndvi(target_band):
     imagecollection = create_red_nir_layer()
 
-    stitched = imagecollection.ndvi().pyramid.levels[0].to_spatial_layer().stitch()
-    cells = stitched.cells[0, 0:4, 0:4]
+    stitched = imagecollection.ndvi(target_band=target_band).pyramid.levels[0].to_spatial_layer().stitch()
+    index = 0
+    if(target_band is not None):
+        index = 2
+    cells = stitched.cells[index, 0:4, 0:4]
     expected = np.array([
         [np.nan, 1 / 1, 2 / 2, 3 / 3],
         [-1 / 1, 0 / 2, 1 / 3, 2 / 4],
@@ -458,7 +462,8 @@ def create_red_nir_layer():
     pyramid = gps.Pyramid({0: layer})
     metadata = GeopysparkCubeMetadata({
         "cube:dimensions": {
-            # TODO: also specify other dimensions?
+            "x": {"type": "spatial", "axis": "x"},
+            "y": {"type": "spatial", "axis": "y"},
             "bands": {"type": "bands", "values": ["B04", "B08"]}
         },
         "summaries": {
