@@ -1914,21 +1914,16 @@ class GeopysparkDataCube(DriverDataCube):
                 message="The NIR band can't be resolved, please specify a band name.",
             )
 
-        ndvi_collection = self._ndvi_collection(red_index, nir_index)
+        ndvi_collection = self._ndvi_collection(red_index, nir_index,append=bool(target_band))
 
         if target_band:  # append a new band named $target_band
-            result_collection = self \
-                .apply_to_levels(lambda layer: layer.convert_data_type("float32")) \
-                .merge(ndvi_collection)
-
             result_metadata = self.metadata.append_band(Band(name=target_band, common_name=target_band, wavelength_um=None))
         else:  # drop all bands
-            result_collection = ndvi_collection
             result_metadata = self.metadata.reduce_dimension("bands")
 
-        return GeopysparkDataCube(pyramid=result_collection.pyramid, metadata=result_metadata)
+        return GeopysparkDataCube(pyramid=ndvi_collection.pyramid, metadata=result_metadata)
 
-    def _ndvi_collection(self, red_index: int, nir_index: int) -> 'GeopysparkDataCube':
+    def _ndvi_collection(self, red_index: int, nir_index: int, append=False) -> 'GeopysparkDataCube':
         reduce_graph = {
             "red": {
                 "process_id": "array_element",
@@ -1958,7 +1953,15 @@ class GeopysparkDataCube(DriverDataCube):
                     "x": {"from_node": "nirminusred"},
                     "y": {"from_node": "nirplusred"},
                 },
-                "result": True,
+                "result": not append,
+            },
+            "array_append": {
+                "process_id": "array_append",
+                "arguments": {
+                    "data": {"from_parameter": "data"},
+                    "value": {"from_node": "ndvi"},
+                },
+                "result": append,
             },
         }
 
