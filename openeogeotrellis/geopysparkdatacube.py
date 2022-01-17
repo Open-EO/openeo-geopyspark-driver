@@ -1243,7 +1243,7 @@ class GeopysparkDataCube(DriverDataCube):
                 func,
                 wrapped,
                 polygons,
-                "timeseriesresult"
+                "/tmp/timeseriesresult"
             )
             raise OpenEOApiException(
                 message=f"Reducer {func} is not supported in aggregate_spatial",
