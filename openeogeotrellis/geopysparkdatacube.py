@@ -1235,16 +1235,16 @@ class GeopysparkDataCube(DriverDataCube):
             bandNames = ["band_unnamed"]
             if self.metadata.has_band_dimension():
                 bandNames = self.metadata.band_names
-            
-            with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
-                wrapped.openEOMetadata().setBandNames(bandNames)
-                self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
-                    func,
-                    wrapped,
-                    polygons,
-                    temp_file.name
-                )
+
+            #with tempfile.gettempdir()NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+            wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
+            wrapped.openEOMetadata().setBandNames(bandNames)
+            self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+                func,
+                wrapped,
+                polygons,
+                "timeseriesresult"
+            )
             raise OpenEOApiException(
                 message=f"Reducer {func} is not supported in aggregate_spatial",
                 code="ReducerUnsupported", status_code=400
