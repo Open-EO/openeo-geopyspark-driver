@@ -1312,25 +1312,36 @@ class GpsBatchJobs(backend.BatchJobs):
                             logger.debug("start_batch_process_cached(subfolder={s}, collecting_folder={c}) returned "
                                          "batch_request_id {b}".format(s=subfolder, c=collecting_folder,
                                                                        b=batch_request_id))
+
+                            batch_request_ids = [batch_request_id]
                         else:
-                            # TODO: handle None result
-                            batch_request_id = batch_processing_service.start_batch_process(
-                                layer_source_info['collection_id'],
-                                layer_source_info['dataset_id'],
-                                geometry,
-                                crs,
-                                from_date,
-                                to_date,
-                                shub_band_names,
-                                sample_type,
-                                metadata_properties(),
-                                (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
-                                 else {})
-                            )
+                            try:
+                                batch_request_id = batch_processing_service.start_batch_process(
+                                    layer_source_info['collection_id'],
+                                    layer_source_info['dataset_id'],
+                                    geometry,
+                                    crs,
+                                    from_date,
+                                    to_date,
+                                    shub_band_names,
+                                    sample_type,
+                                    metadata_properties(),
+                                    (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
+                                     else {})
+                                )
 
-                            subfolder = batch_request_id
+                                subfolder = batch_request_id
+                                batch_request_ids = [batch_request_id]
+                            except Py4JJavaError as e:
+                                java_exception = e.java_exception
 
-                        batch_request_ids = [batch_request_id]
+                                if (java_exception.getClass().getName() ==
+                                        'org.openeo.geotrellissentinelhub.BatchProcessingService$NoSuchFeaturesException'):
+                                    raise OpenEOApiException(
+                                        message=f"{java_exception.getClass.getName()}: {java_exception.getMessage()}",
+                                        status_code=400)
+                                else:
+                                    raise e
 
                     logger.info("scheduled Sentinel Hub batch process(es) {bs} for batch job {j} (CARD4L {c})"
                                 .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"),

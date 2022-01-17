@@ -160,7 +160,7 @@ def main():
                         batch_jobs().poll_sentinelhub_batch_processes(job_info)
                     except Exception:
                         # TODO: retry in Nifi? How to mark this job as 'error' then?
-                        _log.error("failed to handle polling batch job {j}:\n{e}"
+                        _log.error("failed to handle polling batch processes for batch job {j}:\n{e}"
                                    .format(j=batch_job_id, e=traceback.format_exc()),
                                    extra={'job_id': batch_job_id})
 
