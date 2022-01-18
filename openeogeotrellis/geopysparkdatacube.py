@@ -1303,7 +1303,9 @@ class GeopysparkDataCube(DriverDataCube):
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
         filename = str(filename)
+        directory = str(pathlib.Path(filename).parent)
         s3_filename = "s3://OpenEO-data{}".format(filename)
+        s3_directory = "s3://OpenEO-data{}".format(directory)
         format = format.upper()
         format_options = format_options or {}
         _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))
@@ -1342,6 +1344,7 @@ class GeopysparkDataCube(DriverDataCube):
         colormap = format_options.get("colormap", None)
 
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy else filename
+        save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy else directory
 
         if format in ["GTIFF", "PNG"]:
             if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
@@ -1395,15 +1398,13 @@ class GeopysparkDataCube(DriverDataCube):
                     nodata = max_level.layer_metadata.no_data_value
 
                     if batch_mode and max_level.layer_type != gps.LayerType.SPATIAL:
-                        directory = pathlib.Path(filename).parent
-                        save_filename = str(directory)
                         compression = self._get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
 
                         if tile_grid:
                             timestamped_paths = (self._get_jvm()
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level.srdd.rdd(), save_filename, tile_grid, compression))
+                                max_level.srdd.rdd(), save_directory, tile_grid, compression))
                         elif sample_by_feature:
                             #EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
@@ -1411,10 +1412,10 @@ class GeopysparkDataCube(DriverDataCube):
                             projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
                             labels = self.get_labels(geometries)
                             timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
-                                max_level.srdd.rdd(), save_filename, projected_polygons, labels, compression)
+                                max_level.srdd.rdd(), save_directory, projected_polygons, labels, compression)
                         else:
                             timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(
-                                max_level.srdd.rdd(), save_filename, zlevel, self._get_jvm().scala.Option.apply(crop_extent),
+                                max_level.srdd.rdd(), save_directory, zlevel, self._get_jvm().scala.Option.apply(crop_extent),
                                 gtiff_options)
 
                         assets = {}
@@ -1499,10 +1500,9 @@ class GeopysparkDataCube(DriverDataCube):
                 geometries = format_options['geometries']
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = self.get_labels(geometries)
-                directory = pathlib.Path(filename).parent
                 if(max_level.layer_type != gps.LayerType.SPATIAL):
                     asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(max_level.srdd.rdd(),
-                                                                                                    str(directory),
+                                                                                                    save_directory,
                                                                                                     projected_polygons,
                                                                                                     labels,
                                                                                                     band_names,dim_names,
@@ -1511,7 +1511,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
                         max_level.srdd.rdd(),
-                        str(directory),
+                        save_directory,
                         projected_polygons,
                         labels,
                         band_names, dim_names,
@@ -1522,7 +1522,7 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 if not stitch:
                     originalName = pathlib.Path(filename)
-                    filename = str(originalName.parent / ("openEO.nc" if originalName.name == "out" else originalName.name))
+                    filename = save_directory + "/" + ("openEO.nc" if originalName.name == "out" else originalName.name)
                     if(max_level.layer_type != gps.LayerType.SPATIAL):
                         asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(max_level.srdd.rdd(),
                             filename,
@@ -1546,8 +1546,7 @@ class GeopysparkDataCube(DriverDataCube):
 
 
                     if batch_mode:
-                        directory = pathlib.Path(filename).parent
-                        filename = str(directory / "openEO.nc")
+                        filename = directory +  "/openEO.nc"
                     XarrayIO.to_netcdf_file(array=result, path=filename)
                     if batch_mode:
                         asset = {
