@@ -28,6 +28,7 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
+from openeo.util import dict_no_none
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.datastructs import ResolutionMergeArgs
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -1486,7 +1487,7 @@ class GeopysparkDataCube(DriverDataCube):
             bands = None
             dim_names = {}
             if self.metadata.has_band_dimension():
-                bands = [b._asdict() for b in self.metadata.bands]
+                bands = [dict_no_none(**b._asdict()) for b in self.metadata.bands]
                 band_names = self.metadata.band_names
                 dim_names['bands'] = self.metadata.band_dimension.name
             if self.metadata.has_temporal_dimension():
@@ -1554,10 +1555,9 @@ class GeopysparkDataCube(DriverDataCube):
                             "roles": ["data"],
                             "type": "application/x-netcdf"
                         }
-                        if self.metadata.has_band_dimension():
-                            bands = [b._asdict() for b in self.metadata.bands]
+                        if bands is not None:
                             asset["bands"] = bands
-                        return { "openEO.nc": asset}
+                        return {"openEO.nc": asset}
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
