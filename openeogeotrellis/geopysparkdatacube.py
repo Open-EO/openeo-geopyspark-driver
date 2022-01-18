@@ -35,7 +35,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
     ProcessParameterInvalidException
-from openeo_driver.save_result import AggregatePolygonResult
+from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonResultCSV
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -1254,16 +1254,14 @@ class GeopysparkDataCube(DriverDataCube):
             #with tempfile.gettempdir()NamedTemporaryFile(suffix=".json.tmp") as temp_file:
             wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
             wrapped.openEOMetadata().setBandNames(bandNames)
+            temp_output = tempfile.mkdtemp(prefix="timeseries_",suffix="_csv")
             self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                 func,
                 wrapped,
                 polygons,
-                "/tmp/timeseriesresult"
+                temp_output
             )
-            raise OpenEOApiException(
-                message=f"Reducer {func} is not supported in aggregate_spatial",
-                code="ReducerUnsupported", status_code=400
-            )
+            return AggregatePolygonResultCSV(temp_output,regions=regions,metadata=self.metadata)
 
         return AggregatePolygonResult(
             timeseries=timeseries,
