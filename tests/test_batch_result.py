@@ -186,9 +186,7 @@ def test_ep3874_filter_spatial(tmp_path):
     assert len(assets) == 2
     for asset in assets:
         theAsset = assets[asset]
-        bands = [Band(name=band.get("name"),
-                      common_name=band.get("common_name"),
-                      wavelength_um=band.get("wavelength_um")) for band in theAsset["bands"]]
+        bands = [Band(**b) for b in theAsset["bands"]]
         assert len(bands) == 1
         da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
         assert 'Flat:2' in da
