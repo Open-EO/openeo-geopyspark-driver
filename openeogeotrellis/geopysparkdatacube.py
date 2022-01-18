@@ -1185,6 +1185,20 @@ class GeopysparkDataCube(DriverDataCube):
     def get_max_level(self):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
+    def aggregate_spatial(self, geometries: Union[str, GeometryCollection, Polygon, MultiPolygon],
+                         reducer,target_dimension: str = "result") -> AggregatePolygonResult:
+
+        if isinstance(reducer, dict):
+            if len(reducer) == 1:
+                single_process = next(iter(reducer.values())).get('process_id')
+                return self.zonal_statistics(geometries,single_process)
+
+        raise OpenEOApiException(
+                message=f"Reducer {reducer} is not supported in aggregate_spatial",
+                code="ReducerUnsupported", status_code=400
+            )
+
+
     def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
