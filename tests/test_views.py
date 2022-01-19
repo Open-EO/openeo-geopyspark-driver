@@ -388,7 +388,7 @@ class TestBatchJobs:
             created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
             assert result == {
                 "jobs": [
-                    {"id": job_id, "status": created, created: "2020-04-20T16:04:03Z", "title": "Dummy"},
+                    {"id": job_id, "status": created, created: "2020-04-20T16:04:03Z"},
                 ],
                 "links": []
             }
