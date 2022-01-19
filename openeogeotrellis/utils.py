@@ -146,8 +146,10 @@ class UtcNowClock:
         if isinstance(now, str):
             now = dateutil.parser.parse(now)
         cls._utcnow = lambda: now
-        yield
-        cls._utcnow = cls._utcnow_orig
+        try:
+            yield
+        finally:
+            cls._utcnow = cls._utcnow_orig
 
 
 # Alias for general usage
