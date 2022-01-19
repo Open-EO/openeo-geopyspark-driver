@@ -22,6 +22,7 @@ from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
+from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.save_result import ImageCollectionResult
 from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
@@ -624,12 +625,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if check_missing_products:
                     temporal_extent = constraints.get("temporal_extent")
                     spatial_extent = constraints.get("spatial_extent")
+                    properties = constraints.get("properties", {})
                     if temporal_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
                     if spatial_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
                     if temporal_extent is None or spatial_extent is None:
                         return
+                    layer_properties = deep_get(metadata, "_vito", "properties", default={})
+                    all_properties = {property_name: extract_literal_match(condition)
+                                      for property_name, condition in {**layer_properties, **properties}.items()}
                     query_kwargs = {
                         "start_date": datetime.datetime.combine(
                             rfc3339.parse_date_or_datetime(temporal_extent[0]),
@@ -644,6 +649,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "bry": spatial_extent["south"],
                         "uly": spatial_extent["north"],
                     }
+
+                    if "eo:cloud_cover" in all_properties:
+                        if "lte" in all_properties["eo:cloud_cover"]:
+                            query_kwargs["cldPrcnt"] = all_properties["eo:cloud_cover"]["lte"]
 
                     def missing_product(tile_id):
                         return {

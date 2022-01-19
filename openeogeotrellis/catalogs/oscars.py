@@ -26,14 +26,16 @@ class OscarsCatalogClient:
         return [OscarsCatalogEntry(f['properties']['title']) for f in response['features']]
 
     def _query_page(self, start_date, end_date,
-              ulx=-180, uly=90, brx=180, bry=-90, from_index=1):
+              ulx=-180, uly=90, brx=180, bry=-90, from_index=1,cldPrcnt=100.):
 
         query_params = [('collection', self._collection),
                         ('bbox', '{},{},{},{}'.format(ulx, bry, brx, uly)),
                         ('sortKeys', 'title'),
                         ('startIndex', from_index),
                         ('start', start_date.isoformat()),
-                        ('end', end_date.isoformat())]
+                        ('end', end_date.isoformat()),
+                        ('cloudCover', f'[0,{cldPrcnt}]')
+                        ]
 
         response = requests.get('https://services.terrascope.be/catalogue/products', params=query_params)
 
@@ -45,7 +47,7 @@ class OscarsCatalogClient:
         return response
 
     def query(self, start_date, end_date,
-              ulx=-180, uly=90, brx=180, bry=-90) -> List[OscarsCatalogEntry]:
+              ulx=-180, uly=90, brx=180, bry=-90,cldPrcnt=100.) -> List[OscarsCatalogEntry]:
 
         result = []
 
@@ -53,7 +55,7 @@ class OscarsCatalogClient:
         from_index = 1
 
         while products_left:
-            response = self._query_page(start_date, end_date, ulx, uly, brx, bry, from_index)
+            response = self._query_page(start_date, end_date, ulx, uly, brx, bry, from_index,cldPrcnt=cldPrcnt)
             chunk = self._parse_product_ids(response)
             if len(chunk) == 0:
                 products_left = False

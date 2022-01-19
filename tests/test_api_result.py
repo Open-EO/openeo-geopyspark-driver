@@ -1090,12 +1090,13 @@ def test_extra_validation_creo(api100, requests_mock):
             "id": "SENTINEL2_L2A_CREO",
             "temporal_extent": ["2020-03-01", "2020-03-10"],
             "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
+            "properties": {"eo:cloud_cover": {"process_graph": {"lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50}, "result": True}}}}
         },
         "result": True
     }}
 
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json={
             "type": "FeatureCollection",
             "properties": {"totalResults": 28, "itemsPerPage": 28},
@@ -1120,7 +1121,7 @@ def test_extra_validation_creo(api100, requests_mock):
         }
     )
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json={
             "type": "FeatureCollection",
             "properties": {"totalResults": 28, "itemsPerPage": 28},
@@ -1141,12 +1142,15 @@ def test_extra_validation_terrascope(api100, requests_mock):
             "id": "TERRASCOPE_S2_TOC_V2",
             "temporal_extent": ["2020-03-01", "2020-03-10"],
             "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
+            "properties": {"eo:cloud_cover": {"process_graph": {
+                "lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50},
+                         "result": True}}}}
         },
         "result": True
     }}
 
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json={
             "type": "FeatureCollection",
             "properties": {"totalResults": 28, "itemsPerPage": 28},
@@ -1171,7 +1175,7 @@ def test_extra_validation_terrascope(api100, requests_mock):
         }
     )
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json={
             "type": "FeatureCollection",
             "properties": {"totalResults": 28, "itemsPerPage": 28},
@@ -1179,7 +1183,7 @@ def test_extra_validation_terrascope(api100, requests_mock):
         }
     )
     requests_mock.get(
-        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=1&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999",
+        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=1&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999&cloudCover=[0,50]",
         json={
             "type": "FeatureCollection",
             "properties": {},
@@ -1192,7 +1196,7 @@ def test_extra_validation_terrascope(api100, requests_mock):
         }
     )
     requests_mock.get(
-        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=2&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999",
+        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=2&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999&cloudCover=[0,50]",
         json={
             "type": "FeatureCollection",
             "properties": {},
