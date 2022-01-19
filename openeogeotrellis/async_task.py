@@ -130,7 +130,7 @@ def main():
                                                       javaopts=java_opts,
                                                       die_on_exit=True)
 
-            return GpsBatchJobs(get_layer_catalog(opensearch_enrich=False), java_gateway.jvm, args.principal,
+            return GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
                                 args.keytab)
 
         if task_id in [TASK_DELETE_BATCH_PROCESS_RESULTS, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
