@@ -1233,7 +1233,6 @@ def test_extra_validation_unlimited_extent(api100, lc_args, expected):
 @pytest.mark.parametrize(["temporal_extent", "expected"], [
     (("2020-01-01", None), ("2020-01-05 00:00:00", "2020-02-15 00:00:00")),
     ((None, "2019-01-10"), ("2000-01-05 00:00:00", "2019-01-05 00:00:00")),
-    ((None, None), ("2000-01-05 00:00:00", "2020-02-15 00:00:00")),
 ])
 def test_load_collection_open_temporal_extent(api100, temporal_extent, expected):
     with UtcNowClock.mock(now="2020-02-20"):
