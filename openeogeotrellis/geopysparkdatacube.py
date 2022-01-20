@@ -1192,6 +1192,9 @@ class GeopysparkDataCube(DriverDataCube):
             if len(reducer) == 1:
                 single_process = next(iter(reducer.values())).get('process_id')
                 return self.zonal_statistics(geometries,single_process)
+            else:
+                visitor = GeotrellisTileProcessGraphVisitor(_builder=self._get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()).accept_process_graph(reducer)
+                return self.zonal_statistics(geometries, visitor.builder)
 
         raise OpenEOApiException(
                 message=f"Reducer {reducer} is not supported in aggregate_spatial",
@@ -1251,7 +1254,6 @@ class GeopysparkDataCube(DriverDataCube):
             if self.metadata.has_band_dimension():
                 bandNames = self.metadata.band_names
 
-            #with tempfile.gettempdir()NamedTemporaryFile(suffix=".json.tmp") as temp_file:
             wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
             wrapped.openEOMetadata().setBandNames(bandNames)
             temp_output = tempfile.mkdtemp(prefix="timeseries_",suffix="_csv")

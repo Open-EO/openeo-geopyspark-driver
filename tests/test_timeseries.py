@@ -210,32 +210,7 @@ class TestTimeSeries(TestCase):
                     },
                 }
 
-    def test_zonal_statistics_median_datacube(self):
-        layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
-        polygon = Polygon(shell=[
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (1.0, 1.0),
-            (0.0, 1.0),
-            (0.0, 0.0)
-        ])
-        result = imagecollection.zonal_statistics(polygon, "median")
-        assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
 
-        covjson = result.to_covjson()
-        assert covjson["ranges"] == {
-            "band0": {
-                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                "shape": (1, 1),
-                "values": [1.0]
-            },
-            "band1": {
-                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                "shape": (1, 1),
-                "values": [2.0]
-            }
-        }
 
     def test_zonal_statistics_for_unsigned_byte_layer(self):
         layer = self.create_spacetime_unsigned_byte_layer()
@@ -260,6 +235,84 @@ class TestTimeSeries(TestCase):
                 "values": [220.0]
             }
         }
+
+def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_three_dates):
+    #layer = self.create_spacetime_layer()
+    #imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}),metadata=GeopysparkCubeMetadata())
+    polygon = Polygon(shell=[
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0)
+    ])
+
+    result = imagecollection_with_two_bands_and_three_dates.zonal_statistics(polygon, "median")
+
+    print(result)
+    #result.to_csv("median.csv")
+    assert result.data == {'2017-09-25': [[1.0, 2.0]],
+                            '2017-09-30': [[np.nan, np.nan]],
+                            '2017-10-25': [[2.0, 1.0]]}
+
+    covjson = result.to_covjson()
+    assert covjson["ranges"] == {
+        "band0": {
+            "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+            "shape": (1, 1),
+            "values": [1.0]
+        },
+        "band1": {
+            "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+            "shape": (1, 1),
+            "values": [2.0]
+        }
+    }
+
+def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_dates):
+
+    polygon = Polygon(shell=[
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0)
+    ])
+
+    callback = {
+        "sum": {
+            "process_id": "sum",
+            "arguments": {
+                "data": {"from_argument": "data"}
+            }
+        },
+        "count": {
+            "process_id": "count",
+            "arguments": {
+                "data": {"from_argument": "data"}
+            }
+        },
+        "max": {
+            "process_id": "max",
+            "arguments": {
+                "data": {"from_argument": "data"}
+            }
+        },
+        "array":{
+            "process_id": "create_array",
+            "arguments": {"data": [{"from_node": "sum"}, {"from_node": "count"}, {"from_node": "max"}]},
+            "result": True
+        }
+    }
+
+    result = imagecollection_with_two_bands_and_three_dates.aggregate_spatial(polygon, callback)
+
+    print(result)
+    #result.to_csv("median.csv")
+    assert result.data == {'2017-09-25': [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
+                            '2017-09-30': [[pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True)]],
+                            '2017-10-25': [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]]}
+
 
 
 def _build_cube():

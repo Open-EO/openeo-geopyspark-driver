@@ -653,6 +653,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     if "eo:cloud_cover" in all_properties:
                         if "lte" in all_properties["eo:cloud_cover"]:
                             query_kwargs["cldPrcnt"] = all_properties["eo:cloud_cover"]["lte"]
+                        elif "eq" in all_properties["eo:cloud_cover"]:
+                            query_kwargs["cldPrcnt"] = all_properties["eo:cloud_cover"]["eq"]
 
                     def missing_product(tile_id):
                         return {
