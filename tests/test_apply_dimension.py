@@ -32,7 +32,7 @@ def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands
     )
     result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
 
-    assert np.all(np.isclose(result_array, 1.5))
+    assert np.all(np.isclose(result_array, 1))
 
 
 

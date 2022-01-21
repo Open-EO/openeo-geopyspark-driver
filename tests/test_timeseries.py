@@ -251,21 +251,20 @@ def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_thr
 
     print(result)
     #result.to_csv("median.csv")
-    assert result.data == {'2017-09-25': [[1.0, 2.0]],
-                            '2017-09-30': [[np.nan, np.nan]],
-                            '2017-10-25': [[2.0, 1.0]]}
+    assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]],
+                            '2017-10-25T11:37:00Z': [[2.0, 1.0]]}
 
     covjson = result.to_covjson()
     assert covjson["ranges"] == {
         "band0": {
             "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-            "shape": (1, 1),
-            "values": [1.0]
+            "shape": (2, 1),
+            "values": [1.0, 2.0]
         },
         "band1": {
             "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-            "shape": (1, 1),
-            "values": [2.0]
+            "shape": (2, 1),
+            "values": [2.0, 1.0]
         }
     }
 
