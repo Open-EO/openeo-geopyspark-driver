@@ -1256,7 +1256,10 @@ class GeopysparkDataCube(DriverDataCube):
 
             wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
             wrapped.openEOMetadata().setBandNames(bandNames)
-            temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir="/data/projects/OpenEO/timeseries")
+            clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
+            if(not clusterDir.exists()):
+                clusterDir = pathlib.Path(".").resolve()
+            temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
             self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                 func,
                 wrapped,
