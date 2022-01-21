@@ -391,7 +391,8 @@ class S1BackscatterOrfeo:
         @epsel.ensure_info_logging
         @TimingLogger(title="process_feature", logger=logger)
         def process_feature(feature):
-
+            import faulthandler;
+            faulthandler.enable()
             col, row, instant = (feature["key"][k] for k in ["col", "row", "instant"])
             log_prefix = "p{p}-key({c},{r},{i})".format(p=os.getpid(), c=col, r=row, i=instant)
 
@@ -597,6 +598,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         @epsel.ensure_info_logging
         @TimingLogger(title="process_product", logger=logger)
         def process_product(product: Tuple[str, List[dict]]):
+            import faulthandler;
+            faulthandler.enable()
             creo_path, features = product
 
             # Short ad-hoc product id for logging purposes.

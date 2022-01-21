@@ -24,6 +24,8 @@ logger = logging.getLogger("openeo")
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
+        import faulthandler
+        faulthandler.enable()
         try:
             from spark_memlogger import memlogger
         except ImportError:
