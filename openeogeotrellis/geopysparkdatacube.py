@@ -3,6 +3,7 @@ import collections.abc
 import json
 import logging
 import math
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -1260,6 +1261,7 @@ class GeopysparkDataCube(DriverDataCube):
             if(not clusterDir.exists()):
                 clusterDir = pathlib.Path(".").resolve()
             temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
+            os.chmod(temp_output, 0o777)
             self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                 func,
                 wrapped,
