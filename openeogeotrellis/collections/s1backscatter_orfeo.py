@@ -304,10 +304,19 @@ class S1BackscatterOrfeo:
                 myRegion['index'][0] = int((extent['xmin']-metadata[0])/10)
                 myRegion['index'][1] = int((metadata[1]-extent['ymax'])/10)
                 print(myRegion)
-                if(myRegion['index'][0] +extent_width_px > size[0]):
+                if(myRegion['index'][0] +extent_width_px > size[0] or myRegion['index'][0] < 0 or myRegion['index'][1] < 0 ):
+
+                    logger.warning("skipping")
                     return np.empty((extent_width_px,extent_height_px)),np.nan
 
-                ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
+                ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
+                ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
+                ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
+                ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
+
+                ortho_rect.Execute()
+                #ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
+
                 data = ortho_rect.GetImageAsNumpyArray('io.out')
 
                 logger.info(
@@ -356,7 +365,7 @@ class S1BackscatterOrfeo:
         ortho_rect.SetParameterString("interpolator", "linear")
         ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
 
-        ortho_rect.SetParameterString("outputs.mode", "autosize")
+        #ortho_rect.SetParameterString("outputs.mode", "autosize")
         #TODO autosize may not align perfectly with Sentinel-2 grid, need to realign
 
 
