@@ -1,12 +1,18 @@
 import json
+import logging
 import sys
 import traceback
 from sys import argv
+
+import kazoo.client
 
 from openeogeotrellis.utils import zk_client
 
 from rlguard import apply_for_request, calculate_processing_units, OutputFormat, SyncerDownException
 from rlguard.repository import ZooKeeperRepository
+
+logging.basicConfig(level=logging.DEBUG)
+kazoo.client.log.setLevel(logging.WARNING)
 
 
 def request(request_params) -> (float, float):
