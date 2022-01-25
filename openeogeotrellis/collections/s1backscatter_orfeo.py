@@ -285,45 +285,28 @@ class S1BackscatterOrfeo:
             set_max_memory(int(max_total_memory_in_bytes))
 
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
 
-            with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
+            ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
+                                                               log_prefix, noise_removal, orfeo_memory,
+                                                               sar_calibration_lut, utm_northhem, utm_zone)
 
-                ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
-                                                                   log_prefix, noise_removal, orfeo_memory,
-                                                                   sar_calibration_lut, utm_northhem, utm_zone)
 
-                ortho_rect.Execute()
-                metadata = ortho_rect.GetImageOrigin("io.out")
-                size = ortho_rect.GetImageSize("io.out")
+            ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
+            ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
+            ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
+            ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
 
-                otb = _import_orfeo_toolbox()
-                myRegion = otb.itkRegion()
-                myRegion['size'][0] = extent_width_px
-                myRegion['size'][1] = extent_height_px
-                myRegion['index'][0] = int((extent['xmin']-metadata[0])/10)
-                myRegion['index'][1] = int((metadata[1]-extent['ymax'])/10)
-                print(myRegion)
-                if(myRegion['index'][0] +extent_width_px > size[0] or myRegion['index'][0] < 0 or myRegion['index'][1] < 0 ):
+            ortho_rect.Execute()
+            #ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
 
-                    logger.warning("skipping")
-                    return np.empty((extent_width_px,extent_height_px)),np.nan
+            data = ortho_rect.GetImageAsNumpyArray('io.out')
 
-                ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
-                ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
-                ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
-                ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
-
-                ortho_rect.Execute()
-                #ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
-
-                data = ortho_rect.GetImageAsNumpyArray('io.out')
-
-                logger.info(
-                    f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
-                    f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
-                )
-                return data,0
+            logger.info(
+                f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
+                f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
+            )
+            return data,0
 
 
 
@@ -527,10 +510,13 @@ class S1BackscatterOrfeo:
                 return hashPartitioner(tuple)
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
 
+        local = grouped.collect()
+
+        print(local)
         orfeo_function = S1BackscatterOrfeo._get_process_function(sar_backscatter_arguments,result_dtype,bands)
 
-        tile_rdd = grouped.flatMap(orfeo_function)
-        #tile_rdd = feature_pyrdd.map(process_feature)
+        #tile_rdd = grouped.flatMap(orfeo_function)
+        tile_rdd = list(map(orfeo_function,local))
         if result_dtype:
             layer_metadata_py.cell_type = result_dtype
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
