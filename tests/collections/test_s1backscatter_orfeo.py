@@ -71,7 +71,7 @@ def test_run_orfeo(tmp_path):
             else:
                 zip_file.extract(member, target_location)
 
-    extent = {'xmin':506986, 'ymin':5672070, 'xmax':534857, 'ymax':5683305 }
+    extent = {'xmin':697534, 'ymin':5865437-80000, 'xmax':697534 + 10000, 'ymax':5865437-40000 }
     data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
         input_tiff=Path("s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"),
         extent=extent, extent_epsg=32631,
