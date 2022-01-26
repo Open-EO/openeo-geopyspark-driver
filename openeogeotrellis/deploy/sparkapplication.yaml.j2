@@ -47,10 +47,14 @@ spec:
     onSubmissionFailureRetries: 5
     onSubmissionFailureRetryInterval: 20
   volumes:
-    - name: "eodata"
+    - name: "eodata2"
       hostPath:
-        path: "/eodata"
+        path: "/eodata2"
         type: DirectoryOrCreate
+    - name: "shared-pod-volume"
+      hostPath:
+        path: "/shared_pod_volume"
+        type: "DirectoryOrCreate"
   driver:
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
@@ -78,10 +82,10 @@ spec:
       name: {{ job_id }}-driver
     serviceAccount: openeo
     volumeMounts:
-      - name: "eodata"
+      - name: "eodata2"
         mountPath: "/eodata"
-      - name: "testdata"
-        mountPath: "/data"
+      - name: "shared-pod-volume"
+        mountPath: "/shared_pod_volume"
   executor:
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
