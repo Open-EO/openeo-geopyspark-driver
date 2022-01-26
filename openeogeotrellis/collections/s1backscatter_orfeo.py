@@ -515,8 +515,8 @@ class S1BackscatterOrfeo:
         print(local)
         orfeo_function = S1BackscatterOrfeo._get_process_function(sar_backscatter_arguments,result_dtype,bands)
 
-        #tile_rdd = grouped.flatMap(orfeo_function)
-        tile_rdd = list(map(orfeo_function,local))
+        tile_rdd = grouped.flatMap(orfeo_function)
+        #tile_rdd = list(map(orfeo_function,local))
         if result_dtype:
             layer_metadata_py.cell_type = result_dtype
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
