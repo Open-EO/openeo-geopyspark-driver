@@ -510,9 +510,9 @@ class S1BackscatterOrfeo:
                 return hashPartitioner(tuple)
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
 
-        local = grouped.collect()
+        #local = grouped.collect()
 
-        print(local)
+        #print(local)
         orfeo_function = S1BackscatterOrfeo._get_process_function(sar_backscatter_arguments,result_dtype,bands)
 
         tile_rdd = grouped.flatMap(orfeo_function)
