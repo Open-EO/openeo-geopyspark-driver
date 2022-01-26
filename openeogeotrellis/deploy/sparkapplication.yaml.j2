@@ -118,6 +118,8 @@ spec:
     volumeMounts:
       - name: "eodata"
         mountPath: "/eodata"
+      - name: "shared-pod-volume"
+        mountPath: "/shared_pod_volume"
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-2.3.0_2.12-SNAPSHOT.jar'
