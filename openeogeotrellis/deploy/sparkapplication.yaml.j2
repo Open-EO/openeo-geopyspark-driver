@@ -47,9 +47,9 @@ spec:
     onSubmissionFailureRetries: 5
     onSubmissionFailureRetryInterval: 20
   volumes:
-    - name: "eodata2"
+    - name: "eodata"
       hostPath:
-        path: "/eodata2"
+        path: "/eodata"
         type: DirectoryOrCreate
     - name: "shared-pod-volume"
       hostPath:
@@ -82,7 +82,7 @@ spec:
       name: {{ job_id }}-driver
     serviceAccount: openeo
     volumeMounts:
-      - name: "eodata2"
+      - name: "eodata"
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
