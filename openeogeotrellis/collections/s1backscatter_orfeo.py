@@ -466,6 +466,9 @@ class S1BackscatterOrfeo:
                         logger.info(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                         tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                         resultlist.append((key, tile))
+
+            return resultlist
+
         return process_feature
 
     def creodias(
