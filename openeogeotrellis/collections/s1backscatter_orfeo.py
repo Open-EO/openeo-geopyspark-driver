@@ -1,14 +1,18 @@
+import ctypes
 import functools
 import json
 import logging
+import multiprocessing
 import os
 import pathlib
 import re
+import signal
 import sys
 import tempfile
 import types
 import zipfile
 from datetime import datetime
+from multiprocessing import Process
 from typing import Dict, Tuple, Union, List
 
 import epsel
@@ -287,20 +291,35 @@ class S1BackscatterOrfeo:
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
 
+
+            arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px)
+
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
                                                                sar_calibration_lut, utm_northhem, utm_zone)
 
+            def run():
 
-            ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
-            ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
-            ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
-            ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
 
-            ortho_rect.Execute()
-            #ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
+                ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
+                ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
+                ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
+                ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
 
-            data = ortho_rect.GetImageAsNumpyArray('io.out')
+                ortho_rect.Execute()
+                # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
+                localdata = ortho_rect.GetImageAsNumpyArray('io.out')
+                np.copyto(np.frombuffer(arr.get_obj()).reshape((extent_width_px,extent_height_px)),localdata)
+
+            p = Process(target=run, args=())
+            p.start()
+            p.join()
+            if(p.exitcode == -signal.SIGSEGV):
+                logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
+
+            data =  np.reshape(np.frombuffer(arr.get_obj()),(extent_width_px,extent_height_px))
+
+
 
             logger.info(
                 f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
