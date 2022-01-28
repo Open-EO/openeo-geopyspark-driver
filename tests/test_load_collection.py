@@ -120,7 +120,8 @@ def test_load_file_oscars_resample(get_jvm):
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
-    cellsize_mock = jvm_mock.geotrellis.raster.CellSize.return_value
+    cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize(15, 15)
 
     datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
 
@@ -130,6 +131,7 @@ def test_load_file_oscars_resample(get_jvm):
     assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
 
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
+    cellsize_call_mock.assert_called_with(15,15)
 
     factory_mock.assert_called_once_with('https://services.terrascope.be/catalogue', 'urn:eop:VITO:COP_DEM_GLO_30M_COG', ['DEM'], '/data/MTDA/DEM/COP_DEM_30M_COG', cellsize_mock, True)
     factory_mock.return_value.datacube_seq.assert_called_once_with(ANY, '2010-01-01T10:36:00+00:00', '2012-01-01T10:36:00+00:00', {}, '', datacubeParams)
