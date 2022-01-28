@@ -1419,7 +1419,9 @@ class GeopysparkDataCube(DriverDataCube):
                             #EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
                             geometries = format_options['geometries']
-                            projected_polygons = to_projected_polygons(self._get_jvm(),geometries)
+                            if isinstance(geometries, MultiPolygon):
+                                geometries = GeometryCollection(geometries.geoms)
+                            projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                             labels = self.get_labels(geometries)
                             timestamped_paths = self._get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
                                 max_level.srdd.rdd(), save_directory, projected_polygons, labels, compression)
@@ -1508,6 +1510,8 @@ class GeopysparkDataCube(DriverDataCube):
             if batch_mode and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
                 geometries = format_options['geometries']
+                if isinstance(geometries, MultiPolygon):
+                    geometries = GeometryCollection(geometries.geoms)
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = self.get_labels(geometries)
                 if(max_level.layer_type != gps.LayerType.SPATIAL):
