@@ -1227,6 +1227,16 @@ class GeopysparkDataCube(DriverDataCube):
                 scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
             )
             timeseries = self._as_python(stats)
+        elif func == 'sd':
+            stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+            )
+            timeseries = self._as_python(stats)
+        elif func == 'median':
+            stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+            )
+            timeseries = self._as_python(stats)
         elif func == "mean":
             with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
                 self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
