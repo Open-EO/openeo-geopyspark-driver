@@ -1,6 +1,6 @@
 import mock
 import pytest
-from mock import MagicMock
+from mock import MagicMock, ANY
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -91,6 +91,48 @@ def test_load_file_oscars(get_jvm):
     collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
     assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
     assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
+
+@mock.patch('openeogeotrellis.layercatalog.get_jvm')
+def test_load_file_oscars_resample(get_jvm):
+    catalog = get_layer_catalog()
+    jvm_mock = get_jvm.return_value
+    raster_layer = MagicMock()
+    raster_layer.layerMetadata.return_value = '{' \
+                                              '"crs":"EPSG:4326",\n' \
+                                              '"cellType":"uint8",\n' \
+                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
+                                              '"layoutDefinition":{\n' \
+                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
+                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
+                                              '}' \
+                                              '}'
+
+    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+    load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
+                                 spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
+                                 target_resolution=[15,15],
+                                 target_crs=3857,
+                                 featureflags={"experimental":True}
+                                 )
+    env = EvalEnv()
+    env = env.push({"pyramid_levels": "single"})
+
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
+    extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize.return_value
+
+    datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
+
+
+    collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
+    assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
+    assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
+
+    jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
+
+    factory_mock.assert_called_once_with('https://services.terrascope.be/catalogue', 'urn:eop:VITO:COP_DEM_GLO_30M_COG', ['DEM'], '/data/MTDA/DEM/COP_DEM_30M_COG', cellsize_mock, True)
+    factory_mock.return_value.datacube_seq.assert_called_once_with(ANY, '2010-01-01T10:36:00+00:00', '2012-01-01T10:36:00+00:00', {}, '', datacubeParams)
 
 
 @mock.patch('openeogeotrellis.layercatalog.get_jvm')

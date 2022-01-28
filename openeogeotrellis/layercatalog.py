@@ -152,6 +152,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
         else:
             target_epsg_code = int(native_crs.split(":")[-1])
+
+        if (experimental):
+            if (load_params.target_resolution is not None):
+                cell_width = load_params.target_resolution[0]
+                cell_height = load_params.target_resolution[1]
+            if (load_params.target_crs is not None and isinstance(load_params.target_crs,int)):
+                target_epsg_code = load_params.target_crs
+
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
 
