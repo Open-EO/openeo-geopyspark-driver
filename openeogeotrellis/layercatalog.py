@@ -238,8 +238,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        opensearch_link_titles,
                                                                                        root_path,
                                                                                        jvm.geotrellis.raster.CellSize(
-                                                                                           10.0,
-                                                                                           10.0),
+                                                                                           cell_width,
+                                                                                           cell_height),
                                                                                        experimental
                                                                                        ))
 
