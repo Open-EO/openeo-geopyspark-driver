@@ -155,8 +155,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if (experimental):
             if (load_params.target_resolution is not None):
-                cell_width = load_params.target_resolution[0]
-                cell_height = load_params.target_resolution[1]
+                cell_width = float(load_params.target_resolution[0])
+                cell_height = float(load_params.target_resolution[1])
             if (load_params.target_crs is not None and isinstance(load_params.target_crs,int)):
                 target_epsg_code = load_params.target_crs
 
