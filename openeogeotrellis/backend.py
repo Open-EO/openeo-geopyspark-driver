@@ -51,6 +51,7 @@ from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCu
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
@@ -1444,14 +1445,16 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in ['created', 'queued']:
             return []
 
-        log_entries = []
+        log_entries = elasticsearch_logs(job_id)
+
+        # TODO: handle missing log file (Spark job never started)
         with (self._get_job_output_dir(job_id) / "log").open('r') as f:
             log_file_contents = f.read()
         # TODO: provide log line per line, with correct level?
         # TODO: support offset
         if log_file_contents.strip():
             log_entries.append({
-                'id': "0",
+                'id': "error",
                 'level': 'error',
                 'message': log_file_contents
             })

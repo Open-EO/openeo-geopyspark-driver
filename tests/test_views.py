@@ -508,7 +508,7 @@ class TestBatchJobs:
             res = api.get(
                 '/jobs/{j}/logs'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
             ).assert_status_code(200).json
-            assert res["logs"] == [{"id": "0", "level": "error", "message": "[INFO] Hello world"}]
+            assert res["logs"] == [{"id": "error", "level": "error", "message": "[INFO] Hello world"}]
 
     def test_create_and_start_job_options(self, api, tmp_path, monkeypatch):
         with self._mock_kazoo_client() as zk, \
