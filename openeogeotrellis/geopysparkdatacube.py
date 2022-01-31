@@ -18,7 +18,7 @@ import pyproj
 import pytz
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
-from geopyspark.geotrellis import Extent, ResampleMethod
+from geopyspark.geotrellis import Extent, ResampleMethod, crs_to_proj4
 from geopyspark.geotrellis.constants import CellType
 from pandas import Series
 from py4j.java_gateway import JVMView
@@ -1076,6 +1076,11 @@ class GeopysparkDataCube(DriverDataCube):
         # TODO: use align
 
         resample_method = self._get_resample_method(method)
+        max_level = self.get_max_level()
+        current_crs_proj4 = max_level.layer_metadata.crs
+        logging.info(f"Reprojecting datacube with crs {current_crs_proj4} and layout {max_level.layer_metadata.layout_definition} to {projection} and {resolution}")
+        if projection is not None and crs_to_proj4(projection) == current_crs_proj4:
+            projection = None
 
         #IF projection is defined, we need to warp
         if projection is not None and resolution==0.0:
@@ -1085,8 +1090,10 @@ class GeopysparkDataCube(DriverDataCube):
             return reprojected
         elif resolution != 0.0:
 
-            max_level = self.get_max_level()
             extent = max_level.layer_metadata.layout_definition.extent
+            currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
+            currentTileCols = currentTileLayout.tileCols
+            currentTileRows = currentTileLayout.tileRows
 
             if projection is not None:
                 extent = self._reproject_extent(
@@ -1096,8 +1103,14 @@ class GeopysparkDataCube(DriverDataCube):
             width = extent.xmax - extent.xmin
             height = extent.ymax - extent.ymin
 
-            nbTilesX = width / (256 * resolution)
-            nbTilesY = height / (256 * resolution)
+            currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
+            currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
+            if projection == None and currentResolutionX == resolution:
+                return self
+
+
+            nbTilesX = width / (currentTileCols * resolution)
+            nbTilesY = height / (currentTileRows * resolution)
 
             exactTileSizeX = width/(resolution * math.ceil(nbTilesX))
             exactNbTilesX = width/(resolution * exactTileSizeX)
