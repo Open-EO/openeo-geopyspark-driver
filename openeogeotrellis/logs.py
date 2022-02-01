@@ -30,6 +30,7 @@ def elasticsearch_logs(job_id: str) -> Iterable[dict]:
                 }
             },
             sort='@timestamp',
+            preserve_order=True,
             size=100)
 
         for hit in hits:
@@ -66,16 +67,15 @@ def main():
     index = "filebeat-index-3m-2019.10.14-000064"
     job_id = '9978cebf-1cb5-4833-abe6-8f1bbc118ce9'
 
-    es = Elasticsearch(hosts=ES_HOSTS)
-
-    try:
+    with Elasticsearch(hosts=ES_HOSTS) as es:
         res = es.get(index=index, id="08kxjH4BFu4FfsUusCWt")
-        print(res['_source'])
 
-        for log_entry in elasticsearch_logs(job_id):
-            print(log_entry)
-    finally:
-        es.close()
+    print(res['_source'])
+    
+    logs = iter(elasticsearch_logs(job_id))
+    print(next(logs))
+    print(next(logs))
+    print(next(logs))
 
 
 if __name__ == '__main__':
