@@ -1439,13 +1439,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return {}
 
-    def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> List[dict]:
+    def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self._get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in ['created', 'queued']:
-            return []
+            return iter(())
 
-        log_entries = elasticsearch_logs(job_id)
+        yield from elasticsearch_logs(job_id)
 
         # TODO: handle missing log file (Spark job never started)
         with (self._get_job_output_dir(job_id) / "log").open('r') as f:
@@ -1453,13 +1453,11 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: provide log line per line, with correct level?
         # TODO: support offset
         if log_file_contents.strip():
-            log_entries.append({
+            yield {
                 'id': "error",
                 'level': 'error',
                 'message': log_file_contents
-            })
-
-        return log_entries
+            }
 
     def cancel_job(self, job_id: str, user_id: str):
         with JobRegistry() as registry:

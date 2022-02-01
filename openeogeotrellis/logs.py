@@ -1,6 +1,7 @@
-from typing import List, Optional
+from typing import Iterable, Optional
 
 from elasticsearch import Elasticsearch
+from elasticsearch.helpers import scan
 
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
@@ -8,31 +9,31 @@ ES_INDEX_PATTERN = "filebeat-index-3m*"
 ES_TAGS = ["openeo-yarn"]
 
 
-def elasticsearch_logs(job_id: str) -> List[dict]:
-    es = Elasticsearch(ES_HOSTS)
-
-    try:
-        res = es.search(
+def elasticsearch_logs(job_id: str) -> Iterable[dict]:
+    with Elasticsearch(ES_HOSTS) as es:
+        hits = scan(
+            es,
             index=ES_INDEX_PATTERN,
             query={
-                'bool': {
-                    'filter': [{
-                        'term': {
-                            'job_id': job_id
-                        }
-                    }, {
-                        'terms': {
-                            'tags': ES_TAGS
-                        }
-                    }]
+                'query': {
+                    'bool': {
+                        'filter': [{
+                            'term': {
+                                'job_id': job_id
+                            }
+                        }, {
+                            'terms': {
+                                'tags': ES_TAGS
+                            }
+                        }]
+                    }
                 }
             },
             sort='@timestamp',
-            size=10000)  # TODO: implement paging
+            size=100)
 
-        return [_as_log_entry(hit) for hit in res['hits']['hits']]
-    finally:
-        es.close()
+        for hit in hits:
+            yield _as_log_entry(hit)
 
 
 def _as_log_entry(hit: dict) -> dict:
@@ -71,7 +72,7 @@ def main():
         res = es.get(index=index, id="08kxjH4BFu4FfsUusCWt")
         print(res['_source'])
 
-        for log_entry in elasticsearch_logs(job_id)[:3]:
+        for log_entry in elasticsearch_logs(job_id):
             print(log_entry)
     finally:
         es.close()
