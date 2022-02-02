@@ -1447,16 +1447,22 @@ class GpsBatchJobs(backend.BatchJobs):
 
         yield from elasticsearch_logs(job_id)
 
-        # TODO: handle missing log file (Spark job never started)
-        with (self._get_job_output_dir(job_id) / "log").open('r') as f:
-            log_file_contents = f.read()
-        # TODO: provide log line per line, with correct level?
-        # TODO: support offset
-        if log_file_contents.strip():
+        try:
+            with (self._get_job_output_dir(job_id) / "log").open('r') as f:
+                log_file_contents = f.read()
+            # TODO: provide log line per line, with correct level?
+            # TODO: support offset
+            if log_file_contents.strip():
+                yield {
+                    'id': 'error',
+                    'level': 'error',
+                    'message': log_file_contents
+                }
+        except FileNotFoundError:  # some context if the Spark job didn't run and therefore didn't create the log file
             yield {
-                'id': "error",
+                'id': 'error',
                 'level': 'error',
-                'message': log_file_contents
+                'message': traceback.format_exc()
             }
 
     def cancel_job(self, job_id: str, user_id: str):
