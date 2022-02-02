@@ -1445,7 +1445,8 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in ['created', 'queued']:
             return iter(())
 
-        yield from elasticsearch_logs(job_id)
+        if not ConfigParams().is_kube_deploy:
+            yield from elasticsearch_logs(job_id)
 
         try:
             with (self._get_job_output_dir(job_id) / "log").open('r') as f:
