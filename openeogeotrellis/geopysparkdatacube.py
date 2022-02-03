@@ -629,7 +629,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             # All JEP implementation work with the float datatype.
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
-            return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPATIAL)
+            return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
         else:
             def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer):
                 """
