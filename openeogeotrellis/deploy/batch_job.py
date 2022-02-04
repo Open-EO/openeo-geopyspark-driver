@@ -307,6 +307,8 @@ def main(argv: List[str]) -> None:
     except Exception as e:
         logger.exception("error processing batch job")
         user_facing_logger.exception("error processing batch job")
+        if "Container killed on request. Exit code is 143" in str(e):
+            user_facing_logger.error("Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate.")
         raise e
 
 @log_memory
