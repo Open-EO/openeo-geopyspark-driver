@@ -1179,44 +1179,47 @@ class GpsBatchJobs(backend.BatchJobs):
                     spatial_extent = constraints['spatial_extent']
                     crs = spatial_extent['crs']
 
-                    def bbox_area() -> float:
-                        geom = Polygon.from_bounds(
-                            xmin=spatial_extent['west'],
-                            ymin=spatial_extent['south'],
-                            xmax=spatial_extent['east'],
-                            ymax=spatial_extent['north'])
-
-                        return area_in_square_meters(geom, crs)
-
-                    absolute_maximum_area = 1e+12  # 1 million km²
-
-                    if bbox_area() > absolute_maximum_area:
-                        raise OpenEOApiException(message=
-                                                 "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
-                                                 .format(a=bbox_area(), c=collection_id, m=absolute_maximum_area),
-                                                 status_code=400)
-
                     def get_geometries():
                         return (constraints.get("aggregate_spatial", {}).get("geometries") or
                                 constraints.get("filter_spatial", {}).get("geometries"))
 
-                    def large_area() -> bool:
+                    def area() -> float:
+                        def bbox_area() -> float:
+                            geom = Polygon.from_bounds(
+                                xmin=spatial_extent['west'],
+                                ymin=spatial_extent['south'],
+                                xmax=spatial_extent['east'],
+                                ymax=spatial_extent['north'])
+
+                            return area_in_square_meters(geom, crs)
+
                         geometries = get_geometries()
 
                         if not geometries:
-                            area = bbox_area()
+                            return bbox_area()
                         elif isinstance(geometries, DelayedVector):
-                            area = (self._jvm
+                            return (self._jvm
                                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
                                     .areaInSquareMeters())
                         else:
-                            area = area_in_square_meters(geometries, crs)
+                            return area_in_square_meters(geometries, crs)
 
+                    actual_area = area()
+                    absolute_maximum_area = 1e+12  # 1 million km²
+
+                    if actual_area > absolute_maximum_area:
+                        raise OpenEOApiException(message=
+                                                 "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
+                                                 .format(a=actual_area, c=collection_id, m=absolute_maximum_area),
+                                                 status_code=400)
+
+                    def large_area() -> bool:
                         batch_process_threshold_area = 50 * 1000 * 50 * 1000  # 50x50 km²
-                        large_enough = area >= batch_process_threshold_area
+                        large_enough = actual_area >= batch_process_threshold_area
 
                         logger.info("deemed collection {c} AOI ({a} m²) {s} for batch processing (threshold {t} m²)"
-                                    .format(c=collection_id, a=area, s="large enough" if large_enough else "too small",
+                                    .format(c=collection_id, a=actual_area,
+                                            s="large enough" if large_enough else "too small",
                                             t=batch_process_threshold_area), extra={'job_id': job_id})
 
                         return large_enough
