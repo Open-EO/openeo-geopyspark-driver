@@ -812,13 +812,19 @@ class GeopysparkDataCube(DriverDataCube):
         # TODO properly combine bbox and temporal extents in metadata?
         pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
         if self._is_spatial() and other._is_spatial():
-            merged_data = self._apply_to_levels_geotrellis_rdd(
-                lambda rdd, level:
-                pr.mergeSpatialCubes(
-                    rdd,
-                    other.pyramid.levels[level].srdd.rdd(),
+            def merge(rdd,other,level):
+                left = pr.wrapCube(rdd)
+                left.openEOMetadata().setBandNames(leftBandNames)
+                right = pr.wrapCube(other.pyramid.levels[level].srdd.rdd())
+                right.openEOMetadata().setBandNames(rightBandNames)
+                return pr.mergeSpatialCubes(
+                    left,
+                    right,
                     overlaps_resolver
                 )
+            merged_data = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level:merge(rdd,other,level)
+
             )
         elif self._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
