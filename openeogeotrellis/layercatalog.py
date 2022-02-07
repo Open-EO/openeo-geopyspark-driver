@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 
 import geopyspark
 from openeo_driver.dry_run import ProcessType
-from shapely.geometry import box
+from shapely.geometry import box, Point
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
@@ -139,12 +139,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
-        polygons = load_params.aggregate_spatial_geometries
+        geometries = load_params.aggregate_spatial_geometries
 
-        if not polygons:
+        if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
+        elif isinstance(geometries, Point):
+            buffered_extent = jvm.geotrellis.vector.Extent(*geometries.buffer(0.001).bounds)  # TODO: make this crs-independent
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
         else:
-            projected_polygons = to_projected_polygons(jvm, polygons)
+            projected_polygons = to_projected_polygons(jvm, geometries)
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 

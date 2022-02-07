@@ -43,6 +43,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.ml_model import MLModel
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 from openeogeotrellis._version import __version__ as softwareversion
+from shapely.geometry.base import BaseGeometry
 
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest
@@ -1212,8 +1213,8 @@ class GeopysparkDataCube(DriverDataCube):
     def get_max_level(self):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
-    def aggregate_spatial(self, geometries: Union[str, GeometryCollection, Polygon, MultiPolygon],
-                         reducer,target_dimension: str = "result") -> AggregatePolygonResult:
+    def aggregate_spatial(self, geometries: Union[str, BaseGeometry], reducer,
+                          target_dimension: str = "result") -> AggregatePolygonResult:
 
         if isinstance(reducer, dict):
             if len(reducer) == 1:
@@ -1228,8 +1229,7 @@ class GeopysparkDataCube(DriverDataCube):
                 code="ReducerUnsupported", status_code=400
             )
 
-
-    def zonal_statistics(self, regions: Union[str, GeometryCollection, Polygon, MultiPolygon], func) -> AggregatePolygonResult:
+    def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> AggregatePolygonResult:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
@@ -1240,61 +1240,76 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
 
+        polygons = None if isinstance(regions, Point) else to_projected_polygons(self._get_jvm(), regions)
+
         highest_level = self.get_max_level()
         layer_metadata = highest_level.layer_metadata
         scala_data_cube = highest_level.srdd.rdd()
-        polygons = to_projected_polygons(self._get_jvm(), regions)
         from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
         to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-        # TODO also add dumping results first to temp json file like with "mean"
-        if func == 'histogram':
-            stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-            )
-            timeseries = self._as_python(stats)
-        elif func == 'sd':
-            stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
-                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-            )
-            timeseries = self._as_python(stats)
-        elif func == 'median':
-            stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
-                scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-            )
-            timeseries = self._as_python(stats)
-        elif func == "mean":
-            with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                    scala_data_cube,
-                    polygons,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                    0,
-                    temp_file.name
+        if polygons:
+            # TODO also add dumping results first to temp json file like with "mean"
+            if func == 'histogram':
+                stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
                 )
-                with open(temp_file.name, encoding='utf-8') as f:
-                    timeseries = json.load(f)
+                timeseries = self._as_python(stats)
+            elif func == 'sd':
+                stats = self._compute_stats_geotrellis().compute_sd_time_series_from_datacube(
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+                )
+                timeseries = self._as_python(stats)
+            elif func == 'median':
+                stats = self._compute_stats_geotrellis().compute_median_time_series_from_datacube(
+                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+                )
+                timeseries = self._as_python(stats)
+            elif func == "mean":
+                with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                    self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                        scala_data_cube,
+                        polygons,
+                        from_date.isoformat(),
+                        to_date.isoformat(),
+                        0,
+                        temp_file.name
+                    )
+                    with open(temp_file.name, encoding='utf-8') as f:
+                        timeseries = json.load(f)
+            else:
+                bandNames = ["band_unnamed"]
+                if self.metadata.has_band_dimension():
+                    bandNames = self.metadata.band_names
+
+                wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
+                wrapped.openEOMetadata().setBandNames(bandNames)
+                clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
+                if(not clusterDir.exists()):
+                    clusterDir = pathlib.Path(".").resolve()
+                temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
+                os.chmod(temp_output, 0o777)
+                self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+                    func,
+                    wrapped,
+                    polygons,
+                    temp_output
+                )
+                return AggregatePolygonResultCSV(temp_output,regions=regions,metadata=self.metadata)
         else:
+            point_wkt = str(regions)
+            point_srs = "EPSG:4326"
 
-            bandNames = ["band_unnamed"]
-            if self.metadata.has_band_dimension():
-                bandNames = self.metadata.band_names
-
-            wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
-            wrapped.openEOMetadata().setBandNames(bandNames)
-            clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
-            if(not clusterDir.exists()):
-                clusterDir = pathlib.Path(".").resolve()
-            temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
-            os.chmod(temp_output, 0o777)
-            self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+            temp_output = "/tmp/compute_something"
+            self._compute_stats_geotrellis().compute_something(
                 func,
-                wrapped,
-                polygons,
+                scala_data_cube,
+                point_wkt,
+                point_srs,
                 temp_output
             )
-            return AggregatePolygonResultCSV(temp_output,regions=regions,metadata=self.metadata)
+
+            return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
 
         return AggregatePolygonResult(
             timeseries=timeseries,
