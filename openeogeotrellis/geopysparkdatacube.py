@@ -1240,7 +1240,10 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
 
-        polygons = None if isinstance(regions, Point) else to_projected_polygons(self._get_jvm(), regions)
+        polygons = (None if isinstance(regions, Point) or
+                            (isinstance(regions, GeometryCollection) and
+                             all(isinstance(geom, Point) for geom in regions.geoms))
+                    else to_projected_polygons(self._get_jvm(), regions))
 
         highest_level = self.get_max_level()
         layer_metadata = highest_level.layer_metadata
@@ -1297,19 +1300,18 @@ class GeopysparkDataCube(DriverDataCube):
                 )
                 return AggregatePolygonResultCSV(temp_output,regions=regions,metadata=self.metadata)
         else:
-            point_wkt = str(regions)
-            point_srs = "EPSG:4326"
+            point_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
+            points_srs = "EPSG:4326"
 
-            temp_output = "/tmp/compute_something"
-            self._compute_stats_geotrellis().compute_something(
-                func,
-                scala_data_cube,
-                point_wkt,
-                point_srs,
-                temp_output
-            )
+            with tempfile.TemporaryDirectory() as temp_dir:
+                self._compute_stats_geotrellis().compute_something(
+                    func,
+                    scala_data_cube,
+                    point_wkts,
+                    points_srs,
+                    temp_dir)
 
-            return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
+                return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
 
         return AggregatePolygonResult(
             timeseries=timeseries,

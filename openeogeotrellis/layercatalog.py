@@ -10,6 +10,7 @@ from typing import List, Dict, Optional
 import geopyspark
 from openeo_driver.dry_run import ProcessType
 from shapely.geometry import box, Point
+from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
@@ -146,6 +147,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif isinstance(geometries, Point):
             buffered_extent = jvm.geotrellis.vector.Extent(*geometries.buffer(0.001).bounds)  # TODO: make this crs-independent
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
+        elif isinstance(geometries, GeometryCollection) and all(isinstance(geom, Point) for geom in geometries.geoms):  # TODO: support heterogeneous GeometryCollections
+            polygon_wkts = [str(point.buffer(0.001)) for point in geometries.geoms]
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, srs)
         else:
             projected_polygons = to_projected_polygons(jvm, geometries)
 
