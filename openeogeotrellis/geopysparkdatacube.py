@@ -533,6 +533,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             # Convert the result back to a TiledRasterLayer.
             metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
+            _log.info(f"apply_neighborhood created datacube {metadata}")
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
         return self.apply_to_levels(partial(rdd_function, self.metadata))
