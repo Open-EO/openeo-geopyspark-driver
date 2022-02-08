@@ -512,7 +512,7 @@ class GeopysparkDataCube(DriverDataCube):
                          Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.now()),
+                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
                          Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
