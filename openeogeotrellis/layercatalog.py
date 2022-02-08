@@ -147,8 +147,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif isinstance(geometries, Point):
             buffered_extent = jvm.geotrellis.vector.Extent(*geometries.buffer(0.001).bounds)  # TODO: make this crs-independent
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
-        elif isinstance(geometries, GeometryCollection) and all(isinstance(geom, Point) for geom in geometries.geoms):  # TODO: support heterogeneous GeometryCollections
-            polygon_wkts = [str(point.buffer(0.001)) for point in geometries.geoms]
+        elif isinstance(geometries, GeometryCollection) and any(isinstance(geom, Point) for geom in geometries.geoms):
+            polygon_wkts = [str(geom.buffer(0.001)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, srs)
         else:
             projected_polygons = to_projected_polygons(jvm, geometries)

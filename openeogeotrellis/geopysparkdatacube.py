@@ -1242,7 +1242,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         polygons = (None if isinstance(regions, Point) or
                             (isinstance(regions, GeometryCollection) and
-                             all(isinstance(geom, Point) for geom in regions.geoms))
+                             any(isinstance(geom, Point) for geom in regions.geoms))
                     else to_projected_polygons(self._get_jvm(), regions))
 
         highest_level = self.get_max_level()
