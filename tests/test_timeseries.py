@@ -308,9 +308,9 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
 
     print(result)
     #result.to_csv("median.csv")
-    assert result.data == {'2017-09-25': [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
-                            '2017-09-30': [[pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True)]],
-                            '2017-10-25': [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]]}
+    assert result.data == {'2017-09-25T11:37:00.000Z': [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
+                            '2017-09-30T00:37:00.000Z': [[pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True)]],
+                            '2017-10-25T11:37:00.000Z': [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]]}
 
 
 
