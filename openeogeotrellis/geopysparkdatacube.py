@@ -995,6 +995,9 @@ class GeopysparkDataCube(DriverDataCube):
                     "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
+                if not self.metadata.has_temporal_dimension():
+                    raise OpenEOApiException(
+                        message="apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf,context=context)
             elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
                 result_collection = retiled_collection.apply_tiles(udf,context=context)
