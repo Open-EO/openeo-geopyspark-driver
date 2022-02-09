@@ -1237,6 +1237,16 @@ class GeopysparkDataCube(DriverDataCube):
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
+        def csv_dir() -> str:
+            clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
+
+            if (not clusterDir.exists()):
+                clusterDir = pathlib.Path(".").resolve()
+            temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
+            os.chmod(temp_output, 0o777)
+
+            return temp_output
+
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
 
@@ -1287,31 +1297,30 @@ class GeopysparkDataCube(DriverDataCube):
 
                 wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
                 wrapped.openEOMetadata().setBandNames(bandNames)
-                clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
-                if(not clusterDir.exists()):
-                    clusterDir = pathlib.Path(".").resolve()
-                temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
-                os.chmod(temp_output, 0o777)
+
+                temp_output = csv_dir()
+
                 self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                     func,
                     wrapped,
                     polygons,
                     temp_output
                 )
-                return AggregatePolygonResultCSV(temp_output,regions=regions,metadata=self.metadata)
+                return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
         else:
             point_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
             points_srs = "EPSG:4326"
 
-            with tempfile.TemporaryDirectory() as temp_dir:  # FIXME: won't work on the cluster
-                self._compute_stats_geotrellis().compute_something(
-                    func,
-                    scala_data_cube,
-                    point_wkts,
-                    points_srs,
-                    temp_dir)
+            temp_dir = csv_dir()
 
-                return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
+            self._compute_stats_geotrellis().compute_something(
+                func,
+                scala_data_cube,
+                point_wkts,
+                points_srs,
+                temp_dir)
+
+            return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
 
         return AggregatePolygonResult(
             timeseries=timeseries,
