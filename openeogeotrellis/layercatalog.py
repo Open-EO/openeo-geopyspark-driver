@@ -287,7 +287,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties(),
                                             correlation_id,datacubeParams)
             else:
-                if polygons:
+                if geometries:
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
                                                to_date, metadata_properties(), correlation_id)
                 else:
