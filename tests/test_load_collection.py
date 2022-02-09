@@ -4,7 +4,7 @@ from mock import MagicMock, ANY
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import ProcessGraphComplexityException, OpenEOApiException
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
 
@@ -53,7 +53,7 @@ def test_load_collection_sar_backscatter_compatible(get_jvm):
                                          {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock, cellsize_mock)
 
     jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
-    factory_mock.return_value.datacube_seq.assert_called_once
+    factory_mock.return_value.datacube_seq.assert_called_once()
 
 
 def test_load_collection_sar_backscatter_incompatible():
