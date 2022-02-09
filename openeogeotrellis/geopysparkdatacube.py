@@ -1303,7 +1303,7 @@ class GeopysparkDataCube(DriverDataCube):
             point_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
             points_srs = "EPSG:4326"
 
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir:  # FIXME: won't work on the cluster
                 self._compute_stats_geotrellis().compute_something(
                     func,
                     scala_data_cube,
