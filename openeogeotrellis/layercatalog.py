@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 
 import geopyspark
 from openeo_driver.dry_run import ProcessType
-from shapely.geometry import box, Point
+from shapely.geometry import box, Point, Polygon
 from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
@@ -142,13 +142,23 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         geometries = load_params.aggregate_spatial_geometries
 
+        def buffer_point(point: Point, point_srs: str) -> Polygon:
+            buffer_distance_in_meters = 100.0
+            # TODO: clean this up
+            reprojected_extent = GeopysparkDataCube._reproject_extent("EPSG:3857", point_srs,
+                                                                      0.0, 0.0, buffer_distance_in_meters, 1.0)
+
+            buffer_distance = reprojected_extent.xmax - reprojected_extent.xmin
+
+            return point.buffer(buffer_distance)
+
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
         elif isinstance(geometries, Point):
-            buffered_extent = jvm.geotrellis.vector.Extent(*geometries.buffer(0.001).bounds)  # TODO: make this crs-independent
+            buffered_extent = jvm.geotrellis.vector.Extent(*buffer_point(geometries, srs).bounds)
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
         elif isinstance(geometries, GeometryCollection) and any(isinstance(geom, Point) for geom in geometries.geoms):
-            polygon_wkts = [str(geom.buffer(0.001)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]  # TODO: this too
+            polygon_wkts = [str(buffer_point(geom, srs)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, srs)
         else:
             projected_polygons = to_projected_polygons(jvm, geometries)
