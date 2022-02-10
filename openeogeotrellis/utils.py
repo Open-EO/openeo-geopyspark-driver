@@ -9,18 +9,19 @@ import pwd
 import resource
 import stat
 from pathlib import Path
-from typing import Union, Tuple, Callable
+from typing import Union, Tuple
 
 import pytz
 import dateutil.parser
 from kazoo.client import KazooClient
 from py4j.java_gateway import JavaGateway, JVMView
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
+
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
@@ -288,3 +289,15 @@ def nullcontext():
     Backport of Python 3.7 `contextlib.nullcontext`
     """
     yield
+
+
+def buffer_point(point: Point, point_srs: str, buffer_distance_in_meters=10.0) -> Polygon:
+    # TODO: clean this up
+    from .geopysparkdatacube import GeopysparkDataCube
+
+    reprojected_extent = GeopysparkDataCube._reproject_extent("EPSG:3857", point_srs,
+                                                              0.0, 0.0, buffer_distance_in_meters, 1.0)
+
+    buffer_distance = reprojected_extent.xmax - reprojected_extent.xmin
+
+    return point.buffer(buffer_distance)

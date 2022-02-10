@@ -28,7 +28,7 @@ from py4j.java_gateway import JavaGateway, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.version import __version__ as pysparkversion
-from shapely.geometry import Polygon
+from shapely.geometry import GeometryCollection, Point, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band
@@ -57,7 +57,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
-from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent
+from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, buffer_point
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -1273,7 +1273,17 @@ class GpsBatchJobs(backend.BatchJobs):
                         # string crs is unchanged
                     else:
                         # handles DelayedVector as well as Shapely geometries
-                        projected_polygons = to_projected_polygons(self._jvm, geometries)
+                        assert not isinstance(geometries, Point)  # too small to provoke a batch process?
+                        # FIXME: try a CARD4L (.sar_backscatter) process graph
+
+                        if (isinstance(geometries, GeometryCollection) and
+                                any(isinstance(geom, Point) for geom in geometries.geoms)):
+                            polygon_wkts = [str(buffer_point(geom, crs)) if isinstance(geom, Point)
+                                            else str(geom) for geom in geometries.geoms]
+                            projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts,
+                                                                                                           crs)
+                        else:
+                            projected_polygons = to_projected_polygons(self._jvm, geometries)
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
 

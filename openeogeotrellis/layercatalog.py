@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 
 import geopyspark
 from openeo_driver.dry_run import ProcessType
-from shapely.geometry import box, Point, Polygon
+from shapely.geometry import box, Point
 from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
@@ -27,7 +27,8 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
-from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
+from openeogeotrellis.utils import (dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent,
+                                    buffer_point)
 
 logger = logging.getLogger(__name__)
 
@@ -141,16 +142,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
         geometries = load_params.aggregate_spatial_geometries
-
-        def buffer_point(point: Point, point_srs: str) -> Polygon:
-            buffer_distance_in_meters = 100.0
-            # TODO: clean this up
-            reprojected_extent = GeopysparkDataCube._reproject_extent("EPSG:3857", point_srs,
-                                                                      0.0, 0.0, buffer_distance_in_meters, 1.0)
-
-            buffer_distance = reprojected_extent.xmax - reprojected_extent.xmin
-
-            return point.buffer(buffer_distance)
 
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
