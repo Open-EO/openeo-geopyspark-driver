@@ -1272,17 +1272,18 @@ class GpsBatchJobs(backend.BatchJobs):
                         geometry = bbox
                         # string crs is unchanged
                     else:
-                        # handles DelayedVector as well as Shapely geometries
-                        assert not isinstance(geometries, Point)  # too small to provoke a batch process?
-                        # FIXME: try a CARD4L (.sar_backscatter) process graph
-
-                        if (isinstance(geometries, GeometryCollection) and
+                        if isinstance(geometries, Point):
+                            buffered_extent = self._jvm.geotrellis.vector.Extent(*buffer_point(geometries, crs).bounds)
+                            projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+                                buffered_extent, crs)
+                        elif (isinstance(geometries, GeometryCollection) and
                                 any(isinstance(geom, Point) for geom in geometries.geoms)):
                             polygon_wkts = [str(buffer_point(geom, crs)) if isinstance(geom, Point)
                                             else str(geom) for geom in geometries.geoms]
                             projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts,
                                                                                                            crs)
                         else:
+                            # handles DelayedVector as well as Shapely geometries
                             projected_polygons = to_projected_polygons(self._jvm, geometries)
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
