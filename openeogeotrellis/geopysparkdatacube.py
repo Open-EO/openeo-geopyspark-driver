@@ -1313,12 +1313,13 @@ class GeopysparkDataCube(DriverDataCube):
 
             temp_dir = csv_dir()
 
-            self._compute_stats_geotrellis().compute_something(
+            self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                 func,
                 scala_data_cube,
                 point_wkts,
                 points_srs,
-                temp_dir)
+                temp_dir
+            )
 
             return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
 
