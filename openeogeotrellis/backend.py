@@ -1202,6 +1202,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         if not geometries:
                             return bbox_area()
                         elif isinstance(geometries, DelayedVector):
+                            # TODO: can this case and the next be replaced with a combination of to_projected_polygons
+                            #  and ProjectedPolygons#areaInSquareMeters?
                             return (self._jvm
                                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
                                     .areaInSquareMeters())
