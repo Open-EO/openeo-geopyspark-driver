@@ -9,7 +9,7 @@ import pwd
 import resource
 import stat
 from pathlib import Path
-from typing import Union, Tuple, Callable
+from typing import Union, Tuple
 
 import pytz
 import dateutil.parser
@@ -21,6 +21,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
+
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):

@@ -9,7 +9,8 @@ from typing import List, Dict, Optional
 
 import geopyspark
 from openeo_driver.dry_run import ProcessType
-from shapely.geometry import box
+from shapely.geometry import box, Point
+from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get
@@ -18,7 +19,7 @@ from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from openeo_driver.utils import read_json, EvalEnv, to_hashable
+from openeo_driver.utils import buffer_point_approx, read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
@@ -139,12 +140,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
-        polygons = load_params.aggregate_spatial_geometries
+        geometries = load_params.aggregate_spatial_geometries
 
-        if not polygons:
+        if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
+        elif isinstance(geometries, Point):
+            buffered_extent = jvm.geotrellis.vector.Extent(*buffer_point_approx(geometries, srs).bounds)
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
+        elif isinstance(geometries, GeometryCollection) and any(isinstance(geom, Point) for geom in geometries.geoms):
+            polygon_wkts = [str(buffer_point_approx(geom, srs)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, srs)
         else:
-            projected_polygons = to_projected_polygons(jvm, polygons)
+            projected_polygons = to_projected_polygons(jvm, geometries)
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
@@ -280,7 +287,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties(),
                                             correlation_id,datacubeParams)
             else:
-                if polygons:
+                if geometries:
                     return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
                                                to_date, metadata_properties(), correlation_id)
                 else:
