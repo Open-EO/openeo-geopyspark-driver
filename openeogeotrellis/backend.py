@@ -42,7 +42,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
                                   ServiceUnsupportedException)
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import buffer_point_approx, EvalEnv
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
@@ -57,7 +57,7 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
-from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, buffer_point
+from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -1273,12 +1273,12 @@ class GpsBatchJobs(backend.BatchJobs):
                         # string crs is unchanged
                     else:
                         if isinstance(geometries, Point):
-                            buffered_extent = self._jvm.geotrellis.vector.Extent(*buffer_point(geometries, crs).bounds)
+                            buffered_extent = self._jvm.geotrellis.vector.Extent(*buffer_point_approx(geometries, crs).bounds)
                             projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
                                 buffered_extent, crs)
                         elif (isinstance(geometries, GeometryCollection) and
                                 any(isinstance(geom, Point) for geom in geometries.geoms)):
-                            polygon_wkts = [str(buffer_point(geom, crs)) if isinstance(geom, Point)
+                            polygon_wkts = [str(buffer_point_approx(geom, crs)) if isinstance(geom, Point)
                                             else str(geom) for geom in geometries.geoms]
                             projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts,
                                                                                                            crs)

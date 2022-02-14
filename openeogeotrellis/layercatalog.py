@@ -19,7 +19,7 @@ from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from openeo_driver.utils import read_json, EvalEnv, to_hashable
+from openeo_driver.utils import buffer_point_approx, read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
@@ -27,8 +27,7 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
-from openeogeotrellis.utils import (dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent,
-                                    buffer_point)
+from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
 
 logger = logging.getLogger(__name__)
 
@@ -146,10 +145,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
         elif isinstance(geometries, Point):
-            buffered_extent = jvm.geotrellis.vector.Extent(*buffer_point(geometries, srs).bounds)
+            buffered_extent = jvm.geotrellis.vector.Extent(*buffer_point_approx(geometries, srs).bounds)
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
         elif isinstance(geometries, GeometryCollection) and any(isinstance(geom, Point) for geom in geometries.geoms):
-            polygon_wkts = [str(buffer_point(geom, srs)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]
+            polygon_wkts = [str(buffer_point_approx(geom, srs)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, srs)
         else:
             projected_polygons = to_projected_polygons(jvm, geometries)

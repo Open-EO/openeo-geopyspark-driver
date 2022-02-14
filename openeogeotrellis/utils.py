@@ -289,15 +289,3 @@ def nullcontext():
     Backport of Python 3.7 `contextlib.nullcontext`
     """
     yield
-
-
-def buffer_point(point: Point, point_srs: str, buffer_distance_in_meters=10.0) -> Polygon:
-    # TODO: clean this up
-    from .geopysparkdatacube import GeopysparkDataCube
-
-    reprojected_extent = GeopysparkDataCube._reproject_extent("EPSG:3857", point_srs,
-                                                              0.0, 0.0, buffer_distance_in_meters, 1.0)
-
-    buffer_distance = reprojected_extent.xmax - reprojected_extent.xmin
-
-    return point.buffer(buffer_distance)
