@@ -283,7 +283,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             catalog=catalog,
             batch_jobs=GpsBatchJobs(catalog, jvm, principal, key_tab),
             user_defined_processes=user_defined_processes,
-            processing=ConcreteProcessing()
+            processing=GpsProcessing(),
         )
 
         self._principal = principal
@@ -611,15 +611,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return error
 
+
+class GpsProcessing(ConcreteProcessing):
     def extra_validation(
-            self, process_graph: dict, result, source_constraints: List[SourceConstraint]
+            self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
+
+        catalog = env.backend_implementation.catalog
 
         for source_id, constraints in source_constraints:
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
-                metadata = self.catalog.get_collection_metadata(collection_id=collection_id)
+                metadata = catalog.get_collection_metadata(collection_id=collection_id)
                 source_info = deep_get(metadata, "_vito", "data_source", default={})
                 check_missing_products = source_info.get("check_missing_products")
 

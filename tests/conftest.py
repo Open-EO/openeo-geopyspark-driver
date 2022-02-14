@@ -24,6 +24,7 @@ def pytest_configure(config):
     _ensure_geopyspark(terminal_reporter)
     _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
 
+
 def _ensure_geopyspark(out: TerminalReporter):
     """Make sure GeoPySpark knows where to find Spark (SPARK_HOME) and py4j"""
     try:
