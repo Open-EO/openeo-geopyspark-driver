@@ -358,8 +358,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
                                                          wavelength_um=None))
 
-                return (pyramid_factory.datacube_seq(projected_polygons_native_crs, None, None) if single_level
-                        else pyramid_factory.pyramid_seq(extent, srs, None, None))
+                return (pyramid_factory.datacube_seq(projected_polygons_native_crs, from_date, to_date,None,collection_id,datacubeParams) if single_level
+                        else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date))
             else:
                 if collection_id == 'PLANETSCOPE':
                     # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
