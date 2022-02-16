@@ -1308,16 +1308,16 @@ class GeopysparkDataCube(DriverDataCube):
                 )
                 return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
         else:
-            point_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
-            points_srs = "EPSG:4326"
+            geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
+            geometries_srs = "EPSG:4326"
 
             temp_dir = csv_dir()
 
             self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                 func,
                 scala_data_cube,
-                point_wkts,
-                points_srs,
+                geometry_wkts,
+                geometries_srs,
                 temp_dir
             )
 
