@@ -154,6 +154,7 @@ def test_ep3874_filter_spatial(tmp_path):
                     "type": "FeatureCollection",
                     "features": [{
                         "type": "Feature",
+                        "properties": {},
                         "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
                     },
                         {
@@ -161,7 +162,7 @@ def test_ep3874_filter_spatial(tmp_path):
                             "properties": {},
                             "geometry": {
                                 "type": "Polygon",
-                                "coordinates": [[[0.72, -0.516],[2.99,-1.29],[2.279,1.724],[0.725,-0.18],[0.725,-0.516]]]
+                                "coordinates": [[[0.725, -0.516],[2.99,-1.29],[2.279,1.724],[0.725,-0.18],[0.725,-0.516]]]
                             }
                         }
                     ]

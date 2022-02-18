@@ -362,6 +362,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             if len(geoms) > 1:
                 logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(geoms)))
             elif len(geoms) == 1:
+                # TODO: what's up with this warning?
                 logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
             result.options["geometries"] = geoms[0]
             if(result.options["geometries"] == None):

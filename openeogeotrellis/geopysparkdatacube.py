@@ -193,9 +193,12 @@ class GeopysparkDataCube(DriverDataCube):
             metadata=self.metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
         )
 
-    def filter_spatial(self, geometries) -> 'GeopysparkDataCube':
-        #not sure if we can update the metadata here
-        return self
+    def filter_spatial(self, geometries: Union[Polygon, MultiPolygon]) -> 'GeopysparkDataCube':
+        # TODO: support more geometry types but geopyspark.geotrellis.layer.TiledRasterLayer.mask doesn't seem to work
+        #  with e.g. GeometryCollection
+
+        # TODO: update metadata?
+        return self.mask_polygon(geometries)
 
     def filter_bands(self, bands) -> 'GeopysparkDataCube':
         band_indices = [self.metadata.get_band_index(b) for b in bands]
@@ -1578,22 +1581,24 @@ class GeopysparkDataCube(DriverDataCube):
                 projected_polygons = to_projected_polygons(self._get_jvm(), geometries)
                 labels = self.get_labels(geometries)
                 if(max_level.layer_type != gps.LayerType.SPATIAL):
-                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(max_level.srdd.rdd(),
-                                                                                                    save_directory,
-                                                                                                    projected_polygons,
-                                                                                                    labels,
-                                                                                                    band_names,dim_names,
-                                                                                                    global_metadata
-                                                                                                    )
+                    print(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
+                    asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
+                        max_level.srdd.rdd(),
+                        save_directory,
+                        projected_polygons,
+                        labels,
+                        band_names,
+                        dim_names,
+                        global_metadata)
                 else:
                     asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
                         max_level.srdd.rdd(),
                         save_directory,
                         projected_polygons,
                         labels,
-                        band_names, dim_names,
-                        global_metadata
-                        )
+                        band_names,
+                        dim_names,
+                        global_metadata)
 
                 return self.return_netcdf_assets(asset_paths, bands, nodata)
             else:
