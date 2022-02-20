@@ -74,7 +74,7 @@ def load_test_collection(
     metadata = Metadata(
         bounds=Bounds(SpaceTimeKey(col_min, row_min, min(dates)), SpaceTimeKey(col_max, row_max, max(dates))),
         crs="+proj=longlat +datum=WGS84 +no_defs ",
-        cell_type=CellType.INT32,
+        cell_type=CellType.FLOAT64,
         extent=extent,
         layout_definition=LayoutDefinition(
             extent=geopyspark.Extent(
