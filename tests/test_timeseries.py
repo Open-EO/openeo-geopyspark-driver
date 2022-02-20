@@ -77,7 +77,7 @@ class TestTimeSeries(TestCase):
                     }
                     }
 
-        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata).convert_data_type('int32',no_data_value=-1)
 
     def create_spacetime_unsigned_byte_layer(self):
         """
@@ -252,19 +252,20 @@ def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_thr
     print(result)
     #result.to_csv("median.csv")
     assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]],
+                           '2017-09-30T00:37:00Z': [[pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True)]],
                             '2017-10-25T11:37:00Z': [[2.0, 1.0]]}
 
     covjson = result.to_covjson()
     assert covjson["ranges"] == {
         "band0": {
             "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-            "shape": (2, 1),
-            "values": [1.0, 2.0]
+            "shape": (3, 1),
+            "values": [1.0, pytest.approx(np.nan,nan_ok=True), 2.0]
         },
         "band1": {
             "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-            "shape": (2, 1),
-            "values": [2.0, 1.0]
+            "shape": (3, 1),
+            "values": [2.0, pytest.approx(np.nan,nan_ok=True), 1.0]
         }
     }
 
@@ -308,24 +309,69 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
 
     print(result)
     #result.to_csv("median.csv")
-    assert result.data == {'2017-09-25T11:37:00.000Z': [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
-                            '2017-09-30T00:37:00.000Z': [[pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True)]],
-                            '2017-10-25T11:37:00.000Z': [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]]}
+    assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
+                            '2017-09-30T00:37:00Z': [[pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True)]],
+                            '2017-10-25T11:37:00Z': [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]]}
 
 
 
 def _build_cube():
+    openeo_metadata = {
+        "cube:dimensions": {
+            "x": {"type": "spatial", "axis": "x"},
+            "y": {"type": "spatial", "axis": "y"},
+            "bands": {"type": "bands", "values": ["red", "nir"]},
+            "t": {"type": "temporal"}
+        },
+        "bands": [
+
+            {
+                "band_id": "red",
+                "name": "red",
+                "offset": 0,
+                "res_m": 10,
+                "scale": 0.0001,
+                "type": "int16",
+                "unit": "1",
+                "wavelength_nm": 664.5
+            },
+            {
+                "band_id": "nir",
+                "name": "nir",
+                "offset": 0,
+                "res_m": 10,
+                "scale": 0.0001,
+                "type": "int16",
+                "unit": "1",
+                "wavelength_nm": 835.1
+            }
+        ],
+        "description": "Sentinel 2 Level-2: Bottom-of-atmosphere reflectances in cartographic geometry",
+        "extent": {
+            "bottom": 39,
+            "crs": "EPSG:4326",
+            "left": -34,
+            "right": 35,
+            "top": 71
+        },
+        "product_id": "CGS_SENTINEL2_RADIOMETRY_V101",
+        "time": {
+            "from": "2016-01-01",
+            "to": "2019-10-01"
+        }
+    }
+
     # TODO: avoid instantiating TestTimeSeries? e.g. use pytest fixtures or simple builder functions.
     layer = TestTimeSeries().create_spacetime_layer()
-    cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
+    cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}),metadata=openeo_metadata)
     return cube
 
 
 @pytest.mark.parametrize(["func", "expected"], [
-    ("mean", {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}),
-    ("median", {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}),
+    ("mean", {'2017-09-25T11:37:00Z': [[1, 2]]}),
+    ("median", {'2017-09-25T11:37:00Z': [[1, 2]]}),
     ("histogram", {'2017-09-25T11:37:00Z': [[{1.0: 4}, {2.0: 4}]]}),
-    ("sd", {'2017-09-25T11:37:00Z': [[0.0, 0.0]]})
+    ("sd", {'2017-09-25T11:37:00Z': [[0, 0]]})
 ])
 def test_zonal_statistics_single_polygon(func, expected):
     cube = _build_cube()
