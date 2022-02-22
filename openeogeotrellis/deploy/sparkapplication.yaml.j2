@@ -55,6 +55,10 @@ spec:
       hostPath:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
+    - name: "spark-local-dir"
+      host:
+        path: "/opt/spark_tmp"
+        type: "DirectoryOrCreate"
   driver:
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
@@ -86,6 +90,8 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
+      - name: "spark-local-dir"
+        mountPath: "/tmp/spark-local-dir"
   executor:
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
@@ -120,6 +126,8 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
+      - name: "spark-local-dir"
+        mountPath: "/tmp/spark-local-dir"
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-2.3.0_2.12-SNAPSHOT.jar'
