@@ -764,6 +764,7 @@ class GpsBatchJobs(backend.BatchJobs):
         dependencies = job_info.get('dependencies') or []
         statuses = reduce(operator.add, (batch_request_statuses(dependency) for dependency in dependencies))
 
+        # TODO: include batch request ID in log
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
                      .format(j=job_id, ss=[status for status, _ in statuses]), extra={'job_id': job_id})
 
@@ -1370,7 +1371,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                 if (java_exception.getClass().getName() ==
                                         'org.openeo.geotrellissentinelhub.BatchProcessingService$NoSuchFeaturesException'):
                                     raise OpenEOApiException(
-                                        message=f"{java_exception.getClass.getName()}: {java_exception.getMessage()}",
+                                        message=f"{java_exception.getClass().getName()}: {java_exception.getMessage()}",
                                         status_code=400)
                                 else:
                                     raise e
