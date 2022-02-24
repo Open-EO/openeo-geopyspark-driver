@@ -55,7 +55,7 @@ spec:
       hostPath:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
-    - name: "spark-local-dir"
+    - name: "spark-local-dir-1"
       host:
         path: "/opt/spark_tmp"
         type: "DirectoryOrCreate"
@@ -90,7 +90,7 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
-      - name: "spark-local-dir"
+      - name: "spark-local-dir-1"
         mountPath: "/tmp/spark-local-dir"
   executor:
     envVars:
