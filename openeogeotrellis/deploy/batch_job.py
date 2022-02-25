@@ -239,7 +239,9 @@ def main(argv: List[str]) -> None:
     metadata_file = job_dir / argv[5]
     api_version = argv[6] if len(argv) >= 7 else None
     dependencies = _deserialize_dependencies(argv[7]) if len(argv) >= 8 else {}
-    user_id = argv[8] if len(argv) >= 9 else None
+    # TODO: do we still need proxy user id inside the batch job itself?
+    proxy_user_id = argv[8] if len(argv) >= 9 else None
+    user_id = argv[9] if len(argv) >= 10 else None
 
     _create_job_dir(job_dir)
 
