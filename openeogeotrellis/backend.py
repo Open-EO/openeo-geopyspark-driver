@@ -1231,7 +1231,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
                         return large_enough
 
-                    if card4l:
+                    endpoint = layer_source_info['endpoint']
+                    supports_batch_processes = (endpoint.startswith("https://services.sentinel-hub.com") or
+                                                endpoint.startswith("https://services-uswest2.sentinel-hub.com"))
+
+                    if not supports_batch_processes:
+                        logger.info("endpoint {e} does not support batch processing".format(e=endpoint),
+                                    extra={'job_id': job_id})
+                        continue
+                    elif card4l:
                         logger.info("deemed collection {c} request CARD4L compliant ({s})"
                                     .format(c=collection_id, s=sar_backscatter_arguments), extra={'job_id': job_id})
                     elif not large_area():
@@ -1251,7 +1259,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                        layer_source_info['endpoint'],
+                        endpoint,
                         bucket_name,
                         layer_source_info['client_id'],
                         layer_source_info['client_secret'])
