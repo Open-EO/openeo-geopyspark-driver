@@ -366,7 +366,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_collection_id = feature_flags['byoc_collection_id']
                     dataset_id = shub_collection_id
                 else:
-                    shub_collection_id = layer_source_info['collection_id']
+                    shub_collection_id = layer_source_info.get('collection_id')
                     dataset_id = layer_source_info['dataset_id']
 
                 endpoint = layer_source_info['endpoint']
@@ -610,28 +610,43 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
                 except Exception:
                     logger.warning(traceback.format_exc())
             elif data_source.get("type") == "sentinel-hub":
-                sh_cid = data_source.get("collection_id")
+                sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
 
-                if sh_cid is None:
-                    continue
+                # TODO: improve performance by only fetching necessary STACs
+                if sh_collection_metadatas is None:
+                    sh_collections = requests.get(sh_stac_endpoint).json()
+                    sh_collection_metadatas = {c["id"]: requests.get(c["link"]).json() for c in sh_collections}
 
-                try:
-                    sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
+                enrichment_id = data_source.get("enrichment_id")
 
-                    if sh_collection_metadatas is None:
-                        sh_collections = requests.get(sh_stac_endpoint).json()
-                        sh_collection_metadatas = [requests.get(c["link"]).json() for c in sh_collections]
+                # DEM collections have the same datasource_type "dem" so they need an explicit enrichment_id
+                if enrichment_id:
+                    sh_metadata = sh_collection_metadatas[enrichment_id]
+                else:
+                    sh_cid = data_source.get("dataset_id")
 
-                    sh_metadata = next(filter(lambda m: m["datasource_type"] == sh_cid, sh_collection_metadatas))
-                    logger.info(f"Updating {cid} metadata from {sh_stac_endpoint}:{sh_metadata['id']}")
-                    opensearch_metadata[cid] = sh_metadata
-                    if not data_source.get("endpoint"):
-                        endpoint = opensearch_metadata[cid]["providers"][0]["url"]
-                        endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
-                        data_source["endpoint"] = endpoint
-                    data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
-                except StopIteration:
-                    logger.warning(f"No STAC data available for collection with id {sh_cid}")
+                    # PLANETSCOPE doesn't have one so don't try to enrich it
+                    if sh_cid is None:
+                        continue
+
+                    sh_metadatas = [m for _, m in sh_collection_metadatas.items() if m["datasource_type"] == sh_cid]
+
+                    if len(sh_metadatas) == 0:
+                        logger.warning(f"No STAC data available for collection with id {sh_cid}")
+                        continue
+                    elif len(sh_metadatas) > 1:
+                        logger.warning(f"{len(sh_metadatas)} candidates for STAC data for collection with id {sh_cid}")
+                        continue
+
+                    sh_metadata = sh_metadatas[0]
+
+                logger.info(f"Updating {cid} metadata from {sh_stac_endpoint}:{sh_metadata['id']}")
+                opensearch_metadata[cid] = sh_metadata
+                if not data_source.get("endpoint"):
+                    endpoint = opensearch_metadata[cid]["providers"][0]["url"]
+                    endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
+                    data_source["endpoint"] = endpoint
+                data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
 
         if opensearch_metadata:
             metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
