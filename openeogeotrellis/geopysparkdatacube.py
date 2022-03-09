@@ -36,7 +36,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
     ProcessParameterInvalidException
-from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonResultCSV
+from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonSpatialResult, AggregatePolygonResultCSV
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
@@ -1217,7 +1217,8 @@ class GeopysparkDataCube(DriverDataCube):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
     def aggregate_spatial(self, geometries: Union[str, BaseGeometry], reducer,
-                          target_dimension: str = "result") -> AggregatePolygonResult:
+                          target_dimension: str = "result") -> Union[AggregatePolygonResult,
+                                                                     AggregatePolygonSpatialResult]:
 
         if isinstance(reducer, dict):
             if len(reducer) == 1:
@@ -1232,7 +1233,8 @@ class GeopysparkDataCube(DriverDataCube):
                 code="ReducerUnsupported", status_code=400
             )
 
-    def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> AggregatePolygonResult:
+    def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> Union[AggregatePolygonResult,
+                                                                                 AggregatePolygonSpatialResult]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
@@ -1259,54 +1261,16 @@ class GeopysparkDataCube(DriverDataCube):
                     else to_projected_polygons(self._get_jvm(), regions))
 
         highest_level = self.get_max_level()
-        layer_metadata = highest_level.layer_metadata
         scala_data_cube = highest_level.srdd.rdd()
-        from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-        to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+        layer_metadata = highest_level.layer_metadata
 
-        if polygons:
-            # TODO also add dumping results first to temp json file like with "mean"
-            if func == 'histogram':
-                stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                    scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
-                )
-                timeseries = self._as_python(stats)
-            elif func ==  "mean":
-                with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                    self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                        scala_data_cube,
-                        polygons,
-                        from_date.isoformat(),
-                        to_date.isoformat(),
-                        0,
-                        temp_file.name
-                    )
-                    with open(temp_file.name, encoding='utf-8') as f:
-                        timeseries = json.load(f)
-            else:
-                bandNames = ["band_unnamed"]
-                if self.metadata.has_band_dimension():
-                    bandNames = self.metadata.band_names
-
-                wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
-                wrapped.openEOMetadata().setBandNames(bandNames)
-
-                temp_output = csv_dir()
-
-                self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
-                    func,
-                    wrapped,
-                    polygons,
-                    temp_output
-                )
-                return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
-        else:
+        if self._is_spatial():
             geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
             geometries_srs = "EPSG:4326"
 
             temp_dir = csv_dir()
 
-            self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+            self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
                 func,
                 scala_data_cube,
                 geometry_wkts,
@@ -1314,14 +1278,69 @@ class GeopysparkDataCube(DriverDataCube):
                 temp_dir
             )
 
-            return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
+            return AggregatePolygonSpatialResult(temp_dir)
+        else:
+            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
+            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-        return AggregatePolygonResult(
-            timeseries=timeseries,
-            # TODO: regions can also be a string (path to vector file) instead of geometry object
-            regions=regions,
-            metadata=self.metadata
-        )
+            if polygons:
+                # TODO also add dumping results first to temp json file like with "mean"
+                if func == 'histogram':
+                    stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
+                        scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+                    )
+                    timeseries = self._as_python(stats)
+                elif func ==  "mean":
+                    with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
+                        self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                            scala_data_cube,
+                            polygons,
+                            from_date.isoformat(),
+                            to_date.isoformat(),
+                            0,
+                            temp_file.name
+                        )
+                        with open(temp_file.name, encoding='utf-8') as f:
+                            timeseries = json.load(f)
+                else:
+                    bandNames = ["band_unnamed"]
+                    if self.metadata.has_band_dimension():
+                        bandNames = self.metadata.band_names
+
+                    wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
+                    wrapped.openEOMetadata().setBandNames(bandNames)
+
+                    temp_output = csv_dir()
+
+                    self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+                        func,
+                        wrapped,
+                        polygons,
+                        temp_output
+                    )
+                    return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
+            else:
+                geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
+                geometries_srs = "EPSG:4326"
+
+                temp_dir = csv_dir()
+
+                self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+                    func,
+                    scala_data_cube,
+                    geometry_wkts,
+                    geometries_srs,
+                    temp_dir
+                )
+
+                return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
+
+            return AggregatePolygonResult(
+                timeseries=timeseries,
+                # TODO: regions can also be a string (path to vector file) instead of geometry object
+                regions=regions,
+                metadata=self.metadata
+            )
 
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'
