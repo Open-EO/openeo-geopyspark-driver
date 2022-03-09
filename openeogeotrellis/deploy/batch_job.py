@@ -225,23 +225,21 @@ def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
 
-    if len(argv) < 6:
-        print("usage: %s "
-              "<job specification input file> <job directory> <results output file name> <user log file name> "
-              "<metadata file name> [api version] [dependencies]" % argv[0],
-              file=sys.stderr)
-        exit(1)
+    if len(argv) != 9:
+        raise Exception(
+            f"usage: {argv[0]} "
+            "<job specification input file> <job directory> <results output file name> <user log file name> "
+            "<metadata file name> <api version> <dependencies> <user id>"
+        )
 
     job_specification_file = argv[1]
     job_dir = Path(argv[2])
     output_file = job_dir / argv[3]
     log_file = job_dir / argv[4]
     metadata_file = job_dir / argv[5]
-    api_version = argv[6] if len(argv) >= 7 else None
-    dependencies = _deserialize_dependencies(argv[7]) if len(argv) >= 8 else {}
-    # TODO: do we still need proxy user id inside the batch job itself?
-    proxy_user_id = argv[8] if len(argv) >= 9 else None
-    user_id = argv[9] if len(argv) >= 10 else None
+    api_version = argv[6]
+    dependencies = _deserialize_dependencies(argv[7])
+    user_id = argv[8]
 
     _create_job_dir(job_dir)
 
