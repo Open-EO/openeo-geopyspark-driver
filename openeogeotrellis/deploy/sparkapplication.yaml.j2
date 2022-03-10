@@ -56,7 +56,7 @@ spec:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
     - name: "spark-local-dir-1"
-      host:
+      hostPath:
         path: "/opt/spark_tmp"
         type: "DirectoryOrCreate"
   driver:
@@ -91,7 +91,7 @@ spec:
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
       - name: "spark-local-dir-1"
-        mountPath: "/tmp/spark-local-dir"
+        mountPath: "/spark_tmp"
   executor:
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
