@@ -1000,7 +1000,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     python_max_memory = python_max,
                     max_executors=max_executors,
                     api_version=api_version,
-                    dependencies=serialize_dependencies(),
+                    dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                     user_id=user_id,
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
