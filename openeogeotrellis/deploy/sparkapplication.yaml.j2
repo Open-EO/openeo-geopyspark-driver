@@ -19,6 +19,8 @@ spec:
     - "{{ log_file }}"
     - "{{ metadata_file }}"
     - "{{ api_version }}"
+    - "{{ dependencies }}"
+    - "{{ user_id }}"
   sparkConf:
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
