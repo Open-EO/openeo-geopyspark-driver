@@ -1278,7 +1278,7 @@ class GeopysparkDataCube(DriverDataCube):
                 temp_dir
             )
 
-            return AggregatePolygonSpatialResult(temp_dir)
+            return AggregatePolygonSpatialResult(temp_dir, metadata=self.metadata)
         else:
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)

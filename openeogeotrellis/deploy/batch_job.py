@@ -370,8 +370,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         assets_metadata = result.write_assets(str(output_file))
         for name,asset in assets_metadata.items():
             _add_permissions(Path(asset["href"]), stat.S_IWGRP)
-        logger.info("wrote image collection to %s" % output_file)
-
+        logger.info("wrote assets to %s" % output_file)
     elif isinstance(result, ImageCollectionResult):
         result.options["batch_mode"] = True
         result.save_result(filename=str(output_file))
