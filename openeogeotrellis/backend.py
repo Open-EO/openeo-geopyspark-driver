@@ -557,7 +557,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             projected_polygons = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                   .reproject(projected_polygons, job_info.epsg))
 
-            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date)
+            metadata_properties = None
+            correlation_id = None
+            data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+            getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
+                                                   correlation_id, data_cube_parameters)
         else:
             extent = (jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
                       if spatial_bounds_present else None)
