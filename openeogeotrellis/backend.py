@@ -1156,7 +1156,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
-                collection_id, exact_property_matches = arguments
+                collection_id, properties_criteria = arguments
 
                 band_names = constraints.get('bands')
 
@@ -1274,8 +1274,11 @@ class GpsBatchJobs(backend.BatchJobs):
                     if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
 
-                    def metadata_properties() -> Dict[str, object]:
-                        return {property_name: value for property_name, value in exact_property_matches}
+                    def metadata_properties() -> Dict[str, Dict[str, object]]:
+                        def as_dicts(criteria):
+                            return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
+
+                        return {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
 
                     geometries = get_geometries()
 
