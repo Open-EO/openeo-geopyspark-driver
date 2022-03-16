@@ -1,8 +1,10 @@
 import pathlib
-from typing import Dict
+from typing import Dict, List
 from flask import Response, jsonify
-from openeo_driver.save_result import SaveResult
+from openeo_driver.save_result import SaveResult, AggregatePolygonSpatialResult
 import geopyspark as gps
+from pyspark.mllib.regression import LabeledPoint
+from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.util import JavaSaveable
 
 class MLModel(SaveResult):
@@ -27,3 +29,69 @@ class MLModel(SaveResult):
 
     def create_flask_response(self) -> Response:
         return jsonify({})
+
+
+class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
+    """
+    TODO: This is a temporary class until vector cubes are fully implemented.
+    """
+
+    def fit_class_random_forest(self, target: dict, training: int, num_trees: int = 100, mtry: int = None) -> 'MLModel':
+        """
+        @param self (predictors):
+        Vector cube with shape: (1, #geometries, #bands)
+        A feature vector will be calculated per geometry. E.g. for geometry i:
+        Bands: ["JAN_B01", "JAN_B02", "FEB_B01", "FEB_B02"]
+        Values: [4.5, 2.2, 3.1, 4.4]
+        Feature vector: [4.5, 2.2, 3.1, 4.4]
+
+        @param target:
+        Vector cube with shape: (#geometries)
+        A label will be calculated per geometry. Labels are categorical, represented by an int.
+        The total number of classes to train on = max label.
+        E.g. for geometry i:
+        Bands: ["NDVI"]
+        Label: 2
+
+        @param training:
+        The amount of training data to be used in the classification.
+        The sampling will be chosen randomly through the data object.
+        The remaining data will be used as test data for the validation.
+        https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.randomSplit.html
+
+        @param num_trees:
+        @param mtry:
+         Specifies how many split variables will be used at a node.
+         Default value is `null`, which corresponds to the number of predictors divided by 3.
+        """
+        # TODO: 1. Implement training parameter
+        # = The amount of training data to be used in the classification.
+        # The sampling will be chosen randomly through the data object.
+        # The remaining data will be used as test data for the validation.
+        # TODO: 2. Implement mtry parameter
+        features: List[List[float]] = self.prepare_for_json()
+        labels: List[int] = [feature["properties"]["target"] for feature in target["features"]]
+
+        # 1. Check if aggregate_spatial result is correct.
+        if len(self._regions) != len(target["features"]):
+            raise ValueError("Predictor and target vector cubes should contain the same number of geometries.")
+        if any(len(features[0]) != len(i) for i in features):
+            raise ValueError("Every feature vector should have the same length.")
+
+        # 2. Create labeled data.
+        labeled_data = [LabeledPoint(label, feature) for label, feature in zip(labels, features)]
+
+        # 3. Train the model.
+        num_classes = max(labels) + 1
+        categorical_features_info = {}
+        feature_subset_strategy = "auto"
+        impurity = "gini"
+        max_depth = 4
+        max_bins = 32
+        seed = None
+        model = RandomForest.trainClassifier(
+            gps.get_spark_context().parallelize(labeled_data),
+            num_classes, categorical_features_info, num_trees,
+            feature_subset_strategy, impurity, max_depth, max_bins, seed
+            )
+        return MLModel(model)
