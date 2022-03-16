@@ -24,7 +24,6 @@ from pandas import Series
 from py4j.java_gateway import JVMView
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
-import openeo.metadata
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
@@ -40,13 +39,10 @@ from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonSp
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.ml_model import MLModel
+from openeogeotrellis.ml_model import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 from openeogeotrellis._version import __version__ as softwareversion
 from shapely.geometry.base import BaseGeometry
-
-from pyspark.mllib.regression import LabeledPoint
-from pyspark.mllib.tree import RandomForest
 
 _log = logging.getLogger(__name__)
 
@@ -1278,7 +1274,7 @@ class GeopysparkDataCube(DriverDataCube):
                 temp_dir
             )
 
-            return AggregatePolygonSpatialResult(temp_dir, metadata=self.metadata)
+            return AggregateSpatialVectorCube(temp_dir, regions=regions, metadata=self.metadata)
         else:
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
