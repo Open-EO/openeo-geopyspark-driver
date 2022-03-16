@@ -21,6 +21,11 @@ spec:
     - "{{ api_version }}"
     - "{{ dependencies }}"
     - "{{ user_id }}"
+  dynamicAllocation:
+    enabled: true
+    initialExecutors: 2
+    minExecutors: 2
+    maxExecutors: 5
   sparkConf:
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
@@ -41,6 +46,16 @@ spec:
     "spark.hadoop.fs.s3a.path.style.access": "true"
     "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.EnvironmentVariableCredentialsProvider"
     "spark.eventLog.enabled": "true"
+    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.claimName": "OnDemand"
+    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.storageClass": "default"
+    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.sizeLimit": "20Gi"
+    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.mount.path": "/spark_tmp"
+    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.mount.readOnly": "false"
+    "spark.kubernetes.allocation.batch.size": "1"
+    "spark.kubernetes.allocation.batch.delay": "30s"
+    "spark.kubernetes.driver.ownPersistentVolumeClaim": "true"
+    "spark.kubernetes.driver.reusePersistentVolumeClaim": "true"
+    "spark.kubernetes.allocation.maxPendingPods": "5"
   sparkVersion: "3.2.0"
   restartPolicy:
     type: OnFailure
@@ -95,7 +110,10 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
   executor:
+    podSecurityContext:
+      fsGroup: 18585
     envVars:
+      SPARK_USER: "spark"
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
@@ -128,8 +146,6 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
-      - name: "spark-local-dir-1"
-        mountPath: "/spark_tmp"
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-2.3.0_2.12-SNAPSHOT.jar'
