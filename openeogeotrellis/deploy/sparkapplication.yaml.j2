@@ -40,6 +40,8 @@ spec:
     "spark.dynamicAllocation.enabled": "true"
     "spark.dynamicAllocation.shuffleTracking.enabled": "true"
     "spark.decommission.enabled": "true"
+    "spark.storage.decommission.enabled": "true"
+    "spark.storage.decommission.rddBlocks.enabled": "true"
     "spark.storage.decommission.shuffleBlocks.enabled": "true"
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": "https://s3.waw2-1.cloudferro.com"
@@ -48,7 +50,7 @@ spec:
     "spark.eventLog.enabled": "true"
     "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.claimName": "OnDemand"
     "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.storageClass": "default"
-    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.sizeLimit": "20Gi"
+    "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.sizeLimit": "100Gi"
     "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.mount.path": "/spark_tmp"
     "spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.mount.readOnly": "false"
     "spark.kubernetes.allocation.batch.size": "1"
@@ -110,6 +112,8 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
   executor:
+    deleteOnTermination: true
+    terminationGracePeriodSeconds: 300
     podSecurityContext:
       fsGroup: 18585
     envVars:
