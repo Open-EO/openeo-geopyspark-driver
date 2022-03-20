@@ -1214,7 +1214,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def aggregate_spatial(self, geometries: Union[str, BaseGeometry], reducer,
                           target_dimension: str = "result") -> Union[AggregatePolygonResult,
-                                                                     AggregatePolygonSpatialResult]:
+                                                                     AggregateSpatialVectorCube]:
 
         if isinstance(reducer, dict):
             if len(reducer) == 1:
@@ -1230,7 +1230,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
 
     def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> Union[AggregatePolygonResult,
-                                                                                 AggregatePolygonSpatialResult]:
+                                                                                 AggregateSpatialVectorCube]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
