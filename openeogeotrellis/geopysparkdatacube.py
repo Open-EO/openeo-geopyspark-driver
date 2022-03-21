@@ -24,7 +24,6 @@ from pandas import Series
 from py4j.java_gateway import JVMView
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 
-import openeo.metadata
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
@@ -40,13 +39,10 @@ from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonSp
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.ml_model import MLModel
+from openeogeotrellis.ml_model import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 from openeogeotrellis._version import __version__ as softwareversion
 from shapely.geometry.base import BaseGeometry
-
-from pyspark.mllib.regression import LabeledPoint
-from pyspark.mllib.tree import RandomForest
 
 _log = logging.getLogger(__name__)
 
@@ -1218,7 +1214,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def aggregate_spatial(self, geometries: Union[str, BaseGeometry], reducer,
                           target_dimension: str = "result") -> Union[AggregatePolygonResult,
-                                                                     AggregatePolygonSpatialResult]:
+                                                                     AggregateSpatialVectorCube]:
 
         if isinstance(reducer, dict):
             if len(reducer) == 1:
@@ -1234,7 +1230,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
 
     def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> Union[AggregatePolygonResult,
-                                                                                 AggregatePolygonSpatialResult]:
+                                                                                 AggregateSpatialVectorCube]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
@@ -1278,7 +1274,7 @@ class GeopysparkDataCube(DriverDataCube):
                 temp_dir
             )
 
-            return AggregatePolygonSpatialResult(temp_dir, metadata=self.metadata)
+            return AggregateSpatialVectorCube(temp_dir, regions=regions, metadata=self.metadata)
         else:
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
@@ -2132,93 +2128,3 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return merged
-
-    def fit_class_random_forest(self, predictors: AggregatePolygonResult, target: AggregatePolygonResult,
-                                training: int, num_trees: int = 100, mtry: int = None) -> 'MLModel':
-        """
-        @param predictors:
-        Vector cube with shape: (1, #geometries, #bands)
-        A feature vector will be calculated per geometry. E.g. for geometry i:
-        Bands: ["JAN_B01", "JAN_B02", "FEB_B01", "FEB_B02"]
-        Values: [4.5, 2.2, 3.1, 4.4]
-        Feature vector: [4.5, 2.2, 3.1, 4.4]
-
-        @param target:
-        Vector cube with shape: (1, #geometries, 1)
-        # TODO: Should shape be: (1, #geometries)?
-        A label will be calculated per geometry. Labels are categorical, represented by an int.
-        The total number of classes to train on = max label.
-        E.g. for geometry i:
-        Bands: ["NDVI"]
-        Label: 2
-
-        @param training:
-        The amount of training data to be used in the classification.
-        The sampling will be chosen randomly through the data object.
-        The remaining data will be used as test data for the validation.
-        https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.randomSplit.html
-
-        @param num_trees:
-        @param mtry:
-         Specifies how many split variables will be used at a node.
-         Default value is `null`, which corresponds to the number of predictors divided by 3.
-        """
-        # TODO: 1. Implement training parameter
-        # Training =
-        # The amount of training data to be used in the classification.
-        # The sampling will be chosen randomly through the data object. The remaining data will be used as test data for the validation.
-        # TODO: 2. Implement mtry parameter
-
-        # AggregatePolygonResultCSV comes from aggregate_spatial.
-        features_timeseries = predictors.get_data()
-        target_timeseries = target.get_data()
-
-        # 1. Check input.
-        if len(predictors._regions) != len(target._regions):
-            raise ValueError("Predictor and target vector cubes should contain the same number of geometries.")
-        if len(features_timeseries.values()) != 1 or len(target_timeseries.values()) != 1:
-            raise ValueError("The predictor and target vector cubes should only contain one date.")
-        feature_lists = features_timeseries.values()[0]
-        label_list = target_timeseries.values()[0]
-        if len(feature_lists) == 0:
-            raise ValueError("The predictor vector cube should contain at least one feature vector.")
-        number_of_bands = len(feature_lists[0])
-        for feature_list in feature_lists:
-            if len(feature_list) != number_of_bands:
-                raise ValueError("Every feature vector should have the same length.")
-        if type(feature_list[0]) != float:
-            raise ValueError("The predictor vector cube should only contain floats.")
-        # Check labels.
-        labels = []
-        for label in label_list:
-            if type(label) == list:
-                if len(label) != 1:
-                    raise ValueError("Only 1-dimensional labels are supported.")
-                label = label[0]
-            if type(label) != int:
-                raise ValueError("Target vector cube should contain integers going from [0, num_classes).")
-            labels.append(label)
-
-        # 2. Create labeled data.
-        num_classes = max(labels) + 1
-        if num_classes != len(set(labels)):
-            raise ValueError("Target vector cube contains %s different labels but its highest label is %s."
-                             "It should contain integers going from [0, num_classes)."
-                             % str(len(set(labels))), str(num_classes))
-        labeled_data = []
-        for features, label in zip(feature_list, labels):
-            labeled_data.append(LabeledPoint(label, features))
-
-        # 3. Train the model.
-        categorical_features_info = {}
-        feature_subset_strategy = "auto"
-        impurity = "gini"
-        max_depth = 4
-        max_bins = 32
-        seed = None
-        model = RandomForest.trainClassifier(
-            gps.get_spark_context().parallelize(labeled_data),
-            num_classes, categorical_features_info, num_trees,
-            feature_subset_strategy, impurity, max_depth, max_bins, seed
-            )
-        return MLModel(model)

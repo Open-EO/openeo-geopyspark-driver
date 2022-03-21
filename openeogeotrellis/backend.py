@@ -2,6 +2,7 @@ import json
 import logging
 import operator
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -20,6 +21,8 @@ import geopyspark as gps
 import pkg_resources
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
+from pyspark.ml.classification import RandomForestClassifier
+
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.filter_properties import extract_literal_match
@@ -52,6 +55,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.logs import elasticsearch_logs
+from openeogeotrellis.ml_model import GeopySparkMLModel
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
@@ -588,6 +592,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
+    def load_ml_model(self, job_id: str) -> 'GeopySparkMLModel':
+        directory = GpsBatchJobs.get_job_output_dir(job_id)
+        filename = str(pathlib.Path(directory) / "randomforest.model")
+        model = RandomForestClassifier.load(filename)
+        return GeopySparkMLModel(model)
+
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
 
@@ -855,7 +865,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 for job_info in registry.get_user_jobs(user_id)
             ]
 
-    def _get_job_output_dir(self, job_id: str) -> Path:
+    @staticmethod
+    def get_job_output_dir(job_id: str) -> Path:
         return GpsBatchJobs._OUTPUT_ROOT_DIR / job_id
 
     @staticmethod
@@ -1066,7 +1077,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args = [script_location,
                             job_name,
                             temp_input_file.name,
-                            str(self._get_job_output_dir(job_id)),
+                            str(self.get_job_output_dir(job_id)),
                             "out",  # TODO: how support multiple output files?
                             "log",
                             JOB_METADATA_FILENAME,
@@ -1415,7 +1426,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_info = self._get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
-        job_dir = self._get_job_output_dir(job_id=job_id)
+        job_dir = self.get_job_output_dir(job_id=job_id)
 
         out_assets = self.get_results_metadata(job_id, user_id).get("assets", {})
         out_metadata = out_assets.get("out", {})
@@ -1465,7 +1476,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
-        metadata_file = self._get_job_output_dir(job_id) / JOB_METADATA_FILENAME
+        metadata_file = self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
         try:
             with open(metadata_file) as f:
@@ -1486,7 +1497,7 @@ class GpsBatchJobs(backend.BatchJobs):
             yield from elasticsearch_logs(job_id)
 
         try:
-            with (self._get_job_output_dir(job_id) / "log").open('r') as f:
+            with (self.get_job_output_dir(job_id) / "log").open('r') as f:
                 log_file_contents = f.read()
             # TODO: provide log line per line, with correct level?
             # TODO: support offset
@@ -1557,7 +1568,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                                                                                        o=e.stdout),
                                exc_info=e, extra={'job_id': job_id})
 
-        job_dir = self._get_job_output_dir(job_id)
+        job_dir = self.get_job_output_dir(job_id)
 
         try:
             shutil.rmtree(job_dir)
