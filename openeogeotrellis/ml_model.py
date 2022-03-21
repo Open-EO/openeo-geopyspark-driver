@@ -33,9 +33,6 @@ class GeopySparkMLModel(DriverMlModel):
     def save_ml_model(self, directory: str) -> Dict:
         return self.write_assets(directory)
 
-    def create_flask_response(self) -> Response:
-        return jsonify({})
-
 
 class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
     """
