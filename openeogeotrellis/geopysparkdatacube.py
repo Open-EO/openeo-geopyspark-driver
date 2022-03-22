@@ -1396,6 +1396,14 @@ class GeopysparkDataCube(DriverDataCube):
         # get the data at highest resolution
         max_level = self.get_max_level()
 
+        def to_latlng_bbox(bbox: 'Extent') -> Tuple[float, float, float, float]:
+            latlng_extent = self._reproject_extent(src_crs=max_level.layer_metadata.crs,
+                                                   dst_crs="+init=EPSG:4326",
+                                                   xmin=bbox.xmin(), ymin=bbox.ymin(),
+                                                   xmax=bbox.xmax(), ymax=bbox.ymax())
+
+            return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
+
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
             crs = bbox.get("crs") or "EPSG:4326"
@@ -1443,7 +1451,11 @@ class GeopysparkDataCube(DriverDataCube):
                         return {str(pathlib.Path(filename).name): {"href": filename} for filename in filenames}
                     else:
                         _log.info("save_result save_stitched")
-                        self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
+                        bbox = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
+                        return {str(pathlib.Path(filename).name): {
+                            "href": save_filename,
+                            "bbox": to_latlng_bbox(bbox)
+                        }}
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -1506,14 +1518,6 @@ class GeopysparkDataCube(DriverDataCube):
                         # noinspection PyProtectedMember
                         timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
-
-                        def to_latlng_bbox(bbox: 'Extent') -> Tuple[float, float, float, float]:
-                            latlng_extent = self._reproject_extent(src_crs=max_level.layer_metadata.crs,
-                                                                   dst_crs="+init=EPSG:4326",
-                                                                   xmin=bbox.xmin(), ymin=bbox.ymin(),
-                                                                   xmax=bbox.xmax(), ymax=bbox.ymax())
-
-                            return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
                         for path, timestamp, bbox in timestamped_paths:
                             assets[path.name] = {
@@ -1884,16 +1888,16 @@ class GeopysparkDataCube(DriverDataCube):
         subprocess.run(['xargs', '-0', 'gdal_merge.py'], input='\0'.join(merge_args), universal_newlines=True)
 
 
-    def _save_stitched(self, spatial_rdd, path, crop_bounds=None,zlevel=6):
+    def _save_stitched(self, spatial_rdd, path, crop_bounds=None,zlevel=6) -> 'Extent':
         jvm = self._get_jvm()
 
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
         if crop_bounds:
-            jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
                                                                    max_compression)
         else:
-            jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
 
     def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6):
         jvm = self._get_jvm()
