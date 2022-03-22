@@ -1504,28 +1504,28 @@ class GeopysparkDataCube(DriverDataCube):
                         assets = {}
 
                         # noinspection PyProtectedMember
-                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2())
+                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
 
-                        for path, timestamp in timestamped_paths:
-                            if path.name.endswith("_item.json"):
-                                assets[path.name] = {
-                                    "href": str(path),
-                                    "title": "STAC item",
-                                    "type": "application/json",
-                                    "roles": ["metadata"]
-                                }
-                            else:
-                                assets[path.name] = {
-                                    "href": str(path),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    'bands': bands,
-                                    'nodata': nodata,
-                                    'datetime': timestamp
-                                }
-                        return assets
+                        def to_latlng_bbox(bbox: 'Extent') -> Tuple[float, float, float, float]:
+                            latlng_extent = self._reproject_extent(src_crs=max_level.layer_metadata.crs,
+                                                                   dst_crs="+init=EPSG:4326",
+                                                                   xmin=bbox.xmin(), ymin=bbox.ymin(),
+                                                                   xmax=bbox.xmax(), ymax=bbox.ymax())
 
+                            return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
+
+                        for path, timestamp, bbox in timestamped_paths:
+                            assets[path.name] = {
+                                "href": str(path),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"],
+                                'bands': bands,
+                                'nodata': nodata,
+                                'datetime': timestamp,
+                                'bbox': to_latlng_bbox(bbox)
+                            }
+                        return assets
                     else:
                         if tile_grid:
                             filenames = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
