@@ -392,7 +392,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                              if len(band_gsds) > 0
                              else jvm.geotrellis.raster.CellSize(cell_width, cell_height))
 
-                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.rateLimited(
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withGuardedRateLimiting(
                     endpoint,
                     shub_collection_id,
                     dataset_id,
