@@ -1260,6 +1260,13 @@ class GeopysparkDataCube(DriverDataCube):
         scala_data_cube = highest_level.srdd.rdd()
         layer_metadata = highest_level.layer_metadata
 
+        bandNames = ["band_unnamed"]
+        if self.metadata.has_band_dimension():
+            bandNames = self.metadata.band_names
+
+        wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
+        wrapped.openEOMetadata().setBandNames(bandNames)
+
         if self._is_spatial():
             geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
             geometries_srs = "EPSG:4326"
@@ -1268,7 +1275,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
                 func,
-                scala_data_cube,
+                wrapped,
                 geometry_wkts,
                 geometries_srs,
                 temp_dir
@@ -1299,13 +1306,6 @@ class GeopysparkDataCube(DriverDataCube):
                         with open(temp_file.name, encoding='utf-8') as f:
                             timeseries = json.load(f)
                 else:
-                    bandNames = ["band_unnamed"]
-                    if self.metadata.has_band_dimension():
-                        bandNames = self.metadata.band_names
-
-                    wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
-                    wrapped.openEOMetadata().setBandNames(bandNames)
-
                     temp_output = csv_dir()
 
                     self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
@@ -1323,7 +1323,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                     func,
-                    scala_data_cube,
+                    wrapped,
                     geometry_wkts,
                     geometries_srs,
                     temp_dir
