@@ -1,11 +1,10 @@
 import pathlib
 from typing import Dict, List, Optional
-from flask import Response, jsonify
 
 from openeo_driver.datacube import DriverMlModel
+from openeo_driver.errors import ProcessParameterInvalidException
 from openeo_driver.save_result import AggregatePolygonSpatialResult
 import geopyspark as gps
-from pyspark.ml.classification import RandomForestClassifier
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.util import JavaSaveable
@@ -83,11 +82,21 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         features: List[List[float]] = self.prepare_for_json()
         labels: List[int] = [feature["properties"]["target"] for feature in target["features"]]
 
-        # 1. Check if aggregate_spatial result is correct.
+        # 1. Check if input is correct.
         if len(self._regions) != len(target["features"]):
-            raise ValueError("Predictor and target vector cubes should contain the same number of geometries.")
+            raise ProcessParameterInvalidException(
+                parameter='target', process='fit_class_random_forest',
+                reason="Predictor and target vector cubes should contain the same number of geometries.")
+        if any(len(feature) == 0 for feature in features):
+            raise ProcessParameterInvalidException(
+                parameter='predictors', process='fit_class_random_forest',
+                reason="One of the rows in the 'predictors' parameter is empty. This could be because there was no "
+                       "data available for a geometry (on all bands).")
         if any(len(features[0]) != len(i) for i in features):
-            raise ValueError("Every feature vector should have the same length.")
+            raise ProcessParameterInvalidException(
+                parameter='predictors', process='fit_class_random_forest',
+                reason="One of the rows in the 'predictors' parameter contains an empty cell. This could be because "
+                       "there was no data available for a geometry (on at least one band).")
 
         # 2. Create labeled data.
         labeled_data = [LabeledPoint(label, feature) for label, feature in zip(labels, features)]
