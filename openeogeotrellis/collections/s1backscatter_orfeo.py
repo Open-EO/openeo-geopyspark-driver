@@ -141,7 +141,7 @@ class S1BackscatterOrfeo:
         )
         feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
-            zoom=zoom, tile_size=tile_size
+            zoom=zoom, tile_size=tile_size,datacubeParams=datacubeParams
         )
         layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
         return feature_pyrdd, layer_metadata_py
