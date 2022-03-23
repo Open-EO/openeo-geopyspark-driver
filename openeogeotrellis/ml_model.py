@@ -23,7 +23,7 @@ class GeopySparkMLModel(DriverMlModel):
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
         directory = pathlib.Path(directory).parent
-        filename = str(pathlib.Path(directory) / "randomforest.model")
+        filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
         self._model.save(gps.get_spark_context(), filename)
         return {filename:{"href":filename}}
 
