@@ -487,7 +487,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 correlation_id=correlation_id,
                 sar_backscatter_arguments=sar_backscatter_arguments,
                 bands=bands,
-                extra_properties=metadata_properties()
+                extra_properties=metadata_properties(),
+                datacubeParams = datacubeParams
             )
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()

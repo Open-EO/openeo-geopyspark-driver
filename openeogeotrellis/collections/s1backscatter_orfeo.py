@@ -102,10 +102,10 @@ class S1BackscatterOrfeo:
 
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
-            tile_size: int
+            tile_size: int, datacubeParams=None
     ) -> Tuple[pyspark.RDD, JavaObject]:
         logger.info("Loading feature JSON RDD from {f}".format(f=file_rdd_factory))
-        json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size)
+        json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size,datacubeParams)
         jrdd = json_rdd._1()
         layer_metadata_sc = json_rdd._2()
 
@@ -120,7 +120,7 @@ class S1BackscatterOrfeo:
     def _build_feature_rdd(
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
-            tile_size: int, zoom: int, correlation_id: str
+            tile_size: int, zoom: int, correlation_id: str, datacubeParams=None
     ):
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
@@ -481,7 +481,8 @@ class S1BackscatterOrfeo:
             bands=None,
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
             result_dtype="float32",
-            extra_properties={}
+            extra_properties={},
+            datacubeParams=None
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -509,7 +510,7 @@ class S1BackscatterOrfeo:
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
-            correlation_id
+            correlation_id,datacubeParams=datacubeParams
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -641,7 +642,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             bands=None,
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
             result_dtype="float32",
-            extra_properties={}
+            extra_properties={},
+            datacubeParams=None
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
