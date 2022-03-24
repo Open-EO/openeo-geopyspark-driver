@@ -392,6 +392,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                              if len(band_gsds) > 0
                              else jvm.geotrellis.raster.CellSize(cell_width, cell_height))
 
+                soft_errors = feature_flags.get("soft_errors", False)
+
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withGuardedRateLimiting(
                     endpoint,
                     shub_collection_id,
@@ -400,7 +402,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     client_secret,
                     sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,
-                    cell_size
+                    cell_size,
+                    soft_errors
                 )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
