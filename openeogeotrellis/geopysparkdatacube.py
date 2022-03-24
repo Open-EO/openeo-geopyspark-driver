@@ -1242,7 +1242,9 @@ class GeopysparkDataCube(DriverDataCube):
             clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
 
             if (not clusterDir.exists()):
-                clusterDir = pathlib.Path(".").resolve()
+                clusterDir = pathlib.Path("/shared_pod_volume")
+                if (not clusterDir.exists()):
+                    clusterDir = pathlib.Path(".").resolve()
             temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
             os.chmod(temp_output, 0o777)
 
