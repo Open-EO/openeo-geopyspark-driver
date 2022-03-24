@@ -943,6 +943,7 @@ class GpsBatchJobs(backend.BatchJobs):
             max_executors = extra_options.get("max-executors", "200")
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
+            soft_errors = extra_options.get("soft-errors", "false")
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1110,6 +1111,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(max_executors)
                     args.append(user_id)
                     args.append(job_id)
+                    args.append(soft_errors)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})

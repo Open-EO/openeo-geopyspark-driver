@@ -225,11 +225,11 @@ def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
 
-    if len(argv) != 9:
+    if len(argv) != 10:
         raise Exception(
             f"usage: {argv[0]} "
             "<job specification input file> <job directory> <results output file name> <user log file name> "
-            "<metadata file name> <api version> <dependencies> <user id>"
+            "<metadata file name> <api version> <dependencies> <user id> <soft errors>"
         )
 
     job_specification_file = argv[1]
@@ -240,6 +240,7 @@ def main(argv: List[str]) -> None:
     api_version = argv[6]
     dependencies = _deserialize_dependencies(argv[7])
     user_id = argv[8]
+    soft_errors = argv[9].upper() == "TRUE"
 
     _create_job_dir(job_dir)
 
@@ -278,7 +279,8 @@ def main(argv: List[str]) -> None:
             def run_driver(): 
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
-                    api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id
+                    api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
+                    soft_errors=soft_errors
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -311,8 +313,10 @@ def main(argv: List[str]) -> None:
             user_facing_logger.error("Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate.")
         raise e
 
+
 @log_memory
-def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict, user_id:str=None):
+def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict,
+            user_id: str = None, soft_errors: bool = False):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
 
@@ -327,7 +331,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'require_bounds': True,
         'correlation_id': correlation_id,
         'dependencies': dependencies,
-        "backend_implementation": backend_implementation,
+        'backend_implementation': backend_implementation,
+        'soft_errors': soft_errors
     })
     tracer = DryRunDataTracer()
     logger.info("Starting process graph evaluation")

@@ -392,7 +392,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                              if len(band_gsds) > 0
                              else jvm.geotrellis.raster.CellSize(cell_width, cell_height))
 
-                soft_errors = feature_flags.get("soft_errors", False)
+                soft_errors = env.get("soft_errors", False)
 
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withGuardedRateLimiting(
                     endpoint,
