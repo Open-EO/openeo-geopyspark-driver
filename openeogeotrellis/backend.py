@@ -596,7 +596,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         directory = GpsBatchJobs.get_job_output_dir(job_id)
         filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
         print("Loading ml_model using filename: {}".format(filename))
-        model = RandomForestModel.load(filename)
+        model = RandomForestModel.load(sc=gps.get_spark_context(), path=filename)
         return GeopySparkMLModel(model)
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
