@@ -240,7 +240,7 @@ def main(argv: List[str]) -> None:
     api_version = argv[6]
     dependencies = _deserialize_dependencies(argv[7])
     user_id = argv[8]
-    soft_errors = argv[9].upper() == "TRUE"
+    soft_errors = argv[9].lower() == "true"
 
     _create_job_dir(job_dir)
 

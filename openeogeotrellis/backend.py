@@ -944,7 +944,7 @@ class GpsBatchJobs(backend.BatchJobs):
             max_executors = extra_options.get("max-executors", "200")
             queue = extra_options.get("queue", "default")
             profile = extra_options.get("profile", "false")
-            soft_errors = extra_options.get("soft-errors", "false")
+            soft_errors = extra_options.get("soft-errors", "false")  # TODO: accept real booleans
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1021,6 +1021,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     api_version=api_version,
                     dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                     user_id=user_id,
+                    soft_errors=soft_errors,
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
