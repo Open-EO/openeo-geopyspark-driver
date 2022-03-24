@@ -21,7 +21,7 @@ import geopyspark as gps
 import pkg_resources
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
-from pyspark.ml.classification import RandomForestClassifier
+from pyspark.mllib.tree import RandomForestModel
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
@@ -595,7 +595,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def load_ml_model(self, job_id: str) -> 'GeopySparkMLModel':
         directory = GpsBatchJobs.get_job_output_dir(job_id)
         filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
-        model = RandomForestClassifier.load(filename)
+        print("Loading ml_model using filename: {}".format(filename))
+        model = RandomForestModel.load(filename)
         return GeopySparkMLModel(model)
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
