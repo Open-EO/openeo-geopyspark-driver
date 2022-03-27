@@ -297,7 +297,7 @@ class GeopysparkDataCube(DriverDataCube):
             result.metadata = result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
-    def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor, context) -> 'GeopysparkDataCube':
+    def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor, context=None) -> 'GeopysparkDataCube':
         """
         Apply a process graph to every tile, with tile.bands (List[Tile]) as process input.
         """
@@ -307,6 +307,8 @@ class GeopysparkDataCube(DriverDataCube):
         # Apply process to every tile, with tile.bands (List[Tile]) as process input.
         # This is done for the entire pyramid.
         pysc = gps.get_spark_context()
+        if context is None:
+            context = {}
         result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level:
                 pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(
