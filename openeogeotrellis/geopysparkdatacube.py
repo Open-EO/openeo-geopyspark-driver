@@ -297,7 +297,7 @@ class GeopysparkDataCube(DriverDataCube):
             result.metadata = result.metadata.reduce_dimension(result.metadata.band_dimension.name)
         return result
 
-    def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
+    def _apply_bands_dimension(self, pgVisitor: GeotrellisTileProcessGraphVisitor, context) -> 'GeopysparkDataCube':
         """
         Apply a process graph to every tile, with tile.bands (List[Tile]) as process input.
         """
@@ -309,7 +309,9 @@ class GeopysparkDataCube(DriverDataCube):
         pysc = gps.get_spark_context()
         result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level:
-                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(rdd, pgVisitor.builder)
+                pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(
+                    rdd, pgVisitor.builder, context if isinstance(context, dict) else {"context": context}
+                )
         )
 
         # Convert/Restrict cell type after processing.
@@ -593,7 +595,7 @@ class GeopysparkDataCube(DriverDataCube):
             context = reducer.udf_args.get('context', {})
             result_collection = self._run_udf_dimension(udf, context, dimension, env)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
-            result_collection = self._apply_bands_dimension(reducer)
+            result_collection = self._apply_bands_dimension(reducer, context)
         elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
             result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
         else:
