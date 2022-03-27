@@ -27,7 +27,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.save_result import ImageCollectionResult
-from py4j.java_gateway import JavaGateway, JVMView
+from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.version import __version__ as pysparkversion
@@ -592,12 +592,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
-    def load_ml_model(self, job_id: str) -> 'GeopySparkMLModel':
+    def load_ml_model(self, job_id: str) -> 'JavaObject':
         directory = GpsBatchJobs.get_job_output_dir(job_id)
         filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
         print("Loading ml_model using filename: {}".format(filename))
-        model = RandomForestModel.load(sc=gps.get_spark_context(), path=filename)
-        return GeopySparkMLModel(model)
+        model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+        return model
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
