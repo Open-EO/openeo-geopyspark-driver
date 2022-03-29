@@ -50,7 +50,7 @@ def test_fit_class_random_forest_flow(imagecollection_with_two_bands_and_one_dat
     cube_xyb = cube_xybt.reduce_dimension(mean_reducer, 't', EvalEnv())
     predictors: AggregateSpatialVectorCube = cube_xyb.aggregate_spatial(geometries, mean_reducer, "bands")
     # 2. Fit model.
-    result: GeopySparkMLModel = predictors.fit_class_random_forest(FEATURE_COLLECTION_1, 100, 3, mtry=None, seed=42)
+    result: GeopySparkMLModel = predictors.fit_class_random_forest(FEATURE_COLLECTION_1, num_trees=3, seed=42)
     assert(predictors.prepare_for_json() == [[1.0, 2.0], [1.0, 2.0]])
     assert(result.get_model().predict([2.0, 2.0]) == 5)
 
@@ -66,7 +66,7 @@ def test_fit_class_random_forest_results():
     }
     # 2. Fit model.
     num_trees = 3
-    result: GeopySparkMLModel = predictors.fit_class_random_forest(target, 100, num_trees, mtry=None, seed=42)
+    result: GeopySparkMLModel = predictors.fit_class_random_forest(target, num_trees=num_trees, seed=42)
     # 3. Test model.
     model: RandomForestModel = result.get_model()
     assert(model.numTrees() == num_trees)
