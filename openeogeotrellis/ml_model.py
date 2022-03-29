@@ -40,7 +40,7 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
 
     def fit_class_random_forest(
             self, target: dict,
-            training: int, num_trees: int = 100, mtry: Optional[int] = None, seed: Optional[int] = None
+            training: float=0.8, num_trees: int = 100, mtry: Optional[int] = None, seed: Optional[int] = None
     ) -> 'GeopySparkMLModel':
         """
         @param self (predictors):
