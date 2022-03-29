@@ -1,5 +1,5 @@
 import pathlib
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from openeo_driver.datacube import DriverMlModel
 from openeo_driver.errors import ProcessParameterInvalidException
@@ -39,8 +39,11 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
     """
 
     def fit_class_random_forest(
-            self, target: dict,
-            training: float=0.8, num_trees: int = 100, mtry: Optional[int] = None, seed: Optional[int] = None
+            self,
+            target: dict,
+            num_trees: int = 100,
+            max_variables: Optional[Union[int, str]] = None,
+            seed: Optional[int] = None,
     ) -> 'GeopySparkMLModel':
         """
         @param self (predictors):
@@ -58,15 +61,10 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         Bands: ["NDVI"]
         Label: 2
 
-        @param training:
-        The amount of training data to be used in the classification.
-        The sampling will be chosen randomly through the data object.
-        The remaining data will be used as test data for the validation.
-        https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.randomSplit.html
 
         @param num_trees:
 
-        @param mtry:
+        @param max_variables:
         Specifies how many split variables will be used at a node.
         Default value is `null`, which corresponds to the number of predictors divided by 3.
 
@@ -74,11 +72,7 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         Random seed for bootstrapping and choosing feature subsets.
         Set as None to generate seed based on system time. (default: None)
         """
-        # TODO: 1. Implement training parameter
-        # = The amount of training data to be used in the classification.
-        # The sampling will be chosen randomly through the data object.
-        # The remaining data will be used as test data for the validation.
-        # TODO: 2. Implement mtry parameter
+        # TODO: Implement max_variables parameter
         features: List[List[float]] = self.prepare_for_json()
         labels: List[int] = [feature["properties"]["target"] for feature in target["features"]]
 
