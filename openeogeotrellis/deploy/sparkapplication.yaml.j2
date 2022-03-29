@@ -26,7 +26,7 @@ spec:
     enabled: true
     initialExecutors: 2
     minExecutors: 2
-    maxExecutors: 10
+    maxExecutors: {{ max_executors }}
   sparkConf:
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
@@ -148,7 +148,6 @@ spec:
       CPL_DEBUG: "ON"
     cores: {{ executor_cores }}
     coreRequest: {{ executor_corerequest }}
-    instances: {{ max_executors }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
     javaOptions: "-Dlog4j.configuration=/opt/log4j.properties -Dscala.concurrent.context.numThreads=15 -Dscala.concurrent.context.maxThreads=15 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
