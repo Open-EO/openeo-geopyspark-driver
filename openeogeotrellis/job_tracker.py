@@ -125,14 +125,13 @@ class JobTracker:
                                     # TODO: skip patching the job znode and read from this file directly?
                                     registry.patch(job_id, user_id, **result_metadata)
 
-                                    if new_status == 'finished':
-                                        registry.remove_dependencies(job_id, user_id)
+                                    registry.remove_dependencies(job_id, user_id)
 
-                                        dependency_sources = JobRegistry.get_dependency_sources(job_info)
+                                    dependency_sources = JobRegistry.get_dependency_sources(job_info)
 
-                                        if dependency_sources:
-                                            async_task.schedule_delete_batch_process_dependency_sources(
-                                                job_id, dependency_sources)
+                                    if dependency_sources:
+                                        async_task.schedule_delete_batch_process_dependency_sources(
+                                            job_id, dependency_sources)
 
                                     registry.mark_done(job_id, user_id)
 
