@@ -159,6 +159,14 @@ spark-submit \
  --conf spark.hadoop.yarn.timeline-service.enabled=false \
  --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
  --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
+ --conf spark.eventLog.dir=hdfs:///spark2-history/ \
+ --conf spark.history.fs.logDirectory=hdfs:///spark2-history/ \
+ --conf spark.history.kerberos.enabled=true \
+ --conf spark.history.kerberos.keytab=/etc/security/keytabs/spark.service.keytab \
+ --conf spark.history.kerberos.principal=spark/_HOST@VGT.VITO.BE \
+ --conf spark.history.provider=org.apache.spark.deploy.history.FsHistoryProvider \
+ --conf spark.history.store.path=/var/lib/spark2/shs_db \
+ --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --archives "${openeo_zip}#venv" \
