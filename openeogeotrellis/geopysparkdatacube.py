@@ -1447,8 +1447,14 @@ class GeopysparkDataCube(DriverDataCube):
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
-                        filenames = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds, zlevel=zlevel)
-                        return {str(pathlib.Path(filename).name): {"href": filename} for filename in filenames}
+                        tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds,
+                                                              zlevel=zlevel)
+
+                        # noinspection PyProtectedMember
+                        return {str(pathlib.Path(tile._1()).name): {
+                            "href": tile._1(),
+                            "bbox": to_latlng_bbox(tile._2())
+                        } for tile in tiles}
                     else:
                         _log.info("save_result save_stitched")
                         bbox = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
@@ -1532,11 +1538,16 @@ class GeopysparkDataCube(DriverDataCube):
                         return assets
                     else:
                         if tile_grid:
-                            filenames = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
-                                                                      zlevel=zlevel)
-                            return {str(pathlib.Path(filename).name): {"href": filename,
-                                                                       "type": "image/tiff; application=geotiff",
-                                                                       "roles": ["data"]} for filename in filenames}
+                            tiles = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
+                                                                  zlevel=zlevel)
+
+                            # noinspection PyProtectedMember
+                            return {str(pathlib.Path(tile._1()).name): {
+                                "href": tile._1(),
+                                "bbox": to_latlng_bbox(tile._2()),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"]
+                            } for tile in tiles}
                         else:
                             originalName = pathlib.Path(filename)
 
