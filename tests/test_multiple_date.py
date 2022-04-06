@@ -6,6 +6,7 @@ from unittest import TestCase
 import numpy as np
 import pytest
 import rasterio
+import geopyspark as gps
 from geopyspark import CellType
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
                                    RasterLayer)
@@ -120,6 +121,14 @@ class TestMultipleDates(TestCase):
         if not self.temp_folder.exists():
             self.temp_folder.mkdir()
         assert self.temp_folder.is_dir()
+
+    def test_repartition(self):
+        p = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+        spk = gps.get_spark_context()._jvm.geotrellis.layer.SpaceTimeKey
+        result = p.applySparseSpacetimePartitioner(self.tiled_raster_rdd.srdd.rdd(),[spk(0,0,0),spk(1,0,100000),spk(10000000,454874414,100000)],8)
+        assert result is not None
+        assert "SpacePartitioner(KeyBounds(SpaceTimeKey(0,0,0),SpaceTimeKey(10000000,454874414,100000)))" == str(result.partitioner().get())
+        assert "SparseSpaceTimePartitioner 3" == str(result.partitioner().get().index())
 
     def test_reproject_spatial(self):
         input = Pyramid({0: self.tiled_raster_rdd})

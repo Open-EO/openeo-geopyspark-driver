@@ -526,6 +526,7 @@ class S1BackscatterOrfeo:
             }
 
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
+        all_keys = feature_pyrdd.map(lambda f:f["key"]).distinct().collect()
 
         paths = list(per_product.keys().collect())
         def partitionByPath(tuple):
@@ -551,6 +552,20 @@ class S1BackscatterOrfeo:
             numpy_rdd=tile_rdd,
             metadata=layer_metadata_py
         )
+        jvm = get_jvm()
+        p = jvm.org.openeo.geotrellis.OpenEOProcesses()
+        spk = jvm.geotrellis.layer.SpaceTimeKey
+
+        indexReduction = datacubeParams.partitionerIndexReduction if datacubeParams is not None else 8
+
+        keys_geotrellis = [ spk(k["col"], k["row"], k["instant"]) for k in all_keys]
+        result = p.applySparseSpacetimePartitioner(tile_layer.srdd.rdd(),
+                                                   keys_geotrellis,
+                                                   indexReduction)
+
+        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), result)
+        tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
+        logger.info(f"Created {collection_id} backscatter cube with partitioner index: {str(result.partitioner().get().index())}")
         return {zoom: tile_layer}
 
     @staticmethod
