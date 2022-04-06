@@ -1,27 +1,30 @@
-import dateutil.parser as dp
+import datetime as dt
 import logging
-import requests
 import traceback
 from copy import deepcopy
 from datetime import datetime
-from dateutil.tz import tzutc
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterable, Tuple, Union
 
+import dateutil.parser as dp
 import geopyspark
-from openeo_driver.dry_run import ProcessType
+import requests
+from dateutil.tz import tzutc
 from shapely.geometry import box, Point
 from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
-from openeo.util import TimingLogger, deep_get
+from openeo.util import TimingLogger, deep_get, rfc3339
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.dry_run import ProcessType
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import buffer_point_approx, read_json, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
+from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
@@ -709,3 +712,54 @@ def _merge_layers_with_common_name(metadata):
         metadata[common_name] = new_metadata
 
     return metadata
+
+
+def check_missing_products(
+        collection_metadata: dict, temporal_extent: Tuple[str, str], spatial_extent: dict,
+        properties: Optional[dict] = None,
+) -> Union[Iterable[str], None]:
+    """
+    Query catalogs to figure out if the data provider/source does not fully cover the desired spatiotemporal extent.
+    """
+    source_info = deep_get(collection_metadata, "_vito", "data_source", default={})
+    check_data = deep_get(source_info, "check_missing_products", default={})
+
+    if check_data:
+        temporal_extent = [rfc3339.parse_date_or_datetime(t) for t in temporal_extent]
+        # Merge given properties with global layer properties
+        properties = {
+            **deep_get(collection_metadata, "_vito", "properties", default={}),
+            **(properties or {})
+        }
+        query_kwargs = {
+            "start_date": dt.datetime.combine(temporal_extent[0], dt.time.min),
+            "end_date": dt.datetime.combine(temporal_extent[1], dt.time.max),
+            # TODO: do we know for sure that spatial extent is lon-lat?
+            "ulx": spatial_extent["west"],
+            "brx": spatial_extent["east"],
+            "bry": spatial_extent["south"],
+            "uly": spatial_extent["north"],
+        }
+
+        if "eo:cloud_cover" in properties:
+            cloud_cover_condition = extract_literal_match(properties["eo:cloud_cover"])
+            cloud_cover_op, = cloud_cover_condition.keys()
+            if cloud_cover_op in {"lte", "eq"}:
+                query_kwargs["cldPrcnt"] = cloud_cover_condition[cloud_cover_op]
+            else:
+                # TODO: better exception
+                raise ValueError(properties["eo:cloud_cover"])
+
+        method = check_data.get("method")
+        if method == "creo":
+            creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
+            return [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
+        elif method == "terrascope":
+            creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
+            expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
+            opensearch_collection_id = deep_get(source_info, "opensearch_collection_id")
+            oscars_catalog = OscarsCatalogClient(collection=opensearch_collection_id)
+            terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
+            return expected_tiles.difference(terrascope_tiles)
+        else:
+            raise ValueError(check_data)
