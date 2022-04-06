@@ -635,9 +635,9 @@ class GpsProcessing(ConcreteProcessing):
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
-                metadata = catalog.get_collection_metadata(collection_id=collection_id)
+                metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
 
-                if deep_get(metadata, "_vito", "data_source", "check_missing_products", default=None):
+                if metadata.get("_vito", "data_source", "check_missing_products", default=None):
                     temporal_extent = constraints.get("temporal_extent")
                     spatial_extent = constraints.get("spatial_extent")
                     properties = constraints.get("properties", {})

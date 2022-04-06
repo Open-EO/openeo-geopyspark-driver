@@ -3,7 +3,7 @@ import logging
 import traceback
 from copy import deepcopy
 from datetime import datetime
-from typing import List, Dict, Optional, Iterable, Tuple, Union
+from typing import List, Dict, Optional, Iterable, Tuple, Union, Sequence
 
 import dateutil.parser as dp
 import geopyspark
@@ -45,19 +45,46 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
 
+        from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
+        spatial_extent = load_params.spatial_extent
+
         metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
 
         if metadata.get("common_name") == collection_id:
-            common_name_metadatas = [GeopysparkCubeMetadata(m) for m in self.get_collection_with_common_name(metadata.get("common_name"))]
+            common_name_metadatas = [
+                GeopysparkCubeMetadata(m)
+                for m in self.get_collection_with_common_name(metadata.get("common_name"))
+            ]
 
-            backend_provider = load_params.backend_provider
-            if backend_provider:
-                metadata = next(filter(lambda m: backend_provider.lower() == m.get("_vito", "data_source", "provider:backend"), common_name_metadatas), None)
+            if load_params.backend_provider:
+                # User-chosen source
+                ms = [m for m in common_name_metadatas if m.provider_backend() == load_params.backend_provider]
+                if ms:
+                    metadata = ms[0]
+                    logger.info(f"(common_name) {collection_id!r}: using user-chosen {metadata.provider_backend()!r}.")
+                else:
+                    raise OpenEOApiException(
+                        message=f"provider:backend {load_params.backend_provider} not found for {collection_id!r}",
+                    )
             else:
-                metadata = next(filter(lambda m: m.get("_vito", "data_source", "default_provider:backend"), common_name_metadatas), None)
-
-            if not metadata:
-                metadata = common_name_metadatas[0]
+                # Check sources in order of priority and skip ones where we can detect missing products.
+                for m in sorted(common_name_metadatas, key=lambda m: m.common_name_priority(), reverse=True):
+                    if m.get("_vito", "data_source", "check_missing_products"):
+                        missing = check_missing_products(
+                            collection_metadata=m,
+                            temporal_extent=temporal_extent, spatial_extent=spatial_extent,
+                            properties=load_params.properties,
+                        )
+                        if missing:
+                            logger.info(
+                                f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products."
+                            )
+                            continue
+                    metadata = m
+                    logger.info(f"(common_name) {collection_id!r}: using {m.provider_backend()!r}.")
+                    break
+                else:
+                    raise OpenEOApiException(message=f"No fitting provider:backend found for {collection_id!r}")
 
         layer_source_info = metadata.get("_vito", "data_source", default={})
 
@@ -76,11 +103,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
-        temporal_extent = load_params.temporal_extent
-        from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        spatial_extent = load_params.spatial_extent
         west = spatial_extent.get("west", None)
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
@@ -715,20 +739,22 @@ def _merge_layers_with_common_name(metadata):
 
 
 def check_missing_products(
-        collection_metadata: dict, temporal_extent: Tuple[str, str], spatial_extent: dict,
+        collection_metadata: Union[GeopysparkCubeMetadata, dict],
+        temporal_extent: Tuple[str, str], spatial_extent: dict,
         properties: Optional[dict] = None,
-) -> Union[Iterable[str], None]:
+) -> Union[List[str], None]:
     """
     Query catalogs to figure out if the data provider/source does not fully cover the desired spatiotemporal extent.
     """
-    source_info = deep_get(collection_metadata, "_vito", "data_source", default={})
-    check_data = deep_get(source_info, "check_missing_products", default={})
+    if not isinstance(collection_metadata, GeopysparkCubeMetadata):
+        collection_metadata = GeopysparkCubeMetadata(collection_metadata)
+    check_data = collection_metadata.get("_vito", "data_source", "check_missing_products", default=None)
 
     if check_data:
         temporal_extent = [rfc3339.parse_date_or_datetime(t) for t in temporal_extent]
         # Merge given properties with global layer properties
         properties = {
-            **deep_get(collection_metadata, "_vito", "properties", default={}),
+            **collection_metadata.get("_vito", "properties", default={}),
             **(properties or {})
         }
         query_kwargs = {
@@ -757,9 +783,9 @@ def check_missing_products(
         elif method == "terrascope":
             creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
             expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
-            opensearch_collection_id = deep_get(source_info, "opensearch_collection_id")
+            opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
             oscars_catalog = OscarsCatalogClient(collection=opensearch_collection_id)
             terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
-            return expected_tiles.difference(terrascope_tiles)
+            return list(expected_tiles.difference(terrascope_tiles))
         else:
             raise ValueError(check_data)
