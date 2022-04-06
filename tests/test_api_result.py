@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import textwrap
+from typing import List
 
 import numpy as np
 import pytest
@@ -1083,6 +1084,63 @@ def test_udf_invalid_signature(api100, user_defined_process_registry, udf_code):
     response.assert_error(status_code=500, error_code=None, message="No UDF found")
 
 
+class CreoApiMocker:
+    """Helper to build fake Creodias finder API catalog responses"""
+
+    @classmethod
+    def feature(cls, tile_id="T16WEA", title=None, status=0) -> dict:
+        title = title or f"S2A_MSIL2A_20200301T173231_N0209_R055_T{tile_id}_20200301T210331.SAFE"
+        pid = f"/eodata/Sentinel-2/MSI/L1C/2020/03/01/{title}"
+        return {
+            "type": "Feature",
+            "properties": {
+                "status": status,
+                "productIdentifier": pid,
+                "title": title,
+            }
+        }
+
+    @classmethod
+    def feature_collection(cls, features: List[dict]) -> dict:
+        features = [
+            f if f.get("type") == "Feature" else cls.feature(**f)
+            for f in features
+        ]
+        return {
+            "type": "FeatureCollection",
+            "properties": {"totalResults": len(features), "itemsPerPage": max(10, len(features))},
+            "features": features,
+        }
+
+
+class TerrascopeApiMocker:
+    """Helper to build fake Terrascope catalog responses"""
+
+    @classmethod
+    def feature(cls, tile_id="T16WEA", title=None) -> dict:
+        title = title or f"S2A_20200301T173231_{tile_id}_TOC_V200"
+        pid = f"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:{title}"
+        return {
+            "type": "Feature",
+            "properties": {
+                "title": title,
+                "identifier": pid,
+            }
+        }
+
+    @classmethod
+    def feature_collection(cls, features: List[dict]) -> dict:
+        features = [
+            f if f.get("type") == "Feature" else cls.feature(**f)
+            for f in features
+        ]
+        return {
+            "type": "FeatureCollection",
+            "properties": {},
+            "features": features,
+        }
+
+
 def test_extra_validation_creo(api100, requests_mock):
     pg = {"lc": {
         "process_id": "load_collection",
@@ -1097,41 +1155,17 @@ def test_extra_validation_creo(api100, requests_mock):
 
     requests_mock.get(
         "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json={
-            "type": "FeatureCollection",
-            "properties": {"totalResults": 28, "itemsPerPage": 28},
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "status": 0,
-                        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2020/03/01/S2A_MSIL2A_20200301T173231_N0214_R055_T16WEV_20200301T220803.SAFE",
-                        "title": "S2A_MSIL2A_20200301T173231_N0214_R055_T16WEV_20200301T220803.SAFE",
-                    }
-                },
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "status": 31,
-                        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2020/03/01/S2A_MSIL2A_20200301T173231_N0214_R055_T16WDA_20200301T220803.SAFE",
-                        "title": "S2A_MSIL2A_20200301T173231_N0214_R055_T16WDA_20200301T220803.SAFE",
-                    }
-                },
-            ],
-        }
+        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEV"}, {"tile_id": "16WDA", "status": 31}]),
     )
     requests_mock.get(
         "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json={
-            "type": "FeatureCollection",
-            "properties": {"totalResults": 28, "itemsPerPage": 28},
-            "features": [],
-        }
+        json=CreoApiMocker.feature_collection(features=[]),
     )
 
     response = api100.validation(pg)
     assert response.json == {'errors': [
-        {'code': 'MissingProduct', 'message': "Tile 'S2A_MSIL2A_20200301T173231_N0214_R055_T16WDA_20200301T220803' in collection 'SENTINEL2_L2A_CREO' is not available."}
+        {'code': 'MissingProduct',
+         'message': "Tile 'S2A_MSIL2A_20200301T173231_N0209_R055_T16WDA_20200301T210331' in collection 'SENTINEL2_L2A_CREO' is not available."}
     ]}
 
 
@@ -1151,57 +1185,19 @@ def test_extra_validation_terrascope(api100, requests_mock):
 
     requests_mock.get(
         "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json={
-            "type": "FeatureCollection",
-            "properties": {"totalResults": 28, "itemsPerPage": 28},
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "status": 0,
-                        "productIdentifier": "/eodata/Sentinel-2/MSI/L1C/2020/03/01/S2A_MSIL1C_20200301T173231_N0209_R055_T16WEA_20200301T210331.SAFE",
-                        "title": "S2A_MSIL1C_20200301T173231_N0209_R055_T16WEA_20200301T210331",
-                    }
-                },
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "status": 0,
-                        "productIdentifier": "/eodata/Sentinel-2/MSI/L1C/2020/03/01/S2A_MSIL1C_20200301T173231_N0209_R055_T16WDA_20200301T210331.SAFE",
-                        "title": "S2A_MSIL1C_20200301T1732…DA_20200301T210331.SAFE",
-                    }
-                },
-            ],
-        }
+        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEA"}, {"tile_id": "16WDA"}]),
     )
     requests_mock.get(
         "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json={
-            "type": "FeatureCollection",
-            "properties": {"totalResults": 28, "itemsPerPage": 28},
-            "features": [],
-        }
+        json=CreoApiMocker.feature_collection(features=[]),
     )
     requests_mock.get(
         "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=1&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999&cloudCover=[0,50]",
-        json={
-            "type": "FeatureCollection",
-            "properties": {},
-            "features": [
-                {"type": "Feature", "properties": {
-                    "title": "S2A_20200301T173231_16WEA_TOC_V200",
-                    "identifier": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200301T173231_16WEA_TOC_V200",
-                }}
-            ]
-        }
+        json=TerrascopeApiMocker.feature_collection(features=[{"tile_id": "16WEA"}]),
     )
     requests_mock.get(
         "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=2&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999&cloudCover=[0,50]",
-        json={
-            "type": "FeatureCollection",
-            "properties": {},
-            "features": []
-        }
+        json=TerrascopeApiMocker.feature_collection(features=[]),
     )
 
     response = api100.validation(pg)

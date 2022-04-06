@@ -3,17 +3,16 @@ import logging
 import traceback
 from copy import deepcopy
 from datetime import datetime
-from typing import List, Dict, Optional, Iterable, Tuple, Union, Sequence
+from typing import List, Dict, Optional, Tuple, Union
 
-import dateutil.parser as dp
+import dateutil.parser
 import geopyspark
 import requests
-from dateutil.tz import tzutc
 from shapely.geometry import box, Point
 from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
-from openeo.util import TimingLogger, deep_get, rfc3339
+from openeo.util import TimingLogger, deep_get
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -49,44 +48,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         spatial_extent = load_params.spatial_extent
 
         metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
-
-        if metadata.get("common_name") == collection_id:
-            common_name_metadatas = [
-                GeopysparkCubeMetadata(m)
-                for m in self.get_collection_with_common_name(metadata.get("common_name"))
-            ]
-
-            if load_params.backend_provider:
-                # User-chosen source
-                ms = [m for m in common_name_metadatas if m.provider_backend() == load_params.backend_provider]
-                if ms:
-                    metadata = ms[0]
-                    logger.info(f"(common_name) {collection_id!r}: using user-chosen {metadata.provider_backend()!r}.")
-                else:
-                    raise OpenEOApiException(
-                        message=f"provider:backend {load_params.backend_provider} not found for {collection_id!r}",
-                    )
-            else:
-                # Check sources in order of priority and skip ones where we can detect missing products.
-                for m in sorted(common_name_metadatas, key=lambda m: m.common_name_priority(), reverse=True):
-                    if m.get("_vito", "data_source", "check_missing_products"):
-                        missing = check_missing_products(
-                            collection_metadata=m,
-                            temporal_extent=temporal_extent, spatial_extent=spatial_extent,
-                            properties=load_params.properties,
-                        )
-                        if missing:
-                            logger.info(
-                                f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products."
-                            )
-                            continue
-                    metadata = m
-                    logger.info(f"(common_name) {collection_id!r}: using {m.provider_backend()!r}.")
-                    break
-                else:
-                    raise OpenEOApiException(message=f"No fitting provider:backend found for {collection_id!r}")
-
         layer_source_info = metadata.get("_vito", "data_source", default={})
+
+        if layer_source_info.get("type") == "merged_by_common_name":
+            metadata = self._resolve_merged_by_common_name(
+                collection_id=collection_id, metadata=metadata, load_params=load_params,
+                temporal_extent=temporal_extent, spatial_extent=spatial_extent
+            )
+            layer_source_info = metadata.get("_vito", "data_source", default={})
 
         sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
 
@@ -568,6 +537,43 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return image_collection
 
+    def _resolve_merged_by_common_name(
+            self, collection_id: str, metadata: GeopysparkCubeMetadata, load_params: LoadParameters,
+            temporal_extent: Tuple[str, str], spatial_extent: dict
+    ) -> GeopysparkCubeMetadata:
+        upstream_metadatas = [
+            GeopysparkCubeMetadata(self.get_collection_metadata(cid))
+            for cid in metadata.get("_vito", "data_source", "merged_collections")
+        ]
+        if load_params.backend_provider:
+            # User-chosen source
+            ms = [m for m in upstream_metadatas if m.provider_backend() == load_params.backend_provider]
+            if ms:
+                resolved = ms[0]
+                logger.info(f"(common_name) {collection_id!r}: using user-chosen {resolved.provider_backend()!r}.")
+                return resolved
+            else:
+                raise OpenEOApiException(
+                    message=f"provider:backend {load_params.backend_provider} not found for {collection_id!r}",
+                )
+        else:
+            # Check sources in order of priority and skip ones where we can detect missing products.
+            for m in sorted(upstream_metadatas, key=lambda m: m.common_name_priority(), reverse=True):
+                if m.get("_vito", "data_source", "check_missing_products"):
+                    missing = check_missing_products(
+                        collection_metadata=m,
+                        temporal_extent=temporal_extent, spatial_extent=spatial_extent,
+                        properties=load_params.properties,
+                    )
+                    if missing:
+                        logger.info(
+                            f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products."
+                        )
+                        continue
+                logger.info(f"(common_name) {collection_id!r}: using {m.provider_backend()!r}.")
+                return m
+        raise OpenEOApiException(message=f"No fitting provider:backend found for {collection_id!r}")
+
     def _native_crs(self, metadata: GeopysparkCubeMetadata) -> str:
         dimension_crss = [d.crs for d in metadata.spatial_dimensions]
 
@@ -688,52 +694,57 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
 
 def _merge_layers_with_common_name(metadata):
-    common_names = set(map(lambda f: f["common_name"], filter(lambda m: m.get("common_name"), metadata.values())))
+    common_names = set(m["common_name"] for m in metadata.values() if "common_name" in m)
+    logger.debug(f"Creating merged collections for common names: {common_names}")
     for common_name in common_names:
-        common_name_metadatas = list(filter(lambda c: c.get("common_name") == common_name, metadata.values()))
-        default_metadata = next(filter(lambda m: deep_get(m, "_vito", "data_source", "default_provider:backend", default=False), common_name_metadatas))
-        default_metadata = default_metadata or common_name_metadatas[0]
-        new_metadata = deepcopy(default_metadata)
-        default_metadata["_vito"]["data_source"].pop("default_provider:backend", None)
-        new_metadata["_vito"]["data_source"]["provider:backend"] = [new_metadata["_vito"]["data_source"]["provider:backend"]]
-        for common_name_metadata in common_name_metadatas:
-            if not common_name_metadata["id"] == new_metadata["id"]:
-                new_metadata["_vito"]["data_source"]["provider:backend"] += [common_name_metadata["_vito"]["data_source"]["provider:backend"]]
-                new_metadata["providers"] += common_name_metadata["providers"]
-                new_metadata["links"] += common_name_metadata["links"]
-                for b in common_name_metadata["cube:dimensions"]["bands"]["values"]:
-                    if b not in new_metadata["cube:dimensions"]["bands"]["values"]:
-                        new_metadata["cube:dimensions"]["bands"]["values"] += [b]
-                        new_metadata["summaries"]["eo:bands"] += list(filter(lambda m: m["name"] == b, common_name_metadata["summaries"]["eo:bands"]))
-                    else:
-                        new_metadata_band = next(filter(lambda m: m["name"] == b, new_metadata["summaries"]["eo:bands"]))
-                        common_metadata_band = next(filter(lambda m: m["name"] == b, common_name_metadata["summaries"]["eo:bands"]))
-                        new_metadata_band["aliases"] = (new_metadata_band.get("aliases") or []) + \
-                                                       (common_metadata_band.get("aliases") or [])
+        merged = {
+            "id": common_name,
+            "_vito": {"data_source": {
+                "type": "merged_by_common_name",
+                "common_name": common_name,
+                "merged_collections": [],
+            }},
+            "providers": [],
+            "links": [],
+            "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
+        }
 
-                new_metadata_spatial_extent = new_metadata["extent"]["spatial"]["bbox"]
-                common_name_metadata_spatial_extent = common_name_metadata["extent"]["spatial"]["bbox"]
-                new_metadata["extent"]["spatial"]["bbox"] = [[min(new_metadata_spatial_extent[0][0], common_name_metadata_spatial_extent[0][0]),
-                                                              min(new_metadata_spatial_extent[0][1], common_name_metadata_spatial_extent[0][1]),
-                                                              max(new_metadata_spatial_extent[0][2], common_name_metadata_spatial_extent[0][2]),
-                                                              max(new_metadata_spatial_extent[0][3], common_name_metadata_spatial_extent[0][3])]]
-                new_metadata_temporal_extent = new_metadata["extent"]["temporal"]["interval"]
-                common_name_metadata_temporal_extent = common_name_metadata["extent"]["temporal"]["interval"]
-                default_date = datetime(2017, 1, 1, tzinfo=tzutc())
-                new_start = min(dp.parse(new_metadata_temporal_extent[0][0], default=default_date), dp.parse(common_name_metadata_temporal_extent[0][0], default=default_date)).isoformat()
-                if not new_metadata_temporal_extent[0][1]:
-                    new_end = common_name_metadata_temporal_extent[0][1]
-                elif not common_name_metadata_temporal_extent[0][1]:
-                    new_end = new_metadata_temporal_extent[0][1]
+        for to_merge in (m for m in metadata.values() if m.get("common_name") == common_name):
+            merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
+            # Fill some fields with first hit
+            for field in ["title", "description", "keywords", "version", "license", "cube:dimensions", "summaries"]:
+                if field not in merged and field in to_merge:
+                    merged[field] = deepcopy(to_merge[field])
+            # Fields to take union
+            for field in ["providers", "links"]:
+                if isinstance(to_merge.get(field), list):
+                    merged[field] += deepcopy(to_merge[field])
+
+            # Take union of bands
+            for band_dim in [k for k, v in to_merge["cube:dimensions"].items() if v["type"] == "bands"]:
+                if band_dim not in merged["cube:dimensions"]:
+                    merged["cube:dimensions"][band_dim] = deepcopy(to_merge["cube:dimensions"][band_dim])
                 else:
-                    new_end = max(dp.parse(new_metadata_temporal_extent[0][1], default=default_date), dp.parse(common_name_metadata_temporal_extent[0][1], default=default_date))
-                if new_end:
-                    new_end = new_end.isoformat()
-                new_metadata["extent"]["temporal"]["interval"] = [[new_start, new_end]]
+                    for b in to_merge["cube:dimensions"][band_dim]["values"]:
+                        if b not in merged["cube:dimensions"][band_dim]["values"]:
+                            merged["cube:dimensions"][band_dim]["values"].append(b)
+            for b in to_merge["summaries"]["eo:bands"]:
+                eob_names = [x["name"] for x in merged["summaries"]["eo:bands"]]
+                if b["name"] not in eob_names:
+                    merged["summaries"]["eo:bands"].append(b)
+                else:
+                    i = eob_names.index(b["name"])
+                    merged["summaries"]["eo:bands"][i]["aliases"] = list(
+                        set(merged["summaries"]["eo:bands"][i].get("aliases", []))
+                        | set(to_merge["summaries"]["eo:bands"][i].get("aliases", []))
+                    )
 
-        new_metadata["id"] = common_name
+            # Union of extents
+            # TODO: make sure first bbox/interval is overall extent
+            merged["extent"]["spatial"]["bbox"].extend(to_merge["extent"]["spatial"]["bbox"])
+            merged["extent"]["temporal"]["interval"].extend(to_merge["extent"]["temporal"]["interval"])
 
-        metadata[common_name] = new_metadata
+        metadata[common_name] = merged
 
     return metadata
 
@@ -751,7 +762,7 @@ def check_missing_products(
     check_data = collection_metadata.get("_vito", "data_source", "check_missing_products", default=None)
 
     if check_data:
-        temporal_extent = [rfc3339.parse_date_or_datetime(t) for t in temporal_extent]
+        temporal_extent = [dateutil.parser.parse(t) for t in temporal_extent]
         # Merge given properties with global layer properties
         properties = {
             **collection_metadata.get("_vito", "properties", default={}),
