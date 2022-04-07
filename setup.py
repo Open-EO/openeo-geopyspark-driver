@@ -27,6 +27,7 @@ tests_require = [
 setup(
     name='openeo-geopyspark',
     version=version,
+    python_requires=">=3.8",
     packages=find_packages(exclude=('tests', 'scripts')),
     include_package_data = True,
     data_files=[
