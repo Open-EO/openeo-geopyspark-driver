@@ -10,7 +10,7 @@ if [ "$#" -lt 7 ]; then
     exit 1
 fi
 
-sparkSubmitLog4jConfigurationFile="venv/submit_batch_job_log4j.properties"
+sparkSubmitLog4jConfigurationFile="venv/openeo-geopyspark-driver/submit_batch_job_log4j.properties"
 
 if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
     sparkSubmitLog4jConfigurationFile='scripts/submit_batch_job_log4j.properties'
@@ -78,7 +78,7 @@ main_py_file='venv/lib64/python3.6/site-packages/openeogeotrellis/deploy/batch_j
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
- -Dlog4j.debug=true -Dlog4j.configuration=file:venv/batch_job_log4j.properties\
+ -Dlog4j.debug=true -Dlog4j.configuration=file:venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
