@@ -123,9 +123,11 @@ class TestMultipleDates(TestCase):
         assert self.temp_folder.is_dir()
 
     def test_repartition(self):
-        p = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
-        spk = gps.get_spark_context()._jvm.geotrellis.layer.SpaceTimeKey
-        result = p.applySparseSpacetimePartitioner(self.tiled_raster_rdd.srdd.rdd(),[spk(0,0,0),spk(1,0,100000),spk(10000000,454874414,100000)],8)
+        jvm = gps.get_spark_context()._jvm
+        p = jvm.org.openeo.geotrellis.OpenEOProcesses()
+        spk = jvm.geotrellis.layer.SpaceTimeKey
+        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+        result = p.applySparseSpacetimePartitioner(self.tiled_raster_rdd.srdd.rdd(),[spk(0,0,0),spk(1,0,100000),spk(10000000,454874414,100000)],datacubeParams.partitionerIndexReduction())
         assert result is not None
         assert "SpacePartitioner(KeyBounds(SpaceTimeKey(0,0,0),SpaceTimeKey(10000000,454874414,100000)))" == str(result.partitioner().get())
         assert "SparseSpaceTimePartitioner 3" == str(result.partitioner().get().index())

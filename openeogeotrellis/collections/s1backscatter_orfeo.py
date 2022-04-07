@@ -556,7 +556,7 @@ class S1BackscatterOrfeo:
         p = jvm.org.openeo.geotrellis.OpenEOProcesses()
         spk = jvm.geotrellis.layer.SpaceTimeKey
 
-        indexReduction = datacubeParams.partitionerIndexReduction if datacubeParams is not None else 8
+        indexReduction = datacubeParams.partitionerIndexReduction() if datacubeParams is not None else 8
 
         keys_geotrellis = [ spk(k["col"], k["row"], k["instant"]) for k in all_keys]
         result = p.applySparseSpacetimePartitioner(tile_layer.srdd.rdd(),
