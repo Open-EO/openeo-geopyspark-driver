@@ -563,7 +563,8 @@ class S1BackscatterOrfeo:
                                                    keys_geotrellis,
                                                    indexReduction)
 
-        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), result)
+        contextRDD = jvm.geotrellis.spark.ContextRDD(result, tile_layer.srdd.rdd().metadata())
+        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), contextRDD)
         tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
         logger.info(f"Created {collection_id} backscatter cube with partitioner index: {str(result.partitioner().get().index())}")
         return {zoom: tile_layer}
