@@ -623,6 +623,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return error
 
+    def changelog(self) -> Union[str, Path]:
+        for p in [
+            # Local dev path
+            Path(__file__).parent.parent / "CHANGELOG.md",
+            # Installed package/wheel location
+            Path(sys.prefix) / "openeo-geopyspark-driver" / "CHANGELOG.md",
+        ]:
+            if p.exists():
+                return p
+        return super().changelog()
+
 
 class GpsProcessing(ConcreteProcessing):
     def extra_validation(

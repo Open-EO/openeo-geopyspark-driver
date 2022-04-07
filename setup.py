@@ -30,6 +30,9 @@ setup(
     packages=find_packages(exclude=('tests', 'scripts')),
     include_package_data = True,
     data_files=[
+        ("openeo-geopyspark-driver", ["CHANGELOG.md"]),
+        # TODO: make these config files real "package_data" so that they can be managed/found more easily in different contexts
+        #       (now they are installed directly under sys.prefix without any openeo reference)
         'log4j.properties',
         'scripts/submit_batch_job_log4j.properties',
         'scripts/batch_job_log4j.properties'
@@ -38,7 +41,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         'openeo>=0.9.3a2.*',
-        'openeo_driver>=0.17.7.dev',
+        'openeo_driver>=0.17.10.dev',
         'pyspark==3.2.0; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
