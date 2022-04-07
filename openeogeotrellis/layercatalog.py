@@ -17,7 +17,7 @@ from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.dry_run import ProcessType
-from openeo_driver.errors import OpenEOApiException
+from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import buffer_point_approx, read_json, EvalEnv, to_hashable
@@ -51,11 +51,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         layer_source_info = metadata.get("_vito", "data_source", default={})
 
         if layer_source_info.get("type") == "merged_by_common_name":
+            logger.info(f"Resolving 'merged_by_common_name' collection {metadata.get('id')}")
             metadata = self._resolve_merged_by_common_name(
                 collection_id=collection_id, metadata=metadata, load_params=load_params,
                 temporal_extent=temporal_extent, spatial_extent=spatial_extent
             )
             layer_source_info = metadata.get("_vito", "data_source", default={})
+            logger.info(f"Resolved 'merged_by_common_name' to collection {metadata.get('id')}")
 
         sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
 
@@ -784,13 +786,13 @@ def check_missing_products(
             if cloud_cover_op in {"lte", "eq"}:
                 query_kwargs["cldPrcnt"] = cloud_cover_condition[cloud_cover_op]
             else:
-                # TODO: better exception
-                raise ValueError(properties["eo:cloud_cover"])
+                logger.error(f"Failed to handle cloud cover condition {properties['eo:cloud_cover']}")
+                raise InternalException("Failed to handle cloud cover condition")
 
         method = check_data.get("method")
         if method == "creo":
             creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
-            return [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
+            missing = [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
         elif method == "terrascope":
             creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
             expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
@@ -799,4 +801,10 @@ def check_missing_products(
             terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
             return list(expected_tiles.difference(terrascope_tiles))
         else:
-            raise ValueError(check_data)
+            logger.error(f"Invalid check_missing_products data {check_data}")
+            raise InternalException("Invalid check_missing_products data")
+
+        logger.info(
+            f"check_missing_products ({method}) on {collection_metadata.get('id')} detected {len(missing)} missing products."
+        )
+        return missing
