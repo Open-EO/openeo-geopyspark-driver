@@ -624,14 +624,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return error
 
     def changelog(self) -> Union[str, Path]:
-        for p in [
+        roots = []
+        if Path(__file__).parent.parent.name == "openeo-geopyspark-driver":
             # Local dev path
-            Path(__file__).parent.parent / "CHANGELOG.md",
-            # Installed package/wheel location
-            Path(sys.prefix) / "openeo-geopyspark-driver" / "CHANGELOG.md",
-        ]:
-            if p.exists():
-                return p
+            roots.append(Path(__file__).parent.parent)
+        # Installed package/wheel location
+        roots.append(Path(sys.prefix) / "openeo-geopyspark-driver")
+        for root in roots:
+            if (root / "CHANGELOG.md").exists():
+                return root / "CHANGELOG.md"
+
         return super().changelog()
 
 
