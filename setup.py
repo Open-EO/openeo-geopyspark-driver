@@ -36,9 +36,6 @@ setup(
             "scripts/submit_batch_job_log4j.properties",
             "scripts/batch_job_log4j.properties",
         ]),
-        # TODO: make these config files real "package_data" so that they can be managed/found more easily in different contexts
-        #       (now they are installed directly under sys.prefix without any openeo reference)
-        'log4j.properties',
     ],
     setup_requires=['pytest-runner'],
     tests_require=tests_require,
