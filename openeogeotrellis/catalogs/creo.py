@@ -103,7 +103,7 @@ class CreoCatalogClient(CatalogClientBase):
     def catalogEntryFromProductId(self, product_id):
         return CreoCatalogEntry(product_id, CatalogStatus.AVAILABLE)
 
-    def _query_page(self, start_date, end_date,
+    def _query_page(self, start_date: datetime, end_date: datetime,
                     tile_id,
                     ulx, uly, brx, bry,
                     cldPrcnt,

@@ -102,6 +102,20 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         names_with_aliases = zip(self.band_dimension.band_names, self.band_dimension.band_aliases)
         return [n[1][0] if n[1] else n[0] for n in names_with_aliases]
 
+    def provider_backend(self) -> Union[str, None]:
+        return self.get("_vito", "data_source", "provider:backend", default=None)
+
+    def common_name_priority(self) -> int:
+        priority = self.get("_vito", "data_source", "common_name_priority", default=None)
+        if priority is not None:
+            return priority
+        # fallback based on provider:backend property (if any)
+        return {
+            None: 0,
+            "terrascope": 10,
+            "sentinelhub": 5,
+        }.get(self.provider_backend(), 0)
+
 
 SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
 

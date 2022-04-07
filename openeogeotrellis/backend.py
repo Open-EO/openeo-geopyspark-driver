@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import operator
@@ -10,7 +11,6 @@ import sys
 import tempfile
 import traceback
 import uuid
-import datetime
 from functools import reduce
 from pathlib import Path
 from subprocess import CalledProcessError
@@ -21,15 +21,10 @@ import geopyspark as gps
 import pkg_resources
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
-from pyspark.mllib.tree import RandomForestModel
-
-from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.filter_properties import extract_literal_match
-from openeo_driver.save_result import ImageCollectionResult
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
+from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
 from shapely.geometry import GeometryCollection, Point, Polygon
 
@@ -41,21 +36,21 @@ from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
                                    CollectionCatalog)
 from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
+from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import buffer_point_approx, EvalEnv
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.catalogs.creo import CreoCatalogClient
-from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
-from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml_model import GeopySparkMLModel
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
@@ -640,11 +635,9 @@ class GpsProcessing(ConcreteProcessing):
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
-                metadata = catalog.get_collection_metadata(collection_id=collection_id)
-                source_info = deep_get(metadata, "_vito", "data_source", default={})
-                check_missing_products = source_info.get("check_missing_products")
+                metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
 
-                if check_missing_products:
+                if metadata.get("_vito", "data_source", "check_missing_products", default=None):
                     temporal_extent = constraints.get("temporal_extent")
                     spatial_extent = constraints.get("spatial_extent")
                     properties = constraints.get("properties", {})
@@ -654,49 +647,19 @@ class GpsProcessing(ConcreteProcessing):
                         yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
                     if temporal_extent is None or spatial_extent is None:
                         return
-                    layer_properties = deep_get(metadata, "_vito", "properties", default={})
-                    all_properties = {property_name: extract_literal_match(condition)
-                                      for property_name, condition in {**layer_properties, **properties}.items()}
-                    query_kwargs = {
-                        "start_date": datetime.datetime.combine(
-                            rfc3339.parse_date_or_datetime(temporal_extent[0]),
-                            datetime.time.min
-                        ),
-                        "end_date": datetime.datetime.combine(
-                            rfc3339.parse_date_or_datetime(temporal_extent[1]),
-                            datetime.time.max
-                        ),
-                        "ulx": spatial_extent["west"],
-                        "brx": spatial_extent["east"],
-                        "bry": spatial_extent["south"],
-                        "uly": spatial_extent["north"],
-                    }
 
-                    if "eo:cloud_cover" in all_properties:
-                        if "lte" in all_properties["eo:cloud_cover"]:
-                            query_kwargs["cldPrcnt"] = all_properties["eo:cloud_cover"]["lte"]
-                        elif "eq" in all_properties["eo:cloud_cover"]:
-                            query_kwargs["cldPrcnt"] = all_properties["eo:cloud_cover"]["eq"]
-
-                    def missing_product(tile_id):
-                        return {
-                            "code": "MissingProduct",
-                            "message": f"Tile {tile_id!r} in collection {collection_id!r} is not available."
-                        }
-
-                    if check_missing_products["method"] == "creo":
-                        creo_catalog = CreoCatalogClient(**check_missing_products["creo_catalog"])
-                        for p in creo_catalog.query_offline(**query_kwargs):
-                            yield missing_product(tile_id=p.getProductId())
-                    elif check_missing_products["method"] == "terrascope":
-                        creo_catalog = CreoCatalogClient(**check_missing_products["creo_catalog"])
-                        expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
-                        oscars_catalog = OscarsCatalogClient(collection=source_info.get("opensearch_collection_id"))
-                        terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
-                        for tile_id in expected_tiles.difference(terrascope_tiles):
-                            yield missing_product(tile_id=tile_id)
-                    else:
-                        raise ValueError(check_missing_products)
+                    products = check_missing_products(
+                        collection_metadata=metadata,
+                        temporal_extent=temporal_extent,
+                        spatial_extent=spatial_extent,
+                        properties=properties,
+                    )
+                    if products:
+                        for p in products:
+                            yield {
+                                "code": "MissingProduct",
+                                "message": f"Tile {p!r} in collection {collection_id!r} is not available."
+                            }
 
 
 class GpsBatchJobs(backend.BatchJobs):

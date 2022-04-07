@@ -12,6 +12,26 @@ from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.layercatalog import get_layer_catalog
 import geopyspark as gps
 
+from .test_api_result import CreoApiMocker, TerrascopeApiMocker
+
+@pytest.fixture
+def jvm_mock():
+    with mock.patch('openeogeotrellis.layercatalog.get_jvm') as get_jvm:
+        jvm_mock = get_jvm.return_value
+        raster_layer = MagicMock()
+        jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+        raster_layer.layerMetadata.return_value = """{
+            "crs": "EPSG:4326",
+            "cellType": "uint8",
+            "bounds": {"minKey": {"col":0, "row":0}, "maxKey": {"col": 1, "row": 1}},
+            "extent": {"xmin": 0,"ymin": 0, "xmax": 1,"ymax": 1},
+            "layoutDefinition": {
+                "extent": {"xmin": 0, "ymin": 0,"xmax": 1,"ymax": 1},
+                "tileLayout": {"layoutCols": 1, "layoutRows": 1, "tileCols": 256, "tileRows": 256}
+            }
+        }"""
+        yield jvm_mock
+
 
 def test_load_collection_bands_missing_required_extent():
     catalog = get_layer_catalog()
@@ -21,23 +41,8 @@ def test_load_collection_bands_missing_required_extent():
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_collection_sar_backscatter_compatible(get_jvm):
+def test_load_collection_sar_backscatter_compatible(jvm_mock):
     catalog = get_layer_catalog()
-
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
 
     load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
@@ -68,23 +73,8 @@ def test_load_collection_sar_backscatter_incompatible():
             """Process "sar_backscatter" is not applicable for collection TERRASCOPE_S2_TOC_V2.""")
 
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_file_oscars(get_jvm):
+def test_load_file_oscars(jvm_mock):
     catalog = get_layer_catalog()
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
-
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
     load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326})
     env = EvalEnv()
@@ -93,23 +83,9 @@ def test_load_file_oscars(get_jvm):
     assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
     assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_file_oscars_resample(get_jvm):
-    catalog = get_layer_catalog()
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
 
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+def test_load_file_oscars_resample(jvm_mock):
+    catalog = get_layer_catalog()
     load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
                                  target_resolution=[15,15],
@@ -138,23 +114,8 @@ def test_load_file_oscars_resample(get_jvm):
     factory_mock.return_value.datacube_seq.assert_called_once_with(ANY, '2010-01-01T10:36:00+00:00', '2012-01-01T10:36:00+00:00', {}, '', datacubeParams)
 
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_collection_old_and_new_band_names(get_jvm):
+def test_load_collection_old_and_new_band_names(jvm_mock):
     catalog = get_layer_catalog()
-
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
 
     temporal_extent = ('2019-01-01', '2019-01-01')
     spatial_extent = {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
@@ -191,23 +152,8 @@ def test_reprojection():
     assert reprojected.ymax == 5677503.191395153
 
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_collection_bands_with_required_extent(get_jvm):
+def test_load_collection_bands_with_required_extent(jvm_mock):
     catalog = get_layer_catalog()
-
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
 
     load_params = LoadParameters(
         temporal_extent=('2019-01-01', '2019-01-01'),
@@ -231,23 +177,8 @@ def test_load_collection_bands_with_required_extent(get_jvm):
     factory_mock.return_value.pyramid_seq.assert_called_once_with(extent_mock, "EPSG:4326", '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '')
 
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_collection_data_cube_params(get_jvm):
+def test_load_collection_data_cube_params(jvm_mock):
     catalog = get_layer_catalog()
-
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
 
     load_params = LoadParameters(
         temporal_extent=('2019-01-01', '2019-01-01'),
@@ -278,38 +209,59 @@ def test_load_collection_data_cube_params(get_jvm):
     getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')
 
 
-@mock.patch('openeogeotrellis.layercatalog.get_jvm')
-def test_load_collection_common_name(get_jvm):
+def test_load_collection_common_name_user_selected(jvm_mock):
     catalog = get_layer_catalog()
-
-    jvm_mock = get_jvm.return_value
-    raster_layer = MagicMock()
-    jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-    raster_layer.layerMetadata.return_value = '{' \
-                                              '"crs":"EPSG:4326",\n' \
-                                              '"cellType":"uint8",\n' \
-                                              '"bounds":{"minKey":{"col":0,"row":0},"maxKey":{"col":1,"row":1}},\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},\n' \
-                                              '"layoutDefinition":{\n' \
-                                              '"extent":{"xmin":0,"ymin":0,"xmax":1,"ymax":1},' \
-                                              '"tileLayout":{"layoutCols":1, "layoutRows":1, "tileCols":256, "tileRows":256}' \
-                                              '}' \
-                                              '}'
-
-    load_params = LoadParameters(bands=['B03'],
-                                 temporal_extent=('2019-01-01', '2019-01-01'),
-                                 spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
-                                 )
-    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-
-    assert collection.metadata.get('id') == 'SENTINEL2_L2A'
+    load_params = LoadParameters(
+        temporal_extent=('2019-01-01', '2019-01-01'),
+        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
+        bands=['B03'],
+    )
 
     load_params.backend_provider = 'sentinelhub'
     collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-
     assert collection.metadata.get('id') == 'SENTINEL2_L2A_SENTINELHUB'
 
     load_params.backend_provider = 'terrascope'
     collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-
     assert collection.metadata.get('id') == 'TERRASCOPE_S2_TOC_V2'
+
+
+@pytest.mark.parametrize(["missing_products", "expected_source"], [
+    (False, "TERRASCOPE_S2_TOC_V2"),
+    (True, "SENTINEL2_L2A_SENTINELHUB"),
+])
+def test_load_collection_common_name_by_missing_products(jvm_mock, requests_mock, missing_products, expected_source):
+    catalog = get_layer_catalog()
+
+    load_params = LoadParameters(
+        temporal_extent=('2020-03-01', '2020-03-03'),
+        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
+        bands=['B03'],
+    )
+
+    requests_mock.get(
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
+        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEA"}, {"tile_id": "16WDA"}])
+    )
+    requests_mock.get(
+        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
+        json=CreoApiMocker.feature_collection(features=[])
+    )
+
+    if missing_products:
+        tfs = [{"tile_id": "16WEA"}]
+    else:
+        tfs = [{"tile_id": "16WEA"}, {"tile_id": "16WDA"}]
+    from_index = 1
+    requests_mock.get(
+        f"https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=4%2C51.9999%2C4.001%2C52&sortKeys=title&startIndex={from_index}&start=2020-03-01T00%3A00%3A00&end=2020-03-03T23%3A59%3A59.999999&cloudCover=%5B0%2C100.0%5D",
+        json=TerrascopeApiMocker.feature_collection(features=tfs),
+    )
+    from_index += len(tfs)
+    requests_mock.get(
+        f"https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=4%2C51.9999%2C4.001%2C52&sortKeys=title&startIndex={from_index}&start=2020-03-01T00%3A00%3A00&end=2020-03-03T23%3A59%3A59.999999&cloudCover=%5B0%2C100.0%5D",
+        json=TerrascopeApiMocker.feature_collection(features=[]),
+    )
+
+    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
+    assert collection.metadata.get('id') == expected_source
