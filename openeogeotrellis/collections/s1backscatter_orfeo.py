@@ -526,7 +526,7 @@ class S1BackscatterOrfeo:
             }
 
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
-        all_keys = feature_pyrdd.map(lambda f:f["key"]).distinct().collect()
+        all_keys = feature_pyrdd.map(lambda f:f["key"]).collect()
 
         paths = list(per_product.keys().collect())
         def partitionByPath(tuple):
