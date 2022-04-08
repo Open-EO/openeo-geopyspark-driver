@@ -130,7 +130,11 @@ class TestMultipleDates(TestCase):
         result = p.applySparseSpacetimePartitioner(self.tiled_raster_rdd.srdd.rdd(),[spk(0,0,0),spk(1,0,100000),spk(10000000,454874414,100000)],datacubeParams.partitionerIndexReduction())
         assert result is not None
         assert "SpacePartitioner(KeyBounds(SpaceTimeKey(0,0,0),SpaceTimeKey(10000000,454874414,100000)))" == str(result.partitioner().get())
-        assert "SparseSpaceTimePartitioner 3" == str(result.partitioner().get().index())
+        assert "SparseSpaceTimePartitioner 2 true" == str(result.partitioner().get().index())
+
+        contextRDD = jvm.geotrellis.spark.ContextRDD(result,self.tiled_raster_rdd.srdd.rdd().metadata())
+        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(0), contextRDD)
+
 
     def test_reproject_spatial(self):
         input = Pyramid({0: self.tiled_raster_rdd})
