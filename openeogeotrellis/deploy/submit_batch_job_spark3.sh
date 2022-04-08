@@ -159,6 +159,7 @@ spark-submit \
  --conf spark.hadoop.yarn.timeline-service.enabled=false \
  --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
  --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
+ --conf spark.eventLog.enabled=true \
  --conf spark.eventLog.dir=hdfs:///spark2-history/ \
  --conf spark.history.fs.logDirectory=hdfs:///spark2-history/ \
  --conf spark.history.kerberos.enabled=true \
