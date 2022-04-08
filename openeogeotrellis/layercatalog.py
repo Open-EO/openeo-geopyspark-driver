@@ -56,6 +56,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 collection_id=collection_id, metadata=metadata, load_params=load_params,
                 temporal_extent=temporal_extent, spatial_extent=spatial_extent
             )
+            collection_id = metadata.get("id")
             layer_source_info = metadata.get("_vito", "data_source", default={})
             logger.info(f"Resolved 'merged_by_common_name' to collection {metadata.get('id')}")
 
