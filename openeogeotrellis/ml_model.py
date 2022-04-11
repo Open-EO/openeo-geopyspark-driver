@@ -1,4 +1,5 @@
 import pathlib
+import uuid
 from typing import Dict, List, Optional, Union
 
 from openeo_driver.datacube import DriverMlModel
@@ -22,9 +23,74 @@ class GeopySparkMLModel(DriverMlModel):
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
         directory = pathlib.Path(directory).parent
-        filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
-        self._model.save(gps.get_spark_context(), filename)
-        return {filename:{"href":filename}}
+        model_path = pathlib.Path(directory) / "randomforest.model"
+        self._model.save(gps.get_spark_context(), "file:" + str(model_path))
+
+        metadata = {
+            "stac_version": "1.0.0",
+            "stac_extensions": [
+                "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
+            ],
+            "type": "Feature",
+            "id": str(uuid.uuid4()),
+            # "collection": "collection-id",
+            "bbox": [
+                -179.999,
+                -89.999,
+                179.999,
+                89.999
+            ],
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -179.999,
+                            -89.999
+                        ],
+                        [
+                            179.999,
+                            -89.999
+                        ],
+                        [
+                            179.999,
+                            89.999
+                        ],
+                        [
+                            -179.999,
+                            89.999
+                        ],
+                        [
+                            -179.999,
+                            -89.999
+                        ]
+                    ]
+                ]
+            },
+            'properties': {
+                "datetime": None,
+                "start_datetime": "1970-01-01T00:00:00Z",
+                "end_datetime": "9999-12-31T23:59:59Z",
+                "ml-model:type": "ml-model",
+                "ml-model:learning_approach": "supervised",
+                "ml-model:prediction_type": "classification",
+                "ml-model:architecture": "random-forest",
+                "ml-model:training-processor-type": "cpu",
+                "ml-model:training-os": "linux",
+            },
+            'links': [],
+            'assets': {
+                'model': {
+                    "href": model_path,
+                    "type": "application/octet-stream",
+                    "title": "org.apache.spark.mllib.tree.model.RandomForestModel",
+                    "roles": ["ml-model:checkpoint"]
+                }
+            }
+        }
+
+        collection_path = pathlib.Path(directory) / "model_item.json"
+        return {model_path.name: {"href": str(model_path)}, collection_path.name: {"href:": str(collection_path)}, 'ml_model_metadata': metadata}
 
     def get_model(self):
         return self._model
