@@ -17,6 +17,7 @@ from py4j.java_gateway import JavaGateway
 from openeogeotrellis.job_registry import JobRegistry
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
+# TODO: include job_id in log statements not issued by our own code e.g. Py4J  # 141
 _log = logging.getLogger(__name__)
 
 SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S = 60
@@ -160,6 +161,7 @@ def main():
                         batch_jobs().poll_sentinelhub_batch_processes(job_info)
                     except Exception:
                         # TODO: retry in Nifi? How to mark this job as 'error' then?
+                        # TODO: don't put the stack trace in the message but add exc_info  # 141
                         _log.error("failed to handle polling batch processes for batch job {j}:\n{e}"
                                    .format(j=batch_job_id, e=traceback.format_exc()),
                                    extra={'job_id': batch_job_id})
@@ -168,12 +170,12 @@ def main():
                             registry.set_status(batch_job_id, user_id, 'error')
                             registry.mark_done(batch_job_id, user_id)
 
-                        raise
+                        raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
 
         else:
             raise AssertionError(f'unexpected task_id "{task_id}"')
     except Exception as e:
-        _log.error(e, exc_info=True)
+        _log.error(e, exc_info=True)  # TODO: add a more descriptive message instead of the exception itself  # 141
         raise e
 
 
