@@ -123,6 +123,7 @@ def main():
         def batch_jobs() -> GpsBatchJobs:
             java_opts = [
                 "-client",
+                "-Xmx4G",
                 "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
             ]
 
