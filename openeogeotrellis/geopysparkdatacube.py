@@ -22,7 +22,7 @@ from geopyspark.geotrellis import Extent, ResampleMethod, crs_to_proj4
 from geopyspark.geotrellis.constants import CellType
 from pandas import Series
 from py4j.java_gateway import JVMView
-from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
+from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
@@ -1416,6 +1416,14 @@ class GeopysparkDataCube(DriverDataCube):
         # get the data at highest resolution
         max_level = self.get_max_level()
 
+        def to_latlng_bbox(bbox: 'Extent') -> Tuple[float, float, float, float]:
+            latlng_extent = self._reproject_extent(src_crs=max_level.layer_metadata.crs,
+                                                   dst_crs="+init=EPSG:4326",
+                                                   xmin=bbox.xmin(), ymin=bbox.ymin(),
+                                                   xmax=bbox.xmax(), ymax=bbox.ymax())
+
+            return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
+
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
             crs = bbox.get("crs") or "EPSG:4326"
@@ -1459,11 +1467,27 @@ class GeopysparkDataCube(DriverDataCube):
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
-                        filenames = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds, zlevel=zlevel)
-                        return {str(pathlib.Path(filename).name): {"href": filename} for filename in filenames}
+                        tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds,
+                                                              zlevel=zlevel)
+
+                        # noinspection PyProtectedMember
+                        return {str(pathlib.Path(tile._1()).name): {
+                            "href": tile._1(),
+                            "bbox": to_latlng_bbox(tile._2()),
+                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(tile._2()))),
+                            "type": "image/tiff; application=geotiff",
+                            "roles": ["data"]
+                        } for tile in tiles}
                     else:
                         _log.info("save_result save_stitched")
-                        self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
+                        bbox = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
+                        return {str(pathlib.Path(filename).name): {
+                            "href": save_filename,
+                            "bbox": to_latlng_bbox(bbox),
+                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                            "type": "image/tiff; application=geotiff",
+                            "roles": ["data"]
+                        }}
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
@@ -1524,35 +1548,35 @@ class GeopysparkDataCube(DriverDataCube):
                         assets = {}
 
                         # noinspection PyProtectedMember
-                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2())
+                        # TODO: contains a bbox so rename
+                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
 
-                        for path, timestamp in timestamped_paths:
-                            if path.name.endswith("_item.json"):
-                                assets[path.name] = {
-                                    "href": str(path),
-                                    "title": "STAC item",
-                                    "type": "application/json",
-                                    "roles": ["metadata"]
-                                }
-                            else:
-                                assets[path.name] = {
-                                    "href": str(path),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    'bands': bands,
-                                    'nodata': nodata,
-                                    'datetime': timestamp
-                                }
+                        for path, timestamp, bbox in timestamped_paths:
+                            assets[path.name] = {
+                                "href": str(path),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"],
+                                'bands': bands,
+                                'nodata': nodata,
+                                'datetime': timestamp,
+                                'bbox': to_latlng_bbox(bbox),
+                                'geometry': mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
+                            }
                         return assets
-
                     else:
                         if tile_grid:
-                            filenames = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
-                                                                      zlevel=zlevel)
-                            return {str(pathlib.Path(filename).name): {"href": filename,
-                                                                       "type": "image/tiff; application=geotiff",
-                                                                       "roles": ["data"]} for filename in filenames}
+                            tiles = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
+                                                                  zlevel=zlevel)
+
+                            # noinspection PyProtectedMember
+                            return {str(pathlib.Path(tile._1()).name): {
+                                "href": tile._1(),
+                                "bbox": to_latlng_bbox(tile._2()),
+                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(tile._2()))),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"]
+                            } for tile in tiles}
                         else:
                             originalName = pathlib.Path(filename)
 
@@ -1904,16 +1928,16 @@ class GeopysparkDataCube(DriverDataCube):
         subprocess.run(['xargs', '-0', 'gdal_merge.py'], input='\0'.join(merge_args), universal_newlines=True)
 
 
-    def _save_stitched(self, spatial_rdd, path, crop_bounds=None,zlevel=6):
+    def _save_stitched(self, spatial_rdd, path, crop_bounds=None,zlevel=6) -> 'Extent':
         jvm = self._get_jvm()
 
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
         if crop_bounds:
-            jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
                                                                    max_compression)
         else:
-            jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
 
     def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6):
         jvm = self._get_jvm()
