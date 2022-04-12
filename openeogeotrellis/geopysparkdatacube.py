@@ -22,7 +22,7 @@ from geopyspark.geotrellis import Extent, ResampleMethod, crs_to_proj4
 from geopyspark.geotrellis.constants import CellType
 from pandas import Series
 from py4j.java_gateway import JVMView
-from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
+from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
@@ -1454,6 +1454,7 @@ class GeopysparkDataCube(DriverDataCube):
                         return {str(pathlib.Path(tile._1()).name): {
                             "href": tile._1(),
                             "bbox": to_latlng_bbox(tile._2()),
+                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(tile._2()))),
                             "type": "image/tiff; application=geotiff",
                             "roles": ["data"]
                         } for tile in tiles}
@@ -1463,6 +1464,7 @@ class GeopysparkDataCube(DriverDataCube):
                         return {str(pathlib.Path(filename).name): {
                             "href": save_filename,
                             "bbox": to_latlng_bbox(bbox),
+                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
                             "type": "image/tiff; application=geotiff",
                             "roles": ["data"]
                         }}
@@ -1538,7 +1540,8 @@ class GeopysparkDataCube(DriverDataCube):
                                 'bands': bands,
                                 'nodata': nodata,
                                 'datetime': timestamp,
-                                'bbox': to_latlng_bbox(bbox)
+                                'bbox': to_latlng_bbox(bbox),
+                                'geometry': mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
                             }
                         return assets
                     else:
@@ -1550,6 +1553,7 @@ class GeopysparkDataCube(DriverDataCube):
                             return {str(pathlib.Path(tile._1()).name): {
                                 "href": tile._1(),
                                 "bbox": to_latlng_bbox(tile._2()),
+                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(tile._2()))),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"]
                             } for tile in tiles}
