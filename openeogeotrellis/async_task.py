@@ -105,6 +105,8 @@ def main():
         parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.7.jar", help='Path to the Py4J jar')
         parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
                             help='Classpath used to launch the Java Gateway')
+        parser.add_argument("--py4j-maximum-heap-size", default="1G",
+                            help='Maximum heap size for the Java Gateway JVM')
         parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
         parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
                             help="The full path to the file that contains the keytab for the principal")
@@ -123,7 +125,7 @@ def main():
         def batch_jobs() -> GpsBatchJobs:
             java_opts = [
                 "-client",
-                "-Xmx4G",
+                f"-Xmx{args.py4j_maximum_heap_size}",
                 "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
             ]
 
