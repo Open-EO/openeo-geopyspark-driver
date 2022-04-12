@@ -1453,14 +1453,18 @@ class GeopysparkDataCube(DriverDataCube):
                         # noinspection PyProtectedMember
                         return {str(pathlib.Path(tile._1()).name): {
                             "href": tile._1(),
-                            "bbox": to_latlng_bbox(tile._2())
+                            "bbox": to_latlng_bbox(tile._2()),
+                            "type": "image/tiff; application=geotiff",
+                            "roles": ["data"]
                         } for tile in tiles}
                     else:
                         _log.info("save_result save_stitched")
                         bbox = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
                         return {str(pathlib.Path(filename).name): {
                             "href": save_filename,
-                            "bbox": to_latlng_bbox(bbox)
+                            "bbox": to_latlng_bbox(bbox),
+                            "type": "image/tiff; application=geotiff",
+                            "roles": ["data"]
                         }}
                 else:
                     _log.info("save_result: saveRDD")
@@ -1522,6 +1526,7 @@ class GeopysparkDataCube(DriverDataCube):
                         assets = {}
 
                         # noinspection PyProtectedMember
+                        # TODO: contains a bbox so rename
                         timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
 
