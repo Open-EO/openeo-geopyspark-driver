@@ -18,7 +18,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeo.util import ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
-from openeo_driver.datacube import DriverDataCube
+from openeo_driver.datacube import DriverDataCube, DriverMlModel
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult
@@ -156,7 +156,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
 
 
 def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,
-                            unique_process_ids: Set[str], asset_metadata: Dict = None) -> None:
+                            unique_process_ids: Set[str], asset_metadata: Dict = None,
+                            ml_model_metadata: Dict = None) -> None:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -203,6 +204,9 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
     metadata['processing:software'] = 'openeo-geotrellis-' + __version__
     metadata['unique_process_ids'] = list(unique_process_ids)
+
+    if ml_model_metadata is not None:
+        metadata['ml_model_metadata'] = ml_model_metadata
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -359,6 +363,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     }
 
     assets_metadata = None
+    ml_model_metadata = None
     if('write_assets' in dir(result)):
         result.options["batch_mode"] = True
         result.options["file_metadata"] = global_metadata_attributes
@@ -373,6 +378,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             if(result.options["geometries"] == None):
                 logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
         assets_metadata = result.write_assets(str(output_file))
+        if isinstance(result, DriverMlModel):
+            ml_model_metadata = result.get_model_metadata(str(output_file))
         for name,asset in assets_metadata.items():
             _add_permissions(Path(asset["href"]), stat.S_IWGRP)
         logger.info(f"wrote {len(assets_metadata)} assets to {output_file}")
@@ -428,7 +435,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
-                            unique_process_ids=unique_process_ids, asset_metadata=assets_metadata)
+                            unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
+                            ml_model_metadata=ml_model_metadata)
 
     if ConfigParams().is_kube_deploy:
         import boto3
