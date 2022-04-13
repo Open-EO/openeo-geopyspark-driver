@@ -357,11 +357,7 @@ class GeopysparkDataCube(DriverDataCube):
                 """Dimension with name '{}' does not exist""".format(name))
 
         if self.metadata.has_temporal_dimension() and self.metadata.temporal_dimension.name == name:
-            pyramid = Pyramid(map(lambda l: l.to_spatial_layer(), self.pyramid.levels))
-            return GeopysparkDataCube(
-                pyramid=pyramid,
-                metadata=self.metadata.drop_dimension(name=name)
-            )
+            return self.apply_to_levels(lambda l:l.to_spatial_layer(),metadata=self.metadata.drop_dimension(name=name))
         elif self.metadata.has_band_dimension() and self.metadata.band_dimension.name == name:
             if not len(self.metadata.bands) == 1:
                 raise OpenEOApiException(status_code=400, code="DimensionLabelCountMismatch", message=
