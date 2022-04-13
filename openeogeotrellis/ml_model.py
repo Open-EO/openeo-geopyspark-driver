@@ -1,8 +1,10 @@
-import pathlib
+import typing
 import uuid
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from openeo_driver.datacube import DriverMlModel
+from openeo_driver.datastructs import StacAsset
 from openeo_driver.errors import ProcessParameterInvalidException
 from openeo_driver.save_result import AggregatePolygonSpatialResult
 import geopyspark as gps
@@ -15,17 +17,13 @@ class GeopySparkMLModel(DriverMlModel):
 
     def __init__(self, model: JavaSaveable):
         self._model = model
+        self._filename = "randomforest.model"
 
-    def write_assets(self, directory: str) -> Dict:
-        """
-        Save generated assets into a directory, return asset metadata.
-
-        :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
-        """
-        directory = pathlib.Path(directory).parent
-        model_path = pathlib.Path(directory) / "randomforest.model"
-        self._model.save(gps.get_spark_context(), "file:" + str(model_path))
-
+    def get_model_metadata(self, directory: Union[str, Path]) -> Dict[str, typing.Any]:
+        # This metadata will be written to job_metadata.json.
+        # It will then be used to dynamically generate ml_model_metadata.json.
+        directory = Path(directory).parent
+        model_path = directory / self._filename
         metadata = {
             "stac_version": "1.0.0",
             "stac_extensions": [
@@ -33,7 +31,7 @@ class GeopySparkMLModel(DriverMlModel):
             ],
             "type": "Feature",
             "id": str(uuid.uuid4()),
-            # "collection": "collection-id",
+            "collection": "collection-id",
             "bbox": [
                 -179.999,
                 -89.999,
@@ -88,9 +86,19 @@ class GeopySparkMLModel(DriverMlModel):
                 }
             }
         }
+        return metadata
 
-        collection_path = pathlib.Path(directory) / "model_item.json"
-        return {model_path.name: {"href": str(model_path)}, collection_path.name: {"href:": str(collection_path)}, 'ml_model_metadata': metadata}
+    def write_assets(self, directory: Union[str, Path]) -> Dict[str, StacAsset]:
+        """
+        Save generated assets into a directory, return asset metadata.
+
+        :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
+        """
+        directory = Path(directory).parent
+        model_path = Path(directory) / self._filename
+        self._model.save(gps.get_spark_context(), "file:" + str(model_path))
+
+        return {model_path.name: {"href": str(model_path)}}
 
     def get_model(self):
         return self._model
