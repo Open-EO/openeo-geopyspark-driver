@@ -16,7 +16,7 @@ pythonPipeline {
   extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.9.11-0.el8_2.x86_64']
   python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
-  downstream_job = 'openEO/openeo-integrationtests'
+  downstream_job = 'openEO/openeo-integrationtests-baremetal'
   wheel_repo = 'python-openeo'
   wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
