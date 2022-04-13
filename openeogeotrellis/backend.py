@@ -1413,8 +1413,12 @@ class GpsBatchJobs(backend.BatchJobs):
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
         nodata = out_metadata.get("nodata", None)
         media_type = out_metadata.get("type", out_metadata.get("media_type", "application/octet-stream"))
+        ml_model_metadata = self.get_results_metadata(job_id, user_id).get("ml_model_metadata", None)
 
         results_dict = {}
+
+        if ml_model_metadata is not None:
+            results_dict['ml_model_metadata.json'] = ml_model_metadata
 
         if os.path.isfile(job_dir / 'out'):
             results_dict['out'] = {
