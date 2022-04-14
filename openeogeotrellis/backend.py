@@ -492,11 +492,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
-    def load_result(self, job_id: str, user: User, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def load_result(self, job_id: str, user_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
         timestamped_paths = {asset["href"]: asset.get("datetime")
-                             for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user.user_id).items()
+                             for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
                              if asset["type"] == "image/tiff; application=geotiff"}
 
         if len(timestamped_paths) == 0:
@@ -539,7 +539,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
         jvm = gateway.jvm
 
-        job_info = self.batch_jobs.get_job_info(job_id, user)
+        job_info = self.batch_jobs.get_job_info(job_id, user_id)
         pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(timestamped_paths)
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
@@ -709,10 +709,7 @@ class GpsBatchJobs(backend.BatchJobs):
             title=title, description=description,
         )
 
-    def get_job_info(self, job_id: str, user: User) -> BatchJobMetadata:
-        return self._get_job_info(job_id=job_id, user_id=user.user_id)
-
-    def _get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
+    def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
         with JobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
 
@@ -1403,7 +1400,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return False
 
     def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
-        job_info = self._get_job_info(job_id=job_id, user_id=user_id)
+        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
         job_dir = self.get_job_output_dir(job_id=job_id)
@@ -1469,7 +1466,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> Iterable[dict]:
         # will throw if job doesn't match user
-        job_info = self._get_job_info(job_id=job_id, user_id=user_id)
+        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in ['created', 'queued']:
             return iter(())
 
