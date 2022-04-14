@@ -4,6 +4,7 @@ import os
 import shutil
 import stat
 import sys
+from itertools import chain
 from urllib.parse import urlparse
 import uuid
 from pathlib import Path
@@ -16,7 +17,7 @@ from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from openeo.util import ensure_dir, Rfc3339, TimingLogger
+from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.datacube import DriverDataCube
 from openeo_driver.delayed_vector import DelayedVector
@@ -203,6 +204,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
     metadata['processing:software'] = 'openeo-geotrellis-' + __version__
     metadata['unique_process_ids'] = list(unique_process_ids)
+    metadata = {**metadata, **_get_tracker_metadata("")}
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
@@ -210,6 +212,27 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     _add_permissions(metadata_file, stat.S_IWGRP)
 
     logger.info("wrote metadata to %s" % metadata_file)
+
+def _get_tracker(tracker_id=""):
+    return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
+
+def _get_tracker_metadata(tracker_id="") -> dict:
+    tracker = _get_tracker(tracker_id)
+    t = tracker
+    if(t is not None):
+        tracker_results = t.asDict()
+        pu = tracker_results.get("Sentinelhub_Processing_Units",None)
+        usage = None
+        if pu is not None:
+            usage = {"sentinelhub":{"value":pu,"unit":"sentinelhub_processing_unit"}}
+
+        links = tracker_results.get("links", None)
+        all_links = None
+        if links is not None:
+            all_links = list(chain(*links.values()))
+            all_links = [ {"href":link, "rel":"derived_from"} for link in all_links]
+
+        return dict_no_none(usage=usage,links=all_links)
 
 
 def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (source_location, card4l)
