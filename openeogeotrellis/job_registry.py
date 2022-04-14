@@ -85,7 +85,8 @@ class JobRegistry:
             end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
             instruments=job_info.get("instruments", []),
             epsg=job_info.get("epsg"),
-            links=job_info.get("links", [])
+            links=job_info.get("links", []),
+            usage = job_info.get("usage", {})
         )
 
     @staticmethod
