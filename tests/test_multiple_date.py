@@ -160,6 +160,16 @@ class TestMultipleDates(TestCase):
                 
                 assert (ds.crs.to_epsg() == 3395)
 
+    def test_drop_dimension(self):
+        input = Pyramid({0: self.tiled_raster_rdd})
+
+        cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata).filter_temporal("2016-08-23","2016-08-26")
+        labels = cube.dimension_labels("t")
+        assert labels == [datetime.datetime(2016, 8, 24, 9, 0)]
+        spatial_cube = cube.drop_dimension("t")
+        assert not spatial_cube.metadata.has_temporal_dimension()
+
+
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
