@@ -1418,11 +1418,13 @@ class GpsBatchJobs(backend.BatchJobs):
         results_dict = {}
 
         if ml_model_metadata is not None:
+            ml_model_metadata['ml_model_metadata'] = True
             results_dict['ml_model_metadata.json'] = ml_model_metadata
 
         if os.path.isfile(job_dir / 'out'):
             results_dict['out'] = {
                 # TODO: give meaningful filename and extension
+                "asset": True,
                 "output_dir": str(job_dir),
                 "type": media_type,
                 "bands": bands,
@@ -1431,6 +1433,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
             results_dict['profile_dumps.tar.gz'] = {
+                "asset": True,
                 "output_dir": str(job_dir),
                 "type": "application/gzip"
             }
@@ -1438,11 +1441,13 @@ class GpsBatchJobs(backend.BatchJobs):
         for file_name in os.listdir(job_dir):
             if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME:
                 results_dict[file_name] = {
+                    "asset": True,
                     "output_dir": str(job_dir),
                     "type": "application/json"
                 }
             elif file_name.endswith("_MULTIBAND.tif"):
                 results_dict[file_name] = {
+                    "asset": True,
                     "output_dir": str(job_dir),
                     "type": "image/tiff; application=geotiff"
                 }
@@ -1451,11 +1456,11 @@ class GpsBatchJobs(backend.BatchJobs):
         #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
         for title,asset in out_assets.items():
             if title not in results_dict:
+                asset['asset'] = True
                 asset["output_dir"] = str(job_dir)
                 if "bands" in asset:
                     asset["bands"] = [Band(**b) for b in asset["bands"]]
                 results_dict[title] = asset
-
 
         return results_dict
 
