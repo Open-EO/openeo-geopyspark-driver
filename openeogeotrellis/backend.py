@@ -905,7 +905,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_status(job_id, user_id, 'queued')
                 return
 
-            driver_memory = extra_options.get("driver-memory", "12G")
+            driver_memory = extra_options.get("driver-memory", "8G")
             driver_memory_overhead = extra_options.get("driver-memoryOverhead", "2G")
             executor_memory = extra_options.get("executor-memory", "2G")
             executor_memory_overhead = extra_options.get("executor-memoryOverhead", "3G")
