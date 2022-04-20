@@ -432,7 +432,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     cid=collection_id, bs=metadata.band_names))
 
             data_glob = layer_source_info['data_glob']
-            band_name = metadata.band_names[0].upper()
+            band_name = metadata.band_names[0]
             date_regex = layer_source_info['date_regex']
 
             factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory(data_glob, band_name, date_regex)
