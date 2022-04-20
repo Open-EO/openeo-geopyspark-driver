@@ -26,6 +26,7 @@ export AWS_SECRET_ACCESS_KEY="!!!"
 export HADOOP_CONF_DIR="/etc/hadoop/conf"
 export OPENEO_VENV_ZIP="https://artifactory.vgt.vito.be/auxdata-public/openeo/openeo-venv38-20220112-220.zip"
 export OPENEO_SPARK_SUBMIT_PY_FILES="$pyfiles"
+export PYSPARK_PYTHON="$(which python)"
 
 extensions="$(bash geotrellis-extensions-jar.sh)"
 classpath="$extensions:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':')"
