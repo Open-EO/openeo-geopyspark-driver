@@ -438,7 +438,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory(data_glob, band_name, date_regex)
 
             return (
-                factory.datacube_seq(projected_polygons, from_date, to_date) if single_level
+                factory.datacube_seq(projected_polygons, from_date, to_date,metadata_properties(),correlation_id,datacubeParams) if single_level
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             )
 
