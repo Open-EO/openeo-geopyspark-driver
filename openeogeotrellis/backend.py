@@ -587,9 +587,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
-    def load_ml_model(self, job_id: str) -> 'JavaObject':
-        directory = GpsBatchJobs.get_job_output_dir(job_id)
-        filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
+    def load_ml_model(self, job_id: str, dest_path: Path) -> 'JavaObject':
+        filename = None
+        if job_id is not None:
+            directory = GpsBatchJobs.get_job_output_dir(job_id)
+            filename = "file:" + str(Path(directory) / "randomforest.model")
+        elif dest_path is not None:
+            filename = "file:" + str(dest_path)
+        if filename is None:
+            raise OpenEOApiException(message=f"No valid file identifier was given to load_ml_model.", status_code=501)
         print("Loading ml_model using filename: {}".format(filename))
         model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
         return model
