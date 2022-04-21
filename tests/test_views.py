@@ -434,7 +434,7 @@ class TestBatchJobs:
             assert batch_job_args[6] == job_metadata.name
             assert batch_job_args[9] == TEST_USER
             assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:17] == ['12G', '2G', '3G', '5', '2', '2G']
+            assert batch_job_args[11:17] == ['8G', '2G', '3G', '5', '2', '2G']
             assert batch_job_args[17:22] == [
                 'default', 'false', '[]',
                 "__pyfiles__/custom_processes.py,foolib.whl", '200'
