@@ -1408,7 +1408,7 @@ class GeopysparkDataCube(DriverDataCube):
                 geoms_crs,
                 temp_work_dir,
             )
-            # TODO EP-3981: load Vector cube from temp_dir
+            return self._timeseries_csv_to_vector_cube(geometries=geometries, csv_root=temp_work_dir)
         else:
             # Spatiotemporal cube
             from_date = self._ensure_timezone(layer_metadata.bounds.minKey.instant)
@@ -1449,7 +1449,40 @@ class GeopysparkDataCube(DriverDataCube):
                     polygons,
                     temp_work_dir,
                 )
-                # TODO EP-3981: load Vector cube from temp_dir
+                # Parse CSV
+                return self._timeseries_csv_to_vector_cube(geometries=geometries, csv_root=temp_work_dir)
+
+    @staticmethod
+    def _timeseries_csv_to_vector_cube(geometries: DriverVectorCube, csv_root: str) -> DriverVectorCube:
+        """Parse timeseries CSV result files and join with given geometries to a new Vector Cube"""
+        csv_paths = list(pathlib.Path(csv_root).glob("*.csv"))
+        if len(csv_paths) == 0:
+            raise OpenEOApiException(code="EmptyResult", message="Empty timeseries result.")
+        _log.info(f"Parsing {len(csv_paths)} timeseries csv files at {csv_root}")
+        df = pd.concat(pd.read_csv(p) for p in csv_paths)
+        dims, coords = geometries.get_xarray_cube_basics()
+
+        if "date" in df.columns:
+            # Reshape data to 3D numpy array: geometries-t-bands
+            df = df.set_index(["feature_index", "date"]).sort_index()
+            dims += ("t",)
+            coords["t"] = sorted(df.index.get_level_values("date").unique())
+            # Stack + to_xarray trick to reshape to 3D numpy array: geometries-t-bands
+            cube = df.stack().to_xarray().values
+        else:
+            df = df.set_index("feature_index").sort_index()
+            # No need to reshape here
+            cube = df.values
+
+        dims += ("bands",)
+        coords["bands"] = list(df.columns)
+
+        return geometries.with_cube(
+            cube=xr.DataArray(cube, dims=dims, coords=coords, name="aggregate_spatial")
+        )
+
+
+
 
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'

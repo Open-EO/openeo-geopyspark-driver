@@ -709,6 +709,175 @@ def test_aggregate_spatial_vector_cube_basic_spatiotemporal_mean(api100):
     assert result == expected
 
 
+def test_aggregate_spatial_vector_cube_basic_spatial_generic(api100):
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-10", "2021-02-10"],
+                "bands": ["Month", "Day", "Longitude", "Latitude"]
+            },
+        },
+        "rt": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "dimension": "t",
+                "reducer": {"process_graph": {"max": {
+                    "process_id": "max", "arguments": {"data": {"from_parameter": "data"}}, "result": True,
+                }}}
+            },
+        },
+        "vc": {
+            "process_id": "to_vector_cube",
+            "arguments": {"data": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature", "properties": {"id": "one"},
+                        "geometry": {"type": "Polygon", "coordinates": [[(1, 1), (3, 1), (2, 3), (1, 1)]]},
+                    },
+                    {
+                        "type": "Feature", "properties": {"id": "two"},
+                        "geometry": {"type": "Polygon", "coordinates": [[(4, 2), (5, 4), (3, 4), (4, 2)]]},
+                    },
+                ],
+            }},
+        },
+        "aggregate": {
+            "process_id": "aggregate_spatial",
+            "arguments": {
+                "data": {"from_node": "rt"},
+                "geometries": {"from_node": "vc"},
+                "reducer": {"process_graph": {
+                    "m": {
+                        "process_id": "min", "arguments": {"data": {"from_parameter": "data"}}, "result": True
+                    }
+                }}
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "aggregate"}, "format": "geojson"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    expected = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [[[1, 1], [3, 1], [2, 3], [1, 1]]]},
+                "properties": {
+                    "id": "one",
+                    "vc~min(band_0)": 2.0, "vc~min(band_1)": 25.0, 'vc~min(band_2)': 1.0, 'vc~min(band_3)': 1.0,
+                },
+            },
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [[[4, 2], [5, 4], [3, 4], [4, 2]]]},
+                "properties": {
+                    "id": "two",
+                    "vc~min(band_0)": 2.0, "vc~min(band_1)": 25.0, 'vc~min(band_2)': 3.0, 'vc~min(band_3)': 2.0,
+                },
+            },
+        ],
+    }
+    assert result == expected
+
+
+def test_aggregate_spatial_vector_cube_basic_spatiotemporal_generic(api100):
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-10", "2021-02-10"],
+                "bands": ["Month", "Day", "Longitude", "Latitude"]
+            },
+        },
+        "vc": {
+            "process_id": "to_vector_cube",
+            "arguments": {"data": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature", "properties": {"id": "one"},
+                        "geometry": {"type": "Polygon", "coordinates": [[(1, 1), (3, 1), (2, 3), (1, 1)]]},
+                    },
+                    {
+                        "type": "Feature", "properties": {"id": "two"},
+                        "geometry": {"type": "Polygon", "coordinates": [[(4, 2), (5, 4), (3, 4), (4, 2)]]},
+                    },
+                ],
+            }},
+        },
+        "aggregate": {
+            "process_id": "aggregate_spatial",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "geometries": {"from_node": "vc"},
+                "reducer": {"process_graph": {
+                    "m": {
+                        "process_id": "min", "arguments": {"data": {"from_parameter": "data"}}, "result": True
+                    }
+                }}
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "aggregate"}, "format": "geojson"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    expected = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [[[1, 1], [3, 1], [2, 3], [1, 1]]]},
+                "properties": {
+                    "id": "one",
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_0)': 1.0,
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_1)': 15.0,
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_2)': 1.0,
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_3)': 1.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_0)': 1.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_1)': 25.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_2)': 1.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_3)': 1.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_0)': 2.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_1)': 5.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_2)': 1.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_3)': 1.0, },
+            },
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [[[4, 2], [5, 4], [3, 4], [4, 2]]]},
+                "properties": {
+                    "id": "two",
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_0)': 1.0,
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_1)': 15.0,
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_2)': 3.0,
+                    'vc~2021-01-15T01:00:00.000+01:00~min(band_3)': 2.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_0)': 1.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_1)': 25.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_2)': 3.0,
+                    'vc~2021-01-25T01:00:00.000+01:00~min(band_3)': 2.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_0)': 2.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_1)': 5.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_2)': 3.0,
+                    'vc~2021-02-05T01:00:00.000+01:00~min(band_3)': 2.0,
+                },
+            },
+        ],
+    }
+    assert result == expected
+
+
 @pytest.mark.parametrize("geometries", [
     {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
     {"type": "MultiPolygon", "coordinates": [[[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]]},
