@@ -1243,6 +1243,19 @@ class GeopysparkDataCube(DriverDataCube):
                 code="ReducerUnsupported", status_code=400
             )
 
+    def _get_temp_work_dir(self, prefix="timeseries_", suffix="_csv") -> str:
+        for root in [
+            # TODO: instead of looping through candidates: get this straight from config
+            pathlib.Path("/data/projects/OpenEO/timeseries"),  # Terrascope/MEP deploy
+            pathlib.Path("/shared_pod_volume"),  # Kube deploy
+            pathlib.Path(".").resolve(),
+        ]:
+            if root.exists():
+                work_dir = tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=root)
+                os.chmod(work_dir, 0o777)
+                return work_dir
+        raise InternalException("Failed to find temp work dir")
+
     def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> Union[AggregatePolygonResult,
                                                                                  AggregateSpatialVectorCube]:
         # TODO: rename to aggregate_spatial?
@@ -1252,25 +1265,17 @@ class GeopysparkDataCube(DriverDataCube):
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
-        def csv_dir() -> str:
-            clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
-
-            if (not clusterDir.exists()):
-                clusterDir = pathlib.Path("/shared_pod_volume")
-                if (not clusterDir.exists()):
-                    clusterDir = pathlib.Path(".").resolve()
-            temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
-            os.chmod(temp_output, 0o777)
-
-            return temp_output
-
         if isinstance(regions, (Polygon, MultiPolygon)):
+            # TODO: GeometryCollection should be avoided instead of standardized on.
             regions = GeometryCollection([regions])
 
-        polygons = (None if isinstance(regions, Point) or
-                            (isinstance(regions, GeometryCollection) and
-                             any(isinstance(geom, Point) for geom in regions.geoms))
-                    else to_projected_polygons(self._get_jvm(), regions))
+        geom_has_points = (
+                isinstance(regions, Point)
+                or (isinstance(regions, GeometryCollection) and any(isinstance(g, Point) for g in regions.geoms))
+                # TODO point detection for file (str) based regions
+                # TODO point detection for vector cubes?
+        )
+        polygons = None if geom_has_points else to_projected_polygons(self._get_jvm(), regions)
 
         highest_level = self.get_max_level()
         scala_data_cube = highest_level.srdd.rdd()
@@ -1284,10 +1289,12 @@ class GeopysparkDataCube(DriverDataCube):
         wrapped.openEOMetadata().setBandNames(bandNames)
 
         if self._is_spatial():
+            # TODO: what when regions is str (DelayedVector style)?
             geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
             geometries_srs = "EPSG:4326"
 
-            temp_dir = csv_dir()
+            # TODO: can we automatically clean up this temp dir?
+            temp_dir = self._get_temp_work_dir()
 
             self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
                 func,
@@ -1322,7 +1329,8 @@ class GeopysparkDataCube(DriverDataCube):
                         with open(temp_file.name, encoding='utf-8') as f:
                             timeseries = json.load(f)
                 else:
-                    temp_output = csv_dir()
+                    # TODO: can we automatically clean up this temp dir?
+                    temp_output = self._get_temp_work_dir()
 
                     self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                         func,
@@ -1335,7 +1343,8 @@ class GeopysparkDataCube(DriverDataCube):
                 geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
                 geometries_srs = "EPSG:4326"
 
-                temp_dir = csv_dir()
+                # TODO: can we automatically clean up this temp dir?
+                temp_dir = self._get_temp_work_dir()
 
                 self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                     func,
