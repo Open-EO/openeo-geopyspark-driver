@@ -1252,7 +1252,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.zonal_statistics(geometries, reducer)
 
-    def _get_temp_work_dir(self, prefix="timeseries_", suffix="_csv") -> str:
+    @staticmethod
+    def _get_temp_work_dir(prefix="timeseries_", suffix="_csv") -> str:
         for root in [
             # TODO: instead of looping through candidates: get this straight from config
             pathlib.Path("/data/projects/OpenEO/timeseries"),  # Terrascope/MEP deploy
@@ -1265,14 +1266,16 @@ class GeopysparkDataCube(DriverDataCube):
                 return work_dir
         raise InternalException("Failed to find temp work dir")
 
+    @staticmethod
+    def _ensure_timezone(instant: datetime) -> datetime:
+        """Make sure datetime has a timezone (set to UTC if missing)"""
+        return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
+
     def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> Union[AggregatePolygonResult,
                                                                                  AggregateSpatialVectorCube]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
-
-        def insert_timezone(instant):
-            return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
         if isinstance(regions, (Polygon, MultiPolygon)):
             # TODO: GeometryCollection should be avoided instead of standardized on.
@@ -1315,8 +1318,8 @@ class GeopysparkDataCube(DriverDataCube):
 
             return AggregateSpatialVectorCube(temp_dir, regions=regions, metadata=self.metadata)
         else:
-            from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
-            to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
+            from_date = self._ensure_timezone(layer_metadata.bounds.minKey.instant)
+            to_date = self._ensure_timezone(layer_metadata.bounds.maxKey.instant)
 
             if polygons:
                 # TODO also add dumping results first to temp json file like with "mean"
