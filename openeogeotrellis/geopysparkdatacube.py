@@ -1226,22 +1226,31 @@ class GeopysparkDataCube(DriverDataCube):
     def get_max_level(self):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
-    def aggregate_spatial(self, geometries: Union[str, BaseGeometry], reducer,
-                          target_dimension: str = "result") -> Union[AggregatePolygonResult,
-                                                                     AggregateSpatialVectorCube]:
-
+    def aggregate_spatial(
+            self,
+            geometries: Union[str, BaseGeometry],
+            reducer: dict,
+            target_dimension: str = "result",
+    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube]:
+        # TODO: drop `target_dimension`? see https://github.com/Open-EO/openeo-processes/issues/366
         if isinstance(reducer, dict):
             if len(reducer) == 1:
-                single_process = next(iter(reducer.values())).get('process_id')
-                return self.zonal_statistics(geometries,single_process)
+                # Single reducer as a string
+                reducer = next(iter(reducer.values())).get('process_id')
             else:
-                visitor = GeotrellisTileProcessGraphVisitor(_builder=self._get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()).accept_process_graph(reducer)
-                return self.zonal_statistics(geometries, visitor.builder)
-
-        raise OpenEOApiException(
+                # non-trivial reducer as a OpenEOProcessScriptBuilder
+                visitor = GeotrellisTileProcessGraphVisitor(
+                    _builder=self._get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()
+                )
+                visitor.accept_process_graph(reducer)
+                reducer = visitor.builder
+        else:
+            raise OpenEOApiException(
                 message=f"Reducer {reducer} is not supported in aggregate_spatial",
                 code="ReducerUnsupported", status_code=400
             )
+
+        return self.zonal_statistics(geometries, reducer)
 
     def _get_temp_work_dir(self, prefix="timeseries_", suffix="_csv") -> str:
         for root in [
