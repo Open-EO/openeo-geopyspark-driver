@@ -17,6 +17,7 @@ from kazoo.client import KazooClient
 from py4j.java_gateway import JavaGateway, JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeogeotrellis.configparams import ConfigParams
 
@@ -184,7 +185,12 @@ def to_projected_polygons(jvm, *args):
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
     elif len(args) == 1 and isinstance(args[0], DelayedVector):
         return to_projected_polygons(jvm, args[0].path)
+    elif len(args) == 1 and isinstance(args[0], DriverVectorCube):
+        # TODO EP-3981: instead of WKT serializing: pass through with a GeoJSON file (DelayedVector style)
+        polygon_wkts, polygons_srs = args[0].to_wkt()
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
+        # TODO: eliminate using GeometryCollections (should be FeatureCollection or Vector Cube)
         # Multiple polygons
         polygon_wkts = [str(x) for x in args[0].geoms]
         polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'

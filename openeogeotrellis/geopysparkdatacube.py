@@ -23,26 +23,25 @@ from geopyspark.geotrellis.constants import CellType
 from pandas import Series
 from py4j.java_gateway import JVMView
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection
+from shapely.geometry.base import BaseGeometry
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none
-from openeo_driver.datacube import DriverDataCube
-from openeo_driver.datastructs import ResolutionMergeArgs
-from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.datacube import DriverDataCube, DriverVectorCube
+from openeo_driver.datastructs import ResolutionMergeArgs, SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
     ProcessParameterInvalidException
-from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonSpatialResult, AggregatePolygonResultCSV
+from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonResultCSV
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis._version import __version__ as softwareversion
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.ml_model import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons, log_memory
-from openeogeotrellis._version import __version__ as softwareversion
-from shapely.geometry.base import BaseGeometry
 
 _log = logging.getLogger(__name__)
 
@@ -1228,10 +1227,10 @@ class GeopysparkDataCube(DriverDataCube):
 
     def aggregate_spatial(
             self,
-            geometries: Union[str, BaseGeometry],
+            geometries: Union[str, BaseGeometry, DriverVectorCube],
             reducer: dict,
             target_dimension: str = "result",
-    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube]:
+    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube, DriverVectorCube]:
         # TODO: drop `target_dimension`? see https://github.com/Open-EO/openeo-processes/issues/366
         if isinstance(reducer, dict):
             if len(reducer) == 1:
@@ -1250,7 +1249,11 @@ class GeopysparkDataCube(DriverDataCube):
                 code="ReducerUnsupported", status_code=400
             )
 
-        return self.zonal_statistics(geometries, reducer)
+        if isinstance(geometries, DriverVectorCube):
+            return self._aggregate_spatial_vector_cube(geometries=geometries, reducer=reducer)
+        else:
+            # Old non-vector-cube implementation path
+            return self.zonal_statistics(geometries, reducer)
 
     @staticmethod
     def _get_temp_work_dir(prefix="timeseries_", suffix="_csv") -> str:
@@ -1374,6 +1377,79 @@ class GeopysparkDataCube(DriverDataCube):
                 regions=regions,
                 metadata=self.metadata
             )
+
+    def _aggregate_spatial_vector_cube(
+            self,
+            geometries: DriverVectorCube,
+            reducer: Union[str, "SparkAggregateScriptBuilder"]
+    ) -> DriverVectorCube:
+        _log.info(f"_aggregate_spatial_vector_cube with {reducer!r} on {type(geometries)}")
+
+        # TODO EP-3981: support Point geometries
+        geom_has_points = False
+        polygons = None if geom_has_points else to_projected_polygons(self._get_jvm(), geometries)
+
+        highest_level = self.get_max_level()
+        scala_data_cube = highest_level.srdd.rdd()
+        layer_metadata = highest_level.layer_metadata
+
+        band_names = self.metadata.band_names if self.metadata.has_band_dimension() else ["band_unnamed"]
+        wrapped = self._get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
+        wrapped.openEOMetadata().setBandNames(band_names)
+
+        if self._is_spatial():
+            geoms_wkt, geoms_crs = geometries.to_wkt()
+            # TODO: can we automatically clean up this temp dir?
+            temp_work_dir = self._get_temp_work_dir()
+            self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
+                reducer,
+                wrapped,
+                geoms_wkt,
+                geoms_crs,
+                temp_work_dir,
+            )
+            # TODO EP-3981: load Vector cube from temp_dir
+        else:
+            # Spatiotemporal cube
+            from_date = self._ensure_timezone(layer_metadata.bounds.minKey.instant)
+            to_date = self._ensure_timezone(layer_metadata.bounds.maxKey.instant)
+            if reducer == "mean":
+                with tempfile.NamedTemporaryFile(suffix=".json.tmp", prefix="openeo-agg-spatial-vc-mean") as temp_file:
+                    self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
+                        scala_data_cube,
+                        polygons,
+                        from_date.isoformat(),
+                        to_date.isoformat(),
+                        0,
+                        temp_file.name
+                    )
+                    _log.info(f"Parse compute_average_timeseries_from_datacube result {temp_file.name!r}")
+                    with open(temp_file.name, encoding='utf-8') as f:
+                        # TODO: serialize result directly in DriverVectorCube compatible format instead of having to do this parsing
+                        timeseries = json.load(f)
+                        # Skip dates with empty results
+                        valid_dates = sorted(k for (k, v) in timeseries.items() if v and v[0])
+                        _log.info(f"valid_dates: {valid_dates}")
+                        # Convert timeseries struct to 3D numpy array: (t-geometries-bands) and transpose to (geometries-t-bands)
+                        cube = np.array([timeseries[d] for d in valid_dates]).transpose(1, 0, 2)
+                        _log.info(f"DriverVectorCube cube shape: {cube.shape}")
+                        dims, coords = geometries.get_xarray_cube_basics()
+                        dims += ("t", "bands")
+                        coords["t"] = valid_dates
+                        coords["bands"] = band_names
+                        return geometries.with_cube(
+                            cube=xr.DataArray(cube, dims=dims, coords=coords, name="aggregate_spatial")
+                        )
+            else:
+                # TODO: can we automatically clean up this temp dir?
+                temp_work_dir = self._get_temp_work_dir()
+                self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
+                    reducer,
+                    wrapped,
+                    polygons,
+                    temp_work_dir,
+                )
+                # TODO EP-3981: load Vector cube from temp_dir
 
     def _compute_stats_geotrellis(self):
         accumulo_instance_name = 'hdp-accumulo-instance'

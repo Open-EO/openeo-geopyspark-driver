@@ -493,7 +493,7 @@ def test_apply_udf_square_pixels(api100, udf_code):
             return XarrayDataCube(cube.get_array() + offset) 
     """,
 ])
-def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
+def test_udp_udf_apply_neighborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
     """Test calling a UDP with a UDF based reduce operation and fetching a UDP parameter value (EP-3781)"""
     udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
@@ -632,6 +632,79 @@ def test_ep3718_aggregate_spatial_geometries(api100, geometries, pixels_threshol
         "2021-01-25T00:00:00Z": [[1.0, 1.0, 25.0]],
         "2021-02-05T00:00:00Z": [[1.0, 2.0, 5.0]],
         "2021-02-15T00:00:00Z": [[1.0, 2.0, 15.0]],
+    }
+    assert result == expected
+
+
+def test_aggregate_spatial_vector_cube_basic_spatiotemporal_mean(api100):
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-10", "2021-02-10"],
+                "bands": ["Month", "Day"]
+            },
+        },
+        "vc": {
+            "process_id": "to_vector_cube",
+            "arguments": {"data": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature", "properties": {"id": "one"},
+                        "geometry": {"type": "Polygon", "coordinates": [[(1, 1), (3, 1), (2, 3), (1, 1)]]},
+                    },
+                    {
+                        "type": "Feature", "properties": {"id": "two"},
+                        "geometry": {"type": "Polygon", "coordinates": [[(4, 2), (5, 4), (3, 4), (4, 2)]]},
+                    },
+                ],
+            }},
+        },
+        "aggregate": {
+            "process_id": "aggregate_spatial",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "geometries": {"from_node": "vc"},
+                "reducer": {"process_graph": {
+                    "mean": {
+                        "process_id": "mean", "arguments": {"data": {"from_parameter": "data"}}, "result": True
+                    }
+                }}
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "aggregate"}, "format": "geojson"},
+            "result": True,
+        }
+    })
+    result = response.assert_status_code(200).json
+    expected = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [[[1, 1], [3, 1], [2, 3], [1, 1]]]},
+                "properties": {
+                    "id": "one",
+                    "vc~2021-01-15T00:00:00Z~Day": 15.0, "vc~2021-01-15T00:00:00Z~Month": 1.0,
+                    "vc~2021-01-25T00:00:00Z~Day": 25.0, "vc~2021-01-25T00:00:00Z~Month": 1.0,
+                    "vc~2021-02-05T00:00:00Z~Day": 5.0, "vc~2021-02-05T00:00:00Z~Month": 2.0,
+                },
+            },
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [[[4, 2], [5, 4], [3, 4], [4, 2]]]},
+                "properties": {
+                    "id": "two",
+                    "vc~2021-01-15T00:00:00Z~Day": 15.0, "vc~2021-01-15T00:00:00Z~Month": 1.0,
+                    "vc~2021-01-25T00:00:00Z~Day": 25.0, "vc~2021-01-25T00:00:00Z~Month": 1.0,
+                    "vc~2021-02-05T00:00:00Z~Day": 5.0, "vc~2021-02-05T00:00:00Z~Month": 2.0,
+                },
+            },
+        ],
     }
     assert result == expected
 
