@@ -614,7 +614,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             directory = GpsBatchJobs.get_job_output_dir(model_id)
             # TODO: Make this more generic.
             filename = "file:" + str(Path(directory) / "randomforest.model")
-            print("Loading ml_model using filename: {}".format(filename))
+            logger.info("Loading ml_model using filename: {}".format(filename))
             model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
             return model
 
