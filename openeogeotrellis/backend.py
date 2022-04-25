@@ -587,18 +587,36 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
-    def load_ml_model(self, job_id: str, dest_path: Path) -> 'JavaObject':
-        filename = None
-        if job_id is not None:
-            directory = GpsBatchJobs.get_job_output_dir(job_id)
+    def load_ml_model(self, model_id: str) -> 'JavaObject':
+        from urllib.parse import urlparse
+        import requests
+        if model_id.startswith('http'):
+            # Load the model using its STAC metadata file.
+            metadata = requests.get(model_id).json()
+            if deep_get(metadata, "assets", "model", "href", default=None) is not None:
+                # Get the url for the actual model from the STAC metadata.
+                model_url = metadata["assets"]["model"]["href"]
+                # Download the model as a temporary file and load it as a java object.
+                with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
+                    dest_path = Path(tmp_dir + "/" + str(urlparse(model_url).path.split("/")[-1]))
+                    with open(dest_path, 'wb') as f:
+                        f.write(requests.get(model_url).content)
+                    filename = "file:" + str(dest_path)
+                    print("Loading ml_model using filename: {}".format(filename))
+                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+                    return model
+            else:
+                raise OpenEOApiException(
+                    message=f"{model_id} does not contain a link to the ml model in its assets section.",
+                    status_code=400)
+        else:
+            # Load the model using a batch job id.
+            directory = GpsBatchJobs.get_job_output_dir(model_id)
+            # TODO: Make this more generic.
             filename = "file:" + str(Path(directory) / "randomforest.model")
-        elif dest_path is not None:
-            filename = "file:" + str(dest_path)
-        if filename is None:
-            raise OpenEOApiException(message=f"No valid file identifier was given to load_ml_model.", status_code=501)
-        print("Loading ml_model using filename: {}".format(filename))
-        model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
-        return model
+            print("Loading ml_model using filename: {}".format(filename))
+            model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+            return model
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
