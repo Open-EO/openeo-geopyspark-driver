@@ -602,7 +602,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     with open(dest_path, 'wb') as f:
                         f.write(requests.get(model_url).content)
                     filename = "file:" + str(dest_path)
-                    print("Loading ml_model using filename: {}".format(filename))
+                    logger.info("Loading ml_model using filename: {}".format(filename))
                     model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
                     return model
             else:
