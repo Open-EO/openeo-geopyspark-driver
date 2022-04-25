@@ -892,32 +892,32 @@ class GpsBatchJobs(backend.BatchJobs):
 
             spec = json.loads(job_info['specification'])
             job_title = job_info.get('title', '')
-            extra_options = spec.get('job_options', {})
+            job_options = spec.get('job_options', {})
 
-            logger.debug("job_options: {o!r}".format(o=extra_options))
+            logger.debug("job_options: {o!r}".format(o=job_options))
 
             if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id)):
+                                                                    user_id, job_id, job_options)):
                 async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id)
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return
 
-            driver_memory = extra_options.get("driver-memory", "8G")
-            driver_memory_overhead = extra_options.get("driver-memoryOverhead", "2G")
-            executor_memory = extra_options.get("executor-memory", "2G")
-            executor_memory_overhead = extra_options.get("executor-memoryOverhead", "3G")
-            driver_cores =extra_options.get("driver-cores", "5")
-            executor_cores =extra_options.get("executor-cores", "2")
-            executor_corerequest = extra_options.get("executor-request-cores", "NONE")
+            driver_memory = job_options.get("driver-memory", "8G")
+            driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
+            executor_memory = job_options.get("executor-memory", "2G")
+            executor_memory_overhead = job_options.get("executor-memoryOverhead", "3G")
+            driver_cores =job_options.get("driver-cores", "5")
+            executor_cores =job_options.get("executor-cores", "2")
+            executor_corerequest = job_options.get("executor-request-cores", "NONE")
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-            max_executors = extra_options.get("max-executors", "200")
-            queue = extra_options.get("queue", "default")
-            profile = extra_options.get("profile", "false")
-            soft_errors = extra_options.get("soft-errors", "false")  # TODO: accept real booleans
+            max_executors = job_options.get("max-executors", "200")
+            queue = job_options.get("queue", "default")
+            profile = job_options.get("profile", "false")
+            soft_errors = job_options.get("soft-errors", "false")  # TODO: accept real booleans
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1122,7 +1122,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: JobRegistry, user_id: str, job_id: str) -> bool:
+                                               job_registry: JobRegistry, user_id: str, job_id: str,
+                                               job_options: dict) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -1231,14 +1232,22 @@ class GpsBatchJobs(backend.BatchJobs):
                     supports_batch_processes = (endpoint.startswith("https://services.sentinel-hub.com") or
                                                 endpoint.startswith("https://services-uswest2.sentinel-hub.com"))
 
-                    if not supports_batch_processes:
+                    shub_input_approach = job_options.get('shub-input-approach')
+
+                    if not supports_batch_processes:  # always sync approach
                         logger.info("endpoint {e} does not support batch processing".format(e=endpoint),
                                     extra={'job_id': job_id})
                         continue
-                    elif card4l:
+                    elif card4l:  # always batch approach
                         logger.info("deemed collection {c} request CARD4L compliant ({s})"
                                     .format(c=collection_id, s=sar_backscatter_arguments), extra={'job_id': job_id})
-                    elif not large_area():
+                    elif shub_input_approach == 'sync':
+                        logger.info("forcing sync input processing for collection {c}"
+                                    .format(c=collection_id))
+                        continue
+                    elif shub_input_approach == 'batch':
+                        logger.info("forcing batch input processing for collection {c}".format(c=collection_id))
+                    elif not large_area():  # 'auto'
                         continue  # skip SHub batch process and use sync approach instead
 
                     sample_type = self._jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
