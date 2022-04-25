@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 import geopyspark as gps
 import pkg_resources
+import requests
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
@@ -588,17 +589,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
-        from urllib.parse import urlparse
-        import requests
         if model_id.startswith('http'):
             # Load the model using its STAC metadata file.
             metadata = requests.get(model_id).json()
+            # TODO: We assume model is under ['assets']['model']. Make this more generic.
             if deep_get(metadata, "assets", "model", "href", default=None) is not None:
                 # Get the url for the actual model from the STAC metadata.
                 model_url = metadata["assets"]["model"]["href"]
                 # Download the model as a temporary file and load it as a java object.
                 with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
-                    dest_path = Path(tmp_dir + "/" + str(urlparse(model_url).path.split("/")[-1]))
+                    dest_path = Path(tmp_dir + "/ml_model.model")
                     with open(dest_path, 'wb') as f:
                         f.write(requests.get(model_url).content)
                     filename = "file:" + str(dest_path)
