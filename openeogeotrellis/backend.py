@@ -1419,6 +1419,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if ml_model_metadata is not None:
             ml_model_metadata['ml_model_metadata'] = True
+            ml_model_metadata['asset'] = False
             results_dict['ml_model_metadata.json'] = ml_model_metadata
 
         if os.path.isfile(job_dir / 'out'):
