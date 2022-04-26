@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 import geopyspark as gps
 import pkg_resources
+import requests
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
@@ -587,12 +588,35 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
-    def load_ml_model(self, job_id: str) -> 'JavaObject':
-        directory = GpsBatchJobs.get_job_output_dir(job_id)
-        filename = "file:" + str(pathlib.Path(directory) / "randomforest.model")
-        print("Loading ml_model using filename: {}".format(filename))
-        model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
-        return model
+    def load_ml_model(self, model_id: str) -> 'JavaObject':
+        if model_id.startswith('http'):
+            # Load the model using its STAC metadata file.
+            metadata = requests.get(model_id).json()
+            # TODO: We assume model is under ['assets']['model']. Make this more generic.
+            if deep_get(metadata, "assets", "model", "href", default=None) is not None:
+                # Get the url for the actual model from the STAC metadata.
+                model_url = metadata["assets"]["model"]["href"]
+                # Download the model as a temporary file and load it as a java object.
+                with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
+                    dest_path = Path(tmp_dir + "/ml_model.model")
+                    with open(dest_path, 'wb') as f:
+                        f.write(requests.get(model_url).content)
+                    filename = "file:" + str(dest_path)
+                    logger.info("Loading ml_model using filename: {}".format(filename))
+                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+                    return model
+            else:
+                raise OpenEOApiException(
+                    message=f"{model_id} does not contain a link to the ml model in its assets section.",
+                    status_code=400)
+        else:
+            # Load the model using a batch job id.
+            directory = GpsBatchJobs.get_job_output_dir(model_id)
+            # TODO: Make this more generic.
+            filename = "file:" + str(Path(directory) / "randomforest.model")
+            logger.info("Loading ml_model using filename: {}".format(filename))
+            model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+            return model
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
