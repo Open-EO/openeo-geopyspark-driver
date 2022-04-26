@@ -352,7 +352,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'user': User(user_id=user_id),
         'require_bounds': True,
         'correlation_id': correlation_id,
-        'dependencies': dependencies,
+        'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
         'backend_implementation': backend_implementation,
         'soft_errors': soft_errors
     })
