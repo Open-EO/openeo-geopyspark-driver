@@ -425,7 +425,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
         card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
 
-        for source_location in card4l_source_locations:
+        for source_location in set(card4l_source_locations):
             uri_parts = urlparse(source_location)
             bucket_name = uri_parts.hostname
             request_group_id = uri_parts.path[1:]
