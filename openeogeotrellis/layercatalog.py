@@ -305,14 +305,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
             nonlocal metadata
 
-            dependencies = env.get('dependencies', {})
+            dependencies = env.get('dependencies', [])
             sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
                 (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
                 else None
             )
 
             if dependencies:
-                source_location, card4l = dependencies[(collection_id, to_hashable(metadata_properties()))]
+                dependency = dependencies.pop(0)
+                source_location = dependency['source_location']
+                card4l = dependency['card4l']
 
                 # date_regex supports:
                 #  - original: _20210223.tif

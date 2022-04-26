@@ -239,13 +239,8 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         return dict_no_none(usage=usage,links=all_links)
 
 
-def _deserialize_dependencies(arg: str) -> dict:  # (collection_id, metadata_properties) -> (source_location, card4l)
-    dependencies = json.loads(arg)
-
-    return {
-        (dependency['collection_id'], to_hashable(dependency['metadata_properties'])):
-            (dependency['source_location'], dependency['card4l']) for dependency in dependencies
-    }
+def _deserialize_dependencies(arg: str) -> List[dict]:
+    return json.loads(arg)
 
 
 def main(argv: List[str]) -> None:
@@ -342,7 +337,7 @@ def main(argv: List[str]) -> None:
 
 
 @log_memory
-def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: dict,
+def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
             user_id: str = None, soft_errors: bool = False):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
@@ -420,7 +415,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     else:
         raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
-    if any(card4l for _, card4l in dependencies.values()):  # TODO: clean this up
+    if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
         logger.debug("awaiting Sentinel Hub CARD4L data...")
 
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
@@ -428,17 +423,15 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         poll_interval_secs = 10
         max_delay_secs = 600
 
-        card4l_dependencies = [(collection_id, source_location) for
-                               (collection_id, metadata_properties), (source_location, card4l)
-                               in dependencies.items() if card4l]
+        card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
 
-        for collection_id, source_location in card4l_dependencies:
+        for source_location in card4l_source_locations:
             uri_parts = urlparse(source_location)
             bucket_name = uri_parts.hostname
             request_group_id = uri_parts.path[1:]
 
             try:
-                # FIXME: incorporate collection_id and metadata_properties to make sure the files don't clash
+                # TODO: incorporate index to make sure the files don't clash
                 s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
                                               max_delay_secs)
                 logger.info("downloaded CARD4L data in {b}/{g} to {d}"

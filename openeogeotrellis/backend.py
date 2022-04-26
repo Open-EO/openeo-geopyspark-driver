@@ -952,8 +952,6 @@ class GpsBatchJobs(backend.BatchJobs):
                                        or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
 
                     return {
-                        'collection_id': dependency['collection_id'],
-                        'metadata_properties': dependency.get('metadata_properties', {}),
                         'source_location': source_location,
                         'card4l': dependency.get('card4l', False)
                     }
@@ -1419,7 +1417,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     batch_process_dependencies.append(dict_no_none(
                         collection_id=collection_id,
-                        metadata_properties=metadata_properties(),
                         batch_request_ids=batch_request_ids,  # to poll SHub
                         collecting_folder=collecting_folder,  # temporary cached and new single band tiles, also a flag
                         results_location=f"s3://{bucket_name}/{subfolder}",  # new multiband tiles
