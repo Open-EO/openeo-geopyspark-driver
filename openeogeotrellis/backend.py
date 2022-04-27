@@ -44,7 +44,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import buffer_point_approx, EvalEnv
+from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -1173,6 +1173,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         batch_process_dependencies = []
+        batch_request_cache = {}
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
@@ -1395,22 +1396,61 @@ class GpsBatchJobs(backend.BatchJobs):
                             batch_request_ids = [batch_request_id]
                         else:
                             try:
-                                # TODO: don't repeat start_batch_process for the same arguments (= cache key) but point
-                                #  this dependency to the original batch process for these arguments
+                                processing_options = (sentinel_hub.processing_options(
+                                    sar_backscatter_arguments) if sar_backscatter_arguments else {})
 
-                                batch_request_id = batch_processing_service.start_batch_process(
-                                    layer_source_info['collection_id'],
-                                    layer_source_info['dataset_id'],
-                                    geometry,
-                                    crs,
+                                class BadlyHashed:
+                                    def __init__(self, target):
+                                        self.target = target
+
+                                    def __eq__(self, other):
+                                        return isinstance(other, BadlyHashed) and self.target == other.target
+
+                                    def __hash__(self):
+                                        return 0
+
+                                if not geometries:
+                                    hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
+                                elif isinstance(geometries, DelayedVector):
+                                    hashable_geometry = geometries.path
+                                else:
+                                    hashable_geometry = BadlyHashed(geometries)
+
+                                # these correspond to the .start_batch_process arguments
+                                batch_request_cache_key = (
+                                    collection_id,  # for 'collection_id', 'dataset_id' and sample_type
+                                    hashable_geometry,
+                                    str(crs),
                                     from_date,
                                     to_date,
-                                    shub_band_names,
-                                    sample_type,
-                                    metadata_properties(),
-                                    (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
-                                     else {})
+                                    to_hashable(shub_band_names),
+                                    to_hashable(metadata_properties()),
+                                    to_hashable(processing_options)
                                 )
+
+                                batch_request_id = batch_request_cache.get(batch_request_cache_key)
+
+                                if batch_request_id is None:
+                                    batch_request_id = batch_processing_service.start_batch_process(
+                                        layer_source_info['collection_id'],
+                                        layer_source_info['dataset_id'],
+                                        geometry,
+                                        crs,
+                                        from_date,
+                                        to_date,
+                                        shub_band_names,
+                                        sample_type,
+                                        metadata_properties(),
+                                        processing_options
+                                    )
+
+                                    batch_request_cache[batch_request_cache_key] = batch_request_id
+
+                                    logger.debug("saved new batch process {b} for near future use (key {k!r})".format(
+                                        b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
+                                else:
+                                    logger.debug("recycling saved batch process {b} (key {k!r})".format(
+                                        b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
 
                                 subfolder = batch_request_id
                                 batch_request_ids = [batch_request_id]
