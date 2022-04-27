@@ -31,4 +31,7 @@ export PYSPARK_PYTHON="$(which python)"
 extensions="$(bash geotrellis-extensions-jar.sh)"
 classpath="$extensions:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':')"
 
+export KRB5CCNAME=/tmp/krb5cc_openeo
+kinit -kt openeo-deploy/mep/openeo.keytab openeo@VGT.VITO.BE
+
 python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" --task "$task_json"
