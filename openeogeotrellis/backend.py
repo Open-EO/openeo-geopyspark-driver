@@ -44,7 +44,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import buffer_point_approx, EvalEnv
+from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -1173,6 +1173,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         batch_process_dependencies = []
+        batch_request_cache = {}
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
@@ -1392,10 +1393,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             batch_request_ids = [batch_request_id]
                         else:
                             try:
-                                # TODO: don't repeat start_batch_process for the same arguments (= cache key) but point
-                                #  this dependency to the original batch process for these arguments
-
-                                batch_request_id = batch_processing_service.start_batch_process(
+                                uncached_batch_request_args = [
                                     layer_source_info['collection_id'],
                                     layer_source_info['dataset_id'],
                                     geometry,
@@ -1405,9 +1403,24 @@ class GpsBatchJobs(backend.BatchJobs):
                                     shub_band_names,
                                     sample_type,
                                     metadata_properties(),
-                                    (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
+                                    (sentinel_hub.processing_options(
+                                        sar_backscatter_arguments) if sar_backscatter_arguments
                                      else {})
-                                )
+                                ]
+
+                                batch_request_cache_key = to_hashable(uncached_batch_request_args)
+                                batch_request_id = batch_request_cache.get(batch_request_cache_key)
+
+                                if batch_request_id is None:
+                                    batch_request_id = batch_processing_service.start_batch_process(
+                                        *uncached_batch_request_args)
+                                    batch_request_cache[batch_request_cache_key] = batch_request_id
+
+                                    logger.debug("saving new batch process {b} for near future use (args {a!r})".format(
+                                        b=batch_request_id, a=uncached_batch_request_args), extra={'job_id': job_id})
+                                else:
+                                    logger.debug("recycling saved batch process {b} (args {a!r})".format(
+                                        b=batch_request_id, a=uncached_batch_request_args), extra={'job_id': job_id})
 
                                 subfolder = batch_request_id
                                 batch_request_ids = [batch_request_id]
