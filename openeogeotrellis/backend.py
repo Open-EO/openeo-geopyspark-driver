@@ -806,6 +806,9 @@ class GpsBatchJobs(backend.BatchJobs):
                         bucket_name = sentinel_hub.OG_BATCH_RESULTS_BUCKET
                         subfolder = dependency['subfolder']
 
+                    # TODO: don't repeat download_and_cache_results/assemble_multiband_tiles for the same
+                    #  collecting_folder (?) but point this dependency to the original assembled_location (?) for these
+                    #  arguments
                     caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
 
                     # assembled_folder must be readable from batch job driver (load_collection)
@@ -1264,11 +1267,12 @@ class GpsBatchJobs(backend.BatchJobs):
                         logger.info("deemed collection {c} request CARD4L compliant ({s})"
                                     .format(c=collection_id, s=sar_backscatter_arguments), extra={'job_id': job_id})
                     elif shub_input_approach == 'sync':
-                        logger.info("forcing sync input processing for collection {c}"
-                                    .format(c=collection_id))
+                        logger.info("forcing sync input processing for collection {c}".format(c=collection_id),
+                                    extra={'job_id': job_id})
                         continue
                     elif shub_input_approach == 'batch':
-                        logger.info("forcing batch input processing for collection {c}".format(c=collection_id))
+                        logger.info("forcing batch input processing for collection {c}".format(c=collection_id),
+                                    extra={'job_id': job_id})
                     elif not large_area():  # 'auto'
                         continue  # skip SHub batch process and use sync approach instead
 
@@ -1361,6 +1365,10 @@ class GpsBatchJobs(backend.BatchJobs):
                             os.mkdir(collecting_folder)
                             os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
 
+                            # TODO: don't repeat start_batch_process_cached for the same arguments (= cache key but
+                            #  EXCLUDE subfolder and collecting_folder) but point this dependency to the original
+                            #  batch process/subfolder/collecting_folder for these arguments
+
                             batch_request_id = batch_processing_service.start_batch_process_cached(
                                 layer_source_info['collection_id'],
                                 layer_source_info['dataset_id'],
@@ -1379,11 +1387,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
                             logger.debug("start_batch_process_cached(subfolder={s}, collecting_folder={c}) returned "
                                          "batch_request_id {b}".format(s=subfolder, c=collecting_folder,
-                                                                       b=batch_request_id))
+                                                                       b=batch_request_id), extra={'job_id': job_id})
 
                             batch_request_ids = [batch_request_id]
                         else:
                             try:
+                                # TODO: don't repeat start_batch_process for the same arguments (= cache key) but point
+                                #  this dependency to the original batch process for these arguments
+
                                 batch_request_id = batch_processing_service.start_batch_process(
                                     layer_source_info['collection_id'],
                                     layer_source_info['dataset_id'],
