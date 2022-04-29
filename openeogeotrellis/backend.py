@@ -809,44 +809,55 @@ class GpsBatchJobs(backend.BatchJobs):
 
             job_info['status'] = 'error'  # TODO: avoid mutation
         elif all(status == "DONE" for status, _ in statuses):  # all good: resume batch job with available data
+            assembled_location_cache = {}
+
             for dependency in dependencies:
                 collecting_folder = dependency.get('collecting_folder')
 
                 if collecting_folder:  # the collection is at least partially cached
-                    caching_service = self._jvm.org.openeo.geotrellissentinelhub.CachingService()
+                    assembled_location = assembled_location_cache.get(collecting_folder)
 
-                    results_location = dependency.get('results_location')
+                    if assembled_location is None:
+                        caching_service = self._jvm.org.openeo.geotrellissentinelhub.CachingService()
 
-                    if results_location is not None:
-                        uri_parts = urlparse(results_location)
-                        bucket_name = uri_parts.hostname
-                        subfolder = uri_parts.path[1:]
+                        results_location = dependency.get('results_location')
+
+                        if results_location is not None:
+                            uri_parts = urlparse(results_location)
+                            bucket_name = uri_parts.hostname
+                            subfolder = uri_parts.path[1:]
+                        else:
+                            bucket_name = sentinel_hub.OG_BATCH_RESULTS_BUCKET
+                            subfolder = dependency['subfolder']
+
+                        caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
+
+                        # assembled_folder must be readable from batch job driver (load_collection)
+                        assembled_folder = f"/tmp_epod/openeo_assembled/{uuid.uuid4()}"
+                        os.mkdir(assembled_folder)
+                        os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
+
+                        caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder, bucket_name,
+                                                                 subfolder)
+
+                        assembled_location = f"file://{assembled_folder}/"
+                        assembled_location_cache[collecting_folder] = assembled_location
+
+                        logger.debug("saved new assembled location {a} for near future use (key {k!r})"
+                                     .format(a=assembled_location, k=collecting_folder), extra={'job_id': job_id})
+
+                        try:
+                            # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job
+                            #  can't be recovered by fiddling with its dependency_status.
+                            shutil.rmtree(collecting_folder)
+                        except Exception as e:
+                            logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
+                                           extra={'job_id': job_id})
                     else:
-                        bucket_name = sentinel_hub.OG_BATCH_RESULTS_BUCKET
-                        subfolder = dependency['subfolder']
+                        logger.debug("recycling saved assembled location {a} (key {k!r})".format(
+                            a=assembled_location, k=collecting_folder), extra={'job_id': job_id})
 
-                    # TODO: don't repeat download_and_cache_results/assemble_multiband_tiles for the same
-                    #  collecting_folder (?) but point this dependency to the original assembled_location (?) for these
-                    #  arguments
-                    caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
-
-                    # assembled_folder must be readable from batch job driver (load_collection)
-                    assembled_folder = f"/tmp_epod/openeo_assembled/{uuid.uuid4()}"
-                    os.mkdir(assembled_folder)
-                    os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
-
-                    caching_service.assemble_multiband_tiles(collecting_folder, assembled_folder, bucket_name,
-                                                             subfolder)
-
-                    dependency['assembled_location'] = f"file://{assembled_folder}/"
-
-                    try:
-                        # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job can't
-                        #  be recovered by fiddling with its dependency_status.
-                        shutil.rmtree(collecting_folder)
-                    except Exception as e:
-                        logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
-                                       extra={'job_id': job_id})
+                    dependency['assembled_location'] = assembled_location
                 else:  # no caching involved, the collection is fully defined by these batch process results
                     pass
 
@@ -1383,73 +1394,79 @@ class GpsBatchJobs(backend.BatchJobs):
                         can_cache = layer_source_info.get('cacheable', False)
                         cache = try_cache and can_cache
 
+                        processing_options = (sentinel_hub.processing_options(
+                            sar_backscatter_arguments) if sar_backscatter_arguments else {})
+
+                        class BadlyHashed:
+                            def __init__(self, target):
+                                self.target = target
+
+                            def __eq__(self, other):
+                                return isinstance(other, BadlyHashed) and self.target == other.target
+
+                            def __hash__(self):
+                                return 0
+
+                        if not geometries:
+                            hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
+                        elif isinstance(geometries, DelayedVector):
+                            hashable_geometry = geometries.path
+                        else:
+                            hashable_geometry = BadlyHashed(geometries)
+
+                        # these correspond to the .start_batch_process/start_batch_process_cached arguments
+                        batch_request_cache_key = (
+                            collection_id,  # for 'collection_id', 'dataset_id' and sample_type
+                            hashable_geometry,
+                            str(crs),
+                            from_date,
+                            to_date,
+                            to_hashable(shub_band_names),
+                            to_hashable(metadata_properties()),
+                            to_hashable(processing_options)
+                        )
+
                         if cache:
-                            subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
+                            (batch_request_id, subfolder,
+                             collecting_folder) = batch_request_cache.get(batch_request_cache_key, (None, None, None))
 
-                            # collecting_folder must be writable from driver (cached tiles) and async_task
-                            # handler (new tiles))
-                            collecting_folder = f"/tmp_epod/openeo_collecting/{subfolder}"
-                            os.mkdir(collecting_folder)
-                            os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
+                            if collecting_folder is None:
+                                subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
 
-                            # TODO: don't repeat start_batch_process_cached for the same arguments (= cache key but
-                            #  EXCLUDE subfolder and collecting_folder) but point this dependency to the original
-                            #  batch process/subfolder/collecting_folder for these arguments
+                                # collecting_folder must be writable from driver (cached tiles) and async_task
+                                # handler (new tiles))
+                                collecting_folder = f"/tmp_epod/openeo_collecting/{subfolder}"
+                                os.mkdir(collecting_folder)
+                                os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
 
-                            batch_request_id = batch_processing_service.start_batch_process_cached(
-                                layer_source_info['collection_id'],
-                                layer_source_info['dataset_id'],
-                                geometry,
-                                crs,
-                                from_date,
-                                to_date,
-                                shub_band_names,
-                                sample_type,
-                                metadata_properties(),
-                                (sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments
-                                 else {}),
-                                subfolder,
-                                collecting_folder
-                            )
+                                batch_request_id = batch_processing_service.start_batch_process_cached(
+                                    layer_source_info['collection_id'],
+                                    layer_source_info['dataset_id'],
+                                    geometry,
+                                    crs,
+                                    from_date,
+                                    to_date,
+                                    shub_band_names,
+                                    sample_type,
+                                    metadata_properties(),
+                                    processing_options,
+                                    subfolder,
+                                    collecting_folder
+                                )
 
-                            logger.debug("caching newly started batch process {b} to collecting folder {c}".format(
-                                b=batch_request_id, c=collecting_folder), extra={'job_id': job_id})
+                                batch_request_cache[batch_request_cache_key] = (batch_request_id, subfolder,
+                                                                                collecting_folder)
+
+                                logger.debug("saved new cached batch process {b} for near future use (key {k!r})"
+                                             .format(b=batch_request_id, k=batch_request_cache_key),
+                                             extra={'job_id': job_id})
+                            else:
+                                logger.debug("recycling saved cached batch process {b} (key {k!r})".format(
+                                    b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
 
                             batch_request_ids = [batch_request_id]
                         else:
                             try:
-                                processing_options = (sentinel_hub.processing_options(
-                                    sar_backscatter_arguments) if sar_backscatter_arguments else {})
-
-                                class BadlyHashed:
-                                    def __init__(self, target):
-                                        self.target = target
-
-                                    def __eq__(self, other):
-                                        return isinstance(other, BadlyHashed) and self.target == other.target
-
-                                    def __hash__(self):
-                                        return 0
-
-                                if not geometries:
-                                    hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
-                                elif isinstance(geometries, DelayedVector):
-                                    hashable_geometry = geometries.path
-                                else:
-                                    hashable_geometry = BadlyHashed(geometries)
-
-                                # these correspond to the .start_batch_process arguments
-                                batch_request_cache_key = (
-                                    collection_id,  # for 'collection_id', 'dataset_id' and sample_type
-                                    hashable_geometry,
-                                    str(crs),
-                                    from_date,
-                                    to_date,
-                                    to_hashable(shub_band_names),
-                                    to_hashable(metadata_properties()),
-                                    to_hashable(processing_options)
-                                )
-
                                 batch_request_id = batch_request_cache.get(batch_request_cache_key)
 
                                 if batch_request_id is None:
