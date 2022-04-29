@@ -1258,7 +1258,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     supports_batch_processes = (endpoint.startswith("https://services.sentinel-hub.com") or
                                                 endpoint.startswith("https://services-uswest2.sentinel-hub.com"))
 
-                    shub_input_approach = job_options.get('shub-input-approach')
+                    shub_input_approach = deep_get(job_options, 'sentinel-hub', 'input', default=None)
 
                     if not supports_batch_processes:  # always sync approach
                         logger.info("endpoint {e} does not support batch processing".format(e=endpoint),
@@ -1358,7 +1358,11 @@ class GpsBatchJobs(backend.BatchJobs):
                             request_group_id)
                         )
                     else:
-                        cache = ConfigParams().cache_shub_batch_results and layer_source_info.get('cacheable', False)
+                        shub_caching_flag = deep_get(job_options, 'sentinel-hub', 'cache-results', default=None)
+                        try_cache = (ConfigParams().cache_shub_batch_results if shub_caching_flag is None  # auto
+                                     else shub_caching_flag)
+                        can_cache = layer_source_info.get('cacheable', False)
+                        cache = try_cache and can_cache
 
                         if cache:
                             subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
@@ -1389,9 +1393,8 @@ class GpsBatchJobs(backend.BatchJobs):
                                 collecting_folder
                             )
 
-                            logger.debug("start_batch_process_cached(subfolder={s}, collecting_folder={c}) returned "
-                                         "batch_request_id {b}".format(s=subfolder, c=collecting_folder,
-                                                                       b=batch_request_id), extra={'job_id': job_id})
+                            logger.debug("caching newly started batch process {b} to collecting folder {c}".format(
+                                b=batch_request_id, c=collecting_folder), extra={'job_id': job_id})
 
                             batch_request_ids = [batch_request_id]
                         else:
