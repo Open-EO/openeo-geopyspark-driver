@@ -1,3 +1,4 @@
+import shutil
 import typing
 import uuid
 from pathlib import Path
@@ -15,9 +16,9 @@ from pyspark.mllib.util import JavaSaveable
 
 class GeopySparkMLModel(DriverMlModel):
 
-    def __init__(self, model: JavaSaveable):
+    def __init__(self, model: JavaSaveable, filename: str):
         self._model = model
-        self._filename = "randomforest.model"
+        self._filename = filename
 
     def get_model_metadata(self, directory: Union[str, Path]) -> Dict[str, typing.Any]:
         # This metadata will be written to job_metadata.json.
@@ -97,7 +98,9 @@ class GeopySparkMLModel(DriverMlModel):
         directory = Path(directory).parent
         model_path = Path(directory) / self._filename
         self._model.save(gps.get_spark_context(), "file:" + str(model_path))
-
+        shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
+        shutil.rmtree(model_path)
+        model_path = Path(str(model_path) + '.tar.gz')
         return {model_path.name: {"href": str(model_path)}}
 
     def get_model(self):
@@ -181,4 +184,4 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
             num_classes, categorical_features_info, num_trees,
             feature_subset_strategy, impurity, max_depth, max_bins, seed
             )
-        return GeopySparkMLModel(model)
+        return GeopySparkMLModel(model, "randomforest.model")

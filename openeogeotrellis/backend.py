@@ -592,27 +592,46 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if model_id.startswith('http'):
             # Load the model using its STAC metadata file.
             metadata = requests.get(model_id).json()
-            # TODO: We assume model is under ['assets']['model']. Make this more generic.
-            if deep_get(metadata, "assets", "model", "href", default=None) is not None:
-                # Get the url for the actual model from the STAC metadata.
-                model_url = metadata["assets"]["model"]["href"]
-                # Download the model as a temporary file and load it as a java object.
-                with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
-                    dest_path = Path(tmp_dir + "/ml_model.model")
-                    with open(dest_path, 'wb') as f:
-                        f.write(requests.get(model_url).content)
-                    filename = "file:" + str(dest_path)
-                    logger.info("Loading ml_model using filename: {}".format(filename))
-                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
-                    return model
-            else:
+            if deep_get(metadata, "properties", "ml-model:architecture", default=None) is None:
+                raise OpenEOApiException(
+                    message=f"{model_id} does not specify a model architecture under properties.ml-model:architecture.",
+                    status_code=400)
+            checkpoints = []
+            assets = metadata.get('assets', {})
+            for asset in assets:
+                if "ml-model:checkpoint" in assets[asset].get('roles', []):
+                    checkpoints.append(assets[asset])
+            if len(checkpoints) == 0 or checkpoints[0].get("href", None) is None:
                 raise OpenEOApiException(
                     message=f"{model_id} does not contain a link to the ml model in its assets section.",
                     status_code=400)
+            # TODO: How to handle multiple models?
+            if len(checkpoints) > 1:
+                raise OpenEOApiException(
+                    message=f"{model_id} contains multiple checkpoints.",
+                    status_code=400)
+
+            # Get the url for the actual model from the STAC metadata.
+            model_url = checkpoints[0]["href"]
+            architecture = metadata["properties"]["ml-model:architecture"]
+            # Download the model as a temporary file and load it as a java object.
+            with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
+                if architecture == "random-forest":
+                    dest_path = Path(tmp_dir + "/randomforest.model.tar.gz")
+                    with open(dest_path, 'wb') as f:
+                        f.write(requests.get(model_url).content)
+                    shutil.unpack_archive(dest_path, extract_dir=tmp_dir, format='gztar')
+                    filename = "file:" + str(dest_path).replace(".tar.gz", "")
+                    logger.info("Loading ml_model using filename: {}".format(filename))
+                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+                else:
+                    raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
+                return model
         else:
             # Load the model using a batch job id.
             directory = GpsBatchJobs.get_job_output_dir(model_id)
-            # TODO: Make this more generic.
+            # TODO: This also needs to support Catboost model
+            # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
             filename = "file:" + str(Path(directory) / "randomforest.model")
             logger.info("Loading ml_model using filename: {}".format(filename))
             model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
