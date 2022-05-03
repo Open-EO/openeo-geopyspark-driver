@@ -1362,31 +1362,76 @@ class GpsBatchJobs(backend.BatchJobs):
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
 
+                    class BadlyHashable:
+                        """
+                        Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
+                        items in this cache is very small anyway.
+                        """
+
+                        def __init__(self, target):
+                            self.target = target
+
+                        def __eq__(self, other):
+                            return isinstance(other, BadlyHashable) and self.target == other.target
+
+                        def __hash__(self):
+                            return 0
+
+                    if not geometries:
+                        hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
+                    elif isinstance(geometries, DelayedVector):
+                        hashable_geometry = geometries.path
+                    else:
+                        hashable_geometry = BadlyHashable(geometries)
+
                     collecting_folder: Optional[str] = None
 
                     if card4l:
                         # TODO: not obvious but this does the validation as well
                         dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
 
-                        # cannot be the batch job ID because results for multiple collections would end up in
-                        #  the same S3 dir
-                        request_group_id = str(uuid.uuid4())
-                        subfolder = request_group_id
-
-                        # return type py4j.java_collections.JavaList is not JSON serializable
-                        batch_request_ids = list(batch_processing_service.start_card4l_batch_processes(
-                            layer_source_info['collection_id'],
-                            layer_source_info['dataset_id'],
-                            geometry,
-                            crs,
+                        # these correspond to the .start_card4l_batch_processes arguments
+                        batch_request_cache_key = (
+                            collection_id,  # for 'collection_id' and 'dataset_id'
+                            hashable_geometry,
+                            str(crs),
                             from_date,
                             to_date,
-                            shub_band_names,
+                            to_hashable(shub_band_names),
                             dem_instance,
-                            metadata_properties(),
-                            subfolder,
-                            request_group_id)
+                            to_hashable(metadata_properties())
                         )
+
+                        batch_request_ids, subfolder = batch_request_cache.get(batch_request_cache_key, (None, None))
+
+                        if batch_request_ids is None:
+                            # cannot be the batch job ID because results for multiple collections would end up in
+                            #  the same S3 dir
+                            request_group_id = str(uuid.uuid4())
+                            subfolder = request_group_id
+
+                            # return type py4j.java_collections.JavaList is not JSON serializable
+                            batch_request_ids = list(batch_processing_service.start_card4l_batch_processes(
+                                layer_source_info['collection_id'],
+                                layer_source_info['dataset_id'],
+                                geometry,
+                                crs,
+                                from_date,
+                                to_date,
+                                shub_band_names,
+                                dem_instance,
+                                metadata_properties(),
+                                subfolder,
+                                request_group_id)
+                            )
+
+                            batch_request_cache[batch_request_cache_key] = (batch_request_ids, subfolder)
+
+                            logger.debug("saved new CARD4L batch processes {b} for near future use (key {k!r})".format(
+                                b=batch_request_ids, k=batch_request_cache_key), extra={'job_id': job_id})
+                        else:
+                            logger.debug("recycling saved CAR4L batch processes {b} (key {k!r})".format(
+                                b=batch_request_ids, k=batch_request_cache_key), extra={'job_id': job_id})
                     else:
                         shub_caching_flag = deep_get(job_options, 'sentinel-hub', 'cache-results', default=None)
                         try_cache = (ConfigParams().cache_shub_batch_results if shub_caching_flag is None  # auto
@@ -1396,23 +1441,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                         processing_options = (sentinel_hub.processing_options(
                             sar_backscatter_arguments) if sar_backscatter_arguments else {})
-
-                        class BadlyHashed:
-                            def __init__(self, target):
-                                self.target = target
-
-                            def __eq__(self, other):
-                                return isinstance(other, BadlyHashed) and self.target == other.target
-
-                            def __hash__(self):
-                                return 0
-
-                        if not geometries:
-                            hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
-                        elif isinstance(geometries, DelayedVector):
-                            hashable_geometry = geometries.path
-                        else:
-                            hashable_geometry = BadlyHashed(geometries)
 
                         # these correspond to the .start_batch_process/start_batch_process_cached arguments
                         batch_request_cache_key = (
