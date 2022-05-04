@@ -122,20 +122,19 @@ def main():
 
         arguments: dict = task.get('arguments', {})
 
-        def batch_jobs() -> GpsBatchJobs:
-            java_opts = [
-                "-client",
-                f"-Xmx{args.py4j_maximum_heap_size}",
-                "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
-            ]
+        java_opts = [
+            "-client",
+            f"-Xmx{args.py4j_maximum_heap_size}",
+            "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+        ]
 
-            java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
-                                                      classpath=args.py4j_classpath,
-                                                      javaopts=java_opts,
-                                                      die_on_exit=True)
+        java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
+                                                  classpath=args.py4j_classpath,
+                                                  javaopts=java_opts,
+                                                  die_on_exit=True)
 
-            return GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
-                                args.keytab)
+        batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
+                                  args.keytab)
 
         if task_id in [TASK_DELETE_BATCH_PROCESS_RESULTS, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
             batch_job_id = arguments['batch_job_id']
@@ -144,9 +143,9 @@ def main():
 
             _log.info(f"removing dependency sources {dependency_sources} for batch job {batch_job_id}...",
                       extra={'job_id': batch_job_id})
-            batch_jobs().delete_batch_process_dependency_sources(job_id=batch_job_id,
-                                                                 dependency_sources=dependency_sources,
-                                                                 propagate_errors=True)
+            batch_jobs.delete_batch_process_dependency_sources(job_id=batch_job_id,
+                                                               dependency_sources=dependency_sources,
+                                                               propagate_errors=True)
         elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
             batch_job_id = arguments['batch_job_id']
             user_id = arguments['user_id']
@@ -161,7 +160,7 @@ def main():
                     break
                 else:
                     try:
-                        batch_jobs().poll_sentinelhub_batch_processes(job_info)
+                        batch_jobs.poll_sentinelhub_batch_processes(job_info)
                     except Exception:
                         # TODO: retry in Nifi? How to mark this job as 'error' then?
                         # TODO: don't put the stack trace in the message but add exc_info  # 141
