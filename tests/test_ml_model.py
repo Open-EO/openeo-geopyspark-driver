@@ -12,7 +12,9 @@ from openeo_driver.utils import EvalEnv
 from pyspark.mllib.tree import RandomForestModel
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.ml_model import AggregateSpatialVectorCube, GeopySparkMLModel
+from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.GeopySparkCatBoostModel import GeopySparkCatBoostModel
+from openeogeotrellis.ml.GeopySparkRandomForestModel import GeopySparkRandomForestModel
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",

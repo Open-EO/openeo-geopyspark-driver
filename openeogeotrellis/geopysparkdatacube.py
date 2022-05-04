@@ -39,7 +39,7 @@ from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonSp
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.ml_model import AggregateSpatialVectorCube
+from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 from openeogeotrellis._version import __version__ as softwareversion
 from shapely.geometry.base import BaseGeometry
