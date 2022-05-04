@@ -138,13 +138,15 @@ def test_run_orfeo(tmp_path):
         input_tiff=Path("s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"),
         extent=extent, extent_epsg=32631,
         dem_dir=None,
-        extent_width_px=100, extent_height_px=100,
+        extent_width_px=100, extent_height_px=120,
         sar_calibration_lut="gamma",
         noise_removal=True,
         elev_geoid=None, elev_default=0,
         log_prefix="test",
         orfeo_memory=512
     )
+
+    assert (100,120) == data.shape
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg"], [
     ((3.1, 51.2, 3.5, 51.3), 4326),
