@@ -4,13 +4,12 @@ import os
 import shutil
 import stat
 import sys
-from itertools import chain
-from urllib.parse import urlparse
 import uuid
+from itertools import chain
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+from urllib.parse import urlparse
 
-from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -24,36 +23,26 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult
 from openeo_driver.users import User
+from openeo_driver.util.logging import BatchJobLoggingFilter, user_id_trim, get_logging_config, setup_logging, \
+    LOGGING_CONTEXT_BATCH_JOB
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union, to_hashable
+from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union
+from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
+from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
-from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis._version import __version__
 
-LOG_FORMAT = '%(asctime)s:P%(process)s:%(levelname)s:%(name)s:%(message)s'
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
 
-def _setup_app_logging() -> None:
-    console_handler = logging.StreamHandler(stream=sys.stdout)
-    console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-
-    # TODO: logs show up twice in the output
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(console_handler)
-
-    logging.getLogger().setLevel(logging.INFO)
-    logging.getLogger("openeo").setLevel(logging.INFO)
-    logging.getLogger("openeo").addHandler(console_handler)
-    logging.getLogger("openeo_driver").setLevel(logging.INFO)
-    logging.getLogger("openeo_driver").addHandler(console_handler)
-    logging.getLogger("openeogeotrellis").setLevel(logging.INFO)
-    logging.getLogger("openeogeotrellis").addHandler(console_handler)
+OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID")
+# TODO: also trim batch_job id a bit before logging?
+BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
 
 def _setup_user_logging(log_file: Path) -> None:
@@ -262,6 +251,7 @@ def main(argv: List[str]) -> None:
     api_version = argv[6]
     dependencies = _deserialize_dependencies(argv[7])
     user_id = argv[8]
+    BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
     soft_errors = argv[9].lower() == "true"
 
     _create_job_dir(job_dir)
@@ -496,7 +486,16 @@ def _transform_stac_metadata(job_dir: Path):
 
 
 if __name__ == '__main__':
-    _setup_app_logging()
+    setup_logging(get_logging_config(
+        root_handlers=["json"],
+        loggers={
+            "openeo": {"level": "DEBUG"},
+            "openeo_driver": {"level": "DEBUG"},
+            "openeogeotrellis": {"level": "DEBUG"},
+            "kazoo": {"level": "WARN"},
+            "cropsar": {"level": "DEBUG"},
+        },
+        context=LOGGING_CONTEXT_BATCH_JOB))
 
     with TimingLogger("batch_job.py main", logger=logger):
         main(sys.argv)
