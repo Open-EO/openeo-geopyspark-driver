@@ -1427,10 +1427,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                             batch_request_cache[batch_request_cache_key] = (batch_request_ids, subfolder)
 
-                            logger.debug("saved new CARD4L batch processes {b} for near future use (key {k!r})".format(
-                                b=batch_request_ids, k=batch_request_cache_key), extra={'job_id': job_id})
+                            logger.info("saved newly scheduled CARD4L batch processes {b} for near future use"
+                                        " (key {k!r})".format(b=batch_request_ids, k=batch_request_cache_key),
+                                        extra={'job_id': job_id})
                         else:
-                            logger.debug("recycling saved CAR4L batch processes {b} (key {k!r})".format(
+                            logger.debug("recycling saved CARD4L batch processes {b} (key {k!r})".format(
                                 b=batch_request_ids, k=batch_request_cache_key), extra={'job_id': job_id})
                     else:
                         shub_caching_flag = deep_get(job_options, 'sentinel-hub', 'cache-results', default=None)
@@ -1485,9 +1486,9 @@ class GpsBatchJobs(backend.BatchJobs):
                                 batch_request_cache[batch_request_cache_key] = (batch_request_id, subfolder,
                                                                                 collecting_folder)
 
-                                logger.debug("saved new cached batch process {b} for near future use (key {k!r})"
-                                             .format(b=batch_request_id, k=batch_request_cache_key),
-                                             extra={'job_id': job_id})
+                                logger.info("saved newly scheduled cached batch process {b} for near future use"
+                                            " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key),
+                                            extra={'job_id': job_id})
                             else:
                                 logger.debug("recycling saved cached batch process {b} (key {k!r})".format(
                                     b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
@@ -1513,8 +1514,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                                     batch_request_cache[batch_request_cache_key] = batch_request_id
 
-                                    logger.debug("saved new batch process {b} for near future use (key {k!r})".format(
-                                        b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
+                                    logger.info("saved newly scheduled batch process {b} for near future use"
+                                                " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key),
+                                                extra={'job_id': job_id})
                                 else:
                                     logger.debug("recycling saved batch process {b} (key {k!r})".format(
                                         b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
@@ -1531,10 +1533,6 @@ class GpsBatchJobs(backend.BatchJobs):
                                         status_code=400)
                                 else:
                                     raise e
-
-                    logger.info("scheduled Sentinel Hub batch process(es) {bs} for batch job {j} (CARD4L {c})"
-                                .format(bs=batch_request_ids, j=job_id, c="enabled" if card4l else "disabled"),
-                                extra={'job_id': job_id})
 
                     batch_process_dependencies.append(dict_no_none(
                         collection_id=collection_id,
