@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2022-05-04 (0.6.3a1)
+
+- Enable JSON logging from batch_job.py (and inject user_id/job_id)
+
 ## 2022-04-07 (0.6.2a1)
 
 - EP-4012: implement collection source selection based on product availability (e.g. collection "SENTINEL2_L2A"
