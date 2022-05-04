@@ -52,6 +52,7 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
 from openeogeotrellis.logs import elasticsearch_logs
+from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
@@ -624,6 +625,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     filename = "file:" + str(dest_path).replace(".tar.gz", "")
                     logger.info("Loading ml_model using filename: {}".format(filename))
                     model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+                elif architecture == "catboost":
+                    dest_path = Path(tmp_dir + "/catboost_model.tar.gz")
+                    with open(dest_path, 'wb') as f:
+                        f.write(requests.get(model_url).content)
+                    shutil.unpack_archive(dest_path, extract_dir=tmp_dir, format='gztar')
+                    filename = "file:" + str(dest_path).replace(".tar.gz", "")
+                    logger.info("Loading ml_model using filename: {}".format(filename))
+                    loadedModel = CatBoostClassificationModel.load(filename)
+                    model: JavaObject = loadedModel._java_obj
                 else:
                     raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
                 return model
