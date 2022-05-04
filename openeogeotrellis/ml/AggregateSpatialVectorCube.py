@@ -13,101 +13,7 @@ from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.util import JavaSaveable
 
-
-class GeopySparkMLModel(DriverMlModel):
-
-    def __init__(self, model: JavaSaveable, filename: str):
-        self._model = model
-        self._filename = filename
-
-    def get_model_metadata(self, directory: Union[str, Path]) -> Dict[str, typing.Any]:
-        # This metadata will be written to job_metadata.json.
-        # It will then be used to dynamically generate ml_model_metadata.json.
-        directory = Path(directory).parent
-        model_path = directory / self._filename
-        metadata = {
-            "stac_version": "1.0.0",
-            "stac_extensions": [
-                "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
-            ],
-            "type": "Feature",
-            "id": str(uuid.uuid4()),
-            "collection": "collection-id",
-            "bbox": [
-                -179.999,
-                -89.999,
-                179.999,
-                89.999
-            ],
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [
-                            -179.999,
-                            -89.999
-                        ],
-                        [
-                            179.999,
-                            -89.999
-                        ],
-                        [
-                            179.999,
-                            89.999
-                        ],
-                        [
-                            -179.999,
-                            89.999
-                        ],
-                        [
-                            -179.999,
-                            -89.999
-                        ]
-                    ]
-                ]
-            },
-            'properties': {
-                "datetime": None,
-                "start_datetime": "1970-01-01T00:00:00Z",
-                "end_datetime": "9999-12-31T23:59:59Z",
-                "ml-model:type": "ml-model",
-                "ml-model:learning_approach": "supervised",
-                "ml-model:prediction_type": "classification",
-                "ml-model:architecture": "random-forest",
-                "ml-model:training-processor-type": "cpu",
-                "ml-model:training-os": "linux",
-            },
-            'links': [],
-            'assets': {
-                'model': {
-                    "href": model_path,
-                    "type": "application/octet-stream",
-                    "title": "org.apache.spark.mllib.tree.model.RandomForestModel",
-                    "roles": ["ml-model:checkpoint"]
-                }
-            }
-        }
-        return metadata
-
-    def write_assets(self, directory: Union[str, Path]) -> Dict[str, StacAsset]:
-        """
-        Save generated assets into a directory, return asset metadata.
-
-        :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
-        """
-        directory = Path(directory).parent
-        model_path = Path(directory) / self._filename
-        self._model.save(gps.get_spark_context(), "file:" + str(model_path))
-        shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
-        shutil.rmtree(model_path)
-        model_path = Path(str(model_path) + '.tar.gz')
-        return {model_path.name: {"href": str(model_path)}}
-
-    def get_model(self):
-        return self._model
-
-    def save_ml_model(self, directory: str) -> Dict:
-        return self.write_assets(directory)
+from openeogeotrellis.ml.GeopySparkRandomForestModel import GeopySparkRandomForestModel
 
 
 class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
@@ -121,7 +27,7 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
             num_trees: int = 100,
             max_variables: Optional[Union[int, str]] = None,
             seed: Optional[int] = None,
-    ) -> 'GeopySparkMLModel':
+    ) -> 'GeopySparkRandomForestModel':
         """
         @param self (predictors):
         Vector cube with shape: (1, #geometries, #bands)
@@ -184,4 +90,4 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
             num_classes, categorical_features_info, num_trees,
             feature_subset_strategy, impurity, max_depth, max_bins, seed
             )
-        return GeopySparkMLModel(model, "randomforest.model")
+        return GeopySparkRandomForestModel(model, "randomforest.model.tar.gz")
