@@ -127,7 +127,8 @@ class JobTracker:
 
                                     registry.remove_dependencies(job_id, user_id)
 
-                                    dependency_sources = JobRegistry.get_dependency_sources(job_info)
+                                    # there can be duplicates if batch processes are recycled
+                                    dependency_sources = list(set(JobRegistry.get_dependency_sources(job_info)))
 
                                     if dependency_sources:
                                         async_task.schedule_delete_batch_process_dependency_sources(
