@@ -19,7 +19,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
         # This metadata will be written to job_metadata.json.
         # It will then be used to dynamically generate ml_model_metadata.json.
         directory = Path(directory).parent
-        model_path = directory / "randomforest_model.tar.gz"
+        model_path = directory / "randomforest.model.tar.gz"
         metadata = {
             "stac_version": "1.0.0",
             "stac_extensions": [
@@ -91,7 +91,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
         directory = Path(directory).parent
-        model_path = Path(directory) / "randomforest_model"
+        model_path = Path(directory) / "randomforest.model"
         self._model.save(gps.get_spark_context(), "file:" + str(model_path))
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
         shutil.rmtree(model_path)
