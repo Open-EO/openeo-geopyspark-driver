@@ -630,10 +630,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     with open(dest_path, 'wb') as f:
                         f.write(requests.get(model_url).content)
                     shutil.unpack_archive(dest_path, extract_dir=tmp_dir, format='gztar')
-                    filename = "file:" + str(dest_path).replace(".tar.gz", "")
+                    filename = str(dest_path).replace(".tar.gz", "") + "/model"
                     logger.info("Loading ml_model using filename: {}".format(filename))
-                    loadedModel = CatBoostClassificationModel.load(filename)
-                    model: JavaObject = loadedModel._java_obj
+                    model: JavaObject = gps.get_spark_context()._jvm.ai.catboost.CatBoostModel.loadModel(filename)
                 else:
                     raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
                 return model
