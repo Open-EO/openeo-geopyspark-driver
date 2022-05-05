@@ -120,7 +120,7 @@ class TestFitClassRandomForestFlow(TestCase):
         assert (predictors.prepare_for_json() == [[1.0, 2.0], [1.0, 2.0]])
         assert (result.get_model().predict([2.0, 2.0]) == 5)
         # 3. Save model.
-        result.save_ml_model(self.tmp_dir.name + "/job_metadata.json")
+        result.write_assets(self.tmp_dir.name + "/job_metadata.json")
         print(self.tmp_dir.name)
         # 4. Load model.
         request_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json"
