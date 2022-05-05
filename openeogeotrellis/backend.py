@@ -1387,6 +1387,9 @@ class GpsBatchJobs(backend.BatchJobs):
                         def __hash__(self):
                             return 0
 
+                        def __repr__(self):
+                            return f"BadlyHashable({repr(self.target)})"
+
                     if not geometries:
                         hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
                     elif isinstance(geometries, DelayedVector):
