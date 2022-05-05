@@ -13,7 +13,7 @@ pythonPipeline {
   wipeout_workspace = true
   hadoop = true
   pre_test_script = 'pre_test.sh'
-  extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.9.11-0.el8_2.x86_64']
+  extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.0.9-2.el8_5.x86_64']
   python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
   downstream_job = 'openEO/openeo-integrationtests-baremetal'
@@ -24,7 +24,7 @@ pythonPipeline {
   upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/centos8-spark-py-openeo:3.2.0'
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
