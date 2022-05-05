@@ -92,7 +92,7 @@ sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/ope
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=venv/lib/python3.8/site-packages/jep"
 
-image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"}
+image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0"}
 
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
