@@ -1,14 +1,45 @@
 import typing
 import uuid
+import geopyspark as gps
+from enum import Enum
 from pathlib import Path
 from typing import Dict, Union
 
+import pyspark
 from pyspark.ml.classification import _JavaProbabilisticClassificationModel
 from pyspark.ml.util import MLReadable, JavaMLWritable, JavaMLReader
 
 from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 from pyspark.mllib.util import JavaSaveable
+
+
+class EModelType(Enum):
+    CatboostBinary = 0
+    AppleCoreML = 1
+    Cpp = 2
+    Python = 3
+    Json = 4
+    Onnx = 5
+    Pmml = 6
+    CPUSnapshot = 7
+
+
+_standard_py2java = pyspark.ml.common._py2java
+_standard_java2py = pyspark.ml.common._java2py
+
+
+def _py2java(sc, obj):
+    """ Convert Python object into Java """
+    if isinstance(obj, Enum):
+        return getattr(
+            getattr(
+                sc._jvm.ru.yandex.catboost.spark.catboost4j_spark.core.src.native_impl,
+                obj.__class__.__name__
+            ),
+            'swigToEnum'
+        )(obj.value)
+    return _standard_py2java(sc, obj)
 
 
 class CatBoostMLReader(JavaMLReader):
@@ -21,10 +52,7 @@ class CatBoostMLReader(JavaMLReader):
         """
         Returns the full class name of the Java ML instance.
         """
-        java_package = clazz.__module__.replace("catboost_spark.core", "ai.catboost.spark")
-        print("CatBoostMLReader._java_loader_class. ", java_package + "." + clazz.__name__)
         return "ai.catboost.spark.CatBoostClassificationModel"
-        # return java_package + "." + clazz.__name__
 
 
 class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReadable, JavaMLWritable):
@@ -43,6 +71,17 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
     def _from_java(java_model):
         return CatBoostClassificationModel(java_model)
 
+    @staticmethod
+    def load_native_model(filename, file_format=EModelType.CatboostBinary):
+        """
+        Load the model from a local file.
+        See https://catboost.ai/docs/concepts/python-reference_catboostclassifier_load_model.html
+        for detailed parameters description
+        """
+        sc = gps.get_spark_context()
+        java_model = sc._jvm.ai.catboost.spark.CatBoostClassificationModel.loadNativeModel(filename, _py2java(sc, file_format))
+        return java_model
+
 
 class GeopySparkCatBoostModel(DriverMlModel):
 
@@ -53,7 +92,7 @@ class GeopySparkCatBoostModel(DriverMlModel):
         # This metadata will be written to job_metadata.json.
         # It will then be used to dynamically generate ml_model_metadata.json.
         directory = Path(directory).parent
-        model_path = directory / "catboost_model.tar.gz"
+        model_path = directory / "catboost_model.cbm"
         metadata = {
             "stac_version": "1.0.0",
             "stac_extensions": [

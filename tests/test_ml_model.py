@@ -53,13 +53,13 @@ class MockResponse:
 
 def mocked_requests_get_catboost(*args, **kwargs):
     item_url = 'https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json'
-    asset_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/assets/catboost_model.tar.gz"
+    asset_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/assets/catboost_model.cbm"
     if args[0] == item_url:
         metadata = GeopySparkCatBoostModel(None).get_model_metadata("./")
         metadata["assets"]["model"]["href"] = asset_url
         return MockResponse(metadata, 200)
     elif args[0] == asset_url:
-        source_path = Path("tests/data/catboost_model.tar.gz")
+        source_path = Path("tests/data/catboost_model.cbm")
         with open(source_path, 'rb') as f:
             model = f.read()
         return MockResponse(model, 200)

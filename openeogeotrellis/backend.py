@@ -3,7 +3,6 @@ import json
 import logging
 import operator
 import os
-import pathlib
 import re
 import shutil
 import subprocess
@@ -626,14 +625,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     logger.info("Loading ml_model using filename: {}".format(filename))
                     model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
                 elif architecture == "catboost":
-                    dest_path = Path(tmp_dir + "/catboost_model.tar.gz")
-                    with open(dest_path, 'wb') as f:
+                    filename = Path(tmp_dir + "/catboost_model.cbm")
+                    with open(filename, 'wb') as f:
                         f.write(requests.get(model_url).content)
-                    shutil.unpack_archive(dest_path, extract_dir=tmp_dir, format='gztar')
-                    filename = "file:" + str(dest_path).replace(".tar.gz", "")
                     logger.info("Loading ml_model using filename: {}".format(filename))
-                    loadedModel = CatBoostClassificationModel.load(filename)
-                    model: JavaObject = loadedModel._java_obj
+                    model: JavaObject = CatBoostClassificationModel.load_native_model(str(filename))
                 else:
                     raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
                 return model
