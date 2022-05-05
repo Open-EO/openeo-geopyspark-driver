@@ -90,4 +90,4 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
             num_classes, categorical_features_info, num_trees,
             feature_subset_strategy, impurity, max_depth, max_bins, seed
             )
-        return GeopySparkRandomForestModel(model, "randomforest.model.tar.gz")
+        return GeopySparkRandomForestModel(model)
