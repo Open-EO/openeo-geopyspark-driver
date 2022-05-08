@@ -93,6 +93,11 @@ def get_total_extent(features):
 class S1BackscatterOrfeo:
     """
     Collection loader that uses Orfeo pipeline to calculate Sentinel-1 Backscatter on the fly.
+
+    This class is implementation version 1, which runs Orfeo once per geotrellis tile.
+    This results in a large number of invocations, an is therefore only efficient for sparse sampling cases.
+    For processing larger areas, the V2 version is more efficient because it groups all geotrellis tiles together and
+    tries to minimize Orfeo invocations.
     """
 
     _DEFAULT_TILE_SIZE = 256
@@ -453,7 +458,7 @@ class S1BackscatterOrfeo:
                                 elev_geoid=elev_geoid, elev_default=elev_default,
                                 log_prefix=f"{log_prefix}-{band}"
                             )
-                            tile_data[b] = data
+                            tile_data[b] = data.T
 
                         if sar_backscatter_arguments.options.get("to_db", False):
                             # TODO: keep this "to_db" shortcut feature or drop it
