@@ -320,7 +320,7 @@ class S1BackscatterOrfeo:
             if(p.exitcode == -signal.SIGSEGV):
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
 
-            data =  np.reshape(np.frombuffer(arr.get_obj()),(extent_height_px,extent_width_px)).T
+            data =  np.reshape(np.frombuffer(arr.get_obj()),(extent_height_px,extent_width_px))
 
 
 
@@ -768,7 +768,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             msg = f"{log_prefix} Process {creo_path} "
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
-                orfeo_bands = numpy.zeros((len(bands), layout_width_px, layout_height_px), dtype=result_dtype)
+                orfeo_bands = numpy.zeros((len(bands),layout_height_px, layout_width_px ), dtype=result_dtype)
 
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
@@ -784,7 +784,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         log_prefix=f"{log_prefix}-{band}",
                         orfeo_memory=orfeo_memory
                     )
-                    orfeo_bands[b] = data
+                    orfeo_bands[b] = data.T
 
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
@@ -801,7 +801,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         col = col_min + c
                         row = row_min + r
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                        tile = orfeo_bands[:, c * tile_size:(c + 1) * tile_size, r * tile_size:(r + 1) * tile_size]
+                        tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                         if not (tile==nodata).all():
                             logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                             tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
