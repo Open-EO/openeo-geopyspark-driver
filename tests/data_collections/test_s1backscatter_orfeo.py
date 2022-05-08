@@ -146,7 +146,8 @@ def test_run_orfeo(tmp_path):
         orfeo_memory=512
     )
 
-    assert (100,120) == data.shape
+    #orfeo data is returned (y,x)
+    assert (120,100) == data.shape
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg"], [
     ((3.1, 51.2, 3.5, 51.3), 4326),
