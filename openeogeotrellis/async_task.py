@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 import time
 import traceback
@@ -25,10 +26,11 @@ TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES = 'delete_batch_process_dependency_
 TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'
 
 
-def schedule_delete_batch_process_dependency_sources(batch_job_id: str, dependency_sources: List[str]):
+def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id: str, dependency_sources: List[str]):
     _schedule_task(task_id=TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES,
                    arguments={
                        'batch_job_id': batch_job_id,
+                       'user_id': user_id,
                        'dependency_sources': dependency_sources
                    })
 
@@ -110,36 +112,47 @@ def main():
 
         arguments: dict = task.get('arguments', {})
 
-        java_opts = [
-            "-client",
-            f"-Xmx{args.py4j_maximum_heap_size}",
-            "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService",
-            "-Dlog4j.configuration=file:async_task_log4j.properties"
-        ]
+        def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
+            os.environ['OPENEO_BATCH_JOB_ID'] = batch_job_id
+            os.environ['OPENEO_USER_ID'] = user_id
 
-        java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
-                                                  classpath=args.py4j_classpath,
-                                                  javaopts=java_opts,
-                                                  die_on_exit=True,
-                                                  redirect_stdout=sys.stdout,
-                                                  redirect_stderr=sys.stderr)
+            java_opts = [
+                "-client",
+                f"-Xmx{args.py4j_maximum_heap_size}",
+                "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService",
+                "-Dlog4j.configuration=file:async_task_log4j.properties"
+            ]
 
-        batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
-                                  args.keytab)
+            java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
+                                                      classpath=args.py4j_classpath,
+                                                      javaopts=java_opts,
+                                                      die_on_exit=True,
+                                                      redirect_stdout=sys.stdout,
+                                                      redirect_stderr=sys.stderr)
+
+            return GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
+                                args.keytab)
 
         if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
             batch_job_id = arguments['batch_job_id']
-            dependency_sources = (arguments.get('dependency_sources') or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
-                                                                          for subfolder in arguments['subfolders']])
+            user_id = arguments.get('user_id')
+            dependency_sources = (arguments.get('dependency_sources')
+                                  or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
+                                      for subfolder in arguments['subfolders']])
 
             _log.info(f"removing dependency sources {dependency_sources} for batch job {batch_job_id}...",
                       extra={'job_id': batch_job_id})
-            batch_jobs.delete_batch_process_dependency_sources(job_id=batch_job_id,
-                                                               dependency_sources=dependency_sources,
-                                                               propagate_errors=True)
+
+            batch_jobs = get_batch_jobs(batch_job_id, user_id)
+            batch_jobs.delete_batch_process_dependency_sources(
+                job_id=batch_job_id,
+                dependency_sources=dependency_sources,
+                propagate_errors=True)
         elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
             batch_job_id = arguments['batch_job_id']
             user_id = arguments['user_id']
+
+            batch_jobs = get_batch_jobs(batch_job_id, user_id)
 
             while True:
                 time.sleep(SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S)

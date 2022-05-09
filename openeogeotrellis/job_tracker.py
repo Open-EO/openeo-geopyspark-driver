@@ -132,7 +132,7 @@ class JobTracker:
 
                                     if dependency_sources:
                                         async_task.schedule_delete_batch_process_dependency_sources(
-                                            job_id, dependency_sources)
+                                            job_id, user_id, dependency_sources)
 
                                     registry.mark_done(job_id, user_id)
 
