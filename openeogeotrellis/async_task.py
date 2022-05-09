@@ -125,13 +125,16 @@ def main():
         java_opts = [
             "-client",
             f"-Xmx{args.py4j_maximum_heap_size}",
-            "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+            "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService",
+            "-Dlog4j.configuration=file:async_task_log4j.properties"
         ]
 
         java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
                                                   classpath=args.py4j_classpath,
                                                   javaopts=java_opts,
-                                                  die_on_exit=True)
+                                                  die_on_exit=True,
+                                                  redirect_stdout=sys.stdout,
+                                                  redirect_stderr=sys.stderr)
 
         batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
                                   args.keytab)
