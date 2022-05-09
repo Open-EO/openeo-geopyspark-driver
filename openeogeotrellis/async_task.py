@@ -6,7 +6,6 @@ import traceback
 from typing import List
 
 import openeogeotrellis
-from deprecated import deprecated
 from kafka import KafkaProducer
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
@@ -22,18 +21,8 @@ _log = logging.getLogger(__name__)
 
 SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S = 60
 
-TASK_DELETE_BATCH_PROCESS_RESULTS = 'delete_batch_process_results'
 TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES = 'delete_batch_process_dependency_sources'
 TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'
-
-
-@deprecated("call schedule_delete_batch_process_dependency_sources instead")
-def schedule_delete_batch_process_results(batch_job_id: str, subfolders: List[str]):
-    _schedule_task(task_id=TASK_DELETE_BATCH_PROCESS_RESULTS,
-                   arguments={
-                       'batch_job_id': batch_job_id,
-                       'subfolders': subfolders
-                   })
 
 
 def schedule_delete_batch_process_dependency_sources(batch_job_id: str, dependency_sources: List[str]):
@@ -116,8 +105,7 @@ def main():
 
         task = json.loads(args.task_json)
         task_id = task['task_id']
-        if task_id not in [TASK_DELETE_BATCH_PROCESS_RESULTS, TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
-                           TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
+        if task_id not in [TASK_POLL_SENTINELHUB_BATCH_PROCESSES, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
             raise ValueError(f'unsupported task_id "{task_id}"')
 
         arguments: dict = task.get('arguments', {})
@@ -139,7 +127,7 @@ def main():
         batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
                                   args.keytab)
 
-        if task_id in [TASK_DELETE_BATCH_PROCESS_RESULTS, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
+        if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
             batch_job_id = arguments['batch_job_id']
             dependency_sources = (arguments.get('dependency_sources') or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
                                                                           for subfolder in arguments['subfolders']])
