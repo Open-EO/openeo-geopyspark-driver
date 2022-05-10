@@ -26,7 +26,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo,
 
 
 
-#@pytest.mark.skipif(not os.environ.get("CREODIAS"), reason="Requires CREODIAS environment.")
+@pytest.mark.skipif(not os.environ.get("CREODIAS"), reason="Requires CREODIAS environment.")
 @pytest.mark.parametrize(["spatial_extent", "temporal_extent", "expected_shape","implementation_version","ref_path"], [
     (
             dict(west=3.1, south=51.27, east=3.3, north=51.37),  # Zeebrugge
