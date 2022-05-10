@@ -773,7 +773,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             msg = f"{log_prefix} Process {creo_path} "
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
-                orfeo_bands = numpy.zeros((len(bands),layout_height_px, layout_width_px ), dtype=result_dtype)
+                orfeo_bands = numpy.zeros((len(bands),layout_width_px, layout_height_px ), dtype=result_dtype)
 
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
