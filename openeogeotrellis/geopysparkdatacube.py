@@ -1445,7 +1445,8 @@ class GeopysparkDataCube(DriverDataCube):
         sample_by_feature = format_options.get("sample_by_feature", False)
         feature_id_property = format_options.get("feature_id_property", False)
         batch_mode = format_options.get("batch_mode", False)
-        overviews = format_options.get("overviews", "OFF")
+        overviews = format_options.get("overviews", "AUTO")
+        overview_resample = format_options.get("overview_method", "near")
         colormap = format_options.get("colormap", None)
 
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy else filename
@@ -1488,6 +1489,7 @@ class GeopysparkDataCube(DriverDataCube):
                     _log.info("save_result: saveRDD")
                     gtiff_options = self._get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
+                    gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     if( colormap is not None):
                         def color_to_int(color):
