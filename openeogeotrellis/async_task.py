@@ -1,5 +1,6 @@
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sys
 import time
@@ -78,11 +79,17 @@ def main():
     logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
 
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+    json_formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+
+    stdout_handler = logging.StreamHandler(stream=sys.stdout)
+    stdout_handler.formatter = json_formatter
+
+    rolling_file_handler = RotatingFileHandler("logs/async_task_python.log", maxBytes=10 * 1024 * 1024, backupCount=1)
+    rolling_file_handler.formatter = json_formatter
 
     root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
+    root_logger.addHandler(stdout_handler)
+    root_logger.addHandler(rolling_file_handler)
 
     _log.info("argv: {a!r}".format(a=sys.argv))
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
