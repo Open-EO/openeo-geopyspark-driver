@@ -1,3 +1,4 @@
+import kazoo.client
 import logging
 from logging.handlers import RotatingFileHandler
 import subprocess
@@ -284,6 +285,7 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
+    kazoo.client.log.setLevel(logging.WARNING)
 
     json_formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
 

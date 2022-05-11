@@ -7,6 +7,7 @@ import time
 import traceback
 from typing import List
 
+import kazoo.client
 import openeogeotrellis
 from kafka import KafkaProducer
 from openeogeotrellis import sentinel_hub
@@ -78,6 +79,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
+    kazoo.client.log.setLevel(logging.WARNING)
 
     json_formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
 
