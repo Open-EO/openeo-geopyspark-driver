@@ -87,9 +87,6 @@ def main():
     _log.info("argv: {a!r}".format(a=sys.argv))
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
-    # FIXME: there's no Java output because Py4J redirects the JVM's stdout/stderr to /dev/null unless JavaGateway's
-    #  redirect_stdout/redirect_stderr are set (EP-4018)
-
     try:
         parser = argparse.ArgumentParser(usage="OpenEO AsyncTask --task <task>",
                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
