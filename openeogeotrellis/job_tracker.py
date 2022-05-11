@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import subprocess
 import sys
 from subprocess import CalledProcessError
@@ -284,11 +285,17 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
 
+    json_formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+
     handler = logging.StreamHandler(stream=sys.stdout)
-    handler.formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+    handler.formatter = json_formatter
+
+    rolling_file_handler = RotatingFileHandler("logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024, backupCount=1)
+    rolling_file_handler.formatter = json_formatter
 
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
+    root_logger.addHandler(rolling_file_handler)
 
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
