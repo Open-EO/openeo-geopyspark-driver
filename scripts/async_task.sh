@@ -25,9 +25,10 @@ export AWS_REGION="eu-central-1"
 export AWS_ACCESS_KEY_ID="???"  # TODO: pass as sensitive parameters from Nifi instead
 export AWS_SECRET_ACCESS_KEY="!!!"
 export HADOOP_CONF_DIR="/etc/hadoop/conf"
-export OPENEO_VENV_ZIP="https://artifactory.vgt.vito.be/auxdata-public/openeo/dev/openeo-venv38-20220504-148.zip"
+export OPENEO_VENV_ZIP="https://artifactory.vgt.vito.be/auxdata-public/openeo/dev/openeo-venv38-20220510-183.zip"
 export OPENEO_SPARK_SUBMIT_PY_FILES="$pyfiles"
 export PYSPARK_PYTHON="$(which python)"
+export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE="vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"
 
 extensions="$(bash geotrellis-extensions-jar.sh)"
 classpath="$extensions:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$(hadoop classpath)"
