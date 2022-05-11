@@ -30,8 +30,9 @@ export OPENEO_SPARK_SUBMIT_PY_FILES="$pyfiles"
 export PYSPARK_PYTHON="$(which python)"
 export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE="vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"
 
-extensions="$(bash geotrellis-extensions-jar.sh)"
-classpath="$extensions:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$(hadoop classpath)"
+extensions_jar="$(bash geotrellis-extensions_jar-jar.sh)"
+logging_jar="openeo-logging_jar-2.3.0_2.12-SNAPSHOT.jar"
+classpath="$extensions_jar:$logging_jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$(hadoop classpath)"
 
 export KRB5CCNAME=/tmp/krb5cc_openeo
 kinit -kt openeo-deploy/mep/openeo.keytab openeo@VGT.VITO.BE
