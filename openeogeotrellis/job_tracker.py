@@ -287,7 +287,7 @@ if __name__ == '__main__':
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
 
-    json_formatter = JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+    json_formatter = JsonFormatter("%(message)s %(levelname)s %(name)s %(created)s %(filename)s %(lineno)s %(process)s")
 
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.formatter = json_formatter
