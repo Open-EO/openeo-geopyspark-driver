@@ -1074,7 +1074,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     status_response = {}
                     retry=0
-                    while('status' not in status_response and retry<5):
+                    while('status' not in status_response and retry<10):
                         retry+=1
                         time.sleep(10)
                         try:
