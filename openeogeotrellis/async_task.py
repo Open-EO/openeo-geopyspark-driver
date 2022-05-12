@@ -81,6 +81,7 @@ def main():
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
 
+    # TODO: share this with openeo_driver.util.logging.get_logging_config? The Java logging is also supposed to match.
     json_formatter = JsonFormatter("%(message)s %(levelname)s %(name)s %(created)s %(filename)s %(lineno)s %(process)s")
 
     stdout_handler = logging.StreamHandler(stream=sys.stdout)
