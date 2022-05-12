@@ -15,6 +15,7 @@ from openeo.util import date_to_rfc3339
 import re
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
+from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
@@ -287,8 +288,8 @@ if __name__ == '__main__':
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
 
-    # TODO: share this with openeo_driver.util.logging.get_logging_config? The Java logging is also supposed to match.
-    json_formatter = JsonFormatter("%(message)s %(levelname)s %(name)s %(created)s %(filename)s %(lineno)s %(process)s")
+    # Note: The Java logging is also supposed to match.
+    json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)
 
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.formatter = json_formatter

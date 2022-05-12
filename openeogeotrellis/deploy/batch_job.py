@@ -487,7 +487,7 @@ def _transform_stac_metadata(job_dir: Path):
 
 if __name__ == '__main__':
     setup_logging(get_logging_config(
-        root_handlers=["json"],
+        root_handlers=["stderr_json"],
         loggers={
             "openeo": {"level": "DEBUG"},
             "openeo_driver": {"level": "DEBUG"},

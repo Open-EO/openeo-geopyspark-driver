@@ -10,6 +10,7 @@ from typing import List
 import kazoo.client
 import openeogeotrellis
 from kafka import KafkaProducer
+from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
@@ -81,8 +82,8 @@ def main():
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
 
-    # TODO: share this with openeo_driver.util.logging.get_logging_config? The Java logging is also supposed to match.
-    json_formatter = JsonFormatter("%(message)s %(levelname)s %(name)s %(created)s %(filename)s %(lineno)s %(process)s")
+    # Note: The Java logging is also supposed to match.
+    json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)
 
     stdout_handler = logging.StreamHandler(stream=sys.stdout)
     stdout_handler.formatter = json_formatter

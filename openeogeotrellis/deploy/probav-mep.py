@@ -20,7 +20,7 @@ log = logging.getLogger("openeogeotrellis.deploy.probav-mep")
 
 def main():
     setup_logging(get_logging_config(
-        root_handlers=["json"],
+        root_handlers=["stderr_json"],
         loggers={
             "openeo": {"level": "DEBUG"},
             "openeo_driver": {"level": "DEBUG"},
