@@ -1441,7 +1441,7 @@ class GeopysparkDataCube(DriverDataCube):
         tiled = format_options.get("tiled", False)
         stitch = format_options.get("stitch", False)
         catalog = format_options.get("parameters", {}).get("catalog", False)
-        tile_grid = format_options.get("tile_grid", "")
+        tile_grid = format_options.get("tile_grid", None)
         sample_by_feature = format_options.get("sample_by_feature", False)
         feature_id_property = format_options.get("feature_id_property", False)
         batch_mode = format_options.get("batch_mode", False)

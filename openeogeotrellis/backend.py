@@ -356,10 +356,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["raster"],
                     "parameters": {
                         "tile_grid": {
-                            "type": "string",
+                            "type": ["string", "null"],
                             "description": "Specifies the tile grid to use, for batch jobs only. By default, no tile grid is set, and one Geotiff is generated per date. If a tile grid is set, multiple geotiffs are generated per date, as defined by the specified tiling grid.",
-                            "default": "none",
-                            "enum": ["none","wgs84-1degree","utm-100km","utm-20km","utm-10km"]
+                            "default": None,
+                            "enum": ["wgs84-1degree", "utm-100km", "utm-20km", "utm-10km"]
                         },
                         "ZLEVEL": {
                             "type": "string",
@@ -372,7 +372,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Set to true to write one output tiff per feature and date. Spatial features can be specified using filter_spatial. This setting is used to sample a data cube at multiple locations in a single job."
                         },
                         "feature_id_property": {
-                            "type": ["string","null"],
+                            "type": ["string", "null"],
                             "default": None,
                             "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
                         },
@@ -383,7 +383,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "enum": ["AUTO", "OFF"]
                         },
                         "colormap": {
-                            "type": ["object","null"],
+                            "type": ["object", "null"],
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
                             "default": None
                         },
@@ -401,7 +401,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 },
                 "netCDF": {
                     "title": "Network Common Data Form",
-                    "gis_data_types": ["other","raster"],  # TODO: also "raster", "vector", "table"?
+                    "gis_data_types": ["other", "raster"],  # TODO: also "raster", "vector", "table"?
                     "parameters": {
                         "sample_by_feature": {
                             "type": "boolean",
@@ -409,7 +409,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Set to true to write one output netCDF per feature, containing all bands and dates. Spatial features can be specified using filter_spatial. This setting is used to sample a data cube at multiple locations in a single job."
                         },
                         "feature_id_property": {
-                            "type": ["string","null"],
+                            "type": ["string", "null"],
                             "default": None,
                             "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
                         }
