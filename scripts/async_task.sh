@@ -25,13 +25,13 @@ export AWS_REGION="eu-central-1"
 export AWS_ACCESS_KEY_ID="???"  # TODO: pass as sensitive parameters from Nifi instead
 export AWS_SECRET_ACCESS_KEY="!!!"
 export HADOOP_CONF_DIR="/etc/hadoop/conf"
-export OPENEO_VENV_ZIP="https://artifactory.vgt.vito.be/auxdata-public/openeo/dev/openeo-venv38-20220510-183.zip"
+export OPENEO_VENV_ZIP="https://artifactory.vgt.vito.be/auxdata-public/openeo/dev/openeo-venv38-20220512-194.zip"
 export OPENEO_SPARK_SUBMIT_PY_FILES="$pyfiles"
 export PYSPARK_PYTHON="$(which python)"
 export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE="vito-docker-private.artifactory.vgt.vito.be/python38-hadoop:latest"
 
 extensions_jar="$(bash geotrellis-extensions-jar.sh)"
-logging_jar="openeo-logging-2.3.0_2.12-SNAPSHOT.jar"
+logging_jar="$(bash openeo-logging-jar.sh)"
 classpath="$extensions_jar:$logging_jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$(hadoop classpath)"
 
 export KRB5CCNAME=/tmp/krb5cc_openeo
