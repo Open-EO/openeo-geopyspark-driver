@@ -26,7 +26,8 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
-from shapely.geometry import GeometryCollection, Point, Polygon
+from pystac import Collection
+from shapely.geometry import box, GeometryCollection, Point, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band
@@ -42,7 +43,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
                                   ServiceUnsupportedException)
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
-from openeo_driver.util.utm import area_in_square_meters
+from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
@@ -496,18 +497,50 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def load_result(self, job_id: str, user_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
-        timestamped_paths = {asset["href"]: asset.get("datetime")
-                             for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
-                             if asset["type"] == "image/tiff; application=geotiff"}
+        if job_id.startswith("http://") or job_id.startswith("https://"):
+            job_results_canonical_url = job_id
+            job_results = Collection.from_file(href=job_results_canonical_url)
 
-        if len(timestamped_paths) == 0:
-            raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
-                                     status_code=501)
+            timestamped_uris = {asset.get_absolute_href(): item.datetime.isoformat()
+                                for item in job_results.get_items()
+                                for asset in item.get_assets().values()
+                                if asset.media_type == "image/tiff; application=geotiff"}
 
-        if not all(timestamp is not None for timestamp in timestamped_paths.values()):
-            raise OpenEOApiException(
-                message=f"Cannot load results of job {job_id} because they lack timestamp information.",
-                status_code=400)
+            def load_spatial_bounds_from_job_results():
+                def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
+                    from pyproj import Transformer
+                    transform = Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
+                    xmin, ymin = transform(xx=bbox[0], yy=bbox[1])
+                    xmax, ymax = transform(xx=bbox[2], yy=bbox[3])
+                    return [xmin, ymin, xmax, ymax]
+
+                overall_spatial_extent = job_results.extent.spatial.bboxes[0]
+                best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
+                return reproject(overall_spatial_extent, 4326, best_epsg), best_epsg
+
+            load_spatial_bounds = load_spatial_bounds_from_job_results
+
+        else:
+            timestamped_paths = {asset["href"]: asset.get("datetime")
+                                 for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
+                                 if asset["type"] == "image/tiff; application=geotiff"}
+
+            if len(timestamped_paths) == 0:
+                raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
+                                         status_code=501)
+
+            if not all(timestamp is not None for timestamp in timestamped_paths.values()):
+                raise OpenEOApiException(
+                    message=f"Cannot load results of job {job_id} because they lack timestamp information.",
+                    status_code=400)
+
+            timestamped_uris = timestamped_paths
+
+            def load_spatial_bounds_from_job_info():
+                job_info = self.batch_jobs.get_job_info(job_id, user_id)
+                return [job_info.bbox[0], job_info.bbox[1], job_info.bbox[2], job_info.bbox[3]], job_info.epsg
+
+            load_spatial_bounds = load_spatial_bounds_from_job_info()
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -540,22 +573,22 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
         jvm = gateway.jvm
 
-        job_info = self.batch_jobs.get_job_info(job_id, user_id)
-        pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(timestamped_paths)
+        pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if single_level:
+            existing_bbox, existing_epsg = load_spatial_bounds()
+
             if spatial_bounds_present:
                 extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
             else:
-                extent = jvm.geotrellis.vector.Extent(
-                    float(job_info.bbox[0]), float(job_info.bbox[1]), float(job_info.bbox[2]), float(job_info.bbox[3]))
+                extent = jvm.geotrellis.vector.Extent(*[float(value) for value in existing_bbox])
                 crs = "EPSG:4326"
 
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
             projected_polygons = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
-                                  .reproject(projected_polygons, job_info.epsg))
+                                  .reproject(projected_polygons, existing_epsg))
 
             metadata_properties = None
             correlation_id = None
