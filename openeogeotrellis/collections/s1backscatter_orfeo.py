@@ -197,7 +197,7 @@ class S1BackscatterOrfeo:
     }
 
     @staticmethod
-    def _get_sar_calibration_lut( coefficient: str) -> str:
+    def _get_sar_calibration_lut(coefficient: str) -> str:
         try:
             return S1BackscatterOrfeo._coefficient_mapping[coefficient]
         except KeyError:
@@ -497,13 +497,17 @@ class S1BackscatterOrfeo:
         bands = bands or ["VH", "VV"]
 
         if sar_backscatter_arguments.mask:
-            raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: mask band is not supported for "
+                                              "collection {c}".format(c=collection_id))
         if sar_backscatter_arguments.contributing_area:
-            raise FeatureUnsupportedException("sar_backscatter: contributing_area band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: contributing_area band is not supported for "
+                                              "collection {c}".format(c=collection_id))
         if sar_backscatter_arguments.local_incidence_angle:
-            raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported for "
+                                              "collection {c}".format(c=collection_id))
         if sar_backscatter_arguments.ellipsoid_incidence_angle:
-            raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported for "
+                                              "collection {c}".format(c=collection_id))
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
@@ -674,13 +678,17 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         bands = bands or ["VH", "VV"]
         sar_calibration_lut = self._get_sar_calibration_lut(sar_backscatter_arguments.coefficient)
         if sar_backscatter_arguments.mask:
-            raise FeatureUnsupportedException("sar_backscatter: mask band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: mask band is not supported for "
+                                              "collection {c}".format(c=collection_id))
         if sar_backscatter_arguments.contributing_area:
-            raise FeatureUnsupportedException("sar_backscatter: contributing_area band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: contributing_area band is not supported for "
+                                              "collection {c}".format(c=collection_id))
         if sar_backscatter_arguments.local_incidence_angle:
-            raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: local_incidence_angle band is not supported for "
+                                              "collection {c}".format(c=collection_id))
         if sar_backscatter_arguments.ellipsoid_incidence_angle:
-            raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported")
+            raise FeatureUnsupportedException("sar_backscatter: ellipsoid_incidence_angle band is not supported for "
+                                              "collection {c}".format(c=collection_id))
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)

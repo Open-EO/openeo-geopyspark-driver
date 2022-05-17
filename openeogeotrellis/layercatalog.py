@@ -407,7 +407,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     dataset_id,
                     client_id,
                     client_secret,
-                    sentinel_hub.processing_options(sar_backscatter_arguments) if sar_backscatter_arguments else {},
+                    sentinel_hub.processing_options(collection_id,
+                                                    sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,
                     cell_size,
                     soft_errors

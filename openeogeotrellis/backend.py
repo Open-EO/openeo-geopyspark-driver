@@ -1430,7 +1430,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if card4l:
                         # TODO: not obvious but this does the validation as well
-                        dem_instance = sentinel_hub.processing_options(sar_backscatter_arguments).get('demInstance')
+                        dem_instance = sentinel_hub.processing_options(collection_id, sar_backscatter_arguments)\
+                            .get('demInstance')
 
                         # these correspond to the .start_card4l_batch_processes arguments
                         batch_request_cache_key = (
@@ -1482,8 +1483,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         can_cache = layer_source_info.get('cacheable', False)
                         cache = try_cache and can_cache
 
-                        processing_options = (sentinel_hub.processing_options(
-                            sar_backscatter_arguments) if sar_backscatter_arguments else {})
+                        processing_options = (sentinel_hub.processing_options(collection_id, sar_backscatter_arguments)
+                                              if sar_backscatter_arguments else {})
 
                         # these correspond to the .start_batch_process/start_batch_process_cached arguments
                         batch_request_cache_key = (
