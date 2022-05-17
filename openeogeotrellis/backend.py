@@ -1010,7 +1010,7 @@ class GpsBatchJobs(backend.BatchJobs):
             executor_corerequest = job_options.get("executor-request-cores", "NONE")
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-            max_executors = job_options.get("max-executors", "200")
+            max_executors = job_options.get("max-executors", "100")
             queue = job_options.get("queue", "default")
             profile = job_options.get("profile", "false")
             soft_errors = job_options.get("soft-errors", "false")  # TODO: accept real booleans
