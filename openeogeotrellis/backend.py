@@ -540,7 +540,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 job_info = self.batch_jobs.get_job_info(job_id, user_id)
                 return [job_info.bbox[0], job_info.bbox[1], job_info.bbox[2], job_info.bbox[3]], job_info.epsg
 
-            load_spatial_bounds = load_spatial_bounds_from_job_info()
+            load_spatial_bounds = load_spatial_bounds_from_job_info
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
