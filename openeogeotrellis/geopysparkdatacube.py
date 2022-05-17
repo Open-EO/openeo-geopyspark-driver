@@ -1453,6 +1453,24 @@ class GeopysparkDataCube(DriverDataCube):
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy else directory
 
         if format in ["GTIFF", "PNG"]:
+            def get_color_cmap():
+                if (colormap is not None):
+                    def color_to_int(color):
+                        if isinstance(color, int):
+                            return color
+                        elif isinstance(color, list):
+                            import struct
+                            import builtins
+
+                            color_as_int = struct.unpack('>L',
+                                                         bytes(map(lambda x: builtins.int(x * 255), color)))[0]
+                            return color_as_int
+
+                    converted_colors = {float(k): color_to_int(v) for k, v in colormap.items()}
+                    gpsColormap = gps.ColorMap.build(breaks=converted_colors)
+                    return gpsColormap.cmap
+                return None
+
             if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
                 max_level = max_level.to_spatial_layer()
 
@@ -1491,21 +1509,9 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
-                    if( colormap is not None):
-                        def color_to_int(color):
-                            if isinstance(color,int):
-                                return color
-                            elif isinstance(color,list):
-                                import struct
-                                import builtins
-
-                                color_as_int = struct.unpack('>L',
-                                              bytes(map(lambda x: builtins.int(x * 255), color)))[0]
-                                return color_as_int
-
-                        converted_colors = { float(k):color_to_int(v) for k,v in colormap.items()}
-                        gpsColormap = gps.ColorMap.build(breaks=converted_colors)
-                        gtiff_options.setColorMap(gpsColormap.cmap)
+                    color_cmap = get_color_cmap()
+                    if color_cmap is not None:
+                        gtiff_options.setColorMap(color_cmap)
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
@@ -1593,11 +1599,15 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 if not filename.endswith(".png"):
                     filename = filename + ".png"
+                png_options = self._get_jvm().org.openeo.geotrellis.png.PngOptions()
+                color_cmap = get_color_cmap()
+                if color_cmap is not None:
+                    png_options.setColorMap(color_cmap)
                 if crop_bounds:
                     crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin, crop_bounds.xmax, crop_bounds.ymax)
-                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, crop_extent)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, crop_extent, png_options)
                 else:
-                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename)
+                    self._get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
                 return {
                     str(pathlib.Path(filename).name): {
                         "href": filename,

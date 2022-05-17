@@ -173,6 +173,9 @@ class TestDownload:
     def test_download_geotiff_colormap(self, tmp_path):
         self.download_no_args_single_byte_band(tmp_path, 'gtiff', {'colormap':{"0":0,"1":[0.5,0.1,0.2,0.5],"2":40000}})
 
+    def test_download_png_colormap(self, tmp_path):
+        self.download_no_args_single_byte_band(tmp_path, 'png', {'colormap':{"0":0,"1":[0.5,0.1,0.2,0.5],"2":40000}})
+
     def test_download_masked_geotiff(self, tmp_path):
         self.download_masked(tmp_path, 'gtiff')
 
