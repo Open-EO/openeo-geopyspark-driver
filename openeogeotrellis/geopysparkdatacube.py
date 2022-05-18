@@ -1405,7 +1405,6 @@ class GeopysparkDataCube(DriverDataCube):
         s3_directory = "s3://OpenEO-data{}".format(directory)
         format = format.upper()
         format_options = format_options or {}
-        _log.info("save_result format {f} with options {o}".format(f=format, o=format_options))
         strict_cropping = format_options.get("strict_cropping", True)
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
@@ -1432,6 +1431,7 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             crop_bounds = None
 
+        _log.info(f"save_result format {format} with bounds {crop_bounds} and options {format_options}")
         if self.metadata.temporal_extent:
             date_from, date_to = self.metadata.temporal_extent
             crop_dates = (pd.Timestamp(date_from), pd.Timestamp(date_to))
