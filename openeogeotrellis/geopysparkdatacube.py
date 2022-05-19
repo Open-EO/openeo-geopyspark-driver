@@ -601,15 +601,19 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(reducer,dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
 
-        result_collection = None
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
             udf = reducer.udf_args.get('udf',None)
             context = reducer.udf_args.get('context', {})
             result_collection = self._run_udf_dimension(udf, context, dimension, env)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self._apply_bands_dimension(reducer, context)
-        elif hasattr(reducer,'processes') and isinstance(reducer.processes,dict) and len(reducer.processes) == 1:
-            result_collection = self.reduce(reducer.processes.popitem()[0],dimension)
+        elif self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
+            pysc = gps.get_spark_context()
+            result_collection = self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(
+                    rdd, reducer.builder, context if isinstance(context, dict) else {}
+                )
+            )
         else:
             raise FeatureUnsupportedException(
                 "Unsupported combination of reducer %s and dimension %s." % (reducer, dimension))

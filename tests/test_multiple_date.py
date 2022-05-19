@@ -176,7 +176,6 @@ class TestMultipleDates(TestCase):
         cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         env = EvalEnv()
 
-
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("max"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
@@ -199,13 +198,13 @@ class TestMultipleDates(TestCase):
 
         stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
-        self.assertEqual(0.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(0.2222222, stitched.cells[0][0][1])
+        self.assertEqual(-1.0, stitched.cells[0][0][0])
+        self.assertAlmostEqual(0.3333333333333333, stitched.cells[0][0][1])
 
         stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
-        self.assertEqual(0.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(0.4714045, stitched.cells[0][0][1])
+        self.assertEqual(-1.0, stitched.cells[0][0][0])
+        self.assertAlmostEqual(0.5773502691896257, stitched.cells[0][0][1])
 
     def test_reduce_all_data(self):
         input = Pyramid({0: self._single_pixel_layer({
@@ -228,10 +227,10 @@ class TestMultipleDates(TestCase):
         self.assertAlmostEqual(3.0, stitched.cells[0][0][0], delta=0.001)
 
         stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
-        self.assertAlmostEqual(4.0, stitched.cells[0][0][0], delta=0.001)
+        self.assertAlmostEqual(8.0, stitched.cells[0][0][0], delta=0.001)
 
         stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
-        self.assertAlmostEqual(2.0, stitched.cells[0][0][0], delta=0.001)
+        self.assertAlmostEqual(2.8284271, stitched.cells[0][0][0], delta=0.001)
 
     def test_reduce_some_nodata(self):
         no_data = -1.0
