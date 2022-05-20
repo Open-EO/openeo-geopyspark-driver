@@ -430,7 +430,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         """
 
 
-        result = imagecollection.apply_tiles_spatiotemporal(udf_code)
+        result = imagecollection.apply_tiles_spatiotemporal(udf_code=udf_code)
         local_tiles = result.pyramid.levels[0].to_numpy_rdd().collect()
         print(local_tiles)
         self.assertEquals(len(TestMultipleDates.layer),len(local_tiles))
@@ -598,7 +598,7 @@ def test_apply_spatiotemporal(udf_code):
         })
     )
 
-    result = imagecollection.apply_tiles_spatiotemporal(udf_code)
+    result = imagecollection.apply_tiles_spatiotemporal(udf_code=udf_code)
     stitched = result.pyramid.levels[0].to_spatial_layer().stitch()
     print(stitched)
 
