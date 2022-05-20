@@ -27,20 +27,24 @@ def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
         import faulthandler
         faulthandler.enable()
+        enable_logging = True
         try:
             from spark_memlogger import memlogger
         except ImportError:
-            return function(*args, **kwargs)
+            enable_logging = False
 
-        ml = memlogger.MemLogger(5,api_version_auto_timeout_ms=60000)
-        try:
+        if enable_logging:
+            ml = memlogger.MemLogger(5,api_version_auto_timeout_ms=60000)
             try:
-                ml.start()
-            except:
-                logger.warning("Error while configuring memory logging, will not be available!", exc_info=True)
+                try:
+                    ml.start()
+                except:
+                    logger.warning("Error while configuring memory logging, will not be available!", exc_info=True)
+                return function(*args, **kwargs)
+            finally:
+                ml.stop()
+        else:
             return function(*args, **kwargs)
-        finally:
-            ml.stop()
 
     return memory_logging_wrapper
 
@@ -99,7 +103,7 @@ def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
     result = a.copy()
     for key, value in b.items():
         if key in result:
-            if isinstance(value, collections.Mapping) and isinstance(result[key], collections.Mapping):
+            if isinstance(value, Mapping) and isinstance(result[key], Mapping):
                 result[key] = dict_merge_recursive(result[key], value, overwrite=overwrite)
             elif overwrite:
                 result[key] = value
