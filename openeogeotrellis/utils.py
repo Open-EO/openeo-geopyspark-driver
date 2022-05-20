@@ -103,7 +103,7 @@ def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
     result = a.copy()
     for key, value in b.items():
         if key in result:
-            if isinstance(value, Mapping) and isinstance(result[key], Mapping):
+            if isinstance(value, collections.Mapping) and isinstance(result[key], collections.Mapping):
                 result[key] = dict_merge_recursive(result[key], value, overwrite=overwrite)
             elif overwrite:
                 result[key] = value
