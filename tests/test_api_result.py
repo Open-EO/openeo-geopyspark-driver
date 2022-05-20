@@ -1081,7 +1081,7 @@ def test_udf_invalid_signature(api100, user_defined_process_registry, udf_code):
     })
 
     # TODO: improve status code, error code and message
-    response.assert_error(status_code=500, error_code=None, message="No UDF found")
+    response.assert_error(status_code=500, error_code="Internal", message="No UDF found")
 
 
 class CreoApiMocker:
