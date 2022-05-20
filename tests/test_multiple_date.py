@@ -142,14 +142,14 @@ class TestMultipleDates(TestCase):
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
         ref_path = str(self.temp_folder / "reproj_ref.tiff")
-        imagecollection.reduce('max', dimension="t").save_result(ref_path, format="GTIFF")
+        imagecollection.reduce_dimension(reducer('max'), "t", EvalEnv()).save_result(ref_path, format="GTIFF")
 
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3395",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
-        res = resampled.reduce('max', dimension="t")
+        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
         res.save_result(path, format="GTIFF")
 
         with rasterio.open(ref_path) as ref_ds:
@@ -181,17 +181,17 @@ class TestMultipleDates(TestCase):
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(2.0, stitched.cells[0][0][1])
 
-        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("min"), env=env).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t", reducer=reducer("min"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(1.0, stitched.cells[0][0][1])
 
-        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("sum"), env=env).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t", reducer=reducer("sum"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertEqual(4.0, stitched.cells[0][0][1])
 
-        stitched = cube.reduce_dimension(dimension="t",reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
+        stitched = cube.reduce_dimension(dimension="t", reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
         self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
@@ -239,27 +239,28 @@ class TestMultipleDates(TestCase):
             datetime.datetime.strptime("2016-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): no_data,
             datetime.datetime.strptime("2017-04-24T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ'): 5.0
         }, no_data)})
+        env = EvalEnv()
 
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
-        stitched = imagecollection.reduce("min", dimension="t").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer("min"), dimension="t", env=env).pyramid.levels[0].stitch()
         #print(stitched)
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("max", dimension="t").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer("max"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("sum", dimension="t").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer("sum"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertEqual(5.0, stitched.cells[0][0][0])
 
-        stitched = imagecollection.reduce("mean", dimension="t").pyramid.levels[0].stitch()
+        stitched = imagecollection.reduce_dimension(reducer("mean"), dimension="t", env=env).pyramid.levels[0].stitch()
         self.assertAlmostEqual(5.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce("variance", dimension="t").pyramid.levels[0].stitch()
-        self.assertAlmostEqual(0.0, stitched.cells[0][0][0], delta=0.001)
+        stitched = imagecollection.reduce_dimension(reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
+        self.assertAlmostEqual(-1.0, stitched.cells[0][0][0], delta=0.001)
 
-        stitched = imagecollection.reduce("sd", dimension="t").pyramid.levels[0].stitch()
-        self.assertAlmostEqual(0.0, stitched.cells[0][0][0], delta=0.001)
+        stitched = imagecollection.reduce_dimension(reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
+        self.assertAlmostEqual(-1.0, stitched.cells[0][0][0], delta=0.001)
 
     def test_reduce_tiles(self):
         print("======")
@@ -313,7 +314,7 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         with self.assertRaises(FeatureUnsupportedException) as context:
-            imagecollection.reduce("max", dimension="gender").pyramid.levels[0].stitch()
+            imagecollection.reduce_dimension(reducer("max"), dimension="gender", env=EvalEnv()).pyramid.levels[0].stitch()
         print(context.exception)
 
     def test_aggregate_temporal(self):
@@ -366,9 +367,9 @@ class TestMultipleDates(TestCase):
         input = Pyramid( {0:self.tiled_raster_rdd })
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
-        layer = imagecollection.reduce('max', dimension='t').pyramid.levels[0]
+        layer = imagecollection.reduce_dimension(reducer('max'), dimension='t', env=EvalEnv()).pyramid.levels[0]
         stitched = layer.stitch()
-        assert CellType.FLOAT32.value == layer.layer_metadata.cell_type
+        assert 'float32ud-1.0' == layer.layer_metadata.cell_type
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
@@ -450,10 +451,12 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         mask_cube = GeopysparkDataCube(pyramid=mask)
-        stitched = cube.mask(mask=mask_cube).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.mask(mask=mask_cube)\
+            .reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())\
+            .pyramid.levels[0].stitch()
         print(stitched)
         assert stitched.cells[0][0][0] == 2.0
-        assert np.isnan(stitched.cells[0][0][1])
+        assert stitched.cells[0][0][1] == -1.0
 
     def test_mask_raster_replacement_float(self):
         def createMask(tile):
@@ -466,7 +469,9 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         mask_cube = GeopysparkDataCube(pyramid=mask)
-        stitched = cube.mask(mask=mask_cube, replacement=10.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.mask(mask=mask_cube, replacement=10.0)\
+            .reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())\
+            .pyramid.levels[0].stitch()
         print(stitched)
         assert stitched.cells[0][0][0] == 2.0
         assert stitched.cells[0][0][1] == 10.0
@@ -482,7 +487,9 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
         mask_cube = GeopysparkDataCube(pyramid=mask)
-        stitched = cube.mask(mask=mask_cube, replacement=10).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        stitched = cube.mask(mask=mask_cube, replacement=10)\
+            .reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())\
+            .pyramid.levels[0].stitch()
         print(stitched)
         assert stitched.cells[0][0][0] == 2.0
         assert stitched.cells[0][0][1] == 10.0
@@ -492,7 +499,8 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         input = Pyramid({0: self.tiled_raster_rdd})
         img = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-        stitched = img.apply_kernel(kernel, 2.0).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        stitched = img.apply_kernel(kernel, 2.0)\
+            .reduce_dimension(reducer('max'), dimension="t", env=EvalEnv()).pyramid.levels[0].stitch()
 
         assert stitched.cells[0][0][0] == 12.0
         assert stitched.cells[0][0][1] == 16.0
@@ -503,7 +511,9 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         input = Pyramid({0: self.tiled_raster_rdd})
         img = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-        stitched = img.apply_kernel(kernel).reduce('max', dimension="t").pyramid.levels[0].stitch()
+        stitched = img.apply_kernel(kernel)\
+            .reduce_dimension(reducer('max'), dimension="t", env=EvalEnv)\
+            .pyramid.levels[0].stitch()
 
         assert stitched.cells[0][0][0] == 6.0
         assert stitched.cells[0][0][1] == 8.0
@@ -517,8 +527,8 @@ def rct_savitzky_golay(udf_data:UdfData):
         resampled = imagecollection.resample_spatial(resolution=0.05)
 
         path = str(self.temp_folder / "resampled.tiff")
-        res = resampled.reduce('max', dimension="t")
-        res.save_result(path, format="GTIFF" )
+        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
+        res.save_result(path, format="GTIFF")
 
         import rasterio
         with rasterio.open(path) as ds:

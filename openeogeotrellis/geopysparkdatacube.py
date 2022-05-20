@@ -277,29 +277,6 @@ class GeopysparkDataCube(DriverDataCube):
             return self._run_udf_dimension(udf, context, dimension, env)
         raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
 
-    def reduce(self, reducer: str, dimension: str) -> 'GeopysparkDataCube':
-        # TODO: rename this to reduce_temporal (because it only supports temporal reduce)?
-        from .numpy_aggregators import var_composite, std_composite, min_composite, max_composite, sum_composite, median_composite, product_composite
-
-        reducer = self._normalize_temporal_reducer(dimension, reducer)
-
-        if reducer == 'Variance':
-            return self._aggregate_over_time_numpy(var_composite)
-        elif reducer == 'StandardDeviation':
-            return self._aggregate_over_time_numpy(std_composite)
-        elif reducer == 'Min':
-            return self._aggregate_over_time_numpy(min_composite)
-        elif reducer == 'Max':
-            return self._aggregate_over_time_numpy(max_composite)
-        elif reducer == 'Sum':
-            return self._aggregate_over_time_numpy(sum_composite)
-        elif reducer == 'Product':
-            return self._aggregate_over_time_numpy(product_composite)
-        elif reducer == 'Median':
-            return self._aggregate_over_time_numpy(median_composite)
-        else:
-            return self.apply_to_levels(lambda layer: layer.to_spatial_layer().aggregate_by_cell(reducer))
-
     def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
         """
         TODO Define in super class? API is not yet ready for client side...
