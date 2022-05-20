@@ -437,7 +437,7 @@ class TestBatchJobs:
             assert batch_job_args[11:17] == ['8G', '2G', '3G', '5', '2', '2G']
             assert batch_job_args[17:22] == [
                 'default', 'false', '[]',
-                "__pyfiles__/custom_processes.py,foolib.whl", '200'
+                "__pyfiles__/custom_processes.py,foolib.whl", '100'
             ]
             assert batch_job_args[22:24] == [TEST_USER, job_id]
             assert batch_job_args[24] == 'false'
@@ -555,7 +555,7 @@ class TestBatchJobs:
             assert batch_job_args[11:17] == ['3g', '11g', '3G', '5', '4', '10000G']
             assert batch_job_args[17:22] == [
                 'somequeue', 'false', '[]',
-                '__pyfiles__/custom_processes.py,foolib.whl', '200'
+                '__pyfiles__/custom_processes.py,foolib.whl', '100'
             ]
             assert batch_job_args[22:24] == [TEST_USER, job_id]
             assert batch_job_args[24] == 'false'
