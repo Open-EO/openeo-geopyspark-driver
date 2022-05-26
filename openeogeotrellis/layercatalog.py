@@ -363,15 +363,20 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date))
             else:
                 if collection_id == 'PLANETSCOPE':
-                    (condition, byoc_id) = metadata_properties().get('byoc_id', (None, None))
-                    if condition == "eq":
-                        # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
-                        dataset_id = byoc_id
-                        del load_params.properties['byoc_id']
+
+                    if 'byoc_collection_id' in feature_flags:
+                        shub_collection_id = feature_flags['byoc_collection_id']
+                        dataset_id = shub_collection_id
                     else:
-                        raise OpenEOApiException(code="MissingByocId", status_code=400,
-                                                 message="Collection id is PLANETSCOPE but properties parameter does "
-                                                         "not specify a byoc id.")
+                        (condition, byoc_id) = metadata_properties().get('byoc_id', (None, None))
+                        if condition == "eq":
+                            # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
+                            dataset_id = byoc_id
+                            del load_params.properties['byoc_id']
+                        else:
+                            raise OpenEOApiException(code="MissingByocId", status_code=400,
+                                                     message="Collection id is PLANETSCOPE but properties parameter does "
+                                                             "not specify a byoc id.")
                 else:
                     shub_collection_id = layer_source_info.get('collection_id')
                     dataset_id = layer_source_info['dataset_id']
