@@ -368,7 +368,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         shub_collection_id = feature_flags['byoc_collection_id']
                         dataset_id = shub_collection_id
                     else:
-                        (condition, byoc_id) = metadata_properties().get('byoc_id', (None, None))
+                        (condition, byoc_id) = metadata_properties(flatten_eqs=False).get('byoc_id', (None, None))
                         if condition == "eq":
                             # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
                             dataset_id = byoc_id
