@@ -1,7 +1,11 @@
-import sys
 import importlib
 import logging
 import socket
+import sys
+import os
+from kazoo.client import KazooClient
+
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.traefik import Traefik
 
 _log = logging.getLogger(__name__)
@@ -29,16 +33,18 @@ def get_socket() -> (str, int):
 
 
 def update_zookeeper(host: str, port: int, env: str) -> None:
-    from kazoo.client import KazooClient
-    from openeogeotrellis.configparams import ConfigParams
-
     cluster_id = 'openeo-' + env
+    server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
+
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
     zk.start()
-
     try:
-        Traefik(zk).add_load_balanced_server(cluster_id=cluster_id, server_id="0", host=host, port=port,
-                                             environment=env)
+        Traefik(zk).add_load_balanced_server(
+            cluster_id=cluster_id,
+            server_id=server_id,
+            host=host, port=port,
+            environment=env,
+        )
     finally:
         zk.stop()
         zk.close()
