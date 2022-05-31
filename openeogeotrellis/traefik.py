@@ -55,6 +55,7 @@ class Traefik:
                            "PathPrefix(`/openeo`,`/.well-known/openeo`)"
 
         self._create_tservice_server(tservice_id=cluster_id, server_id=server_id, host=host, port=port)
+        self._setup_load_balancer_health_check(tservice_id=cluster_id)
         self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, matcher=match_openeo, priority=100)
 
         self._trigger_configuration_update()
@@ -81,10 +82,17 @@ class Traefik:
         self._trigger_configuration_update()
 
     def _create_tservice_server(self, tservice_id, server_id, host, port) -> None:
-        tsservice_key = self._tservice_key(tservice_id)
-        url_key = f"{tsservice_key}/loadBalancer/servers/{server_id}/url"
+        tservice_key = self._tservice_key(tservice_id)
+        url_key = f"{tservice_key}/loadBalancer/servers/{server_id}/url"
         url = f"http://{host}:{port}"
         self._zk_merge(url_key, url.encode())
+
+    def _setup_load_balancer_health_check(self, tservice_id: str):
+        tservice_key = self._tservice_key(tservice_id)
+        self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/path", b"/openeo/1.0/health")
+        self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/interval", b"60s")
+        # TODO: very liberal timeout for now
+        self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/timeout", b"20s")
 
     def _create_router_rule(self, router_id, tservice_id, matcher, priority: int, *middleware_ids):
         router_key = self._router_key(router_id)
