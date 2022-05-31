@@ -399,10 +399,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_band_names.append('localIncidenceAngle')
 
                 band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
-                cell_size = (jvm.geotrellis.raster.CellSize(min([float(gsd[0]) for gsd in band_gsds]),
-                                                            min([float(gsd[1]) for gsd in band_gsds]))
-                             if len(band_gsds) > 0
-                             else jvm.geotrellis.raster.CellSize(cell_width, cell_height))
+
+                if len(band_gsds) > 0:
+                    def highest_resolution(band_gsd, coordinate_index):
+                        return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
+                                else band_gsd[coordinate_index])
+
+                    x_res = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
+                    y_res = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
+                    cell_size = jvm.geotrellis.raster.CellSize(x_res, y_res)
+                else:
+                    cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 soft_errors = env.get("soft_errors", False)
 
