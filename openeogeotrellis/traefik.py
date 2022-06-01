@@ -1,5 +1,9 @@
-from kazoo.client import KazooClient
+import logging
 import uuid
+
+from kazoo.client import KazooClient
+
+_log = logging.getLogger(__name__)
 
 
 class Traefik:
@@ -85,10 +89,12 @@ class Traefik:
         tservice_key = self._tservice_key(tservice_id)
         url_key = f"{tservice_key}/loadBalancer/servers/{server_id}/url"
         url = f"http://{host}:{port}"
+        _log.info(f"Create service {url_key}: {url}")
         self._zk_merge(url_key, url.encode())
 
     def _setup_load_balancer_health_check(self, tservice_id: str):
         tservice_key = self._tservice_key(tservice_id)
+        _log.info(f"Setup loadBalancer healthCheck for {tservice_key}")
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/path", b"/openeo/1.0/health")
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/interval", b"60s")
         # TODO: very liberal timeout for now
@@ -96,6 +102,7 @@ class Traefik:
 
     def _create_router_rule(self, router_id, tservice_id, matcher, priority: int, *middleware_ids):
         router_key = self._router_key(router_id)
+        _log.info(f"Create router rule for {router_key}")
 
         self._zk_merge(f"{router_key}/entrypoints", b"web")
         self._zk_merge(f"{router_key}/service", tservice_id.encode())
