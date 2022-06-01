@@ -1396,7 +1396,7 @@ class GeopysparkDataCube(DriverDataCube):
         s3_directory = "s3://OpenEO-data{}".format(directory)
         format = format.upper()
         format_options = format_options or {}
-        strict_cropping = format_options.get("strict_cropping", True)
+        strict_cropping = format_options.get("strict_cropping",False if format == "NETCDF" else True)
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution
@@ -1419,8 +1419,12 @@ class GeopysparkDataCube(DriverDataCube):
                 src_crs="+init=" + crs, dst_crs=max_level.layer_metadata.crs,
                 xmin=bbox["west"], ymin=bbox["south"], xmax=bbox["east"], ymax=bbox["north"]
             )
+            crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin,
+                                                                   crop_bounds.xmax, crop_bounds.ymax)
         else:
             crop_bounds = None
+            crop_extent = None
+
 
         _log.info(f"save_result format {format} with bounds {crop_bounds} and options {format_options}")
         if self.metadata.temporal_extent:
@@ -1508,10 +1512,7 @@ class GeopysparkDataCube(DriverDataCube):
                         band_count = len(self.metadata.band_dimension.band_names)
                         for index, band_name in enumerate(self.metadata.band_dimension.band_names):
                             gtiff_options.addBandTag(index, "DESCRIPTION", band_name)
-                    if crop_bounds:
-                        crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin,crop_bounds.ymin,crop_bounds.xmax,crop_bounds.ymax)
-                    else:
-                        crop_extent = None
+
                     bands = []
                     if self.metadata.has_band_dimension():
                         bands = [b._asdict() for b in self.metadata.bands]
@@ -1653,19 +1654,31 @@ class GeopysparkDataCube(DriverDataCube):
                 if not stitch:
                     originalName = pathlib.Path(filename)
                     filename = save_directory + "/" + ("openEO.nc" if originalName.name == "out" else originalName.name)
-                    if(max_level.layer_type != gps.LayerType.SPATIAL):
-                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(max_level.srdd.rdd(),
-                            filename,
-                            band_names,
-                            dim_names,global_metadata,zlevel
+                    if strict_cropping:
+                        options = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                        options.setBandNames(band_names)
+                        options.setDimensionNames(dim_names)
+                        options.setAttributes(global_metadata)
+                        options.setZLevel(zlevel)
+                        options.setCropBounds(crop_extent)
+                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
+                            max_level.srdd.rdd(),
+                            filename,options
                         )
                     else:
-                        asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
-                            max_level.srdd.rdd(),
-                            filename,
-                            band_names,
-                            dim_names, global_metadata, zlevel
+                        if(max_level.layer_type != gps.LayerType.SPATIAL):
+                            asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(max_level.srdd.rdd(),
+                                filename,
+                                band_names,
+                                dim_names,global_metadata,zlevel
                             )
+                        else:
+                            asset_paths = self._get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
+                                max_level.srdd.rdd(),
+                                filename,
+                                band_names,
+                                dim_names, global_metadata, zlevel
+                                )
                     return self.return_netcdf_assets(asset_paths, bands, nodata)
 
                 else:
