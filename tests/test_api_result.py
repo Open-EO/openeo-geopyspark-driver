@@ -5,9 +5,12 @@ from typing import List
 
 import numpy as np
 import pytest
+import rasterio
 from numpy.testing import assert_equal
 
 from openeo_driver.testing import TEST_USER
+from shapely.geometry import box, mapping
+
 from openeogeotrellis.testing import random_name
 from openeogeotrellis.utils import get_jvm, UtcNowClock
 
@@ -1254,3 +1257,70 @@ def test_load_collection_open_temporal_extent(api100, temporal_extent, expected)
     assert result["dims"] == ["t", "bands", "x", "y"]
     dates = result["coords"]["t"]["data"]
     assert (min(dates), max(dates)) == expected
+
+
+def test_apply_neighborhood_filter_spatial(api100, tmp_path):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/147
+    @param api100:
+    @param tmp_path:
+    @return:
+    """
+    graph = {
+        "abs": {
+            "arguments": {
+                "p": {
+                    "from_argument": "data"
+                },
+                "base": 2
+            },
+            "process_id": "power",
+            "result": True
+        }
+    }
+
+    response = api100.check_result({
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2020-03-01", "2020-03-10"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 32.0, "north": 32.0},
+                "bands": ["Longitude", "Day"]
+            },
+        },
+        "apply_neighborhood": {
+            "process_id": "apply_neighborhood",
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "process": {"process_graph": graph},
+                "size": [{'dimension': 'x', 'unit': 'px', 'value': 32},
+                         {'dimension': 'y', 'unit': 'px', 'value': 32},
+                         {'dimension': 't', 'value': 'P1D'}],
+                "overlap": [{'dimension': 'x', 'unit': 'px', 'value': 1},
+                            {'dimension': 'y', 'unit': 'px', 'value': 1}],
+            },
+            "result": False
+        },
+        "filter": {
+            "process_id": "filter_spatial",
+            "arguments": {"data": {"from_node": "apply_neighborhood"},
+                          "geometries": mapping(box(10,10,11,11))
+                          },
+            "result": False,
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "filter"}, "format": "GTiff", "options":{"strict_cropping":True}},
+            "result": True,
+        }
+    })
+    with open(tmp_path / "apply_neighborhood.tif","wb") as f:
+        f.write(response.data)
+
+    with rasterio.open(tmp_path / "apply_neighborhood.tif") as ds:
+        print(ds.bounds)
+        assert ds.bounds.right == 11
+        assert ds.width == 4
+
+

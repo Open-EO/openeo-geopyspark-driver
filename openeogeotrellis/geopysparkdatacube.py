@@ -22,6 +22,7 @@ from geopyspark.geotrellis import Extent, ResampleMethod, crs_to_proj4
 from geopyspark.geotrellis.constants import CellType
 from pandas import Series
 from py4j.java_gateway import JVMView
+from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
@@ -207,8 +208,14 @@ class GeopysparkDataCube(DriverDataCube):
         # TODO: support more geometry types but geopyspark.geotrellis.layer.TiledRasterLayer.mask doesn't seem to work
         #  with e.g. GeometryCollection
 
-        # TODO: update metadata?
-        return self.mask_polygon(geometries)
+        max_level = self.get_max_level()
+        layer_crs = max_level.layer_metadata.crs
+        reprojected_polygon = self.__reproject_polygon(geometries, "+init=EPSG:4326" , layer_crs)
+
+        masked = self.mask_polygon(reprojected_polygon)
+        xmin, ymin, xmax, ymax = reprojected_polygon.bounds
+
+        return masked.filter_bbox(xmin,xmax,ymax,ymin,crs=layer_crs)
 
     def filter_bands(self, bands) -> 'GeopysparkDataCube':
         band_indices = [self.metadata.get_band_index(b) for b in bands]
@@ -1416,7 +1423,7 @@ class GeopysparkDataCube(DriverDataCube):
             if isinstance(crs, int):
                 crs = "EPSG:%d" % crs
             crop_bounds = self._reproject_extent(
-                src_crs="+init=" + crs, dst_crs=max_level.layer_metadata.crs,
+                src_crs=CRS.from_user_input(crs), dst_crs=max_level.layer_metadata.crs,
                 xmin=bbox["west"], ymin=bbox["south"], xmax=bbox["east"], ymax=bbox["north"]
             )
             crop_extent = self._get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin,
