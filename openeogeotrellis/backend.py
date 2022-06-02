@@ -290,10 +290,21 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         self._principal = principal
         self._key_tab = key_tab
 
-    def health_check(self) -> str:
-        sc = SparkContext.getOrCreate()
-        count = sc.parallelize([1, 2, 3],2).map(lambda x: x * x).sum()
-        return 'Health check: ' + str(count)
+    def health_check(self, options: Optional[dict] = None) -> dict:
+        mode = (options or {}).get("mode", "spark")
+        if mode == "spark":
+            # Check if we have a working (Py)Spark context
+            sc = SparkContext.getOrCreate()
+            count = sc.parallelize([1, 2, 3], numSlices=2).map(lambda x: x * x).sum()
+            res = {"mode": "spark", "status": "OK" if count == 14 else "FAIL", "count": count}
+        elif mode == "jvm":
+            # Check if we have a working jvm context
+            jvm = gps.get_spark_context()._gateway.jvm
+            pi = jvm.Math.PI
+            res = {"mode": "jvm", "status": "OK" if repr(pi).startswith("3.14") else "FAIL", "pi": repr(jvm.Math.PI)}
+        else:
+            res = {"mode": "basic", "status": "OK"}
+        return res
 
     def oidc_providers(self) -> List[OidcProvider]:
         # TODO Move these providers to config or bootstrap script?

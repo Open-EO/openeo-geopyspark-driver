@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 from unittest import mock
+import pytest
 
 import openeogeotrellis.job_registry
 from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
@@ -20,9 +21,15 @@ def test_file_formats(api100):
     assert "netCDF" in formats["output"]
 
 
-def test_health(api):
-    resp = api.get('/health').assert_status_code(200)
-    assert resp.json == {"health": 'Health check: 14'}
+@pytest.mark.parametrize(["path", "expected"], [
+    ("/health", {"mode": "spark", "status": "OK", "count": 14}),
+    ("/health?mode=spark", {"mode": "spark", "status": "OK", "count": 14}),
+    ("/health?mode=jvm", {"mode": "jvm", "status": "OK", "pi": "3.141592653589793"}),
+    ("/health?mode=basic", {"mode": "basic", "status": "OK"}),
+])
+def test_health_default(api, path, expected):
+    resp = api.get(path).assert_status_code(200)
+    assert resp.json == expected
 
 
 class TestCollections:
