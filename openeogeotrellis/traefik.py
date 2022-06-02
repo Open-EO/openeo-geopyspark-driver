@@ -95,7 +95,10 @@ class Traefik:
     def _setup_load_balancer_health_check(self, tservice_id: str):
         tservice_key = self._tservice_key(tservice_id)
         _log.info(f"Setup loadBalancer healthCheck for {tservice_key}")
-        self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/path", b"/openeo/1.0/health?from=TraefikLoadBalancer")
+        self._zk_merge(
+            f"{tservice_key}/loadBalancer/healthCheck/path",
+            b"/openeo/1.0/health?mode=jvm&from=TraefikLoadBalancer"
+        )
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/interval", b"60s")
         # TODO: very liberal timeout for now
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/timeout", b"20s")
