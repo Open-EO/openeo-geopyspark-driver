@@ -212,7 +212,7 @@ class GeopysparkDataCube(DriverDataCube):
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = self.__reproject_polygon(geometries, "+init=EPSG:4326" , layer_crs)
 
-        masked = self.mask_polygon(reprojected_polygon)
+        masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
         xmin, ymin, xmax, ymax = reprojected_polygon.bounds
 
         return masked.filter_bbox(xmin,xmax,ymax,ymin,crs=layer_crs)
@@ -892,7 +892,7 @@ class GeopysparkDataCube(DriverDataCube):
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = self.__reproject_polygon(mask, "+init=" + srs, layer_crs)
+        reprojected_polygon = self.__reproject_polygon(mask,CRS.from_user_input(srs), layer_crs)
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         return self.apply_to_levels(lambda rdd: rdd.mask(
