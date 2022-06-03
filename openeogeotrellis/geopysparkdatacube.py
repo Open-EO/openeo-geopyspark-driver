@@ -528,12 +528,12 @@ class GeopysparkDataCube(DriverDataCube):
                 return (key, value)
 
             b = rdd.layer_metadata.bounds
-            rows = b.maxKey.row - b.minKey.row
-            partitions = (b.maxKey.col - b.minKey.col) * (rows)
+            rows = b.maxKey.row - b.minKey.row + 1
+            partitions = (b.maxKey.col - b.minKey.col + 1) * (rows)
+
             def partitionByKey(spatialkey):
                 """
                 Try having one partition per timeseries to bring memory to a minimum
-
                 """
                 try:
                     return rows * (spatialkey.col-b.minKey.col) + (spatialkey.row-b.minKey.row)
