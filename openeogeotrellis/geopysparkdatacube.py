@@ -527,8 +527,22 @@ class GeopysparkDataCube(DriverDataCube):
                 value: Tuple[SpaceTimeKey, Tile] = (tile[0], tile[1])
                 return (key, value)
 
+            b = rdd.layer_metadata.bounds
+            rows = b.maxKey.row - b.minKey.row
+            partitions = (b.maxKey.col - b.minKey.col) * (rows)
+            def partitionByKey(spatialkey):
+                """
+                Try having one partition per timeseries to bring memory to a minimum
+
+                """
+                try:
+                    return rows * (spatialkey.col-b.minKey.col) + (spatialkey.row-b.minKey.row)
+                except Exception as e:
+                    import pyspark
+                    hashPartitioner = pyspark.rdd.portable_hash
+                    return hashPartitioner(tuple)
             # Group all tiles by SpatialKey. Save the SpaceTimeKey in the value with the Tile.
-            spatially_grouped = float_rdd.map(lambda tile: to_spatial_key(tile)).groupByKey()
+            spatially_grouped = float_rdd.map(lambda tile: to_spatial_key(tile)).groupByKey(numPartitions=partitions,partitionFunc=partitionByKey)
 
             # Apply the tile_function to all tiles with the same spatial key.
             numpy_rdd = spatially_grouped.flatMap(
