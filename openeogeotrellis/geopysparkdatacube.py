@@ -43,6 +43,8 @@ from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTile
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons, log_memory
 from openeogeotrellis._version import __version__ as softwareversion
+
+
 from shapely.geometry.base import BaseGeometry
 
 _log = logging.getLogger(__name__)
@@ -215,7 +217,13 @@ class GeopysparkDataCube(DriverDataCube):
         masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
         xmin, ymin, xmax, ymax = reprojected_polygon.bounds
 
-        return masked.filter_bbox(xmin,xmax,ymax,ymin,crs=layer_crs)
+        crop_extent = self._get_jvm().geotrellis.vector.Extent(xmin, ymin, xmax, ymax)
+        crop = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().crop
+
+        return masked._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: crop(rdd,crop_extent),
+            metadata=self.metadata.filter_bbox(west=xmin, south=ymin, east=xmax, north=ymax, crs=layer_crs)
+        )
 
     def filter_bands(self, bands) -> 'GeopysparkDataCube':
         band_indices = [self.metadata.get_band_index(b) for b in bands]
