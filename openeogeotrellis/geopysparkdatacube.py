@@ -218,7 +218,7 @@ class GeopysparkDataCube(DriverDataCube):
         xmin, ymin, xmax, ymax = reprojected_polygon.bounds
 
         crop_extent = self._get_jvm().geotrellis.vector.Extent(xmin, ymin, xmax, ymax)
-        crop = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().crop
+        crop = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().crop_metadata
 
         return masked._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: crop(rdd,crop_extent),
