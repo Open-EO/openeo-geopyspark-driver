@@ -4,23 +4,8 @@
 
 set -eo pipefail
 
-if [ -z "${BATCH_JOBS_ZOOKEEPER_ROOT_PATH}" ]; then
-    >&2 echo "Environment variable BATCH_JOBS_ZOOKEEPER_ROOT_PATH is not set"
-    exit 1
-fi
-
-if [ -z "${AWS_ACCESS_KEY_ID}" ]; then
-    >&2 echo "Environment variable AWS_ACCESS_KEY_ID is not set"
-    exit 1
-fi
-
-if [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
-    >&2 echo "Environment variable AWS_SECRET_ACCESS_KEY is not set"
-    exit 1
-fi
-
-if [ -z "${HADOOP_CLASSPATH}" ]; then
-    >&2 echo "Environment variable HADOOP_CLASSPATH is not set"
+if [ "$#" -lt 4 ]; then
+    >&2 echo "Usage: $0 <batch jobs Zookeeper root path> <Hadoop classpath> <AWS access key ID> <AWS secret access key>"
     exit 1
 fi
 
@@ -29,9 +14,17 @@ if [ -z "${SPARK_HOME}" ]; then
     exit 1
 fi
 
-export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages"
-export AWS_REGION="eu-central-1"
+batch_jobs_zookeeper_root_path=$1
+hadoop_classpath=$2
+aws_access_key_id=$3
+aws_secret_access_key=$4
 
-classpath="geotrellis-extensions-static.jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$HADOOP_CLASSPATH"
+export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages"
+export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
+export AWS_REGION="eu-central-1"
+export AWS_ACCESS_KEY_ID=$aws_access_key_id
+export AWS_SECRET_ACCESS_KEY=$aws_secret_access_key
+
+classpath="geotrellis-extensions-static.jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$hadoop_classpath"
 
 python3 -m openeogeotrellis.cleaner --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" 2>&1
