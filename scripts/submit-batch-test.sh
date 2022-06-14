@@ -29,7 +29,7 @@ spark-submit \
  --conf spark.driver.cores=18 \
  --driver-java-options "-Dscala.concurrent.context.maxThreads=2" \
  --principal mep_tsviewer@VGT.VITO.BE --keytab mep_tsviewer.keytab \
-  --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
+ --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellisaccumulo.SerializableConfiguration \
  --conf spark.kryoserializer.buffer.max=512m \
  --conf spark.rpc.message.maxSize=200 \
@@ -51,8 +51,10 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
- --files layercatalog.json,"${graph}" \
+ --conf spark.executor.extraClassPath=/opt/* \
+ --conf spark.driver.extraClassPath=/opt/* \
+ --files layercatalog.json,"${graph}",/opt/openeo-logging-static.jar \
  --archives "${hdfsVenvZip}#venv" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
- --jars ${extensions},${backend_assembly} \
+ --jars ${extensions},${backend_assembly},local:/opt/openeo-logging-static.jar \
  openeogeotrellis/deploy/batch_job.py "$(basename "${graph}")" result.out 0.4.0
