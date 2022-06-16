@@ -9,6 +9,8 @@ from openeo_driver.datastructs import StacAsset
 import geopyspark as gps
 from pyspark.mllib.util import JavaSaveable
 
+from openeo_driver.utils import generate_uuid
+
 
 class GeopySparkRandomForestModel(DriverMlModel):
 
@@ -26,7 +28,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
                 "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
             ],
             "type": "Feature",
-            "id": str(uuid.uuid4()),
+            "id": generate_uuid(prefix="rf"),
             "collection": "collection-id",
             "bbox": [
                 -179.999,

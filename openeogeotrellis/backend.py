@@ -44,7 +44,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
-from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable
+from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable, generate_uuid
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -122,7 +122,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         if service_type.lower() != 'wmts':
             raise ServiceUnsupportedException(service_type)
 
-        service_id = str(uuid.uuid4())
+        service_id = generate_uuid(prefix="s")
 
         image_collection = evaluate(
             process_graph,
@@ -782,7 +782,7 @@ class GpsBatchJobs(backend.BatchJobs):
             self, user_id: str, process: dict, api_version: str,
             metadata: dict, job_options: dict = None
     ) -> BatchJobMetadata:
-        job_id = str(uuid.uuid4())
+        job_id = generate_uuid(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
         with JobRegistry() as registry:
@@ -883,7 +883,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
 
                         # assembled_folder must be readable from batch job driver (load_collection)
-                        assembled_folder = f"/tmp_epod/openeo_assembled/{uuid.uuid4()}"
+                        assembled_folder = f"/tmp_epod/openeo_assembled/{generate_uuid()}"
                         os.mkdir(assembled_folder)
                         os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
 
@@ -1461,7 +1461,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         if batch_request_ids is None:
                             # cannot be the batch job ID because results for multiple collections would end up in
                             #  the same S3 dir
-                            request_group_id = str(uuid.uuid4())
+                            request_group_id = generate_uuid()
                             subfolder = request_group_id
 
                             # return type py4j.java_collections.JavaList is not JSON serializable
@@ -1514,7 +1514,7 @@ class GpsBatchJobs(backend.BatchJobs):
                              collecting_folder) = batch_request_cache.get(batch_request_cache_key, (None, None, None))
 
                             if collecting_folder is None:
-                                subfolder = str(uuid.uuid4())  # batch process context JSON is written here as well
+                                subfolder = generate_uuid()  # batch process context JSON is written here as well
 
                                 # collecting_folder must be writable from driver (cached tiles) and async_task
                                 # handler (new tiles))
