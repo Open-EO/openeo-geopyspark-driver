@@ -23,7 +23,7 @@ from geopyspark.geotrellis.constants import CellType
 from pandas import Series
 from py4j.java_gateway import JVMView
 from pyproj import CRS
-from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection
+from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
@@ -200,19 +200,16 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
-        # Bbox is handled at load_collection time
-        return GeopysparkDataCube(
-            pyramid=self.pyramid,
-            metadata=self.metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
-        )
+        return self.filter_spatial(geometries=box(west,south,east,north),geometry_crs=crs)
 
-    def filter_spatial(self, geometries: Union[Polygon, MultiPolygon]) -> 'GeopysparkDataCube':
+
+    def filter_spatial(self, geometries: Union[Polygon, MultiPolygon],geometry_crs="+init=EPSG:4326") -> 'GeopysparkDataCube':
         # TODO: support more geometry types but geopyspark.geotrellis.layer.TiledRasterLayer.mask doesn't seem to work
         #  with e.g. GeometryCollection
 
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = self.__reproject_polygon(geometries, "+init=EPSG:4326" , layer_crs)
+        reprojected_polygon = self.__reproject_polygon(geometries, geometry_crs , layer_crs)
 
         masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
         xmin, ymin, xmax, ymax = reprojected_polygon.bounds
