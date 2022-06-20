@@ -200,10 +200,10 @@ class GeopysparkDataCube(DriverDataCube):
         )
 
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
-        return self.filter_spatial(geometries=box(west,south,east,north),geometry_crs=crs)
+        return self.filter_spatial(geometries=box(west,south,east,north),geometry_crs=crs,mask=False)
 
 
-    def filter_spatial(self, geometries: Union[Polygon, MultiPolygon],geometry_crs="+init=EPSG:4326") -> 'GeopysparkDataCube':
+    def filter_spatial(self, geometries: Union[Polygon, MultiPolygon],geometry_crs="+init=EPSG:4326",mask=True) -> 'GeopysparkDataCube':
         # TODO: support more geometry types but geopyspark.geotrellis.layer.TiledRasterLayer.mask doesn't seem to work
         #  with e.g. GeometryCollection
 
@@ -211,7 +211,10 @@ class GeopysparkDataCube(DriverDataCube):
         layer_crs = max_level.layer_metadata.crs
         reprojected_polygon = self.__reproject_polygon(geometries, geometry_crs , layer_crs)
 
-        masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
+        if mask:
+            masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
+        else:
+            masked = self
         xmin, ymin, xmax, ymax = reprojected_polygon.bounds
 
         crop_extent = self._get_jvm().geotrellis.vector.Extent(xmin, ymin, xmax, ymax)
