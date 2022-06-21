@@ -1,10 +1,17 @@
 import importlib
 import logging
+import os
+import re
 import socket
 import sys
-import os
+import zipfile
+from os import PathLike
+from pathlib import Path
+from typing import Dict, Iterable, List
+
 from kazoo.client import KazooClient
 
+from openeo_driver.server import build_backend_deploy_metadata
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.traefik import Traefik
 
@@ -48,3 +55,37 @@ def update_zookeeper(host: str, port: int, env: str) -> None:
     finally:
         zk.stop()
         zk.close()
+
+
+def get_jar_version_info(path: PathLike, na_value="n/a") -> str:
+    """Extract version info from jar's MANIFEST.MF"""
+    try:
+        with zipfile.ZipFile(path) as z:
+            with z.open("META-INF/MANIFEST.MF") as m:
+                manifest_data = m.read().decode("utf8")
+        # Parse as dict
+        manifest_data = dict(
+            m.group("key", "value")
+            for m in re.finditer(r"^(?P<key>[\w-]+):\s*(?P<value>.*?)\s*$", manifest_data, flags=re.MULTILINE)
+        )
+        version = [manifest_data.get("Implementation-Version"), manifest_data.get("SCM-Revision")]
+        return " ".join(v for v in version if v) or na_value
+    except Exception:
+        _log.warning("Failed to extract jar version info", exc_info=True)
+        return na_value
+
+
+def get_jar_versions(paths: Iterable[PathLike]) -> Dict[str, str]:
+    """Build dict describing jar versions"""
+    paths = [Path(p) for p in paths]
+    return {
+        re.match("[a-zA-Z_-]*[a-zA-Z]", p.name).group(0): get_jar_version_info(p)
+        for p in paths
+    }
+
+
+def build_gps_backend_deploy_metadata(packages: List[str], jar_paths: Iterable[PathLike] = ()) -> dict:
+    """Build version metadata dict describing python packages and jar files"""
+    metadata = build_backend_deploy_metadata(packages)
+    metadata["versions"].update(get_jar_versions(paths=jar_paths))
+    return metadata

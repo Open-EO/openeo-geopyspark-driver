@@ -2,10 +2,15 @@ import logging
 import sys
 import textwrap
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 
+import pytest
+
+from openeo_driver.testing import RegexMatcher, DictSubSet
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.deploy import load_custom_processes
+from openeogeotrellis.deploy import load_custom_processes, get_jar_version_info, get_jar_versions, \
+    build_gps_backend_deploy_metadata
 from openeogeotrellis.testing import random_name
 
 
@@ -59,3 +64,41 @@ def test_load_custom_processes_present(tmp_path, api_version, backend_implementa
     process_registry = backend_implementation.processing.get_process_registry(api_version=api_version)
     f = process_registry.get_function(process_name)
     assert f({}, EvalEnv()) == 42
+
+
+JAR_DIR = Path(__file__).parent.parent.parent / "jars"
+
+
+@pytest.mark.parametrize(["glob", "expected"], [
+    ("geotrellis-backend-assembly-*.jar", RegexMatcher("\d+.\d+.\d+-openeo")),
+    ("geotrellis-extensions-*.jar", RegexMatcher("\d+.\d+ [0-9a-f]+")),
+])
+def test_get_jar_version_info(glob, expected):
+    jar_paths = list(JAR_DIR.glob(glob))
+    assert jar_paths
+    for path in jar_paths:
+        version = get_jar_version_info(path)
+        assert version == expected
+
+
+def test_get_jar_versions():
+    paths = JAR_DIR.glob("geotrellis-*.jar")
+    versions = get_jar_versions(paths)
+    assert versions == DictSubSet({
+        "geotrellis-backend-assembly": RegexMatcher("\d+.\d+.\d+-openeo"),
+        "geotrellis-extensions": RegexMatcher("\d+.\d+ [0-9a-f]+"),
+    })
+
+
+def test_build_gps_backend_deploy_metadata():
+    metadata = build_gps_backend_deploy_metadata(
+        packages=["openeo", "openeo_driver", "openeo-geopyspark", "geopyspark"],
+        jar_paths=JAR_DIR.glob("geotrellis-*.jar")
+    )
+    assert metadata == DictSubSet({
+        "versions": DictSubSet({
+            "openeo": RegexMatcher("\d+.\d+.\d+"),
+            "geotrellis-backend-assembly": RegexMatcher("\d+.\d+.\d+-openeo"),
+            "geotrellis-extensions": RegexMatcher("\d+.\d+ [0-9a-f]+"),
+        })
+    })
