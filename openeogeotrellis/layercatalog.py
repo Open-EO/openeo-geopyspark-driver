@@ -277,7 +277,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                         ConfigParams().default_opensearch_endpoint)
             opensearch_collection_id = layer_source_info['opensearch_collection_id']
             opensearch_link_titles = metadata.opensearch_link_titles
-            root_path = layer_source_info['root_path']
+            root_path = layer_source_info.get('root_path',None)
 
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
