@@ -4,8 +4,8 @@
 
 set -eo pipefail
 
-if [ "$#" -lt 4 ]; then
-    >&2 echo "Usage: $0 <task JSON> <Hadoop classpath> <AWS access key ID> <AWS secret access key>"
+if [ "$#" -lt 5 ]; then
+    >&2 echo "Usage: $0 <task JSON> <batch jobs Zookeeper root path> <Hadoop classpath> <AWS access key ID> <AWS secret access key>"
     exit 1
 fi
 
@@ -15,11 +15,13 @@ if [ -z "${SPARK_HOME}" ]; then
 fi
 
 task_json=$1
-hadoop_classpath=$2
-aws_access_key_id=$3
-aws_secret_access_key=$4
+batch_jobs_zookeeper_root_path=$2
+hadoop_classpath=$3
+aws_access_key_id=$4
+aws_secret_access_key=$5
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages"
+export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
 export AWS_REGION="eu-central-1"
 export AWS_ACCESS_KEY_ID=$aws_access_key_id
 export AWS_SECRET_ACCESS_KEY=$aws_secret_access_key
