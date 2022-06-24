@@ -272,6 +272,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                        layer_source_info.get('opensearch_collection_id'), layer_source_info.get('root_path'),jvm.geotrellis.raster.CellSize(cell_width, cell_height)) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
+        def create_pyramid(factory):
+            if single_level:
+                # TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
+                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties(),
+                                            correlation_id, datacubeParams)
+            else:
+                if geometries:
+                    return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
+                                               to_date, metadata_properties(), correlation_id)
+                else:
+                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties(), correlation_id)
+
         def file_pyramid(pyramid_factory):
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
                                                         ConfigParams().default_opensearch_endpoint)
@@ -281,16 +293,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
 
-            if single_level:
-                #TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
-                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties(),
-                                            correlation_id,datacubeParams)
-            else:
-                if geometries:
-                    return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
-                                               to_date, metadata_properties(), correlation_id)
-                else:
-                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties(), correlation_id)
+            return create_pyramid(factory)
+
 
         def geotiff_pyramid():
             glob_pattern = layer_source_info['glob_pattern']
@@ -463,6 +467,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
             )
 
+        def file_cgls_pyramid2():
+            if len(metadata.band_names) != 1:
+                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
+                    cid=collection_id, bs=metadata.band_names))
+
+            data_glob = layer_source_info['data_glob']
+            date_regex = layer_source_info['date_regex']
+
+            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory2(data_glob, date_regex,metadata.band_names,jvm.geotrellis.raster.CellSize(
+                                                                                           cell_width,
+                                                                                           cell_height))
+            return create_pyramid(factory)
+
         def file_agera5_pyramid():
             data_glob = layer_source_info['data_glob']
             band_file_markers = metadata.band_names
@@ -494,6 +511,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = creo_pyramid()
         elif layer_source_type == 'file-cgls':
             pyramid = file_cgls_pyramid()
+        elif layer_source_type == 'file-cgls2':
+            pyramid = file_cgls_pyramid2()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
         elif layer_source_type == 'file-oscars':
