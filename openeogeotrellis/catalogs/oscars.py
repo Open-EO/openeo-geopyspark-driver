@@ -3,6 +3,7 @@ import re
 from typing import List
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 _log = logging.getLogger(__name__)
 
@@ -41,7 +42,9 @@ class OscarsCatalogClient:
                         ('cloudCover', f'[0,{cldPrcnt}]')
                         ]
         try:
-            response = requests.get(oscars_url, params=query_params)
+            session = requests.Session()
+            session.mount("https://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.1)))
+            response = session.get(oscars_url, params=query_params)
             response.raise_for_status()
         except requests.RequestException as e:
             _log.error(f"OSCARS query failed: {oscars_url!r} with {query_params}: {e}")
