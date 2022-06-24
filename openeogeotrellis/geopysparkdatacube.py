@@ -1126,7 +1126,7 @@ class GeopysparkDataCube(DriverDataCube):
         max_level = self.get_max_level()
         current_crs_proj4 = max_level.layer_metadata.crs
         logging.info(f"Reprojecting datacube with crs {current_crs_proj4} and layout {max_level.layer_metadata.layout_definition} to {projection} and {resolution}")
-        if projection is not None and crs_to_proj4(projection) == current_crs_proj4:
+        if projection is not None and CRS.from_user_input(projection).equals(CRS.from_user_input(current_crs_proj4)):
             projection = None
 
         #IF projection is defined, we need to warp
