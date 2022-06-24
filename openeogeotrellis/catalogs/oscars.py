@@ -1,7 +1,10 @@
+import logging
+import re
 from typing import List
 
-import re
 import requests
+
+_log = logging.getLogger(__name__)
 
 
 class OscarsCatalogEntry:
@@ -28,6 +31,7 @@ class OscarsCatalogClient:
     def _query_page(self, start_date, end_date,
               ulx=-180, uly=90, brx=180, bry=-90, from_index=1,cldPrcnt=100.):
 
+        oscars_url = "https://services.terrascope.be/catalogue/products"
         query_params = [('collection', self._collection),
                         ('bbox', '{},{},{},{}'.format(ulx, bry, brx, uly)),
                         ('sortKeys', 'title'),
@@ -36,15 +40,14 @@ class OscarsCatalogClient:
                         ('end', end_date.isoformat()),
                         ('cloudCover', f'[0,{cldPrcnt}]')
                         ]
-
-        response = requests.get('https://services.terrascope.be/catalogue/products', params=query_params)
-
         try:
-            response = response.json()
-        except ValueError:
+            response = requests.get(oscars_url, params=query_params)
             response.raise_for_status()
+        except requests.RequestException as e:
+            _log.error(f"OSCARS query failed: {oscars_url!r} with {query_params}: {e}")
+            raise
 
-        return response
+        return response.json()
 
     def query(self, start_date, end_date,
               ulx=-180, uly=90, brx=180, bry=-90,cldPrcnt=100.) -> List[OscarsCatalogEntry]:
