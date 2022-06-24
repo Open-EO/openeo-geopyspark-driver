@@ -86,7 +86,7 @@ else
     curl --fail --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
   fi
 
-  archives="${openeo_zip}#venv"
+  archives="--archives ${openeo_zip}#venv"
 fi
 
 main_py_file='venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
