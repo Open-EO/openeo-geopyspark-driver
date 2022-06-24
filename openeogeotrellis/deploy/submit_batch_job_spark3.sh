@@ -73,11 +73,20 @@ if [ -f "client.conf" ]; then
   files="${files},client.conf"
 fi
 
-openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
+if [ -n "${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE}" ]; then
+  image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE}
+  archives=""
+else
+  image="vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0"
 
-if [ ! -f "${openeo_zip}" ]; then
-  echo "Downloading ${OPENEO_VENV_ZIP}"
-  curl --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
+  openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
+
+  if [ ! -f "${openeo_zip}" ]; then
+    echo "Downloading ${OPENEO_VENV_ZIP}"
+    curl --fail --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
+  fi
+
+  archives="${openeo_zip}#venv"
 fi
 
 main_py_file='venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py'
@@ -91,8 +100,6 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
 sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=venv/lib/python3.8/site-packages/jep"
-
-image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE:-"vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0"}
 
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
@@ -170,7 +177,7 @@ spark-submit \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
  --files "${files}" \
  --py-files "${pyfiles}" \
- --archives "${openeo_zip}#venv" \
+ ${archives} \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
