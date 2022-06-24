@@ -86,6 +86,6 @@ def get_jar_versions(paths: Iterable[PathLike]) -> Dict[str, str]:
 
 def build_gps_backend_deploy_metadata(packages: List[str], jar_paths: Iterable[PathLike] = ()) -> dict:
     """Build version metadata dict describing python packages and jar files"""
-    metadata = build_backend_deploy_metadata(packages)
+    metadata = build_backend_deploy_metadata(packages=packages)
     metadata["versions"].update(get_jar_versions(paths=jar_paths))
     return metadata
