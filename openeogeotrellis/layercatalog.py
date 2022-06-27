@@ -203,7 +203,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 if len(criterion) != 1:
                     raise ValueError(f'expected a single "eq" criterion, was {criterion}')
 
-                return criterion['eq']
+                #TODO https://github.com/Open-EO/openeo-geotrellis-extensions/issues/39
+                return list(criterion.values())[0]
 
             return ({property_name: eq_value(criterion) for property_name, criterion in all_properties.items()}
                     if flatten_eqs else all_properties)
