@@ -336,7 +336,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             # TODO: provide only one EGI Check-in variation? Or only include EGI Check-in dev instance on openeo-dev?
             OidcProvider(
                 id="egi-dev",
-                issuer="https://aai-dev.egi.eu/oidc/",
+                issuer="https://aai-dev.egi.eu/auth/realms/egi",
                 scopes=[
                     "openid", "email",
                     "eduperson_entitlement",
