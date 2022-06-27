@@ -1074,10 +1074,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         """
         resample_method = ResampleMethod(self._get_resample_method(method))
-        if len(self.pyramid.levels)!=1 or len(target.pyramid.levels)!=1:
-            raise FeatureUnsupportedException(message='This backend does not support resampling between full '
-                                                      'pyramids, for instance used by viewing services. Batch jobs '
-                                                      'should work.')
+
         max_level:TiledRasterLayer = self.get_max_level()
         target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
