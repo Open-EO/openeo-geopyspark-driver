@@ -40,6 +40,37 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
 
+
+    def create_datacube_parameters(self, load_params, env):
+        jvm = get_jvm()
+        feature_flags = load_params.get("featureflags", {})
+        tilesize = feature_flags.get("tilesize", 256)
+        default_temporal_resolution = "ByDay"
+        default_indexReduction = 8
+        if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
+            # for pure timeseries processing, adjust partitioning strategy
+            default_temporal_resolution = "None"
+            default_indexReduction = 0
+        indexReduction = feature_flags.get("indexreduction", default_indexReduction)
+        temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
+        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+        # WTF simple assignment to a var in a scala class doesn't work??
+        getattr(datacubeParams, "tileSize_$eq")(tilesize)
+        getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
+        if (load_params.data_mask is not None and isinstance(load_params.data_mask, GeopysparkDataCube)):
+            datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
+        datacubeParams.setPartitionerIndexReduction(indexReduction)
+        datacubeParams.setPartitionerTemporalResolution(temporalResolution)
+        globalbounds = feature_flags.get("global_bounds", True)
+        if globalbounds and len(load_params.global_extent) > 0:
+            ge = load_params.global_extent
+            datacubeParams.setGlobalExtent(float(ge["west"]), float(ge["south"]), float(ge["east"]), float(ge["north"]),
+                                           ge["crs"])
+        single_level = env.get('pyramid_levels', 'all') != 'all'
+        if single_level:
+            getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
+        return datacubeParams, single_level
+
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
@@ -103,19 +134,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         logger.info("Detected process types:" + str(load_params.process_types))
-        default_temporal_resolution = "ByDay"
-        default_indexReduction = 8
-        if len(load_params.process_types)==1 and ProcessType.GLOBAL_TIME in load_params.process_types:
-            #for pure timeseries processing, adjust partitioning strategy
-            default_temporal_resolution = "None"
-            default_indexReduction = 0
+
 
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
-        tilesize = feature_flags.get("tilesize", 256)
-        indexReduction = feature_flags.get("indexreduction", default_indexReduction)
-        temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
-        globalbounds = feature_flags.get("global_bounds", True)
+
 
         jvm = get_jvm()
 
@@ -152,8 +175,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         else:
             projected_polygons = to_projected_polygons(jvm, geometries)
 
-        single_level = env.get('pyramid_levels', 'all') != 'all'
-
         if native_crs == 'UTM':
             target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
         else:
@@ -169,21 +190,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
 
-        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-        #WTF simple assignment to a var in a scala class doesn't work??
-        getattr(datacubeParams, "tileSize_$eq")(tilesize)
-        getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
-        if(load_params.data_mask is not None and isinstance(load_params.data_mask,GeopysparkDataCube)):
-            datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
-        datacubeParams.setPartitionerIndexReduction(indexReduction)
-        datacubeParams.setPartitionerTemporalResolution(temporalResolution)
-
-        if globalbounds and len(load_params.global_extent)>0:
-            ge = load_params.global_extent
-            datacubeParams.setGlobalExtent(float(ge["west"]),float(ge["south"]),float(ge["east"]),float(ge["north"]),ge["crs"])
-
-        if single_level:
-            getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
+        datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
@@ -579,6 +586,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             image_collection = image_collection.filter_bands(band_indices)
 
         return image_collection
+
 
     def _resolve_merged_by_common_name(
             self, collection_id: str, metadata: GeopysparkCubeMetadata, load_params: LoadParameters,

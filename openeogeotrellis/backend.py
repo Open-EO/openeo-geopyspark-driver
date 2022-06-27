@@ -486,11 +486,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
         jvm = gateway.jvm
 
+        feature_flags = load_params.get("featureflags", {})
+        experimental = feature_flags.get("experimental", False)
+        datacubeParams, single_level = self.catalog.create_datacube_parameters(load_params, env)
+
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
             if spatial_bounds_present else None
 
-        pyramid = (jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
-                   .pyramid_seq(extent, crs, from_date, to_date))
+        factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
+        if experimental and single_level:
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs or "EPSG:4326")
+
+            pyramid = factory.datacube_seq(projected_polygons, from_date, to_date, {},"", datacubeParams)
+        else:
+            pyramid = (factory.pyramid_seq(extent, crs, from_date, to_date))
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
