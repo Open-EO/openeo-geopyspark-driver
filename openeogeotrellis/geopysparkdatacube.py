@@ -1422,7 +1422,7 @@ class GeopysparkDataCube(DriverDataCube):
         s3_directory = "s3://OpenEO-data{}".format(directory)
         format = format.upper()
         format_options = format_options or {}
-        strict_cropping = format_options.get("strict_cropping",False if format == "NETCDF" else True)
+        strict_cropping = format_options.get("strict_cropping", True)
         #geotiffs = self.rdd.merge().to_geotiff_rdd(compression=gps.Compression.DEFLATE_COMPRESSION).collect()
 
         # get the data at highest resolution

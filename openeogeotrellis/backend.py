@@ -494,9 +494,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if spatial_bounds_present else None
 
         factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
-        if experimental and single_level:
+        if single_level:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs or "EPSG:4326")
-
             pyramid = factory.datacube_seq(projected_polygons, from_date, to_date, {},"", datacubeParams)
         else:
             pyramid = (factory.pyramid_seq(extent, crs, from_date, to_date))
