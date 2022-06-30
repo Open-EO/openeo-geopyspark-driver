@@ -131,19 +131,9 @@ class CreoCatalogClient(CatalogClientBase):
 
         response = requests.get('https://finder.creodias.eu/resto/api/collections/' + self.mission + '/search.json',
                                 params=query_params)
+        response.raise_for_status()
 
-        # procurl=response.request.url
-
-        # when the request fails raise HTTP error
-        try:
-            response = response.json()
-        except ValueError:
-            response.raise_for_status()
-
-        # for i in response['features']: self.logger.info(i['properties']['productIdentifier'])
-        # self.logger.info(procurl)
-        # self.logger.info(response['properties']['itemsPerPage'])
-        # self.logger.info(response['properties']['totalResults'])
+        response = response.json()
 
         self.logger.debug('Paged catalogs query returned %d results', response['properties']['itemsPerPage'])
         return response
