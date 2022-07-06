@@ -35,7 +35,7 @@ def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id:
                        'batch_job_id': batch_job_id,
                        'user_id': user_id,
                        'dependency_sources': dependency_sources
-                   })
+                   },job_id=batch_job_id,user_id=user_id)
 
 
 def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str):
@@ -43,10 +43,10 @@ def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str):
                    arguments={
                        'batch_job_id': batch_job_id,
                        'user_id': user_id
-                   })
+                   },job_id=batch_job_id,user_id=user_id)
 
 
-def _schedule_task(task_id: str, arguments: dict):
+def _schedule_task(task_id: str, arguments: dict,job_id=None,user_id=None):
     task = {
         'task_id': task_id,
         'arguments': arguments
@@ -69,7 +69,7 @@ def _schedule_task(task_id: str, arguments: dict):
                       value=encode(task_message),
                       headers=[('env', encode(env))] if env else None).get(timeout=120)
 
-        _log.info(f"scheduled task {task_message} on env {env}")
+        _log.info(f"scheduled task {task_message} on env {env}",extra={'job_id': job_id, 'user_id':user_id})
     finally:
         producer.close()
 
