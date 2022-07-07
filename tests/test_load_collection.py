@@ -281,9 +281,7 @@ def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dat
     out = imagecollection_with_two_bands_and_three_dates.write_assets(filename=tmp_path/"out.tif",format="GTiff",format_options=dict(batch_mode=True))
     #example output path: /tmp/pytest-of-driesj/pytest-1/test_load_disk_collection0/openEO_2017-10-25Z.tif
     load_params = LoadParameters()
-    load_params['featureflags'] = {
-        'experimental':True
-    }
+
     load_params.spatial_extent = dict(west=4,east=5,south=50,north=51)
     env = EvalEnv(dict(pyramid_levels="1"))
 
