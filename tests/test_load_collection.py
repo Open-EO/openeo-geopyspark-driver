@@ -282,7 +282,7 @@ def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dat
     #example output path: /tmp/pytest-of-driesj/pytest-1/test_load_disk_collection0/openEO_2017-10-25Z.tif
     load_params = LoadParameters()
 
-    load_params.spatial_extent = dict(west=4,east=5,south=50,north=51)
+    load_params.spatial_extent = dict(west=2,east=3,south=1,north=2)
     env = EvalEnv(dict(pyramid_levels="1"))
 
     cube = backend_implementation.load_disk_data(format="GTiff", glob_pattern=str(tmp_path/"openEO_*.tif"), options=dict(date_regex=".*\/openEO_(\d{4})-(\d{2})-(\d{2})Z.tif"), load_params=load_params, env=env)
