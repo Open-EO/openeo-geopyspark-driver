@@ -680,6 +680,7 @@ class GeopysparkDataCube(DriverDataCube):
                     Apply a user defined function to a geopyspark.geotrellis.Tile and return the transformed tile.
                     """
 
+                    from openeogeotrellis import _executor_logging
                     # Setup the UDF input data.
                     key = geotrellis_tile[0]
                     extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, key)
