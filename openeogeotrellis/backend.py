@@ -465,6 +465,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         metadata = metadata.filter_temporal(from_date, to_date)
 
         spatial_extent = load_params.spatial_extent
+        if len(spatial_extent) == 0:
+            spatial_extent = load_params.global_extent
+
         west = spatial_extent.get("west", None)
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
@@ -495,6 +498,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
         if single_level:
+            if extent is None:
+                raise ValueError(f"Trying to load disk collection {glob_pattern} without extent.")
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs or "EPSG:4326")
             pyramid = factory.datacube_seq(projected_polygons, from_date, to_date, {},"", datacubeParams)
         else:
