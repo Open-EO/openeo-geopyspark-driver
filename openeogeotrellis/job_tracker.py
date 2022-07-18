@@ -139,11 +139,14 @@ class JobTracker:
 
                                     registry.mark_done(job_id, user_id)
 
+                                    sentinelhub_processing_units = result_metadata.get("usage",{}).get("sentinelhub",{}).get("value",0.0)
+
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
                                         'area': result_metadata.get('area'),
                                         'unique_process_ids': result_metadata.get('unique_process_ids'),
-                                        'cpu_time_seconds': cpu_time_seconds
+                                        'cpu_time_seconds': cpu_time_seconds,
+                                        'sentinelhub': sentinelhub_processing_units
                                     })
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
