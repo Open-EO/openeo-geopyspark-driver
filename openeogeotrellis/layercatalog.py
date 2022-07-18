@@ -121,8 +121,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if load_params.sar_backscatter is not None:
             #Backscatter can be computed in various reference systems
             native_crs = "UTM"
-            cell_width = 10
-            cell_height = 10
+            cell_width = 10.0
+            cell_height = 10.0
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
