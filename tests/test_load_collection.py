@@ -47,19 +47,28 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock):
     load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
                                  sar_backscatter=SarBackscatterArgs())
-    catalog.load_collection('SENTINEL1_GAMMA0_SENTINELHUB', load_params=load_params,
+    catalog.load_collection('SENTINEL1_GRD', load_params=load_params,
                             env=EvalEnv({'pyramid_levels': 'highest'}))
 
     factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.withGuardedRateLimiting
     sample_type_mock = jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.return_value
     cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
+    projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
 
-    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "S1GRD", "???", "!!!",
+    reproject = (getattr(getattr(jvm_mock.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")).reproject
+    reproject.assert_called_once_with(projected_polys,32631)
+    reprojected = reproject.return_value
+
+    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd", "???", "!!!",
                                          {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock,
                                          cellsize_mock, False)
 
+    datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
     jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
-    factory_mock.return_value.datacube_seq.assert_called_once()
+    factory_mock.return_value.datacube_seq.assert_called_once_with(reprojected.polygons(),
+                                                 ANY, '2021-02-08T10:36:00+00:00', '2021-02-08T10:36:00+00:00',
+                                                 ['VV', 'VH', 'HH', 'HV'], {},
+                                                 datacubeParams)
 
 
 def test_load_collection_sar_backscatter_incompatible():

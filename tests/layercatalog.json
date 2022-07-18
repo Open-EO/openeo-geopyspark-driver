@@ -403,6 +403,192 @@
     }
   },
   {
+    "id": "SENTINEL1_GRD",
+    "_vito": {
+      "data_source": {
+        "type": "sentinel-hub",
+        "endpoint": "https://services.sentinel-hub.com",
+        "dataset_id": "sentinel-1-grd",
+        "collection_id": "sentinel-1-grd",
+        "client_id": "???",
+        "client_secret": "!!!",
+        "cacheable": true,
+        "sample_type": "FLOAT32",
+        "sar_backscatter_compatible": true
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -180,
+          180
+        ],
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          -90,
+          90
+        ],
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal",
+        "extent": [
+          "2014-10-03T04:14:15Z",
+          null
+        ],
+        "step": null
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "VV",
+          "VH",
+          "HH",
+          "HV"
+        ]
+      }
+    },
+    "sci:citation": "Modified Copernicus Sentinel data [Year]/Sentinel Hub",
+    "summaries": {
+      "constellation": [
+        "sentinel-1"
+      ],
+      "instruments": [
+        "c-sar"
+      ],
+      "sar:instrument_mode": [
+        "SM",
+        "IW",
+        "EW",
+        "WV"
+      ],
+      "sar:frequency_band": [
+        "C"
+      ],
+      "sar:center_frequency": [
+        5.405
+      ],
+      "sar:product_type": [
+        "GRD"
+      ],
+      "sat:orbit_state": [
+        "ascending",
+        "descending"
+      ],
+      "sar:resolution": [
+        10,
+        25,
+        40
+      ],
+      "platform": [
+        "sentinel-1a",
+        "sentinel-1b"
+      ],
+      "sar:polarizations": [
+        "SH",
+        "SV",
+        "DH",
+        "DV",
+        "HH",
+        "HV",
+        "VV",
+        "VH"
+      ],
+      "raster:bands": [
+        {
+          "name": "VV",
+          "description": "Single co-polarization, vertical transmit/vertical receive",
+          "openeo:gsd": {
+            "value": [
+              [
+                0.00009259259,
+                0.00009259259
+              ],
+              [
+                0.00023148147,
+                0.00023148147
+              ],
+              [
+                0.00037037037,
+                0.00037037037
+              ]
+            ],
+            "unit": "°"
+          }
+        },
+        {
+          "name": "VH",
+          "description": "Dual-band cross-polarization, vertical transmit/horizontal receive",
+          "openeo:gsd": {
+            "value": [
+              [
+                0.00009259259,
+                0.00009259259
+              ],
+              [
+                0.00023148147,
+                0.00023148147
+              ],
+              [
+                0.00037037037,
+                0.00037037037
+              ]
+            ],
+            "unit": "°"
+          }
+        },
+        {
+          "name": "HV",
+          "description": "Dual-band cross-polarization, horizontal transmit/vertical receive",
+          "openeo:gsd": {
+            "value": [
+              [
+                0.00009259259,
+                0.00009259259
+              ],
+              [
+                0.00023148147,
+                0.00023148147
+              ],
+              [
+                0.00037037037,
+                0.00037037037
+              ]
+            ],
+            "unit": "°"
+          }
+        },
+        {
+          "name": "HH",
+          "description": "Single co-polarization, horizontal transmit/horizontal receive",
+          "openeo:gsd": {
+            "value": [
+              [
+                0.00009259259,
+                0.00009259259
+              ],
+              [
+                0.00023148147,
+                0.00023148147
+              ],
+              [
+                0.00037037037,
+                0.00037037037
+              ]
+            ],
+            "unit": "°"
+          }
+        }
+      ]
+    }
+  },
+  {
     "id": "SENTINEL1_GAMMA0_SENTINELHUB",
     "name": "SENTINEL1_GAMMA0_SENTINELHUB",
     "title": "Sentinel 1 Gamma0, 10m resolution, provided by SentinelHub",
