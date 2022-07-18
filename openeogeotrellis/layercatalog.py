@@ -101,12 +101,28 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
 
-        native_crs = self._native_crs(metadata)
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
+
+        #band specific gsd can override collection default
+        band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
+        if len(band_gsds) > 0:
+            def highest_resolution(band_gsd, coordinate_index):
+                return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
+                        else band_gsd[coordinate_index])
+
+            cell_width = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
+            cell_height = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
+
+        native_crs = self._native_crs(metadata)
+        if load_params.sar_backscatter is not None:
+            #Backscatter can be computed in various reference systems
+            native_crs = "UTM"
+            cell_width = 10
+            cell_height = 10
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
@@ -411,19 +427,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
-
-                band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
-
-                if len(band_gsds) > 0:
-                    def highest_resolution(band_gsd, coordinate_index):
-                        return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
-                                else band_gsd[coordinate_index])
-
-                    x_res = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
-                    y_res = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
-                    cell_size = jvm.geotrellis.raster.CellSize(x_res, y_res)
-                else:
-                    cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+                                
+                cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 soft_errors = env.get("soft_errors", False)
 
