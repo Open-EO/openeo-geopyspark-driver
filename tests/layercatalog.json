@@ -417,6 +417,10 @@
         "sar_backscatter_compatible": true
       }
     },
+    "extent": {
+      "spatial": {"bbox": [[-180, -56, 180, 83]]},
+      "temporal": {"interval": [["2014-10-06", null]]}
+    },
     "cube:dimensions": {
       "x": {
         "type": "spatial",
