@@ -91,6 +91,9 @@ def test_load_file_oscars(jvm_mock):
     collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
     assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
     assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
+    cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
+
+    cellsize_call_mock.assert_called_once_with(0.002777777777777778, 0.002777777777777778)
 
 
 def test_load_file_oscars_resample(jvm_mock):
@@ -132,6 +135,10 @@ def test_load_collection_old_and_new_band_names(jvm_mock):
     for bands in [['TOC-B03_10M'], ['B03']]:
         load_params = LoadParameters(temporal_extent=temporal_extent, bands=bands, spatial_extent=spatial_extent)
         collection = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
+
+        cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
+
+        cellsize_call_mock.assert_called_with(15, 15)
 
         assert len(collection.metadata.bands) == 1
         assert collection.metadata.bands[0].name == bands[0]
