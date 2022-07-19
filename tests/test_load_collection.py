@@ -178,11 +178,13 @@ def test_load_collection_bands_with_required_extent(jvm_mock):
 
     factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
-    cellsize_mock = jvm_mock.geotrellis.raster.CellSize.return_value
 
+    cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
+
+    cellsize_call_mock.assert_called_once_with(15, 15)
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 
-    factory_mock.assert_called_once_with("https://services.terrascope.be/catalogue", 'urn:eop:VITO:TERRASCOPE_S2_TOC_V2', ['TOC-B03_10M'], '/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2', cellsize_mock,False)
+    factory_mock.assert_called_once_with("https://services.terrascope.be/catalogue", 'urn:eop:VITO:TERRASCOPE_S2_TOC_V2', ['TOC-B03_10M'], '/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2', cellsize_call_mock.return_value,False)
     factory_mock.return_value.pyramid_seq.assert_called_once_with(extent_mock, "EPSG:4326", '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '')
 
 
