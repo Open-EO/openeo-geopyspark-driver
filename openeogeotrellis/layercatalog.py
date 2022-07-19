@@ -107,6 +107,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
+        bands = load_params.bands
+        if bands:
+            band_indices = [metadata.get_band_index(b) for b in bands]
+            metadata = metadata.filter_bands(bands)
+            metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
+        else:
+            band_indices = None
+        logger.info("band_indices: {b!r}".format(b=band_indices))
+        # TODO: avoid this `still_needs_band_filter` ugliness.
+        #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
+        still_needs_band_filter = False
+
         #band specific gsd can override collection default
         band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
         if len(band_gsds) > 0:
@@ -136,17 +148,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if srs is None:
             srs = 'EPSG:4326'
 
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-            metadata = metadata.rename_labels(metadata.band_dimension.name,bands,metadata.band_names)
-        else:
-            band_indices = None
-        logger.info("band_indices: {b!r}".format(b=band_indices))
-        # TODO: avoid this `still_needs_band_filter` ugliness.
-        #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
-        still_needs_band_filter = False
 
         correlation_id = env.get("correlation_id", '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
@@ -427,7 +428,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     metadata = metadata.append_band(Band(name='local_incidence_angle', common_name=None,
                                                          wavelength_um=None))
                     shub_band_names.append('localIncidenceAngle')
-                                
+
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 soft_errors = env.get("soft_errors", False)
