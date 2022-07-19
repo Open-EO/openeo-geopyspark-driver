@@ -94,7 +94,14 @@
           "scale": 0.0001,
           "offset": 0,
           "type": "int16",
-          "unit": "1"
+          "unit": "1",
+          "openeo:gsd": {
+            "unit": "m",
+            "value": [
+              60,
+              60
+            ]
+          }
         },
         {
           "name": "B02",
@@ -118,7 +125,14 @@
           "scale": 0.0001,
           "offset": 0,
           "type": "int16",
-          "unit": "1"
+          "unit": "1",
+          "openeo:gsd": {
+            "unit": "m",
+            "value": [
+              15,
+              15
+            ]
+          }
         },
         {
           "name": "B04",
@@ -130,7 +144,14 @@
           "scale": 0.0001,
           "offset": 0,
           "type": "int16",
-          "unit": "1"
+          "unit": "1",
+          "openeo:gsd": {
+            "unit": "m",
+            "value": [
+              10,
+              10
+            ]
+          }
         },
         {
           "name": "B05",
@@ -841,10 +862,10 @@
       "data_source": {
         "type": "sentinel-hub",
         "endpoint": "https://services.sentinel-hub.com",
-        "dataset_id": "S2L2A",
+        "dataset_id": "sentinel-2-l2a",
         "collection_id": "sentinel-2-l2a",
-        "client_id": "b667f624-3330-4bb8-a69e-6b0700d518a7",
-        "client_secret": ">(SI]~wL5^qX_)EV.@A{!%ef[*+Dka!f>FN7y$?3",
+        "client_id": "???",
+        "client_secret": "!!!",
         "provider:backend": "sentinelhub",
         "default_provider:backend": true
       }
@@ -885,291 +906,432 @@
       "spatial": {"bbox": [[-180.0, -56.0, 180.0, 83.0]]},
       "temporal": {"interval": [["2016-11-01T00:00:00Z", null]]}
     },
-    "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
-      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}},
-      "t": {"type": "temporal"},
-      "bands": {
-        "type": "bands",
-        "values": ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12", "AOT", "SCL", "SNW", "CLD", "CLP", "CLM", "sunAzimuthAngles", "sunZenithAngles", "viewAzimuthMean", "viewZenithMean"]
-      }
-    },
-    "summaries": {
-      "eo:bands": [
-        {
-          "name": "B01",
-          "common_name": "coastal",
-          "center_wavelength": 0.4427,
-          "full_width_half_max": 0.021
-        },
-        {
-          "name": "B02",
-          "common_name": "blue",
-          "center_wavelength": 0.4924,
-          "full_width_half_max": 0.066
-        },
-        {
-          "name": "B03",
-          "common_name": "green",
-          "center_wavelength": 0.5598,
-          "full_width_half_max": 0.036
-        },
-        {
-          "name": "B04",
-          "common_name": "red",
-          "center_wavelength": 0.6646,
-          "full_width_half_max": 0.031
-        },
-        {
-          "name": "B05",
-          "center_wavelength": 0.7041,
-          "full_width_half_max": 0.015
-        },
-        {
-          "name": "B06",
-          "center_wavelength": 0.7405,
-          "full_width_half_max": 0.015
-        },
-        {
-          "name": "B07",
-          "center_wavelength": 0.7828,
-          "full_width_half_max": 0.02
-        },
-        {
-          "name": "B08",
-          "common_name": "nir",
-          "center_wavelength": 0.8328,
-          "full_width_half_max": 0.106
-        },
-        {
-          "name": "B8A",
-          "common_name": "nir08",
-          "center_wavelength": 0.8647,
-          "full_width_half_max": 0.021
-        },
-        {
-          "name": "B09",
-          "common_name": "nir09",
-          "center_wavelength": 0.9451,
-          "full_width_half_max": 0.02
-        },
-        {
-          "name": "B10",
-          "common_name": "cirrus",
-          "center_wavelength": 1.3735,
-          "full_width_half_max": 0.031
-        },
-        {
-          "name": "B11",
-          "common_name": "swir16",
-          "center_wavelength": 1.6137,
-          "full_width_half_max": 0.091
-        },
-        {
-          "name": "B12",
-          "common_name": "swir22",
-          "center_wavelength": 2.2024,
-          "full_width_half_max": 0.175
-        },
-        {
-          "name": "AOT"
-        },
-        {
-          "name": "SCL"
-        },
-        {
-          "name": "SNW"
-        },
-        {
-          "name": "CLD"
-        },
-        {
-          "name": "CLP"
-        },
-        {
-          "name": "CLM"
-        },
-        {
-          "name": "sunAzimuthAngles",
-          "type": "float32",
-          "unit": "Degrees"
-        },
-        {
-          "name": "sunZenithAngles",
-          "type": "float32",
-          "unit": "Degrees"
-        },
-        {
-          "name": "viewAzimuthMean",
-          "type": "float32",
-          "unit": "Degrees"
-        },
-        {
-          "name": "viewZenithMean",
-          "aliases": ["viewZenithApproximate"],
-          "type": "float32",
-          "unit": "Degrees"
-        }
-      ],
-      "constellation": [
-        "sentinel-2"
-      ],
-      "crs": [
-        "http://www.opengis.net/def/crs/OGC/1.3/CRS84",
-        "http://www.opengis.net/def/crs/EPSG/0/2154",
-        "http://www.opengis.net/def/crs/EPSG/0/2180",
-        "http://www.opengis.net/def/crs/EPSG/0/2193",
-        "http://www.opengis.net/def/crs/EPSG/0/3003",
-        "http://www.opengis.net/def/crs/EPSG/0/3004",
-        "http://www.opengis.net/def/crs/EPSG/0/3031",
-        "http://www.opengis.net/def/crs/EPSG/0/3035",
-        "http://www.opengis.net/def/crs/EPSG/0/4326",
-        "http://www.opengis.net/def/crs/EPSG/0/4346",
-        "http://www.opengis.net/def/crs/EPSG/0/4416",
-        "http://www.opengis.net/def/crs/EPSG/0/4765",
-        "http://www.opengis.net/def/crs/EPSG/0/4794",
-        "http://www.opengis.net/def/crs/EPSG/0/4844",
-        "http://www.opengis.net/def/crs/EPSG/0/4857",
-        "http://www.opengis.net/def/crs/EPSG/0/3912",
-        "http://www.opengis.net/def/crs/EPSG/0/3995",
-        "http://www.opengis.net/def/crs/EPSG/0/4026",
-        "http://www.opengis.net/def/crs/EPSG/0/55142",
-        "http://www.opengis.net/def/crs/EPSG/0/28992",
-        "http://www.opengis.net/def/crs/EPSG/0/32601",
-        "http://www.opengis.net/def/crs/EPSG/0/32602",
-        "http://www.opengis.net/def/crs/EPSG/0/32603",
-        "http://www.opengis.net/def/crs/EPSG/0/32604",
-        "http://www.opengis.net/def/crs/EPSG/0/32605",
-        "http://www.opengis.net/def/crs/EPSG/0/32606",
-        "http://www.opengis.net/def/crs/EPSG/0/32607",
-        "http://www.opengis.net/def/crs/EPSG/0/32608",
-        "http://www.opengis.net/def/crs/EPSG/0/32609",
-        "http://www.opengis.net/def/crs/EPSG/0/32610",
-        "http://www.opengis.net/def/crs/EPSG/0/32611",
-        "http://www.opengis.net/def/crs/EPSG/0/32612",
-        "http://www.opengis.net/def/crs/EPSG/0/32613",
-        "http://www.opengis.net/def/crs/EPSG/0/32614",
-        "http://www.opengis.net/def/crs/EPSG/0/32615",
-        "http://www.opengis.net/def/crs/EPSG/0/32616",
-        "http://www.opengis.net/def/crs/EPSG/0/32617",
-        "http://www.opengis.net/def/crs/EPSG/0/32618",
-        "http://www.opengis.net/def/crs/EPSG/0/32619",
-        "http://www.opengis.net/def/crs/EPSG/0/32620",
-        "http://www.opengis.net/def/crs/EPSG/0/32621",
-        "http://www.opengis.net/def/crs/EPSG/0/32622",
-        "http://www.opengis.net/def/crs/EPSG/0/32623",
-        "http://www.opengis.net/def/crs/EPSG/0/32624",
-        "http://www.opengis.net/def/crs/EPSG/0/32625",
-        "http://www.opengis.net/def/crs/EPSG/0/32626",
-        "http://www.opengis.net/def/crs/EPSG/0/32627",
-        "http://www.opengis.net/def/crs/EPSG/0/32628",
-        "http://www.opengis.net/def/crs/EPSG/0/32629",
-        "http://www.opengis.net/def/crs/EPSG/0/32630",
-        "http://www.opengis.net/def/crs/EPSG/0/32631",
-        "http://www.opengis.net/def/crs/EPSG/0/32632",
-        "http://www.opengis.net/def/crs/EPSG/0/32633",
-        "http://www.opengis.net/def/crs/EPSG/0/32634",
-        "http://www.opengis.net/def/crs/EPSG/0/32635",
-        "http://www.opengis.net/def/crs/EPSG/0/32636",
-        "http://www.opengis.net/def/crs/EPSG/0/32637",
-        "http://www.opengis.net/def/crs/EPSG/0/32638",
-        "http://www.opengis.net/def/crs/EPSG/0/32639",
-        "http://www.opengis.net/def/crs/EPSG/0/32640",
-        "http://www.opengis.net/def/crs/EPSG/0/32641",
-        "http://www.opengis.net/def/crs/EPSG/0/32642",
-        "http://www.opengis.net/def/crs/EPSG/0/32643",
-        "http://www.opengis.net/def/crs/EPSG/0/32644",
-        "http://www.opengis.net/def/crs/EPSG/0/32645",
-        "http://www.opengis.net/def/crs/EPSG/0/32646",
-        "http://www.opengis.net/def/crs/EPSG/0/32647",
-        "http://www.opengis.net/def/crs/EPSG/0/32648",
-        "http://www.opengis.net/def/crs/EPSG/0/32649",
-        "http://www.opengis.net/def/crs/EPSG/0/32650",
-        "http://www.opengis.net/def/crs/EPSG/0/32651",
-        "http://www.opengis.net/def/crs/EPSG/0/32652",
-        "http://www.opengis.net/def/crs/EPSG/0/32653",
-        "http://www.opengis.net/def/crs/EPSG/0/32654",
-        "http://www.opengis.net/def/crs/EPSG/0/32655",
-        "http://www.opengis.net/def/crs/EPSG/0/32656",
-        "http://www.opengis.net/def/crs/EPSG/0/32657",
-        "http://www.opengis.net/def/crs/EPSG/0/32658",
-        "http://www.opengis.net/def/crs/EPSG/0/32659",
-        "http://www.opengis.net/def/crs/EPSG/0/32660",
-        "http://www.opengis.net/def/crs/EPSG/0/32701",
-        "http://www.opengis.net/def/crs/EPSG/0/32702",
-        "http://www.opengis.net/def/crs/EPSG/0/32703",
-        "http://www.opengis.net/def/crs/EPSG/0/32704",
-        "http://www.opengis.net/def/crs/EPSG/0/32705",
-        "http://www.opengis.net/def/crs/EPSG/0/32706",
-        "http://www.opengis.net/def/crs/EPSG/0/32707",
-        "http://www.opengis.net/def/crs/EPSG/0/32708",
-        "http://www.opengis.net/def/crs/EPSG/0/32709",
-        "http://www.opengis.net/def/crs/EPSG/0/32710",
-        "http://www.opengis.net/def/crs/EPSG/0/32711",
-        "http://www.opengis.net/def/crs/EPSG/0/32712",
-        "http://www.opengis.net/def/crs/EPSG/0/32713",
-        "http://www.opengis.net/def/crs/EPSG/0/32714",
-        "http://www.opengis.net/def/crs/EPSG/0/32715",
-        "http://www.opengis.net/def/crs/EPSG/0/32716",
-        "http://www.opengis.net/def/crs/EPSG/0/32717",
-        "http://www.opengis.net/def/crs/EPSG/0/32718",
-        "http://www.opengis.net/def/crs/EPSG/0/32719",
-        "http://www.opengis.net/def/crs/EPSG/0/32720",
-        "http://www.opengis.net/def/crs/EPSG/0/32721",
-        "http://www.opengis.net/def/crs/EPSG/0/32722",
-        "http://www.opengis.net/def/crs/EPSG/0/32723",
-        "http://www.opengis.net/def/crs/EPSG/0/32724",
-        "http://www.opengis.net/def/crs/EPSG/0/32725",
-        "http://www.opengis.net/def/crs/EPSG/0/32726",
-        "http://www.opengis.net/def/crs/EPSG/0/32727",
-        "http://www.opengis.net/def/crs/EPSG/0/32728",
-        "http://www.opengis.net/def/crs/EPSG/0/32729",
-        "http://www.opengis.net/def/crs/EPSG/0/32730",
-        "http://www.opengis.net/def/crs/EPSG/0/32731",
-        "http://www.opengis.net/def/crs/EPSG/0/32732",
-        "http://www.opengis.net/def/crs/EPSG/0/32733",
-        "http://www.opengis.net/def/crs/EPSG/0/32734",
-        "http://www.opengis.net/def/crs/EPSG/0/32735",
-        "http://www.opengis.net/def/crs/EPSG/0/32736",
-        "http://www.opengis.net/def/crs/EPSG/0/32737",
-        "http://www.opengis.net/def/crs/EPSG/0/32738",
-        "http://www.opengis.net/def/crs/EPSG/0/32739",
-        "http://www.opengis.net/def/crs/EPSG/0/32740",
-        "http://www.opengis.net/def/crs/EPSG/0/32741",
-        "http://www.opengis.net/def/crs/EPSG/0/32742",
-        "http://www.opengis.net/def/crs/EPSG/0/32743",
-        "http://www.opengis.net/def/crs/EPSG/0/32744",
-        "http://www.opengis.net/def/crs/EPSG/0/32745",
-        "http://www.opengis.net/def/crs/EPSG/0/32746",
-        "http://www.opengis.net/def/crs/EPSG/0/32746",
-        "http://www.opengis.net/def/crs/EPSG/0/32748",
-        "http://www.opengis.net/def/crs/EPSG/0/32749",
-        "http://www.opengis.net/def/crs/EPSG/0/32750",
-        "http://www.opengis.net/def/crs/EPSG/0/32751",
-        "http://www.opengis.net/def/crs/EPSG/0/32752",
-        "http://www.opengis.net/def/crs/EPSG/0/32753",
-        "http://www.opengis.net/def/crs/EPSG/0/32754",
-        "http://www.opengis.net/def/crs/EPSG/0/32755",
-        "http://www.opengis.net/def/crs/EPSG/0/32756",
-        "http://www.opengis.net/def/crs/EPSG/0/32757",
-        "http://www.opengis.net/def/crs/EPSG/0/32758",
-        "http://www.opengis.net/def/crs/EPSG/0/32759",
-        "http://www.opengis.net/def/crs/EPSG/0/32760",
-        "http://www.opengis.net/def/crs/SR-ORG/0/98739"
-      ],
-      "eo:gsd": [
-        10,
-        30,
-        60
-      ],
-      "instruments": [
-        "msi"
-      ],
-      "platform": [
-        "sentinel-2a",
-        "sentinel-2b"
+     "cube:dimensions": {
+    "bands": {
+      "type": "bands",
+      "values": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B8A",
+        "B09",
+        "B11",
+        "B12",
+        "AOT",
+        "SCL",
+        "SNW",
+        "CLD",
+        "CLP",
+        "CLM",
+        "sunAzimuthAngles",
+        "sunZenithAngles",
+        "viewAzimuthMean",
+        "viewZenithMean",
+        "dataMask"
       ]
     },
+    "t": {
+      "extent": [
+        "2016-11-01T00:00:00Z",
+        null
+      ],
+      "step": "P5D",
+      "type": "temporal"
+    },
+    "x": {
+      "axis": "x",
+      "extent": [
+        -180,
+        180
+      ],
+      "reference_system": {
+        "$schema": "https://proj.org/schemas/v0.4/projjson.schema.json",
+        "area": "World",
+        "bbox": {
+          "east_longitude": 180,
+          "north_latitude": 90,
+          "south_latitude": -90,
+          "west_longitude": -180
+        },
+        "coordinate_system": {
+          "axis": [
+            {
+              "abbreviation": "Lat",
+              "direction": "north",
+              "name": "Geodetic latitude",
+              "unit": "degree"
+            },
+            {
+              "abbreviation": "Lon",
+              "direction": "east",
+              "name": "Geodetic longitude",
+              "unit": "degree"
+            }
+          ],
+          "subtype": "ellipsoidal"
+        },
+        "datum": {
+          "ellipsoid": {
+            "inverse_flattening": 298.257223563,
+            "name": "WGS 84",
+            "semi_major_axis": 6378137
+          },
+          "name": "World Geodetic System 1984",
+          "type": "GeodeticReferenceFrame"
+        },
+        "id": {
+          "authority": "OGC",
+          "code": "Auto42001",
+          "version": "1.3"
+        },
+        "name": "AUTO 42001 (Universal Transverse Mercator)",
+        "type": "GeodeticCRS"
+      },
+      "type": "spatial"
+    },
+    "y": {
+      "axis": "y",
+      "extent": [
+        -56,
+        83
+      ],
+      "reference_system": {
+        "$schema": "https://proj.org/schemas/v0.4/projjson.schema.json",
+        "area": "World",
+        "bbox": {
+          "east_longitude": 180,
+          "north_latitude": 90,
+          "south_latitude": -90,
+          "west_longitude": -180
+        },
+        "coordinate_system": {
+          "axis": [
+            {
+              "abbreviation": "Lat",
+              "direction": "north",
+              "name": "Geodetic latitude",
+              "unit": "degree"
+            },
+            {
+              "abbreviation": "Lon",
+              "direction": "east",
+              "name": "Geodetic longitude",
+              "unit": "degree"
+            }
+          ],
+          "subtype": "ellipsoidal"
+        },
+        "datum": {
+          "ellipsoid": {
+            "inverse_flattening": 298.257223563,
+            "name": "WGS 84",
+            "semi_major_axis": 6378137
+          },
+          "name": "World Geodetic System 1984",
+          "type": "GeodeticReferenceFrame"
+        },
+        "id": {
+          "authority": "OGC",
+          "code": "Auto42001",
+          "version": "1.3"
+        },
+        "name": "AUTO 42001 (Universal Transverse Mercator)",
+        "type": "GeodeticCRS"
+      },
+      "type": "spatial"
+    }
+  },
+     "summaries": {
+    "constellation": [
+      "sentinel-2"
+    ],
+    "eo:bands": [
+      {
+        "center_wavelength": 0.4427,
+        "common_name": "coastal",
+        "full_width_half_max": 0.021,
+        "name": "B01",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            60,
+            60
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.4924,
+        "common_name": "blue",
+        "full_width_half_max": 0.066,
+        "name": "B02",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            10,
+            10
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.5598,
+        "common_name": "green",
+        "full_width_half_max": 0.036,
+        "name": "B03",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            10,
+            10
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.6646,
+        "common_name": "red",
+        "full_width_half_max": 0.031,
+        "name": "B04",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            10,
+            10
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.7041,
+        "full_width_half_max": 0.015,
+        "name": "B05",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.7405,
+        "full_width_half_max": 0.015,
+        "name": "B06",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.7828,
+        "full_width_half_max": 0.02,
+        "name": "B07",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.8328,
+        "common_name": "nir",
+        "full_width_half_max": 0.106,
+        "name": "B08",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            10,
+            10
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.8647,
+        "common_name": "nir08",
+        "full_width_half_max": 0.021,
+        "name": "B8A",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "center_wavelength": 0.9451,
+        "common_name": "nir09",
+        "full_width_half_max": 0.02,
+        "name": "B09",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            60,
+            60
+          ]
+        }
+      },
+      {
+        "center_wavelength": 1.6137,
+        "common_name": "swir16",
+        "full_width_half_max": 0.091,
+        "name": "B11",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "center_wavelength": 2.2024,
+        "common_name": "swir22",
+        "full_width_half_max": 0.175,
+        "name": "B12",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "description": "Aerosol Optical Thickness map, based on Sen2Cor processor",
+        "name": "AOT",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            10,
+            10
+          ]
+        }
+      },
+      {
+        "description": "Scene classification data, based on Sen2Cor processor, codelist",
+        "name": "SCL",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "description": "Snow probability, based on Sen2Cor processor",
+        "name": "SNW",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "description": "Cloud probability, based on Sen2Cor processor",
+        "name": "CLD",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            20,
+            20
+          ]
+        }
+      },
+      {
+        "description": "Cloud probability, based on s2cloudless",
+        "name": "CLP",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            160,
+            160
+          ]
+        }
+      },
+      {
+        "description": "Cloud masks",
+        "name": "CLM",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            160,
+            160
+          ]
+        }
+      },
+      {
+        "description": "Sun azimuth angle",
+        "name": "sunAzimuthAngles",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            5000,
+            5000
+          ]
+        }
+      },
+      {
+        "description": "Sun zenith angle",
+        "name": "sunZenithAngles",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            5000,
+            5000
+          ]
+        }
+      },
+      {
+        "description": "Viewing azimuth angle",
+        "name": "viewAzimuthMean",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            5000,
+            5000
+          ]
+        }
+      },
+      {
+        "description": "Viewing zenith angle",
+        "name": "viewZenithMean",
+        "openeo:gsd": {
+          "unit": "m",
+          "value": [
+            5000,
+            5000
+          ]
+        }
+      },
+      {
+        "description": "The mask of data/no data pixels.",
+        "name": "dataMask"
+      }
+    ],
+    "gsd": [
+      10,
+      30,
+      60
+    ],
+    "instruments": [
+      "msi"
+    ],
+    "platform": [
+      "sentinel-2a",
+      "sentinel-2b"
+    ]
+  },
     "links": [
       {
         "href": "https://services.sentinel-hub.com/api/v1/catalog/collections/sentinel-2-l2a",
