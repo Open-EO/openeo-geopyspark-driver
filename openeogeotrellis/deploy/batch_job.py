@@ -232,9 +232,15 @@ def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
 
+def _log_container_internals():
+    logger.info(f"CWD is {os.getcwd()} with contents {', '.join(os.listdir())}")
+
+
 def main(argv: List[str]) -> None:
     logger.info("argv: {a!r}".format(a=argv))
     logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
+
+    _log_container_internals()
 
     if len(argv) != 10:
         raise Exception(
