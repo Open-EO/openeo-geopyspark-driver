@@ -1853,11 +1853,10 @@ class GpsBatchJobs(backend.BatchJobs):
             try:
                 shutil.rmtree(assembled_folder)
             except Exception as e:
+                logger.warning("Could not recursively delete {p}".format(p=assembled_folder), exc_info=e,
+                               extra={'job_id': job_id})
                 if propagate_errors:
                     raise
-                else:
-                    logger.warning("Could not recursively delete {p}".format(p=assembled_folder), exc_info=e,
-                                   extra={'job_id': job_id})
 
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
