@@ -79,7 +79,9 @@ def main():
         SIGNED_URL_EXPIRATION=int(os.environ.get( "SIGNED_URL_EXPIRATION",str(7 * 24 * 60 * 60)))
     )
 
-    host, _ = get_socket()
+    host = os.environ.get('SPARK_LOCAL_IP', None)
+    if host is None:
+        host, _ = get_socket()
     port = os.environ.get('KUBE_OPENEO_API_PORT', 50001)
 
     run_gunicorn(
