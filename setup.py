@@ -75,7 +75,8 @@ setup(
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
-        'pystac>=1.0.0'
+        'pystac>=1.0.0',
+        'boto3==1.16.25'
     ],
     extras_require={
         "dev": tests_require,
