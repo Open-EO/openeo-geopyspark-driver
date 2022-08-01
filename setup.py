@@ -38,7 +38,8 @@ setup(
             "scripts/batch_job_log4j.properties",
             "scripts/cleaner-entrypoint.sh",
             "scripts/job_tracker-entrypoint.sh",
-            "scripts/async_task-entrypoint.sh"
+            "scripts/async_task-entrypoint.sh",
+            "scripts/async_task_log4j.properties"
         ]),
     ],
     setup_requires=['pytest-runner'],
