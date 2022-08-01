@@ -58,7 +58,10 @@ def _create_job_dir(job_dir: Path):
     logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
     if not ConfigParams().is_kube_deploy:
-        shutil.chown(job_dir, user=None, group='eodata')
+        try:
+            shutil.chown(job_dir, user=None, group='eodata')
+        except LookupError as e:
+            logger.warning(f"Could not change group of {job_dir} to eodata.")
 
     _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
