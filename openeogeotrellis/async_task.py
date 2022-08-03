@@ -108,7 +108,7 @@ def main():
                             help='Maximum heap size for the Java Gateway JVM')
         parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
         parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
-                            help="The full path to the file that contains the keytab for the principal")
+                            help="Path to the file that contains the keytab for the principal")
         parser.add_argument("--task", required=True, dest="task_json", help="The task description in JSON")
 
         args = parser.parse_args()

@@ -25,6 +25,7 @@ hadoop_classpath=$3
 aws_access_key_id=$4
 aws_secret_access_key=$5
 batch_job_docker_image=$6
+keytab="openeo.keytab"
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages"
 export OPENEO_CATALOG_FILES="layercatalog.json"
@@ -35,9 +36,9 @@ export AWS_SECRET_ACCESS_KEY=$aws_secret_access_key
 export OPENEO_SPARK_SUBMIT_PY_FILES="$(python3 /opt/get-py-files.py)"
 export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=$batch_job_docker_image
 
-kinit -kt openeo.keytab openeo@VGT.VITO.BE
+kinit -kt $keytab openeo@VGT.VITO.BE
 
 classpath="geotrellis-extensions-static.jar:openeo-logging-static.jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$hadoop_classpath"
 
-python3 -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" --task "$task_json"
+python3 -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" --keytab "$keytab" --task "$task_json"
 
