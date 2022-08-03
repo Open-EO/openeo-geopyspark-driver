@@ -12,9 +12,6 @@ fi
 batch_jobs_zookeeper_root_path=$1
 async_task_handler_env=$2
 
-# because of hard-coded path in the host's yarn-env.sh
-ln -s /usr/lib/jvm/jre-openjdk /usr/lib/jvm/java-openjdk
-
 kinit -kt openeo.keytab openeo@VGT.VITO.BE
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages"
