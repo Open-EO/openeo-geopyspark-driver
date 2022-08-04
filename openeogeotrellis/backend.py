@@ -1083,7 +1083,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 s3_instance.create_bucket(Bucket=bucket)
 
                 user_id_truncated = user_id.split('@')[0][:20]
-                job_id_truncated = job_id.split('-')[1]
+                job_id_truncated = job_id.split('-')[1][:10]
 
                 output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
 
