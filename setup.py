@@ -66,7 +66,7 @@ setup(
         'pytz',
         'affine',
         'xarray~=0.16.2',
-        'Shapely',
+        'Shapely<2.0',
         'epsel~=1.0.0',
         'numbagg==0.1',
         'Bottleneck==1.3.2',
