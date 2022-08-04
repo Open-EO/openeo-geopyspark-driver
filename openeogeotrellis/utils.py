@@ -293,3 +293,10 @@ def nullcontext():
     Backport of Python 3.7 `contextlib.nullcontext`
     """
     yield
+
+def truncate_job_id_k8s(job_id):
+    return job_id.split('-')[1][:10]
+
+def truncate_user_id_k8s(user_id):
+    return user_id.split('@')[0][:20]
+

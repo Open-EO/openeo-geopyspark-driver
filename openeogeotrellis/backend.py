@@ -58,7 +58,8 @@ from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeepe
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
-from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent
+from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
+    truncate_job_id_k8s
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -1075,15 +1076,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 from jinja2 import Template
                 from kubernetes.client.rest import ApiException
-                from openeogeotrellis.utils import kube_client, s3_client
+                from openeogeotrellis.utils import kube_client, s3_client, truncate_user_id_k8s
 
                 bucket = 'OpenEO-data'
                 s3_instance = s3_client()
 
                 s3_instance.create_bucket(Bucket=bucket)
 
-                user_id_truncated = user_id.split('@')[0][:20]
-                job_id_truncated = job_id.split('-')[1][:10]
+                user_id_truncated = truncate_user_id_k8s(user_id)
+                job_id_truncated = truncate_job_id_k8s(job_id)
 
                 output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
 
