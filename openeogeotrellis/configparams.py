@@ -32,7 +32,4 @@ class ConfigParams:
 
     @staticmethod
     def _as_boolean(envar_value: Optional[str]) -> bool:
-        if envar_value and envar_value.lower() == "true":
-            return True
-
-        return False
+        return envar_value is not None and envar_value.lower() == "true"
