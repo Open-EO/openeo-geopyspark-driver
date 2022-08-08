@@ -1037,6 +1037,18 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_status(job_id, user_id, 'queued')
                 return
 
+            def as_boolean_arg(job_option_key: str, default_value: str) -> str:
+                value = job_options.get(job_option_key)
+
+                if value is None:
+                    return default_value
+                elif isinstance(value, str):
+                    return value
+                elif isinstance(value, bool):
+                    return str(value).lower()
+                else:
+                    raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
+
             driver_memory = job_options.get("driver-memory", "8G")
             driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
             executor_memory = job_options.get("executor-memory", "2G")
@@ -1048,8 +1060,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_corerequest = str(int(executor_cores)/2*1000)+"m"
             max_executors = job_options.get("max-executors", "100")
             queue = job_options.get("queue", "default")
-            profile = job_options.get("profile", "false")
-            soft_errors = job_options.get("soft-errors", "false")  # TODO: accept real booleans
+            profile = as_boolean_arg("profile", default_value="false")
+            soft_errors = as_boolean_arg("soft-errors", default_value="false")
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
