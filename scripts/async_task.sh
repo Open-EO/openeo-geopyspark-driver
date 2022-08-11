@@ -33,8 +33,9 @@ export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE="vito-docker-private.artifactory.vgt.
 extensions_jar="$(bash geotrellis-extensions-jar.sh)"
 logging_jar="$(bash openeo-logging-jar.sh)"
 classpath="$extensions_jar:$logging_jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$(hadoop classpath)"
+py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 
 export KRB5CCNAME=/tmp/krb5cc_openeo
 kinit -kt openeo-deploy/mep/openeo.keytab openeo@VGT.VITO.BE
 
-python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" --task "$task_json"
+python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" --task "$task_json"

@@ -39,6 +39,7 @@ export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=$batch_job_docker_image
 kinit -kt $keytab openeo@VGT.VITO.BE
 
 classpath="geotrellis-extensions-static.jar:openeo-logging-static.jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$hadoop_classpath"
+py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 
-python3 -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" --keytab "$keytab" --task "$task_json"
+python3 -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" --keytab "$keytab" --task "$task_json"
 

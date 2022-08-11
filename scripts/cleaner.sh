@@ -15,5 +15,6 @@ export AWS_SECRET_ACCESS_KEY="!!!"
 
 extensions="$(bash geotrellis-extensions-jar.sh)"
 classpath="$extensions:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':'):$(hadoop classpath)"
+py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 
-python -m openeogeotrellis.cleaner --py4j-classpath "$classpath" --py4j-jarpath "venv/share/py4j/py4j0.10.9.2.jar" 2>&1
+python -m openeogeotrellis.cleaner --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" 2>&1
