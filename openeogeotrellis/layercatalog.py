@@ -433,7 +433,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 soft_errors = env.get("soft_errors", False)
 
-                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withGuardedRateLimiting(
+                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(
                     endpoint,
                     shub_collection_id,
                     dataset_id,

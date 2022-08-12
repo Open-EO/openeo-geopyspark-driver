@@ -50,7 +50,7 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock):
     catalog.load_collection('SENTINEL1_GRD', load_params=load_params,
                             env=EvalEnv({'pyramid_levels': 'highest'}))
 
-    factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.withGuardedRateLimiting
+    factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting
     sample_type_mock = jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.return_value
     cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
     projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
