@@ -215,13 +215,14 @@ def test_load_collection_data_cube_params(jvm_mock):
     assert len(collection.metadata.bands) == 1
     assert collection.metadata.bands[0].name == 'temperature-mean'
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory2
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
     projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
     datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
 
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 
-    factory_mock.assert_called_once_with('/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif', ['temperature-mean'], '.+_(\\d{4})(\\d{2})(\\d{2})\\.tif')
+    factory_mock.assert_called_once_with('/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif', ['temperature-mean'], '.+_(\\d{4})(\\d{2})(\\d{2})\\.tif', cellsize_mock)
     factory_mock.return_value.datacube_seq.assert_called_once_with(projected_polys, '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '',datacubeParams)
     getattr(datacubeParams,'tileSize_$eq').assert_called_once_with(1)
     getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')

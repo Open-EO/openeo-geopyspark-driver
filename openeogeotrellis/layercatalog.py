@@ -491,18 +491,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
 
-            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory2(data_glob, date_regex,metadata.band_names,jvm.geotrellis.raster.CellSize(
-                                                                                           cell_width,
-                                                                                           cell_height))
+            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory2(
+                data_glob, date_regex, metadata.band_names,
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            )
             return create_pyramid(factory)
 
         def file_agera5_pyramid():
             data_glob = layer_source_info['data_glob']
-            band_file_markers = metadata.band_names
             date_regex = layer_source_info['date_regex']
-
-            factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory(data_glob, band_file_markers, date_regex)
-
+            factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory2(
+                data_glob, metadata.band_names, date_regex, jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            )
             return (
                 factory.datacube_seq(projected_polygons, from_date, to_date,{},"",datacubeParams) if single_level
                 else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
