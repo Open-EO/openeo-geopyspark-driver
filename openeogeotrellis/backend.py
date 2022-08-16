@@ -1,7 +1,6 @@
 import datetime
 import json
 import logging
-import operator
 import os
 import re
 import shutil
@@ -9,8 +8,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
-import uuid
-from functools import reduce
+from functools import partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable
@@ -59,7 +57,7 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s
+    truncate_job_id_k8s, dict_merge_recursive
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -837,8 +835,8 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
-        def batch_request_statuses(batch_process_dependency: dict) -> List[Tuple[str, Callable[[], None]]]:
-            """returns a (status, retrier) for each batch request ID in the dependency"""
+        def batch_request_statuses(batch_process_dependency: dict) -> Dict[str, Tuple[str, Callable[[], None]]]:
+            """returns an ID -> (status, retrier) for each batch request ID in the dependency"""
             collection_id = batch_process_dependency['collection_id']
 
             metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
@@ -865,25 +863,27 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 return retry
 
-            return [(batch_processing_service.get_batch_process_status(request_id) if request_id else "DONE",
-                     retrier(request_id))
-                    for request_id in batch_request_ids]
+            # TODO: prevent status requests for duplicate (recycled) batch request IDs
+            return {request_id: (batch_processing_service.get_batch_process_status(request_id) if request_id else "DONE",
+                         retrier(request_id)) for request_id in batch_request_ids}
 
         dependencies = job_info.get('dependencies') or []
-        statuses = reduce(operator.add, (batch_request_statuses(dependency) for dependency in dependencies))
+        batch_processes = reduce(partial(dict_merge_recursive, overwrite=True),
+                                 (batch_request_statuses(dependency) for dependency in dependencies))
 
-        # TODO: include batch request ID in log
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
-                     .format(j=job_id, ss=[status for status, _ in statuses]), extra={'job_id': job_id})
+                     .format(j=job_id,
+                             ss={batch_request_id: status for batch_request_id, (status, _) in batch_processes.items()}),
+                     extra={'job_id': job_id})
 
-        if any(status == "FAILED" for status, _ in statuses):  # at least one failed: not recoverable
+        if any(status == "FAILED" for _, (status, _) in batch_processes.items()):  # at least one failed: not recoverable
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
 
             job_info['status'] = 'error'  # TODO: avoid mutation
-        elif all(status == "DONE" for status, _ in statuses):  # all good: resume batch job with available data
+        elif all(status == "DONE" for _, (status, _) in batch_processes.items()):  # all good: resume batch job with available data
             assembled_location_cache = {}
 
             for dependency in dependencies:
@@ -941,12 +941,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(job_id, user_id, 'available')
 
             self._start_job(job_id, user_id, dependencies)
-        elif all(status in ["DONE", "PARTIAL"] for status, _ in statuses):  # all done but some partially failed
+        elif all(status in ["DONE", "PARTIAL"] for _, (status, _) in batch_processes.items()):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
                 with JobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
 
-                retries = [retry for status, retry in statuses if status == "PARTIAL"]
+                retries = [retry for _, (status, retry) in batch_processes.items() if status == "PARTIAL"]
 
                 for retry in retries:
                     retry()
