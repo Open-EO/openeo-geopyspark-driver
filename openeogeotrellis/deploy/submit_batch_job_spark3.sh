@@ -64,7 +64,7 @@ pyfiles=${20}
 maxexecutors=${21-500}
 userId=${22}
 batchJobId=${23}
-softErrors=${24-false}
+maxSoftErrorsRatio=${24-"0.0"}
 
 pysparkPython="$venv_dir/bin/python"
 
@@ -186,4 +186,4 @@ spark-submit \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${softErrors}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}"

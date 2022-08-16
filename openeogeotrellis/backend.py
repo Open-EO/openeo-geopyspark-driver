@@ -1049,6 +1049,23 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:
                     raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
+            def as_max_soft_errors_ratio_arg() -> str:
+                value = job_options.get("soft-errors")
+
+                if value in [None, "false"]:
+                    return "0.0"
+                elif value == "true":
+                    return "1.0"
+                elif isinstance(value, bool):
+                    return "1.0" if value else "0.0"
+                elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
+                    return str(value)
+                else:
+                    raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
+                                                     f"supported values include false/true and values in the "
+                                                     f"interval [0.0, 1.0]",
+                                             status_code=400)
+
             driver_memory = job_options.get("driver-memory", "8G")
             driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
             executor_memory = job_options.get("executor-memory", "2G")
@@ -1061,7 +1078,7 @@ class GpsBatchJobs(backend.BatchJobs):
             max_executors = job_options.get("max-executors", "100")
             queue = job_options.get("queue", "default")
             profile = as_boolean_arg("profile", default_value="false")
-            soft_errors = as_boolean_arg("soft-errors", default_value="false")
+            max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1136,7 +1153,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     api_version=api_version,
                     dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                     user_id=user_id,
-                    soft_errors=soft_errors,
+                    max_soft_errors_ratio=max_soft_errors_ratio,
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
@@ -1228,7 +1245,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(max_executors)
                     args.append(user_id)
                     args.append(job_id)
-                    args.append(soft_errors)
+                    args.append(max_soft_errors_ratio)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})

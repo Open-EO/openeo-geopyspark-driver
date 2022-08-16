@@ -249,7 +249,7 @@ def main(argv: List[str]) -> None:
         raise Exception(
             f"usage: {argv[0]} "
             "<job specification input file> <job directory> <results output file name> <user log file name> "
-            "<metadata file name> <api version> <dependencies> <user id> <soft errors>"
+            "<metadata file name> <api version> <dependencies> <user id> <max soft errors ratio>"
         )
 
     job_specification_file = argv[1]
@@ -261,7 +261,7 @@ def main(argv: List[str]) -> None:
     dependencies = _deserialize_dependencies(argv[7])
     user_id = argv[8]
     BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
-    soft_errors = argv[9].lower() == "true"
+    max_soft_errors_ratio = float(argv[9])
 
     _create_job_dir(job_dir)
 
@@ -301,7 +301,7 @@ def main(argv: List[str]) -> None:
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    soft_errors=soft_errors
+                    max_soft_errors_ratio=max_soft_errors_ratio
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -337,7 +337,7 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, soft_errors: bool = False):
+            user_id: str = None, max_soft_errors_ratio: float = 0.0):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
 
@@ -353,7 +353,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'correlation_id': correlation_id,
         'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
         'backend_implementation': backend_implementation,
-        'soft_errors': soft_errors
+        'max_soft_errors_ratio': max_soft_errors_ratio
     })
     tracer = DryRunDataTracer()
     logger.info("Starting process graph evaluation")
