@@ -332,6 +332,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 default_client=default_client_egi,  # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
             ),
+            # TODO: remove old EGI provider (issuer https://aai.egi.eu/oidc/)
             OidcProvider(
                 id="egi-old",
                 issuer="https://aai.egi.eu/oidc/",
