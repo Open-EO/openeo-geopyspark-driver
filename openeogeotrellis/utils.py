@@ -110,7 +110,8 @@ def dict_merge_recursive(a: collections.Mapping, b: collections.Mapping, overwri
             elif result[key] == value:
                 pass
             else:
-                raise ValueError("Can not automatically merge {a!r} and {b!r}".format(a=result[key], b=value))
+                raise ValueError("Can not automatically merge values {a!r} and {b!r} for key {k!r}"
+                                 .format(a=result[key], b=value, k=key))
         else:
             result[key] = value
     return result

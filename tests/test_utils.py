@@ -41,8 +41,10 @@ def test_merge_recursive_overwrite(a, b, expected):
     ({1: "foo"}, {1: "bar"}, {1: "bar"}),
 ])
 def test_merge_recursive_overwrite_conflict(a, b, expected):
-    with pytest.raises(ValueError):
-        result = dict_merge_recursive(a, b)
+    with pytest.raises(ValueError) as e:
+        dict_merge_recursive(a, b)
+    assert "key 1" in str(e)
+
     result = dict_merge_recursive(a, b, overwrite=True)
     assert result == expected
 
