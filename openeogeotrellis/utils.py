@@ -88,7 +88,7 @@ def kerberos(principal, key_tab, jvm: JVMView = None):
     # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
 
 
-def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
+def dict_merge_recursive(a: collections.Mapping, b: collections.Mapping, overwrite=False) -> collections.Mapping:
     """
     Merge two dictionaries recursively
 
@@ -100,7 +100,7 @@ def dict_merge_recursive(a: dict, b: dict, overwrite=False) -> dict:
     # TODO move this to utils module in openeo-python-driver or openeo-python-client?
     """
     # Start with shallow copy, we'll copy deeper parts where necessary through recursion.
-    result = a.copy()
+    result = dict(a)
     for key, value in b.items():
         if key in result:
             if isinstance(value, collections.Mapping) and isinstance(result[key], collections.Mapping):

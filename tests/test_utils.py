@@ -1,3 +1,4 @@
+import collections
 import datetime
 import getpass
 from pathlib import Path
@@ -53,6 +54,24 @@ def test_merge_recursive_preserve_input():
     assert result == {1: {2: 3, 4: 5}}
     assert a == {1: {2: 3}}
     assert b == {1: {4: 5}}
+
+
+def test_dict_merge_recursive_accepts_arbitrary_mapping():
+    class EmptyMapping(collections.Mapping):
+        def __getitem__(self, key):
+            raise KeyError(key)
+
+        def __len__(self) -> int:
+            return 0
+
+        def __iter__(self):
+            return iter(())
+
+    a = EmptyMapping()
+    b = {1: 2}
+    assert dict_merge_recursive(a, b) == {1: 2}
+    assert dict_merge_recursive(b, a) == {1: 2}
+    assert dict_merge_recursive(a, a) == {}
 
 
 def test_describe_path(tmp_path):
