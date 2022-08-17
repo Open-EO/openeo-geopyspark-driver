@@ -322,13 +322,25 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return [
             OidcProvider(
                 id="egi",
-                issuer="https://aai.egi.eu/oidc/",
+                issuer="https://aai.egi.eu/auth/realms/egi/",
                 scopes=[
                     "openid", "email",
                     "eduperson_entitlement",
                     "eduperson_scoped_affiliation",
                 ],
                 title="EGI Check-in",
+                default_client=default_client_egi,  # TODO: remove this legacy experimental field
+                default_clients=[default_client_egi],
+            ),
+            OidcProvider(
+                id="egi-old",
+                issuer="https://aai.egi.eu/oidc/",
+                scopes=[
+                    "openid", "email",
+                    "eduperson_entitlement",
+                    "eduperson_scoped_affiliation",
+                ],
+                title="EGI Check-in (legacy)",
                 default_client=default_client_egi,  # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
             ),
