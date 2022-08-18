@@ -711,8 +711,12 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
-                    sh_collections = requests.get(sh_stac_endpoint).json()
-                    sh_collection_metadatas = {c["id"]: requests.get(c["link"]).json() for c in sh_collections}
+                    sh_collections_resp = requests.get(sh_stac_endpoint)
+                    sh_collections_resp.raise_for_status()
+                    sh_collection_metadatas = {
+                        c["id"]: requests.get(c["link"]).json()
+                        for c in sh_collections_resp.json()
+                    }
 
                 enrichment_id = data_source.get("enrichment_id")
 
