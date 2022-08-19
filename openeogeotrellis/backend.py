@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from decimal import Decimal
 from functools import partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
@@ -848,7 +849,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
-        def batch_request_statuses(batch_process_dependency: dict) -> Dict[str, Tuple[str, Callable[[], None]]]:
+        def batch_request_details(batch_process_dependency: dict) -> Dict[str, Tuple[str, Callable[[], None]]]:
             """returns an ID -> (status, retrier) for each batch request ID in the dependency"""
             collection_id = batch_process_dependency['collection_id']
 
@@ -876,27 +877,34 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 return retry
 
-            # TODO: prevent status requests for duplicate (recycled) batch request IDs
-            return {request_id: (batch_processing_service.get_batch_process_status(request_id) if request_id else "DONE",
-                         retrier(request_id)) for request_id in batch_request_ids}
+            # TODO: prevent requests for duplicate (recycled) batch request IDs
+            return {request_id: (batch_processing_service.get_batch_process(request_id),
+                                 retrier(request_id)) for request_id in batch_request_ids if request_id is not None}
 
         dependencies = job_info.get('dependencies') or []
         batch_processes = reduce(partial(dict_merge_recursive, overwrite=True),
-                                 (batch_request_statuses(dependency) for dependency in dependencies))
+                                 (batch_request_details(dependency) for dependency in dependencies))
+
+        batch_process_statuses = {batch_request_id: details.status()
+                                  for batch_request_id, (details, _) in batch_processes.items()}
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
-                     .format(j=job_id,
-                             ss={batch_request_id: status for batch_request_id, (status, _) in batch_processes.items()}),
+                     .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id})
+
+        batch_process_processing_units_usage = sum(details.processing_units_spent() or Decimal("0.0")
+                                                   for details, _ in batch_processes.values())
+
+        logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units_usage} PU",
                      extra={'job_id': job_id})
 
-        if any(status == "FAILED" for _, (status, _) in batch_processes.items()):  # at least one failed: not recoverable
+        if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
 
             job_info['status'] = 'error'  # TODO: avoid mutation
-        elif all(status == "DONE" for _, (status, _) in batch_processes.items()):  # all good: resume batch job with available data
+        elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: resume batch job with available data
             assembled_location_cache = {}
 
             for dependency in dependencies:
@@ -954,12 +962,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(job_id, user_id, 'available')
 
             self._start_job(job_id, user_id, dependencies)
-        elif all(status in ["DONE", "PARTIAL"] for _, (status, _) in batch_processes.items()):  # all done but some partially failed
+        elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
                 with JobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
 
-                retries = [retry for _, (status, retry) in batch_processes.items() if status == "PARTIAL"]
+                retries = [retry for details, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
                 for retry in retries:
                     retry()
