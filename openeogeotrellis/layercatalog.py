@@ -130,11 +130,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             cell_height = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
 
         native_crs = self._native_crs(metadata)
-        if load_params.sar_backscatter is not None:
-            #Backscatter can be computed in various reference systems
-            native_crs = "UTM"
-            cell_width = 10.0
-            cell_height = 10.0
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
