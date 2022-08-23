@@ -56,7 +56,7 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock):
     projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
 
     reproject = (getattr(getattr(jvm_mock.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")).reproject
-    reproject.assert_called_once_with(projected_polys,32631)
+    reproject.assert_called_once_with(projected_polys, 32631)
     reprojected = reproject.return_value
 
     factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd", "???", "!!!",
@@ -67,7 +67,7 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock):
     jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
     factory_mock.return_value.datacube_seq.assert_called_once_with(reprojected.polygons(),
                                                  ANY, '2021-02-08T10:36:00+00:00', '2021-02-08T10:36:00+00:00',
-                                                 ['VV', 'VH', 'HH', 'HV'], {},
+                                                 ['VV', 'VH', 'HV', 'HH'], {},
                                                  datacubeParams)
 
 
