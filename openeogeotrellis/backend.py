@@ -330,7 +330,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "eduperson_scoped_affiliation",
                 ],
                 title="EGI Check-in",
-                default_client=default_client_egi,  # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
             ),
             # TODO: remove old EGI provider (issuer https://aai.egi.eu/oidc/)
@@ -343,7 +342,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "eduperson_scoped_affiliation",
                 ],
                 title="EGI Check-in (legacy)",
-                default_client=default_client_egi,  # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
             ),
             # TODO: provide only one EGI Check-in variation? Or only include EGI Check-in dev instance on openeo-dev?
@@ -356,7 +354,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "eduperson_scoped_affiliation",
                 ],
                 title="EGI Check-in (dev)",
-                default_client=default_client_egi,   # TODO: remove this legacy experimental field
                 default_clients=[default_client_egi],
             ),
             OidcProvider(
