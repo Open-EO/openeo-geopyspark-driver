@@ -229,8 +229,10 @@ def _get_tracker_metadata(tracker_id="") -> dict:
             all_links = [ {"href":link, "rel":"derived_from"} for link in all_links]
 
         sentinelhub_tile_requests = {
-            "all": tracker_results.get("Sentinelhub_Tile_Requests", 0),
-            "failed": tracker_results.get("Sentinelhub_Failed_Tile_Requests", 0)
+            # gotcha: a Java Map returns null for non-existing keys so the default won't trigger for a regular
+            # .get(non_existing_key, default)
+            "all": tracker_results.getOrDefault("Sentinelhub_Tile_Requests", 0),
+            "failed": tracker_results.getOrDefault("Sentinelhub_Failed_Tile_Requests", 0)
         }
 
         return dict_no_none(usage=usage, links=all_links, sentinelhub_tile_requests=sentinelhub_tile_requests)

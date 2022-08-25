@@ -111,24 +111,25 @@ def test_run_job(evaluate,tmp_path):
 
     cube_mock.write_assets.assert_called_once()
     metadata_result = read_json(tmp_path/"metadata.json")
-    assert {'assets': asset_meta,
-            'bbox': None,
-            'end_datetime': None,
-            'epsg': None,
-            'geometry': None,
-            'area': None,
-            'unique_process_ids': ['discard_result'],
-            'instruments': [],
-            'links': [{'href': 'http://myproduct4', 'rel': 'derived_from'},
-                      {'href': 'http://myproduct1', 'rel': 'derived_from'},
-                      {'href': 'http://myproduct2', 'rel': 'derived_from'},
-                      {'href': 'http://myproduct3', 'rel': 'derived_from'}],
-            'processing:facility': 'VITO - SPARK',
-            'processing:software': 'openeo-geotrellis-' + __version__,
-            'start_datetime': None,
-            'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
-                                      'value': 1.7999999999999998}}
-            } == metadata_result
+    assert metadata_result == {'assets': asset_meta,
+                               'bbox': None,
+                               'end_datetime': None,
+                               'epsg': None,
+                               'geometry': None,
+                               'area': None,
+                               'unique_process_ids': ['discard_result'],
+                               'instruments': [],
+                               'links': [{'href': 'http://myproduct4', 'rel': 'derived_from'},
+                                         {'href': 'http://myproduct1', 'rel': 'derived_from'},
+                                         {'href': 'http://myproduct2', 'rel': 'derived_from'},
+                                         {'href': 'http://myproduct3', 'rel': 'derived_from'}],
+                               'processing:facility': 'VITO - SPARK',
+                               'processing:software': 'openeo-geotrellis-' + __version__,
+                               'start_datetime': None,
+                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
+                                                         'value': 1.7999999999999998}},
+                               'sentinelhub_tile_requests': {'all': 0, 'failed': 0}
+                               }
     t.setGlobalTracking(False)
 
 
