@@ -228,7 +228,12 @@ def _get_tracker_metadata(tracker_id="") -> dict:
             all_links = list(chain(*links.values()))
             all_links = [ {"href":link, "rel":"derived_from"} for link in all_links]
 
-        return dict_no_none(usage=usage,links=all_links)
+        sentinelhub_tile_requests = {
+            "all": tracker_results.get("Sentinelhub_Tile_Requests", 0),
+            "failed": tracker_results.get("Sentinelhub_Failed_Tile_Requests", 0)
+        }
+
+        return dict_no_none(usage=usage, links=all_links, sentinelhub_tile_requests=sentinelhub_tile_requests)
 
 
 def _deserialize_dependencies(arg: str) -> List[dict]:
@@ -262,6 +267,7 @@ def main(argv: List[str]) -> None:
     user_id = argv[8]
     BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
     max_soft_errors_ratio = float(argv[9])
+    soft_errors = max_soft_errors_ratio >= 0.0
 
     _create_job_dir(job_dir)
 
@@ -301,7 +307,7 @@ def main(argv: List[str]) -> None:
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio
+                    soft_errors=soft_errors
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -326,18 +332,30 @@ def main(argv: List[str]) -> None:
                 logger.info("Saved profiling info to: " + profile_zip)
             else:
                 run_driver()
-                
+
+            sentinelhub_tile_requests = _get_tracker_metadata()["sentinelhub_tile_requests"]
+            all_sentinelhub_tile_requests = sentinelhub_tile_requests["all"]
+            failed_sentinelhub_tile_requests = sentinelhub_tile_requests["failed"]
+
+            sentinelhub_failed_tile_request_ratio = (failed_sentinelhub_tile_requests / all_sentinelhub_tile_requests
+                                                     if all_sentinelhub_tile_requests > 0 else 0.0)
+
+            if soft_errors and sentinelhub_failed_tile_request_ratio > max_soft_errors_ratio:
+                raise Exception(f"error/request ratio"
+                                f" [{failed_sentinelhub_tile_requests}/{all_sentinelhub_tile_requests}]"
+                                f" {sentinelhub_failed_tile_request_ratio} > {max_soft_errors_ratio}, failing job")
     except Exception as e:
         logger.exception("error processing batch job")
         user_facing_logger.exception("error processing batch job")
         if "Container killed on request. Exit code is 143" in str(e):
             user_facing_logger.error("Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate.")
+
         raise e
 
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, max_soft_errors_ratio: float = 0.0):
+            user_id: str = None, soft_errors: bool = False):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
 
@@ -353,7 +371,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'correlation_id': correlation_id,
         'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
         'backend_implementation': backend_implementation,
-        'max_soft_errors_ratio': max_soft_errors_ratio
+        'soft_errors': soft_errors
     })
     tracer = DryRunDataTracer()
     logger.info("Starting process graph evaluation")
