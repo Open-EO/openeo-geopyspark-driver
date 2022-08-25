@@ -888,12 +888,6 @@ class GpsBatchJobs(backend.BatchJobs):
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id})
 
-        batch_process_processing_units_usage = sum(details.processing_units_spent() or Decimal("0.0")
-                                                   for details, _ in batch_processes.values())
-
-        logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units_usage} PU",
-                     extra={'job_id': job_id})
-
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
             with JobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
@@ -955,8 +949,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     pass
 
             with JobRegistry() as registry:
+                batch_process_processing_units = sum(details.processing_units_spent() or Decimal("0.0")
+                                                           for details, _ in batch_processes.values())
+
+                logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units} PU",
+                             extra={'job_id': job_id})
+
                 registry.set_dependencies(job_id, user_id, dependencies)
                 registry.set_dependency_status(job_id, user_id, 'available')
+                registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, user_id, dependencies)
         elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed

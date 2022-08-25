@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta
-from typing import List, Dict, Callable, Union
+from decimal import Decimal
+from typing import List, Dict, Callable, Union, Optional
 import logging
 
 from deprecated import deprecated
@@ -125,6 +126,14 @@ class JobRegistry:
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
         _log.debug("batch job {j} dependency -> {s}".format(j=job_id, s=dependency_status))
+
+    def set_dependency_usage(self, job_id: str, user_id: str, processing_units: Decimal):
+        self.patch(job_id, user_id, dependency_usage=str(processing_units))
+
+    @staticmethod
+    def get_dependency_usage(job_info: dict) -> Optional[Decimal]:
+        usage = job_info.get('dependency_usage')
+        return Decimal(usage) if usage is not None else None
 
     def set_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
         self.patch(job_id, user_id, dependencies=dependencies)

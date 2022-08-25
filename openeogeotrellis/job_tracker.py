@@ -1,5 +1,6 @@
 import kazoo.client
 import logging
+from decimal import Decimal
 from logging.handlers import RotatingFileHandler
 import subprocess
 import sys
@@ -139,14 +140,18 @@ class JobTracker:
 
                                     registry.mark_done(job_id, user_id)
 
-                                    sentinelhub_processing_units = result_metadata.get("usage",{}).get("sentinelhub",{}).get("value",0.0)
+                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
+                                                                    .get("sentinelhub", {}).get("value", 0.0))
+
+                                    sentinelhub_batch_processing_units = JobRegistry.get_dependency_usage(job_info)
 
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
                                         'area': result_metadata.get('area'),
                                         'unique_process_ids': result_metadata.get('unique_process_ids'),
                                         'cpu_time_seconds': cpu_time_seconds,
-                                        'sentinelhub': sentinelhub_processing_units
+                                        'sentinelhub': float(Decimal(sentinelhub_processing_units) +
+                                                             sentinelhub_batch_processing_units)
                                     })
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
