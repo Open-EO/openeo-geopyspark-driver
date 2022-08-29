@@ -528,7 +528,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
-    def load_result(self, job_id: str, user_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def load_result(self, job_id: str, user_id: Optional[str], load_params: LoadParameters,
+                    env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
         if job_id.startswith("http://") or job_id.startswith("https://"):
