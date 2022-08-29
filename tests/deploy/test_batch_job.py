@@ -127,8 +127,7 @@ def test_run_job(evaluate,tmp_path):
                                'processing:software': 'openeo-geotrellis-' + __version__,
                                'start_datetime': None,
                                'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
-                                                         'value': 1.7999999999999998}},
-                               'sentinelhub_tile_requests': {'all': 0, 'failed': 0}
+                                                         'value': 1.7999999999999998}}
                                }
     t.setGlobalTracking(False)
 
