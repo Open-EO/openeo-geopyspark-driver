@@ -532,13 +532,39 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
+        spatial_extent = load_params.spatial_extent
+        west = spatial_extent.get("west", None)
+        east = spatial_extent.get("east", None)
+        north = spatial_extent.get("north", None)
+        south = spatial_extent.get("south", None)
+        crs = spatial_extent.get("crs", None)
+        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
+
         if job_id.startswith("http://") or job_id.startswith("https://"):
             job_results_canonical_url = job_id
             job_results = Collection.from_file(href=job_results_canonical_url)
 
+            def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
+                from pyproj import Transformer
+                transform = Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
+                xmin, ymin = transform(xx=bbox[0], yy=bbox[1])
+                xmax, ymax = transform(xx=bbox[2], yy=bbox[3])
+                return [xmin, ymin, xmax, ymax]
+
+            def intersects_spatial_extent(item) -> bool:
+                if not spatial_bounds_present or item.bbox is None:
+                    return True
+
+                spatial_extent_epsg4326 = reproject([west, south, east, north],
+                                                    crs_from=crs or "EPSG:4326",
+                                                    crs_to="EPSG:4326")
+
+                return Polygon.from_bounds(*spatial_extent_epsg4326).intersects(Polygon.from_bounds(*item.bbox))
+
             uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
                                                               asset.extra_fields.get("eo:bands", []))
                                   for item in job_results.get_items()
+                                  if intersects_spatial_extent(item)
                                   for asset in item.get_assets().values()
                                   if asset.media_type == "image/tiff; application=geotiff"}
 
@@ -552,13 +578,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                          status_code=501)
 
             def load_spatial_bounds_from_job_results():
-                def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
-                    from pyproj import Transformer
-                    transform = Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
-                    xmin, ymin = transform(xx=bbox[0], yy=bbox[1])
-                    xmax, ymax = transform(xx=bbox[2], yy=bbox[3])
-                    return [xmin, ymin, xmax, ymax]
-
                 overall_spatial_extent = job_results.extent.spatial.bboxes[0]
                 best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
                 return reproject(overall_spatial_extent, 4326, best_epsg), best_epsg
@@ -605,14 +624,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         temporal_extent = load_params.temporal_extent
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
-
-        spatial_extent = load_params.spatial_extent
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        crs = spatial_extent.get("crs", None)
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
 
         bands = load_params.bands
         if bands:
