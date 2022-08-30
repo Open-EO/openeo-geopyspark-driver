@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from openeogeotrellis.utils import dict_merge_recursive, describe_path, lonlat_to_mercator_tile_indices, nullcontext, \
-    utcnow, UtcNowClock
+    utcnow, UtcNowClock, single_value
 
 
 @pytest.mark.parametrize(["a", "b", "expected"], [
@@ -153,3 +153,23 @@ class TestUtcNowClock:
     def test_mock_str_datetime(self):
         with UtcNowClock.mock(now="2021-10-22 12:34:56"):
             assert utcnow() == datetime.datetime(2021, 10, 22, 12, 34, 56)
+
+
+def test_single_value():
+    try:
+        single_value([])
+        pytest.fail("an empty list doesn't have a single value")
+    except ValueError:
+        pass
+
+    assert single_value([1]) == 1
+    assert single_value([1, 1]) == 1
+
+    try:
+        xs = [1, 2]
+        single_value(xs)
+        pytest.fail(f"{xs} doesn't have a single value")
+    except ValueError:
+        pass
+
+    assert single_value({'a': ['VH'], 'b': ['VH']}.values()) == ['VH']

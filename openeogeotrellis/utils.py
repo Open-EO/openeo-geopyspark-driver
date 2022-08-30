@@ -295,9 +295,28 @@ def nullcontext():
     """
     yield
 
+
 def truncate_job_id_k8s(job_id):
     return job_id.split('-')[1][:10]
+
 
 def truncate_user_id_k8s(user_id):
     return user_id.split('@')[0][:20]
 
+
+def single_value(xs):
+    """
+    If the values in the collection are the same, return that value.
+    """
+
+    xs = iter(xs)
+
+    try:
+        first = next(xs)
+
+        if all(x == first for x in xs):
+            return first
+    except StopIteration:
+        raise ValueError(f"no values in {xs}")
+
+    raise ValueError(f"distinct values in {xs}")

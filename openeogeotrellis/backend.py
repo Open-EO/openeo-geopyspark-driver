@@ -29,7 +29,7 @@ from pystac import Collection
 from shapely.geometry import box, GeometryCollection, Point, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import TemporalDimension, SpatialDimension, Band
+from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
 from openeo.util import dict_no_none, rfc3339, deep_get
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
@@ -58,7 +58,7 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s, dict_merge_recursive
+    truncate_job_id_k8s, dict_merge_recursive, single_value
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -536,10 +536,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             job_results_canonical_url = job_id
             job_results = Collection.from_file(href=job_results_canonical_url)
 
-            timestamped_uris = {asset.get_absolute_href(): item.datetime.isoformat()
-                                for item in job_results.get_items()
-                                for asset in item.get_assets().values()
-                                if asset.media_type == "image/tiff; application=geotiff"}
+            uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
+                                                              asset.extra_fields.get("eo:bands", []))
+                                  for item in job_results.get_items()
+                                  for asset in item.get_assets().values()
+                                  if asset.media_type == "image/tiff; application=geotiff"}
+
+            timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
+
+            try:
+                eo_bands = single_value(eo_bands for _, eo_bands in uris_with_metadata.values())
+                band_names = [eo_band["name"] for eo_band in eo_bands]
+            except ValueError as e:
+                raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
+                                         status_code=501)
 
             def load_spatial_bounds_from_job_results():
                 def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
@@ -556,20 +566,27 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             load_spatial_bounds = load_spatial_bounds_from_job_results
 
         else:
-            timestamped_paths = {asset["href"]: asset.get("datetime")
-                                 for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
-                                 if asset["type"] == "image/tiff; application=geotiff"}
+            paths_with_metadata = {asset["href"]: (asset.get("datetime"), asset.get("bands", []))
+                                   for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
+                                   if asset["type"] == "image/tiff; application=geotiff"}
 
-            if len(timestamped_paths) == 0:
+            if len(paths_with_metadata) == 0:
                 raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
                                          status_code=501)
 
-            if not all(timestamp is not None for timestamp in timestamped_paths.values()):
+            if not all(timestamp is not None for timestamp, _ in paths_with_metadata.values()):
                 raise OpenEOApiException(
                     message=f"Cannot load results of job {job_id} because they lack timestamp information.",
                     status_code=400)
 
-            timestamped_uris = timestamped_paths
+            timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
+
+            try:
+                eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
+                band_names = [eo_band.name for eo_band in eo_bands]
+            except ValueError as e:
+                raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
+                                         status_code=501)
 
             def load_spatial_bounds_from_job_info():
                 job_info = self.batch_jobs.get_job_info(job_id, user_id)
@@ -580,7 +597,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
             SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[])
+            TemporalDimension(name='t', extent=[]),
+            BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
         ])
 
         # TODO: eliminate duplication with load_disk_data
