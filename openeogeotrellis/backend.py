@@ -735,16 +735,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             directory = GpsBatchJobs.get_job_output_dir(model_id)
             # TODO: This also needs to support Catboost model
             # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
-            filename = "file:" + str(Path(directory) / "randomforest.model")
+            filename = str(Path(directory) / "randomforest.model")
             model = None
             if Path(filename).exists():
                 logger.info("Loading ml_model using filename: {}".format(filename))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + filename)
             elif Path(filename+".tar.gz").exists():
                 with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
                     shutil.unpack_archive(filename+".tar.gz", extract_dir=tmp_dir, format='gztar')
                     filename = Path(tmp_dir) / "randomforest.model"
-                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
+                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" +filename)
             else:
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)
