@@ -743,7 +743,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             elif Path(filename+".tar.gz").exists():
                 with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
                     shutil.unpack_archive(filename+".tar.gz", extract_dir=tmp_dir, format='gztar')
-                    filename = Path(tmp_dir) / "randomforest.model"
+                    filename = str(Path(tmp_dir) / "randomforest.model")
                     model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" +filename)
             else:
                 raise OpenEOApiException(
