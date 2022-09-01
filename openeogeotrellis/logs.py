@@ -5,8 +5,8 @@ from elasticsearch.helpers import scan
 
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
-ES_INDEX_PATTERN = "filebeat-index-3m*"
-ES_TAGS = ["openeo-yarn"]
+ES_INDEX_PATTERN = "openeo*"
+ES_TAGS = ["openeo-yarn", "openeo-nifi", "openeo-driver"]
 
 
 def elasticsearch_logs(job_id: str) -> Iterable[dict]:
