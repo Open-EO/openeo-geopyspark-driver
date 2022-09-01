@@ -686,6 +686,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
+        
+        def create_model_dir():
+            ml_models_path = GpsBatchJobs.get_job_output_dir('ml_models')
+            if not os.path.exists(ml_models_path):
+                os.makedirs(ml_models_path)
+            # Use a random id to avoid collisions.
+            model_dir_path = str(ml_models_path / generate_uuid(prefix="model"))
+            if not os.path.exists(model_dir_path):
+                os.makedirs(model_dir_path)
+            return model_dir_path
+
         if model_id.startswith('http'):
             # Load the model using its STAC metadata file.
             metadata = requests.get(model_id).json()
@@ -711,44 +722,42 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             # Get the url for the actual model from the STAC metadata.
             model_url = checkpoints[0]["href"]
             architecture = metadata["properties"]["ml-model:architecture"]
-            # Download the model as a temporary file and load it as a java object.
-            with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
-                if architecture == "random-forest":
-                    dest_path = Path(tmp_dir + "/randomforest.model.tar.gz")
-                    with open(dest_path, 'wb') as f:
-                        f.write(requests.get(model_url).content)
-                    shutil.unpack_archive(dest_path, extract_dir=tmp_dir, format='gztar')
-                    filename = "file:" + str(dest_path).replace(".tar.gz", "")
-                    logger.info("Loading ml_model using filename: {}".format(filename))
-                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=filename)
-                elif architecture == "catboost":
-                    filename = Path(tmp_dir + "/catboost_model.cbm")
-                    with open(filename, 'wb') as f:
-                        f.write(requests.get(model_url).content)
-                    logger.info("Loading ml_model using filename: {}".format(filename))
-                    model: JavaObject = CatBoostClassificationModel.load_native_model(str(filename))
-                else:
-                    raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
-                return model
+            # Download the model to the ml_models folder and load it as a java object.
+            model_dir_path = create_model_dir()
+            if architecture == "random-forest":
+                dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
+                with open(dest_path, 'wb') as f:
+                    f.write(requests.get(model_url).content)
+                shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
+                unpacked_model_path = str(dest_path).replace(".tar.gz", "")
+                logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=unpacked_model_path)
+            elif architecture == "catboost":
+                filename = Path(model_dir_path + "/catboost_model.cbm")
+                with open(filename, 'wb') as f:
+                    f.write(requests.get(model_url).content)
+                logger.info("Loading ml_model using filename: {}".format(filename))
+                model: JavaObject = CatBoostClassificationModel.load_native_model(str(filename))
+            else:
+                raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
+            return model
         else:
             # Load the model using a batch job id.
             directory = GpsBatchJobs.get_job_output_dir(model_id)
             # TODO: This also needs to support Catboost model
             # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
-            filename = str(Path(directory) / "randomforest.model")
-            model = None
-            if Path(filename).exists():
-                logger.info("Loading ml_model using filename: {}".format(filename))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + filename)
-            elif Path(filename+".tar.gz").exists():
-                with tempfile.TemporaryDirectory(prefix="openeo-pydrvr-") as tmp_dir:
-                    shutil.unpack_archive(filename+".tar.gz", extract_dir=tmp_dir, format='gztar')
-                    filename = str(Path(tmp_dir) / "randomforest.model")
-                    model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" +filename)
+            model_path = str(Path(directory) / "randomforest.model")
+            if Path(model_path).exists():
+                logger.info("Loading ml_model using filename: {}".format(model_path))
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=model_path)
+            elif Path(model_path+".tar.gz").exists():
+                packed_model_path = model_path+".tar.gz"
+                shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
+                unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=unpacked_model_path)
             else:
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)
-
             return model
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
