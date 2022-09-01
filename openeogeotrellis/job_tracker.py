@@ -143,7 +143,8 @@ class JobTracker:
                                     sentinelhub_processing_units = (result_metadata.get("usage", {})
                                                                     .get("sentinelhub", {}).get("value", 0.0))
 
-                                    sentinelhub_batch_processing_units = JobRegistry.get_dependency_usage(job_info)
+                                    sentinelhub_batch_processing_units = (JobRegistry.get_dependency_usage(job_info)
+                                                                          or Decimal("0.0"))
 
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
