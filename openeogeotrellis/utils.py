@@ -320,3 +320,15 @@ def single_value(xs):
         raise ValueError(f"no values in {xs}")
 
     raise ValueError(f"distinct values in {xs}")
+
+
+def add_permissions(path: Path, mode: int):
+    # TODO: accept PathLike etc as well
+    # TODO: maybe umask is a better/cleaner option
+    if path.exists():
+        current_permission_bits = os.stat(path).st_mode
+        os.chmod(path, current_permission_bits | mode)
+    else:
+        for p in path.parent.glob('*'):
+            current_permission_bits = os.stat(p).st_mode
+            p.chmod(current_permission_bits | mode)

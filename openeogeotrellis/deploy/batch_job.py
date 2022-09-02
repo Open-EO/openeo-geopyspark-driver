@@ -4,7 +4,6 @@ import os
 import shutil
 import stat
 import sys
-import uuid
 from itertools import chain
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -33,8 +32,7 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm
-
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
@@ -51,7 +49,7 @@ def _setup_user_logging(log_file: Path) -> None:
 
     user_facing_logger.addHandler(file_handler)
 
-    _add_permissions(log_file, stat.S_IWGRP)
+    add_permissions(log_file, stat.S_IWGRP)
 
 
 def _create_job_dir(job_dir: Path):
@@ -63,19 +61,7 @@ def _create_job_dir(job_dir: Path):
         except LookupError as e:
             logger.warning(f"Could not change group of {job_dir} to eodata.")
 
-    _add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
-
-
-def _add_permissions(path: Path, mode: int):
-    # TODO: accept PathLike etc as well
-    # TODO: maybe umask is a better/cleaner option
-    if path.exists():
-        current_permission_bits = os.stat(path).st_mode
-        os.chmod(path, current_permission_bits | mode)
-    else:
-        for p in path.parent.glob('*'):
-            current_permission_bits = os.stat(p).st_mode
-            p.chmod(current_permission_bits | mode)
+    add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
 
 def _parse(job_specification_file: str) -> Dict:
@@ -205,7 +191,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
 
-    _add_permissions(metadata_file, stat.S_IWGRP)
+    add_permissions(metadata_file, stat.S_IWGRP)
 
     logger.info("wrote metadata to %s" % metadata_file)
 
@@ -316,7 +302,7 @@ def main(argv: List[str]) -> None:
 
                 profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
                                                   root_dir=profile_dumps_dir)
-                _add_permissions(Path(profile_zip), stat.S_IWGRP)
+                add_permissions(Path(profile_zip), stat.S_IWGRP)
 
                 shutil.rmtree(profile_dumps_dir,
                               onerror=lambda func, path, exc_info:
@@ -398,16 +384,16 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         if isinstance(result, DriverMlModel):
             ml_model_metadata = result.get_model_metadata(str(output_file))
         for name,asset in assets_metadata.items():
-            _add_permissions(Path(asset["href"]), stat.S_IWGRP)
+            add_permissions(Path(asset["href"]), stat.S_IWGRP)
         logger.info(f"wrote {len(assets_metadata)} assets to {output_file}")
     elif isinstance(result, ImageCollectionResult):
         result.options["batch_mode"] = True
         result.save_result(filename=str(output_file))
-        _add_permissions(output_file, stat.S_IWGRP)
+        add_permissions(output_file, stat.S_IWGRP)
         logger.info("wrote image collection to %s" % output_file)
     elif isinstance(result, MultipleFilesResult):
         result.reduce(output_file, delete_originals=True)
-        _add_permissions(output_file, stat.S_IWGRP)
+        add_permissions(output_file, stat.S_IWGRP)
         logger.info("reduced %d files to %s" % (len(result.files), output_file))
     elif isinstance(result, NullResult):
         logger.info("skipping output file %s" % output_file)

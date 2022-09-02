@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import os
+import stat
 import re
 import shutil
 import subprocess
@@ -58,7 +59,7 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s, dict_merge_recursive, single_value
+    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
@@ -687,15 +688,24 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
         
-        def create_model_dir():
+        def _create_model_dir():
+            def _set_permissions(job_dir: Path):
+                if not ConfigParams().is_kube_deploy:
+                    try:
+                        shutil.chown(job_dir, user = None, group = 'eodata')
+                    except LookupError as e:
+                        logger.warning(f"Could not change group of {job_dir} to eodata.")
+                add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
             ml_models_path = GpsBatchJobs.get_job_output_dir('ml_models')
             if not os.path.exists(ml_models_path):
                 os.makedirs(ml_models_path)
+                _set_permissions(ml_models_path)
             # Use a random id to avoid collisions.
-            model_dir_path = str(ml_models_path / generate_uuid(prefix="model"))
+            model_dir_path = ml_models_path / generate_uuid(prefix="model")
             if not os.path.exists(model_dir_path):
                 os.makedirs(model_dir_path)
-            return model_dir_path
+                _set_permissions(model_dir_path)
+            return str(model_dir_path)
 
         if model_id.startswith('http'):
             # Load the model using its STAC metadata file.
@@ -723,7 +733,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             model_url = checkpoints[0]["href"]
             architecture = metadata["properties"]["ml-model:architecture"]
             # Download the model to the ml_models folder and load it as a java object.
-            model_dir_path = create_model_dir()
+            model_dir_path = _create_model_dir()
             if architecture == "random-forest":
                 dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
                 with open(dest_path, 'wb') as f:
