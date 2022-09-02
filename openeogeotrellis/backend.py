@@ -698,11 +698,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
             ml_models_path = GpsBatchJobs.get_job_output_dir('ml_models')
             if not os.path.exists(ml_models_path):
+                logger.info("Creating directory: {}".format(ml_models_path))
                 os.makedirs(ml_models_path)
                 _set_permissions(ml_models_path)
             # Use a random id to avoid collisions.
             model_dir_path = ml_models_path / generate_uuid(prefix="model")
             if not os.path.exists(model_dir_path):
+                logger.info("Creating directory: {}".format(model_dir_path))
                 os.makedirs(model_dir_path)
                 _set_permissions(model_dir_path)
             return str(model_dir_path)
