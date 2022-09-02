@@ -743,7 +743,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
                 unpacked_model_path = str(dest_path).replace(".tar.gz", "")
                 logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=unpacked_model_path)
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
             elif architecture == "catboost":
                 filename = Path(model_dir_path + "/catboost_model.cbm")
                 with open(filename, 'wb') as f:
@@ -761,12 +761,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             model_path = str(Path(directory) / "randomforest.model")
             if Path(model_path).exists():
                 logger.info("Loading ml_model using filename: {}".format(model_path))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=model_path)
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + model_path)
             elif Path(model_path+".tar.gz").exists():
                 packed_model_path = model_path+".tar.gz"
                 shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
                 unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path=unpacked_model_path)
+                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
             else:
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)
