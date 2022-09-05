@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+import uuid
 from decimal import Decimal
 from functools import partial, reduce
 from pathlib import Path
@@ -1585,8 +1586,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         if batch_request_ids is None:
                             # cannot be the batch job ID because results for multiple collections would end up in
                             #  the same S3 dir
-                            request_group_id = generate_uuid()
-                            subfolder = request_group_id
+                            request_group_uuid = str(uuid.uuid4())
+                            subfolder = request_group_uuid
 
                             # return type py4j.java_collections.JavaList is not JSON serializable
                             batch_request_ids = list(batch_processing_service.start_card4l_batch_processes(
@@ -1600,7 +1601,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                 dem_instance,
                                 metadata_properties(),
                                 subfolder,
-                                request_group_id)
+                                request_group_uuid)
                             )
 
                             batch_request_cache[batch_request_cache_key] = (batch_request_ids, subfolder)
