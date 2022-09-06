@@ -416,7 +416,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "PNG": {
                     "title": "Portable Network Graphics",
                     "gis_data_types": ["raster"],
-                    "parameters": {}
+                    "parameters": {
+                        "colormap": {
+                            "type": ["object", "null"],
+                            "description": "Allows specifying a colormap, for single band PNGs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0.",
+                            "default": None
+                        },
+                    }
                 },
                 "CovJSON": {
                     "title": "CoverageJSON",

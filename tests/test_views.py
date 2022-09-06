@@ -8,6 +8,7 @@ from unittest import mock
 import pytest
 
 import openeogeotrellis.job_registry
+from openeo.util import deep_get
 from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
 from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
@@ -19,6 +20,7 @@ def test_file_formats(api100):
     assert "GTiff" in formats["output"]
     assert "CovJSON" in formats["output"]
     assert "netCDF" in formats["output"]
+    assert "description" in deep_get(formats, "output", "PNG", "parameters", "colormap")
 
 
 @pytest.mark.parametrize(["path", "expected"], [
