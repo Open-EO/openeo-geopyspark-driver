@@ -1481,9 +1481,11 @@ class GeopysparkDataCube(DriverDataCube):
                         if isinstance(color, int):
                             return color
                         elif isinstance(color, list):
+                            # Convert e.g. [0.5,0.1,0.2,0.5] to 2132358015.
+                            # By multiplying each with 255 and interpreting them together 
+                            # as a 32-bit unsigned long in big-endian.
                             import struct
                             import builtins
-
                             color_as_int = struct.unpack('>L',
                                                          bytes(map(lambda x: builtins.int(x * 255), color)))[0]
                             return color_as_int
