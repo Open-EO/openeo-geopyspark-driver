@@ -1739,15 +1739,16 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        out_assets = self.get_results_metadata(job_id, user_id).get("assets", {})
+        results_metadata = self.get_results_metadata(job_id, user_id)
+        out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
         nodata = out_metadata.get("nodata", None)
         media_type = out_metadata.get("type", out_metadata.get("media_type", "application/octet-stream"))
-        ml_model_metadata = self.get_results_metadata(job_id, user_id).get("ml_model_metadata", None)
 
         results_dict = {}
 
+        ml_model_metadata = results_metadata.get("ml_model_metadata", None)
         if ml_model_metadata is not None:
             ml_model_metadata['ml_model_metadata'] = True
             ml_model_metadata['asset'] = False
