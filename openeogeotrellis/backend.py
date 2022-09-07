@@ -1734,6 +1734,15 @@ class GpsBatchJobs(backend.BatchJobs):
         return False
 
     def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
+        """
+        Reads the metadata json file from the job directory 
+        and returns information about the output files.
+
+        :param job_id: The id of the job to get the results for.
+        :param user_id: The id of the user that started the job.
+
+        :return: A mapping between a filename and a dict containing information about that file.
+        """ 
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
@@ -1787,7 +1796,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
         #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
-        for title,asset in out_assets.items():
+        for title, asset in out_assets.items():
             if title not in results_dict:
                 asset['asset'] = True
                 asset["output_dir"] = str(job_dir)
@@ -1798,6 +1807,9 @@ class GpsBatchJobs(backend.BatchJobs):
         return results_dict
 
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
+        """
+        Reads the metadata json file from the job directory and returns it.
+        """
         metadata_file = self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
         try:
