@@ -92,6 +92,9 @@ fi
 if [ -f "client.conf" ]; then
   files="${files},client.conf"
 fi
+if [ -f "http_credentials.json" ]; then
+  files="${files},http_credentials.json"
+fi
 
 main_py_file="$venv_dir/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py"
 
