@@ -21,7 +21,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
         # This metadata will be written to job_metadata.json.
         # It will then be used to dynamically generate ml_model_metadata.json.
         directory = Path(directory).parent
-        model_path = directory / "randomforest.model.tar.gz"
+        model_path = str(directory / "randomforest.model.tar.gz")
         metadata = {
             "stac_version": "1.0.0",
             "stac_extensions": [

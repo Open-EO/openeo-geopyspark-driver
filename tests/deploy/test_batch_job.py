@@ -85,7 +85,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
     assert metadata == expected
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
-def test_run_job(evaluate,tmp_path):
+def test_run_job(evaluate, tmp_path):
     cube_mock = MagicMock()
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
@@ -130,5 +130,3 @@ def test_run_job(evaluate,tmp_path):
                                                          'value': 1.7999999999999998}}
                                }
     t.setGlobalTracking(False)
-
-

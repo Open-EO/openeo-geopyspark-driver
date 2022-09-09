@@ -1757,6 +1757,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         results_dict = {}
 
+        # ml_model_metadata is added to the metadata when a batch job is completed.
         ml_model_metadata = results_metadata.get("ml_model_metadata", None)
         if ml_model_metadata is not None:
             ml_model_metadata['ml_model_metadata'] = True

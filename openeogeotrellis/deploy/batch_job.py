@@ -20,7 +20,8 @@ from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.datacube import DriverDataCube, DriverMlModel
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult, \
+    MlModelResult
 from openeo_driver.users import User
 from openeo_driver.util.logging import BatchJobLoggingFilter, user_id_trim, get_logging_config, setup_logging, \
     LOGGING_CONTEXT_BATCH_JOB
@@ -381,8 +382,9 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             if(result.options["geometries"] == None):
                 logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
         assets_metadata = result.write_assets(str(output_file))
-        if isinstance(result, DriverMlModel):
+        if isinstance(result, MlModelResult):
             ml_model_metadata = result.get_model_metadata(str(output_file))
+            logger.info("Extracted ml model metadata from %s" % output_file)
         for name,asset in assets_metadata.items():
             add_permissions(Path(asset["href"]), stat.S_IWGRP)
         logger.info(f"wrote {len(assets_metadata)} assets to {output_file}")

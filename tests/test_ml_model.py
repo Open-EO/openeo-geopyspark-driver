@@ -1,4 +1,6 @@
+import re
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from random import uniform, seed
 from typing import List
@@ -10,13 +12,20 @@ import pytest
 import shapely.geometry
 from py4j.java_gateway import JavaObject
 from shapely.geometry import GeometryCollection, Point
-from openeo_driver.utils import EvalEnv
+
+from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.save_result import MlModelResult
+from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester
+from openeo_driver.utils import EvalEnv, read_json
 from pyspark.mllib.tree import RandomForestModel
 
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.GeopySparkCatBoostModel import GeopySparkCatBoostModel
 from openeogeotrellis.ml.GeopySparkRandomForestModel import GeopySparkRandomForestModel
+from tests.data import TEST_DATA_ROOT
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",
@@ -131,23 +140,112 @@ class TestFitClassRandomForestFlow(TestCase):
     def tearDown(self):
         self.tmp_dir.cleanup()
 
-
-def test_fit_class_random_forest_results():
+def get_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries = 1000) -> GeopySparkRandomForestModel:
     # 1. Generate features and targets.
-    seed(42)
-    geometries = GeometryCollection([Point(i,i,i) for i in range(1000)])
+    seed(seedValue)
+    geometries = GeometryCollection([Point(i,i,i) for i in range(nrGeometries)])
     predictors = DummyAggregateSpatialVectorCube("", geometries)
-    values: List[List[float]] = predictors.prepare_for_json()
     target = {
         "type": "FeatureCollection",
-        "features": [{"type": "Feature", "properties": {"target": i}} for i in range(1000)]
+        "features": [{"type": "Feature", "properties": {"target": i}} for i in range(nrGeometries)]
     }
     # 2. Fit model.
+    return predictors.fit_class_random_forest(target, num_trees=num_trees, seed=42)
+
+def test_fit_class_random_forest_results():
     num_trees = 3
-    result: GeopySparkRandomForestModel = predictors.fit_class_random_forest(target, num_trees=num_trees, seed=42)
-    # 3. Test model.
+    result: GeopySparkRandomForestModel = get_simple_random_forest_model(num_trees, 42)
+    # Test model.
     model: RandomForestModel = result.get_model()
     assert(model.numTrees() == num_trees)
     assert(model.predict([0.0, 1.0]) == 110.0)
     assert(model.predict([122.5, 150.3]) == 107.0)
     assert(model.predict([565.5, 400.3]) == 7.0)
+
+@mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
+@mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
+@mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
+def test_random_forest_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+    # 1. Run batch job.
+    random_forest_model: GeopySparkRandomForestModel = get_simple_random_forest_model(3, 42)
+    evaluate.return_value = MlModelResult(random_forest_model)
+    job_id = "jobid"
+    get_job_output_dir.return_value = tmp_path
+
+    run_job(
+        job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
+        output_file=tmp_path /"out", metadata_file=tmp_path / JOB_METADATA_FILENAME, api_version="1.0.0", job_dir="./",
+        dependencies={}, user_id="jenkins"
+    )
+
+    # 2. Check job results.
+    metadata_result = read_json(tmp_path / JOB_METADATA_FILENAME)
+    assert re.match(r'rf-[0-9a-f]{32}', metadata_result['ml_model_metadata']['id'])
+    metadata_result['ml_model_metadata']['id'] = 'rf-uuid'
+    assert metadata_result == {
+        'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
+        'assets': {
+            'randomforest.model.tar.gz': {
+                'href': str(tmp_path / "randomforest.model.tar.gz")
+            }
+        }, 'epsg': None, 'instruments': [], 'processing:facility': 'VITO - SPARK',
+        'processing:software': 'openeo-geotrellis-0.6.4a1', 'unique_process_ids': ['discard_result'],
+        'ml_model_metadata': {
+            'stac_version': '1.0.0',
+            'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
+            'id': 'rf-uuid', 'collection': 'collection-id',
+            'bbox': [-179.999, -89.999, 179.999, 89.999],
+            'geometry': {
+                'type': 'Polygon', 'coordinates': [
+                    [[-179.999, -89.999], [179.999, -89.999], [179.999, 89.999], [-179.999, 89.999],
+                     [-179.999, -89.999]]]
+            }, 'properties': {
+                'datetime': None, 'start_datetime': '1970-01-01T00:00:00Z', 'end_datetime': '9999-12-31T23:59:59Z',
+                'ml-model:type': 'ml-model', 'ml-model:learning_approach': 'supervised',
+                'ml-model:prediction_type': 'classification', 'ml-model:architecture': 'random-forest',
+                'ml-model:training-processor-type': 'cpu', 'ml-model:training-os': 'linux'
+            }, 'links': [], 'assets': {
+                'model': {
+                    'title': 'org.apache.spark.mllib.tree.model.RandomForestModel',
+                    'href': str(tmp_path / 'randomforest.model.tar.gz'),
+                    'type': 'application/octet-stream',
+                    'roles': ['ml-model:checkpoint']
+                }
+            }
+        }
+    }
+
+    get_job_info.return_value = BatchJobMetadata(id=job_id, status='finished', created = datetime.now())
+    api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
+    res = api.get('/jobs/{j}/results'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
+    assert res == {
+        'assets': {
+            'randomforest.model.tar.gz': {
+                'file:nodata': [None],
+                'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/randomforest.model.tar.gz',
+                'roles': ['data'], 'title': 'randomforest.model.tar.gz', 'type': 'application/octet-stream'
+            }
+        }, 'description': 'Results for batch job {job_id}'.format(job_id=job_id),
+        'extent': {
+            'spatial': {'bbox': [None]},
+                   'temporal': {'interval': [[None, None]]}}, 'id': job_id,
+        'license': 'proprietary',
+        'links': [{'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results'.format(job_id=job_id), 'rel': 'self', 'type': 'application/json'},
+                  {
+                      'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results'.format(job_id=job_id), 'rel': 'canonical',
+                      'type': 'application/json'
+                  }, {
+                      'href': 'http://ceos.org/ard/files/PFS/SR/v5.0/CARD4L_Product_Family_Specification_Surface_Reflectance-v5.0.pdf',
+                      'rel': 'card4l-document', 'type': 'application/pdf'
+                  }, {
+                      'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/items/ml_model_metadata.json'.format(job_id=job_id),
+                      'rel': 'item', 'type': 'application/json'
+                  }],
+        'stac_extensions': ['eo', 'file', 'https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
+        'stac_version': '1.0.0',
+        'summaries': {
+            'ml-model:architecture': ['random-forest'],
+            'ml-model:learning_approach': ['supervised'],
+            'ml-model:prediction_type': ['classification']
+        }, 'type': 'Collection'
+    }
