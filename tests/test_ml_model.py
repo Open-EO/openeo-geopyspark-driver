@@ -82,6 +82,87 @@ def test_load_ml_model_for_catboost(mock_get, backend_implementation):
     catboost_model = backend_implementation.load_ml_model(request_url)
     assert isinstance(catboost_model, JavaObject)
 
+@mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
+@mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
+@mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
+@mock.patch('openeogeotrellis.ml.GeopySparkCatBoostModel.GeopySparkCatBoostModel.write_assets')
+def test_fit_class_catboost_job_metadata(write_assets, get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+    # Note: Catboost metadata is not yet used in production as currently only catboost inference is supported.
+    # 1. Run a batch job, which will create a job_metadata.json file.
+    evaluate.return_value = MlModelResult(GeopySparkCatBoostModel(None))
+    job_id = "jobid"
+    get_job_output_dir.return_value = tmp_path
+    # TODO: Currently only inference is supported, so we mock training + saving here.
+    write_assets.return_value = {"catboost_model.cbm": {"href": "catboost_model.cbm"}}
+
+    run_job(
+        job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
+        output_file=tmp_path /"out", metadata_file=tmp_path / JOB_METADATA_FILENAME, api_version="1.0.0", job_dir="./",
+        dependencies={}, user_id="jenkins"
+    )
+
+    # 2. Check the job_metadata file that was written by batch_job.py
+    metadata_result = read_json(tmp_path / JOB_METADATA_FILENAME)
+    assert re.match(r'cb-[0-9a-f]{32}', metadata_result['ml_model_metadata']['id'])
+    metadata_result['ml_model_metadata']['id'] = 'cb-uuid'
+    assert metadata_result == {
+        'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
+        'assets': {'catboost_model.cbm': {'href': 'catboost_model.cbm'}}, 'epsg': None, 'instruments': [],
+        'processing:facility': 'VITO - SPARK', 'processing:software': 'openeo-geotrellis-0.6.4a1',
+        'unique_process_ids': ['discard_result'], 'ml_model_metadata': {
+            'stac_version': '1.0.0',
+            'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
+            'id': 'cb-uuid', 'collection': 'collection-id', 'bbox': [-179.999, -89.999, 179.999, 89.999], 'geometry': {
+                'type': 'Polygon', 'coordinates': [
+                    [[-179.999, -89.999], [179.999, -89.999], [179.999, 89.999], [-179.999, 89.999],
+                     [-179.999, -89.999]]]
+            }, 'properties': {
+                'datetime': None, 'start_datetime': '1970-01-01T00:00:00Z', 'end_datetime': '9999-12-31T23:59:59Z',
+                'ml-model:type': 'ml-model', 'ml-model:learning_approach': 'supervised',
+                'ml-model:prediction_type': 'classification', 'ml-model:architecture': 'catboost',
+                'ml-model:training-processor-type': 'cpu', 'ml-model:training-os': 'linux'
+            }, 'links': [], 'assets': {
+                'model': {
+                    'href': str(tmp_path / 'catboost_model.cbm'),
+                    'type': 'application/octet-stream', 'title': 'ai.catboost.spark.CatBoostClassificationModel',
+                    'roles': ['ml-model:checkpoint']
+                }
+            }
+        }
+    }
+
+    # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
+    # It uses the job_metadata file as a basis to fill in the ml_model metadata fields.
+    get_job_info.return_value = BatchJobMetadata(id=job_id, status='finished', created = datetime.now())
+    api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
+    res = api.get('/jobs/{j}/results'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
+    assert res == {
+        'assets': {
+            'catboost_model.cbm': {
+                'file:nodata': [None],
+                'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/catboost_model.cbm', 'roles': ['data'],
+                'title': 'catboost_model.cbm', 'type': 'application/octet-stream'
+            }
+        }, 'description': 'Results for batch job {job_id}'.format(job_id=job_id),
+        'extent': {'spatial': {'bbox': [None]}, 'temporal': {'interval': [[None, None]]}}, 'id': job_id,
+        'license': 'proprietary',
+        'links': [{'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results'.format(job_id=job_id), 'rel': 'self', 'type': 'application/json'},
+                  {
+                      'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results'.format(job_id=job_id), 'rel': 'canonical',
+                      'type': 'application/json'
+                  }, {
+                      'href': 'http://ceos.org/ard/files/PFS/SR/v5.0/CARD4L_Product_Family_Specification_Surface_Reflectance-v5.0.pdf',
+                      'rel': 'card4l-document', 'type': 'application/pdf'
+                  }, {
+                      'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/items/ml_model_metadata.json'.format(job_id=job_id),
+                      'rel': 'item', 'type': 'application/json'
+                  }],
+        'stac_extensions': ['eo', 'file', 'https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
+        'stac_version': '1.0.0', 'summaries': {
+            'ml-model:architecture': ['catboost'], 'ml-model:learning_approach': ['supervised'],
+            'ml-model:prediction_type': ['classification']
+        }, 'type': 'Collection'
+    }
 
 class TestFitClassRandomForestFlow(TestCase):
     def setUp(self):
@@ -140,7 +221,7 @@ class TestFitClassRandomForestFlow(TestCase):
     def tearDown(self):
         self.tmp_dir.cleanup()
 
-def get_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries = 1000) -> GeopySparkRandomForestModel:
+def train_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries = 1000) -> GeopySparkRandomForestModel:
     # 1. Generate features and targets.
     seed(seedValue)
     geometries = GeometryCollection([Point(i,i,i) for i in range(nrGeometries)])
@@ -152,9 +233,13 @@ def get_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries =
     # 2. Fit model.
     return predictors.fit_class_random_forest(target, num_trees=num_trees, seed=seedValue)
 
-def test_fit_class_random_forest_results():
+def test_fit_class_random_forest_model():
+    """
+    Sanity check to ensure that the model returned by fit_class_random_forest is valid
+    and provides the correct predictions.
+    """
     num_trees = 3
-    result: GeopySparkRandomForestModel = get_simple_random_forest_model(num_trees = num_trees, seedValue = 42)
+    result: GeopySparkRandomForestModel = train_simple_random_forest_model(num_trees = num_trees, seedValue = 42)
     # Test model.
     model: RandomForestModel = result.get_model()
     assert(model.numTrees() == num_trees)
@@ -165,9 +250,9 @@ def test_fit_class_random_forest_results():
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
-def test_random_forest_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
-    # 1. Run batch job.
-    random_forest_model: GeopySparkRandomForestModel = get_simple_random_forest_model(3, 42)
+def test_fit_class_random_forest_job_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+    # 1. Run a batch job, which will create a job_metadata.json file.
+    random_forest_model: GeopySparkRandomForestModel = train_simple_random_forest_model(3, 42)
     evaluate.return_value = MlModelResult(random_forest_model)
     job_id = "jobid"
     get_job_output_dir.return_value = tmp_path
@@ -178,7 +263,7 @@ def test_random_forest_metadata(get_job_output_dir, get_job_info, evaluate, tmp_
         dependencies={}, user_id="jenkins"
     )
 
-    # 2. Check job results.
+    # 2. Check the job_metadata file that was written by batch_job.py
     metadata_result = read_json(tmp_path / JOB_METADATA_FILENAME)
     assert re.match(r'rf-[0-9a-f]{32}', metadata_result['ml_model_metadata']['id'])
     metadata_result['ml_model_metadata']['id'] = 'rf-uuid'
@@ -215,6 +300,8 @@ def test_random_forest_metadata(get_job_output_dir, get_job_info, evaluate, tmp_
         }
     }
 
+    # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
+    # It uses the job_metadata file as a basis to fill in the ml_model metadata fields.
     get_job_info.return_value = BatchJobMetadata(id=job_id, status='finished', created = datetime.now())
     api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
     res = api.get('/jobs/{j}/results'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
