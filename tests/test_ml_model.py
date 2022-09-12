@@ -150,17 +150,17 @@ def get_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries =
         "features": [{"type": "Feature", "properties": {"target": i}} for i in range(nrGeometries)]
     }
     # 2. Fit model.
-    return predictors.fit_class_random_forest(target, num_trees=num_trees, seed=42)
+    return predictors.fit_class_random_forest(target, num_trees=num_trees, seed=seedValue)
 
 def test_fit_class_random_forest_results():
     num_trees = 3
-    result: GeopySparkRandomForestModel = get_simple_random_forest_model(num_trees, 42)
+    result: GeopySparkRandomForestModel = get_simple_random_forest_model(num_trees = num_trees, seedValue = 42)
     # Test model.
     model: RandomForestModel = result.get_model()
     assert(model.numTrees() == num_trees)
-    assert(model.predict([0.0, 1.0]) == 110.0)
-    assert(model.predict([122.5, 150.3]) == 107.0)
-    assert(model.predict([565.5, 400.3]) == 7.0)
+    assert(model.predict([0.0, 1.0]) == 980.0)
+    assert(model.predict([122.5, 150.3]) == 752.0)
+    assert(model.predict([565.5, 400.3]) == 182.0)
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
