@@ -92,7 +92,9 @@ class GeopySparkRandomForestModel(DriverMlModel):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        directory = Path(directory).parent
+        directory = Path(directory)
+        if not directory.is_dir():
+            directory = Path(directory).parent
         model_path = Path(directory) / "randomforest.model"
         self._model.save(gps.get_spark_context(), "file:" + str(model_path))
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)

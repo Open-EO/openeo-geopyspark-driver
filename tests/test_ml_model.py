@@ -1,4 +1,5 @@
 import re
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -7,9 +8,11 @@ from typing import List
 from unittest import TestCase, skip
 from unittest.mock import patch
 
+import geopyspark
 import mock
 import pytest
 import shapely.geometry
+from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension
 from py4j.java_gateway import JavaObject
 from shapely.geometry import GeometryCollection, Point
 
@@ -43,7 +46,6 @@ FEATURE_COLLECTION_1 = {
     ]
 }
 
-
 class DummyAggregateSpatialVectorCube(AggregateSpatialVectorCube):
 
     def prepare_for_json(self) -> List[List[float]]:
@@ -60,7 +62,7 @@ class MockResponse:
         return self.data
 
 
-def mocked_requests_get_catboost(*args, **kwargs):
+def mock_catboost_job_results(*args, **kwargs):
     item_url = 'https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json'
     asset_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/assets/catboost_model.cbm"
     if args[0] == item_url:
@@ -75,19 +77,20 @@ def mocked_requests_get_catboost(*args, **kwargs):
     return MockResponse(None, 404)
 
 
-@skip("Causes permission error when creating folder under /data/projects/OpenEO/")
-@mock.patch('openeogeotrellis.backend.requests.get', side_effect=mocked_requests_get_catboost)
+@mock.patch('openeogeotrellis.backend.requests.get', side_effect=mock_catboost_job_results)
 def test_load_ml_model_for_catboost(mock_get, backend_implementation):
     request_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json"
     catboost_model = backend_implementation.load_ml_model(request_url)
     assert isinstance(catboost_model, JavaObject)
 
+
+@skip("fit_class_catboost is not implemented.")
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
 @mock.patch('openeogeotrellis.ml.GeopySparkCatBoostModel.GeopySparkCatBoostModel.write_assets')
-def test_fit_class_catboost_job_metadata(write_assets, get_job_output_dir, get_job_info, evaluate, tmp_path, client):
-    # Note: Catboost metadata is not yet used in production as currently only catboost inference is supported.
+def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+    # Note: Currently only catboost inference is supported so this metadata is not used.
     # 1. Run a batch job, which will create a job_metadata.json file.
     evaluate.return_value = MlModelResult(GeopySparkCatBoostModel(None))
     job_id = "jobid"
@@ -164,62 +167,75 @@ def test_fit_class_catboost_job_metadata(write_assets, get_job_output_dir, get_j
         }, 'type': 'Collection'
     }
 
-class TestFitClassRandomForestFlow(TestCase):
-    def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory("openeo-pydrvr-pytest-")
-        self.patcher = patch('openeogeotrellis.backend.requests.get', side_effect=self.mocked_requests_get_flow)
-        self.mock_get = self.patcher.start()
-        self.addCleanup(self.patcher .stop)
 
-    def mocked_requests_get_flow(self, *args, **kwargs):
-        item_url = 'https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json'
-        asset_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/assets/randomforest.model.tar.gz"
-        file_name = asset_url.split('/')[-1]
-        if args[0] == item_url:
-            metadata = GeopySparkRandomForestModel(None).get_model_metadata("./")
-            metadata["assets"]["model"]["href"] = asset_url
-            return MockResponse(metadata, 200)
-        elif args[0] == asset_url:
-            source_path = Path(str(self.tmp_dir.name) + "/" + file_name)
-            with open(source_path, 'rb') as f:
-                model = f.read()
-            return MockResponse(model, 200)
-        return MockResponse(None, 404)
-
-    @skip("Causes permission error when creating folder under /data/projects/OpenEO/")
-    @pytest.mark.usefixtures("backend_implementation", "imagecollection_with_two_bands_and_one_date")
-    def test_fit_class_random_forest_flow(self):
-        # 1. Generate features.
-        int_cube = self.imagecollection_with_two_bands_and_one_date
-        cube_xybt: GeopysparkDataCube = int_cube.apply_to_levels(
-            lambda layer: int_cube._convert_celltype(layer, "float32"))
-        geojson = {
-            'type': 'GeometryCollection',
-            'geometries': [feature['geometry'] for feature in FEATURE_COLLECTION_1['features']]
-        }
-        geometries = shapely.geometry.shape(geojson)
-        mean_reducer = {
-            "mean1": {
-                "process_id": "mean",
-                "arguments": {"data": {"from_argument": "data"}},
-                "result": True
+@mock.patch('openeogeotrellis.layercatalog.GeoPySparkLayerCatalog.load_collection')
+@mock.patch('openeo_driver.backend.CollectionCatalog.get_collection_metadata')
+def test_fit_class_random_forest_synchronous(get_collection_metadata, load_collection, imagecollection_with_two_bands_and_one_date, backend_implementation, client, tmp_path):
+    # 1. Create a request with the fit_class_random_forest process.
+    cube_xybt: GeopysparkDataCube = imagecollection_with_two_bands_and_one_date.apply_to_levels(
+        lambda layer: imagecollection_with_two_bands_and_one_date._convert_celltype(layer, "float32"))
+    load_collection.return_value = cube_xybt
+    get_collection_metadata.return_value = cube_xybt.metadata
+    request = {
+        'process': {
+            'process_graph': {
+                'loadcollection1': {
+                    'process_id': 'load_collection', 'arguments': {
+                        'id': 'PROBAV_L3_S10_TOC_NDVI_333M',
+                        'spatial_extent': {'west': 4.78, 'east': 4.91, 'south': 51.25, 'north': 51.31},
+                        'temporal_extent': ['2017-11-01', '2017-11-01']
+                    }
+                }, 'reducedimension1': {
+                    'process_id': 'reduce_dimension', 'arguments': {
+                        'data': {'from_node': 'loadcollection1'}, 'dimension': 't', 'reducer': {
+                            'process_graph': {
+                                'mean1': {
+                                    'process_id': 'mean', 'arguments': {'data': {'from_parameter': 'data'}},
+                                    'result': True
+                                }
+                            }
+                        }
+                    }
+                }, 'aggregatespatial1': {
+                    'process_id': 'aggregate_spatial', 'arguments': {
+                        'data': {'from_node': 'reducedimension1'},
+                        'geometries': FEATURE_COLLECTION_1,
+                        'reducer': {
+                            'process_graph': {
+                                'mean2': {
+                                    'process_id': 'mean', 'arguments': {'data': {'from_parameter': 'data'}},
+                                    'result': True
+                                }
+                            }
+                        }, 'target_dimension': 'bands'
+                    }
+                }, 'fitclassrandomforest1': {
+                    'process_id': 'fit_class_random_forest', 'arguments': {
+                        'num_trees': 3,
+                        'predictors': {'from_node': 'aggregatespatial1'},
+                        'target': FEATURE_COLLECTION_1
+                    },
+                    'result': True
+                }
             }
         }
-        cube_xyb = cube_xybt.reduce_dimension(mean_reducer, 't', EvalEnv())
-        predictors: AggregateSpatialVectorCube = cube_xyb.aggregate_spatial(geometries, mean_reducer, "bands")
-        # 2. Fit model.
-        result: GeopySparkRandomForestModel = predictors.fit_class_random_forest(FEATURE_COLLECTION_1, num_trees=3, seed=42)
-        assert (predictors.prepare_for_json() == [[1.0, 2.0], [1.0, 2.0]])
-        assert (result.get_model().predict([2.0, 2.0]) == 5)
-        # 3. Save model.
-        result.write_assets(self.tmp_dir.name + "/job_metadata.json")
-        print(self.tmp_dir.name)
-        # 4. Load model.
-        request_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json"
-        self.backend_implementation.load_ml_model(request_url)
+    }
 
-    def tearDown(self):
-        self.tmp_dir.cleanup()
+    # 2. Post a synchronous job to train a random forest model.
+    api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
+    res = api.post('/result', json=request, headers = TEST_USER_AUTH_HEADER).assert_status_code(200)
+
+    # 3. Load the response as a random forest model.
+    dest_path = tmp_path / "randomforest.model.tar.gz"
+    with open(dest_path, 'wb') as f:
+        f.write(res.data)
+    shutil.unpack_archive(dest_path, extract_dir = tmp_path, format = 'gztar')
+    unpacked_model_path = str(dest_path).replace(".tar.gz", "")
+    result_model = RandomForestModel.load(sc = geopyspark.get_spark_context(), path = "file:" + unpacked_model_path)
+
+    # 4. Perform some inference locally to check if the model is correct.
+    assert result_model.predict([0.0, 1.0]) == 3.0
+
 
 def train_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries = 1000) -> GeopySparkRandomForestModel:
     # 1. Generate features and targets.
@@ -232,6 +248,7 @@ def train_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries
     }
     # 2. Fit model.
     return predictors.fit_class_random_forest(target, num_trees=num_trees, seed=seedValue)
+
 
 def test_fit_class_random_forest_model():
     """
@@ -247,10 +264,11 @@ def test_fit_class_random_forest_model():
     assert(model.predict([122.5, 150.3]) == 752.0)
     assert(model.predict([565.5, 400.3]) == 182.0)
 
+
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
-def test_fit_class_random_forest_job_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
     # 1. Run a batch job, which will create a job_metadata.json file.
     random_forest_model: GeopySparkRandomForestModel = train_simple_random_forest_model(3, 42)
     evaluate.return_value = MlModelResult(random_forest_model)
