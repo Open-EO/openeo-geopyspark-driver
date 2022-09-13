@@ -19,8 +19,8 @@ from py4j.java_gateway import JavaGateway, JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.util.logging import (get_logging_config, setup_logging, LOGGING_CONTEXT_BATCH_JOB,
-                                        LOGGING_CONTEXT_FLASK)
+from openeo_driver.util.logging import (get_logging_config, setup_logging, user_id_trim, BatchJobLoggingFilter,
+                                        LOGGING_CONTEXT_BATCH_JOB, LOGGING_CONTEXT_FLASK)
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
@@ -338,18 +338,27 @@ def add_permissions(path: Path, mode: int):
 
 
 def ensure_executor_logging(f) -> Callable:
-    def in_batch_job_context():
-        return "OPENEO_BATCH_JOB_ID" in os.environ
+    def setup_context_aware_logging():
+        job_id = os.environ.get("OPENEO_BATCH_JOB_ID")
+        in_batch_job_context = job_id is not None
 
-    decorator = on_first_time(lambda: setup_logging(get_logging_config(
-        root_handlers=["file_json"],
-        loggers={
-            "openeo": {"level": "DEBUG"},
-            "openeo_driver": {"level": "DEBUG"},
-            "openeogeotrellis": {"level": "DEBUG"},
-            "kazoo": {"level": "WARN"},
-            "cropsar": {"level": "DEBUG"},
-        },
-        context=LOGGING_CONTEXT_BATCH_JOB if in_batch_job_context() else LOGGING_CONTEXT_FLASK)))
+        if in_batch_job_context:
+            user_id = os.environ["OPENEO_USER_ID"]
+
+            BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
+            BatchJobLoggingFilter.set("job_id", job_id)
+
+        setup_logging(get_logging_config(
+            root_handlers=["file_json"],
+            loggers={
+                "openeo": {"level": "DEBUG"},
+                "openeo_driver": {"level": "DEBUG"},
+                "openeogeotrellis": {"level": "DEBUG"},
+                "kazoo": {"level": "WARN"},
+                "cropsar": {"level": "DEBUG"},
+            },
+            context=LOGGING_CONTEXT_BATCH_JOB if in_batch_job_context else LOGGING_CONTEXT_FLASK))
+
+    decorator = on_first_time(setup_context_aware_logging)
 
     return decorator(f)
