@@ -214,6 +214,7 @@ def test_fit_class_random_forest_synchronous(get_collection_metadata, load_colle
                     'process_id': 'fit_class_random_forest', 'arguments': {
                         'num_trees': 3,
                         'predictors': {'from_node': 'aggregatespatial1'},
+                        'seed': 42,
                         'target': FEATURE_COLLECTION_1
                     },
                     'result': True
@@ -235,7 +236,7 @@ def test_fit_class_random_forest_synchronous(get_collection_metadata, load_colle
     result_model = RandomForestModel.load(sc = geopyspark.get_spark_context(), path = "file:" + unpacked_model_path)
 
     # 4. Perform some inference locally to check if the model is correct.
-    assert result_model.predict([0.0, 1.0]) == 3.0
+    assert result_model.predict([0.0, 1.0]) == 5.0
 
 
 def train_simple_random_forest_model(num_trees = 3, seedValue = 42, nrGeometries = 1000) -> GeopySparkRandomForestModel:
