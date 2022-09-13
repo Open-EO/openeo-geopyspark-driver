@@ -284,7 +284,8 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
 
     # 2. Check the job_metadata file that was written by batch_job.py
     metadata_result = read_json(tmp_path / JOB_METADATA_FILENAME)
-    assert re.match(r'rf-[0-9a-f]{32}', metadata_result['ml_model_metadata']['id'])
+    model_id = metadata_result['ml_model_metadata']['id']
+    assert re.match(r'rf-[0-9a-f]{32}', model_id)
     metadata_result['ml_model_metadata']['id'] = 'rf-uuid'
     assert metadata_result == {
         'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
@@ -354,4 +355,28 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
             'ml-model:learning_approach': ['supervised'],
             'ml-model:prediction_type': ['classification']
         }, 'type': 'Collection'
+    }
+
+    item_res = api.get('/jobs/{j}/results/items/ml_model_metadata.json'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
+    assert item_res['id'] == model_id
+    item_res['id'] = 'rf-uuid'
+    assert item_res == {
+        'assets': {
+            'model': {
+                'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/randomforest.model.tar.gz'.format(job_id = job_id),
+                'roles': ['ml-model:checkpoint'], 'title': 'org.apache.spark.mllib.tree.model.RandomForestModel',
+                'type': 'application/octet-stream'
+            }
+        }, 'bbox': [-179.999, -89.999, 179.999, 89.999], 'collection': job_id, 'geometry': {
+            'coordinates': [
+                [[-179.999, -89.999], [179.999, -89.999], [179.999, 89.999], [-179.999, 89.999], [-179.999, -89.999]]],
+            'type': 'Polygon'
+        }, 'id': 'rf-uuid', 'links': [],
+        'properties': {
+            'datetime': None, 'end_datetime': '9999-12-31T23:59:59Z', 'ml-model:architecture': 'random-forest',
+            'ml-model:learning_approach': 'supervised', 'ml-model:prediction_type': 'classification',
+            'ml-model:training-os': 'linux', 'ml-model:training-processor-type': 'cpu', 'ml-model:type': 'ml-model',
+            'start_datetime': '1970-01-01T00:00:00Z'
+        }, 'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
+        'stac_version': '1.0.0', 'type': 'Feature'
     }
