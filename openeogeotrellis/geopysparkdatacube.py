@@ -491,6 +491,7 @@ class GeopysparkDataCube(DriverDataCube):
         _log.info(f"[apply_tiles_spatiotemporal] Setting up for running UDF {str_truncate(udf_code, width=1000)!r}")
         _ = compile(source=udf_code, filename='UDF.py', mode='exec')
 
+        @ensure_executor_logging
         def tile_function(metadata:Metadata,
                           openeo_metadata: GeopysparkCubeMetadata,
                           tiles: Tuple[gps.SpatialKey, List[Tuple[SpaceTimeKey, Tile]]]
