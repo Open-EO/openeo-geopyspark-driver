@@ -41,7 +41,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
-from openeogeotrellis.utils import to_projected_polygons, log_memory
+from openeogeotrellis.utils import to_projected_polygons, log_memory, ensure_executor_logging
 from openeogeotrellis._version import __version__ as softwareversion
 
 
@@ -672,6 +672,8 @@ class GeopysparkDataCube(DriverDataCube):
                 Apply a user defined function to every tile in a TiledRasterLayer
                 and return the transformed TiledRasterLayer.
                 """
+
+                @ensure_executor_logging
                 def tile_function(metadata: Metadata,
                                   openeo_metadata: GeopysparkCubeMetadata,
                                   geotrellis_tile: Tuple[SpaceTimeKey, Tile]
@@ -680,7 +682,6 @@ class GeopysparkDataCube(DriverDataCube):
                     Apply a user defined function to a geopyspark.geotrellis.Tile and return the transformed tile.
                     """
 
-                    from openeogeotrellis import _executor_logging
                     # Setup the UDF input data.
                     key = geotrellis_tile[0]
                     extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, key)

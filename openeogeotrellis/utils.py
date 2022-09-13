@@ -8,8 +8,9 @@ import os
 import pwd
 import resource
 import stat
+from epsel import on_first_time
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Callable, Tuple, Union
 
 import pytz
 import dateutil.parser
@@ -18,6 +19,8 @@ from py4j.java_gateway import JavaGateway, JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.util.logging import (get_logging_config, setup_logging, LOGGING_CONTEXT_BATCH_JOB,
+                                        LOGGING_CONTEXT_FLASK)
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
@@ -332,3 +335,21 @@ def add_permissions(path: Path, mode: int):
         for p in path.parent.glob('*'):
             current_permission_bits = os.stat(p).st_mode
             p.chmod(current_permission_bits | mode)
+
+
+def ensure_executor_logging(f) -> Callable:
+    def in_batch_job_context():
+        return "OPENEO_BATCH_JOB_ID" in os.environ
+
+    decorator = on_first_time(lambda: setup_logging(get_logging_config(
+        root_handlers=["file_json"],
+        loggers={
+            "openeo": {"level": "DEBUG"},
+            "openeo_driver": {"level": "DEBUG"},
+            "openeogeotrellis": {"level": "DEBUG"},
+            "kazoo": {"level": "WARN"},
+            "cropsar": {"level": "DEBUG"},
+        },
+        context=LOGGING_CONTEXT_BATCH_JOB if in_batch_job_context() else LOGGING_CONTEXT_FLASK)))
+
+    return decorator(f)
