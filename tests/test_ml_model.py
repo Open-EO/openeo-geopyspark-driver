@@ -77,6 +77,7 @@ def mock_catboost_job_results(*args, **kwargs):
     return MockResponse(None, 404)
 
 
+@skip("Causes permission error when creating folder under /data/projects/OpenEO/")
 @mock.patch('openeogeotrellis.backend.requests.get', side_effect=mock_catboost_job_results)
 def test_load_ml_model_for_catboost(mock_get, backend_implementation):
     request_url = "https://openeo-test.vito.be/openeo/1.1.0/jobs/1234/results/items/ml_model_metadata.json"
