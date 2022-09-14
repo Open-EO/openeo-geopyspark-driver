@@ -349,7 +349,7 @@ def ensure_executor_logging(f) -> Callable:
             BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
             BatchJobLoggingFilter.set("job_id", job_id)
         else:  # executors started from Flask, CLI ...
-            BatchJobLoggingFilter.set("user_id", user_id)  # TODO: rename BatchJobLoggingFilter or add a new one?
+            BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))  # TODO: rename BatchJobLoggingFilter or add a new one?
             BatchJobLoggingFilter.set("req_id", request_id)
 
         setup_logging(get_logging_config(
