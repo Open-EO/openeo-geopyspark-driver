@@ -9,8 +9,9 @@ import pwd
 import resource
 import stat
 from epsel import on_first_time
+from functools import partial
 from pathlib import Path
-from typing import Callable, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import pytz
 import dateutil.parser
@@ -20,7 +21,7 @@ from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.logging import (get_logging_config, setup_logging, user_id_trim, BatchJobLoggingFilter,
-                                        LOGGING_CONTEXT_BATCH_JOB, LOGGING_CONTEXT_FLASK)
+                                        FlaskRequestCorrelationIdLogging, FlaskUserIdLogging, LOGGING_CONTEXT_BATCH_JOB)
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
@@ -338,7 +339,7 @@ def add_permissions(path: Path, mode: int):
 
 
 def ensure_executor_logging(f) -> Callable:
-    def setup_context_aware_logging():
+    def setup_context_aware_logging(user_id: Optional[str], request_id: str):
         job_id = os.environ.get("OPENEO_BATCH_JOB_ID")
         in_batch_job_context = job_id is not None
 
@@ -347,6 +348,9 @@ def ensure_executor_logging(f) -> Callable:
 
             BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
             BatchJobLoggingFilter.set("job_id", job_id)
+        else:  # executors started from Flask, CLI ...
+            BatchJobLoggingFilter.set("user_id", user_id)  # TODO: rename BatchJobLoggingFilter or add a new one?
+            BatchJobLoggingFilter.set("req_id", request_id)
 
         setup_logging(get_logging_config(
             root_handlers=["file_json"],
@@ -357,8 +361,10 @@ def ensure_executor_logging(f) -> Callable:
                 "kazoo": {"level": "WARN"},
                 "cropsar": {"level": "DEBUG"},
             },
-            context=LOGGING_CONTEXT_BATCH_JOB if in_batch_job_context else LOGGING_CONTEXT_FLASK))
+            context=LOGGING_CONTEXT_BATCH_JOB))
 
-    decorator = on_first_time(setup_context_aware_logging)
+    decorator = on_first_time(partial(setup_context_aware_logging,
+                                      user_id=FlaskUserIdLogging.get_user_id(),
+                                      request_id=FlaskRequestCorrelationIdLogging.get_request_id()))
 
     return decorator(f)
