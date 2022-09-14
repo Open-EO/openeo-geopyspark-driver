@@ -498,10 +498,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory2(
                 data_glob, metadata.band_names, date_regex, jvm.geotrellis.raster.CellSize(cell_width, cell_height)
             )
-            return (
-                factory.datacube_seq(projected_polygons, from_date, to_date,{},"",datacubeParams) if single_level
-                else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
-            )
+            return create_pyramid(factory)
 
         logger.info("loading pyramid {s}".format(s=layer_source_type))
         if layer_source_type == 's3':
