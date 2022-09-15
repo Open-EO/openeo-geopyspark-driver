@@ -39,43 +39,43 @@ def elasticsearch_logs(job_id: str) -> Iterable[dict]:
 
 def _as_log_entry(hit: dict) -> dict:
     time = hit['_source'].get('@timestamp')
-    slf4j_log_level = hit['_source'].get('levelname')
+    internal_log_level = hit['_source'].get('levelname')
     message = hit['_source'].get('message')
 
     return {
         'id': "%(_index)s/%(_id)s" % hit,
         'time': time,
-        'level': _openeo_log_level(slf4j_log_level),
-        'message': message
+        'level': _openeo_log_level(internal_log_level),
+        'message': message,
+        # TODO: include 'data' and 'code'
     }
 
 
-def _openeo_log_level(slf4j_log_level: Optional[str]) -> Optional[str]:
-    if slf4j_log_level == 'ERROR':
+def _openeo_log_level(internal_log_level: Optional[str]) -> Optional[str]:
+    if internal_log_level in ['CRITICAL', 'ERROR']:
         return 'error'
-    elif slf4j_log_level == 'WARN':
+    elif internal_log_level == 'WARNING':
         return 'warning'
-    elif slf4j_log_level == 'INFO':
+    elif internal_log_level == 'INFO':
         return 'info'
-    elif slf4j_log_level in ['DEBUG', 'TRACE']:
+    elif internal_log_level == 'DEBUG':
         return 'debug'
 
     return None
 
 
 def main():
-    index = "filebeat-index-3m-2019.10.14-000064"
-    job_id = '9978cebf-1cb5-4833-abe6-8f1bbc118ce9'
+    index = "openeo-index-1m"
+    job_id = 'j-93e8f12ba1a0404f984e55c4e1e6ea3f'
 
     with Elasticsearch(hosts=ES_HOSTS) as es:
-        res = es.get(index=index, id="08kxjH4BFu4FfsUusCWt")
+        res = es.get(index=index, id="p3tgQIMBVWXUH_mWoFM2")
 
     print(res['_source'])
     
-    logs = iter(elasticsearch_logs(job_id))
-    print(next(logs))
-    print(next(logs))
-    print(next(logs))
+    for log in elasticsearch_logs(job_id):
+        if "len" in log['message']:
+            print(log)
 
 
 if __name__ == '__main__':
