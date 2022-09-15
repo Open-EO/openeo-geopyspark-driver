@@ -8,6 +8,7 @@ from typing import List, Dict, Optional, Tuple, Union
 
 import dateutil.parser
 import geopyspark
+import pyproj
 import requests
 from shapely.geometry import box, Point
 from shapely.geometry.collection import GeometryCollection
@@ -198,8 +199,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if (load_params.target_resolution is not None):
                 cell_width = float(load_params.target_resolution[0])
                 cell_height = float(load_params.target_resolution[1])
-            if (load_params.target_crs is not None and isinstance(load_params.target_crs,int)):
-                target_epsg_code = load_params.target_crs
+            if (load_params.target_crs is not None ):
+                if isinstance(load_params.target_crs,int):
+                    target_epsg_code = load_params.target_crs
+                elif isinstance(load_params.target_crs,dict) and load_params.target_crs.get("id",{}).get("code") == 'Auto42001':
+                    target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
+                else:
+                    pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))

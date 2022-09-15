@@ -198,10 +198,23 @@ def test_load_collection_bands_with_required_extent(jvm_mock):
 def test_load_collection_data_cube_params(jvm_mock):
     catalog = get_layer_catalog()
 
+    crs = {'$schema': 'https://proj.org/schemas/v0.2/projjson.schema.json', 'type': 'GeodeticCRS',
+           'name': 'AUTO 42001 (Universal Transverse Mercator)',
+           'datum': {'type': 'GeodeticReferenceFrame', 'name': 'World Geodetic System 1984',
+                     'ellipsoid': {'name': 'WGS 84', 'semi_major_axis': 6378137, 'inverse_flattening': 298.257223563}},
+           'coordinate_system': {'subtype': 'ellipsoidal', 'axis': [
+               {'name': 'Geodetic latitude', 'abbreviation': 'Lat', 'direction': 'north', 'unit': 'degree'},
+               {'name': 'Geodetic longitude', 'abbreviation': 'Lon', 'direction': 'east', 'unit': 'degree'}]},
+           'area': 'World',
+           'bbox': {'south_latitude': -90, 'west_longitude': -180, 'north_latitude': 90, 'east_longitude': 180},
+           'id': {'authority': 'OGC', 'version': '1.3', 'code': 'Auto42001'}}
+
     load_params = LoadParameters(
         temporal_extent=('2019-01-01', '2019-01-01'),
         bands=['temperature-mean'],
-        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
+        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
+        target_resolution=[10,10],
+        target_crs=crs
 
     )
     load_params['featureflags'] = {
@@ -224,7 +237,7 @@ def test_load_collection_data_cube_params(jvm_mock):
 
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 
-    reproject.assert_called_once_with(projected_polys, 4326)
+    reproject.assert_called_once_with(projected_polys, 32631)
     factory_mock.assert_called_once_with('/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif', ['temperature-mean'], '.+_(\\d{4})(\\d{2})(\\d{2})\\.tif', cellsize_mock)
     factory_mock.return_value.datacube_seq.assert_called_once_with(projected_polys_native, '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '',datacubeParams)
     getattr(datacubeParams,'tileSize_$eq').assert_called_once_with(1)
