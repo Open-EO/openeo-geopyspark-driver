@@ -2,7 +2,7 @@ from typing import Iterable, Optional
 
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import scan
-
+from openeo.util import dict_no_none
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
 ES_INDEX_PATTERN = "openeo-index-1m*"
@@ -38,17 +38,22 @@ def elasticsearch_logs(job_id: str) -> Iterable[dict]:
 
 
 def _as_log_entry(hit: dict) -> dict:
-    time = hit['_source'].get('@timestamp')
-    internal_log_level = hit['_source'].get('levelname')
-    message = hit['_source'].get('message')
+    _source = hit['_source']
 
-    return {
-        'id': "%(_index)s/%(_id)s" % hit,
-        'time': time,
-        'level': _openeo_log_level(internal_log_level),
-        'message': message,
-        # TODO: include 'data' and 'code'
-    }
+    time = _source.get('@timestamp')
+    internal_log_level = _source.get('levelname')
+    message = _source.get('message')
+    data = _source.get('data')
+    code = _source.get('code')
+
+    return dict_no_none(
+        id="%(_index)s/%(_id)s" % hit,
+        time=time,
+        level=_openeo_log_level(internal_log_level),
+        message=message,
+        data=data,
+        code=code
+    )
 
 
 def _openeo_log_level(internal_log_level: Optional[str]) -> Optional[str]:
