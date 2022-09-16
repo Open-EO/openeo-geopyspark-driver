@@ -65,6 +65,7 @@ maxexecutors=${21-500}
 userId=${22}
 batchJobId=${23}
 maxSoftErrorsRatio=${24-"0.0"}
+taskCpus=${25}
 
 pysparkPython="$venv_dir/bin/python"
 
@@ -134,6 +135,7 @@ spark-submit \
  --conf spark.rdd.compress=true \
  --conf spark.driver.cores=${drivercores} \
  --conf spark.executor.cores=${executorcores} \
+ --conf spark.task.cpus=${taskCpus} \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \

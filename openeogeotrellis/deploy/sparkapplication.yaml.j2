@@ -55,6 +55,7 @@ spec:
     "spark.kubernetes.driver.ownPersistentVolumeClaim": "false"
     "spark.kubernetes.driver.reusePersistentVolumeClaim": "false"
     "spark.kubernetes.allocation.maxPendingPods": "3"
+    "spark.task.cpus": {{ task_cpus }}
   sparkVersion: "3.2.0"
   restartPolicy:
     type: OnFailure

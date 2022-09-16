@@ -1156,6 +1156,7 @@ class GpsBatchJobs(backend.BatchJobs):
             queue = job_options.get("queue", "default")
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
+            task_cpus = job_options.get("task-cpus", 1)
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1231,6 +1232,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                     user_id=user_id,
                     max_soft_errors_ratio=max_soft_errors_ratio,
+                    task_cpus=task_cpus,
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
@@ -1323,6 +1325,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(user_id)
                     args.append(job_id)
                     args.append(max_soft_errors_ratio)
+                    args.append(task_cpus)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
