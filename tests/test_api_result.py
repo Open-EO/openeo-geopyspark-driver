@@ -1205,7 +1205,7 @@ def test_extra_validation_terrascope(api100, requests_mock):
 
     response = api100.validation(pg)
     assert response.json == {'errors': [
-        {'code': 'MissingProduct', 'message': "Tile '16WDA' in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
+        {'code': 'MissingProduct', 'message': "Tile ('16WDA', '20200301') in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
     ]}
 
 
