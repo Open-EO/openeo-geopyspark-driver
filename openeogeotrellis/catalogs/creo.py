@@ -19,6 +19,7 @@ class CreoCatalogEntry(CatalogEntryBase):
         prarr = product_id.replace('.SAFE', '').split('/')
         self._product_id = prarr[-1]
         self._tile_id = re.split('_T([0-9][0-9][A-Z][A-Z][A-Z])_', product_id)[1].split('_')[0]
+        self._date_str = re.search(r"_(\d{8})T\d{6}_", self._product_id).group(1)
         self._s3_bucket = s3_bucket
         self._s3_key = s3_key
         if self._s3_bucket is None:
@@ -47,6 +48,9 @@ class CreoCatalogEntry(CatalogEntryBase):
 
     def getProductId(self):
         return self._product_id
+
+    def getDateStr(self) -> str:
+        return self._date_str
 
     def getS3Bucket(self):
         return self._s3_bucket

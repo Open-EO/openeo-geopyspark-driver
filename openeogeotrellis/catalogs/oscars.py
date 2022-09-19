@@ -16,7 +16,11 @@ class OscarsCatalogEntry:
         return self._product_id
 
     def getTileId(self):
-        m = re.search('\d{6}_(\d{2}\w{3})_TOC', self._product_id)
+        m = re.search(r"\d{6}_(\d{2}\w{3})_TOC", self._product_id)
+        return m.group(1)
+
+    def getDateStr(self) ->str:
+        m = re.search(r"_(\d{8})T\d{6}_", self._product_id)
         return m.group(1)
 
 

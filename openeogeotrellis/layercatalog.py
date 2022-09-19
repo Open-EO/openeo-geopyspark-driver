@@ -14,7 +14,7 @@ from shapely.geometry import box, Point
 from shapely.geometry.collection import GeometryCollection
 
 from openeo.metadata import Band
-from openeo.util import TimingLogger, deep_get
+from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -824,6 +824,7 @@ def check_missing_products(
     check_data = collection_metadata.get("_vito", "data_source", "check_missing_products", default=None)
 
     if check_data:
+        logger.info(f"Check missing products for {collection_metadata.get('id')} using {check_data}")
         temporal_extent = [dateutil.parser.parse(t) for t in temporal_extent]
         # Merge given properties with global layer properties
         properties = {
@@ -855,10 +856,18 @@ def check_missing_products(
             missing = [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
         elif method == "terrascope":
             creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
-            expected_tiles = {p.getTileId() for p in creo_catalog.query(**query_kwargs)}
+            expected_tiles = {
+                (p.getTileId(), p.getDateStr())
+                for p in creo_catalog.query(**query_kwargs)
+            }
+            logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
             opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
             oscars_catalog = OscarsCatalogClient(collection=opensearch_collection_id)
-            terrascope_tiles = {p.getTileId() for p in oscars_catalog.query(**query_kwargs)}
+            terrascope_tiles = {
+                (p.getTileId(), p.getDateStr())
+                for p in oscars_catalog.query(**query_kwargs)
+            }
+            logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
             return list(expected_tiles.difference(terrascope_tiles))
         else:
             logger.error(f"Invalid check_missing_products data {check_data}")
