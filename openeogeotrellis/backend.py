@@ -1147,16 +1147,16 @@ class GpsBatchJobs(backend.BatchJobs):
             driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
             executor_memory = job_options.get("executor-memory", "2G")
             executor_memory_overhead = job_options.get("executor-memoryOverhead", "3G")
-            driver_cores =job_options.get("driver-cores", "5")
-            executor_cores =job_options.get("executor-cores", "2")
+            driver_cores = str(job_options.get("driver-cores", 5))
+            executor_cores = str(job_options.get("executor-cores", 2))
             executor_corerequest = job_options.get("executor-request-cores", "NONE")
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-            max_executors = job_options.get("max-executors", "100")
+            max_executors = str(job_options.get("max-executors", 100))
             queue = job_options.get("queue", "default")
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
-            task_cpus = job_options.get("task-cpus", 1)
+            task_cpus = str(job_options.get("task-cpus", 1))
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
