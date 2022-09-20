@@ -265,7 +265,15 @@ def test_load_collection_common_name_user_selected(jvm_mock):
     (False, "TERRASCOPE_S2_TOC_V2"),
     (True, "SENTINEL2_L2A_SENTINELHUB"),
 ])
-def test_load_collection_common_name_by_missing_products(jvm_mock, requests_mock, missing_products, expected_source):
+@pytest.mark.parametrize("creo_features", [
+    # Different tile_ids, same date
+    [{"tile_id": "16WEA"}, {"tile_id": "16WDA"}],
+    # Same tile_id, different dates
+    [{"tile_id": "16WEA", "date": "20200302"}, {"tile_id": "16WEA", "date": "20200307"}],
+])
+def test_load_collection_common_name_by_missing_products(
+        jvm_mock, requests_mock, missing_products, expected_source, creo_features
+):
     catalog = get_layer_catalog()
 
     load_params = LoadParameters(
@@ -276,7 +284,7 @@ def test_load_collection_common_name_by_missing_products(jvm_mock, requests_mock
 
     requests_mock.get(
         "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
-        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEA"}, {"tile_id": "16WDA"}])
+        json=CreoApiMocker.feature_collection(features=creo_features)
     )
     requests_mock.get(
         "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
@@ -284,9 +292,9 @@ def test_load_collection_common_name_by_missing_products(jvm_mock, requests_mock
     )
 
     if missing_products:
-        tfs = [{"tile_id": "16WEA"}]
+        tfs = creo_features[1::2]
     else:
-        tfs = [{"tile_id": "16WEA"}, {"tile_id": "16WDA"}]
+        tfs = creo_features
     from_index = 1
     requests_mock.get(
         f"https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=4%2C51.9999%2C4.001%2C52&sortKeys=title&startIndex={from_index}&start=2020-03-01T00%3A00%3A00&end=2020-03-03T23%3A59%3A59.999999&cloudCover=%5B0%2C100.0%5D",

@@ -1091,9 +1091,9 @@ class CreoApiMocker:
     """Helper to build fake Creodias finder API catalog responses"""
 
     @classmethod
-    def feature(cls, tile_id="T16WEA", title=None, status=0) -> dict:
-        title = title or f"S2A_MSIL2A_20200301T173231_N0209_R055_T{tile_id}_20200301T210331.SAFE"
-        pid = f"/eodata/Sentinel-2/MSI/L1C/2020/03/01/{title}"
+    def feature(cls, tile_id="T16WEA", title=None, status=0, date: str = "20200301") -> dict:
+        title = title or f"S2A_MSIL2A_{date}T173231_N0209_R055_T{tile_id}_{date}T210331.SAFE"
+        pid = f"/eodata/Sentinel-2/MSI/L1C/{date[0:4]}/{date[4:6]}/{date[6:8]}/{title}"
         return {
             "type": "Feature",
             "properties": {
@@ -1120,8 +1120,8 @@ class TerrascopeApiMocker:
     """Helper to build fake Terrascope catalog responses"""
 
     @classmethod
-    def feature(cls, tile_id="T16WEA", title=None) -> dict:
-        title = title or f"S2A_20200301T173231_{tile_id}_TOC_V200"
+    def feature(cls, tile_id="T16WEA", title=None, date: str = "20200301") -> dict:
+        title = title or f"S2A_{date}T173231_{tile_id}_TOC_V200"
         pid = f"urn:eop:VITO:TERRASCOPE_S2_TOC_V2:{title}"
         return {
             "type": "Feature",
