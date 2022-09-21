@@ -10,9 +10,30 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2022-09-21 (0.6.3a1)
+- Expose logging from UDF's
+- Feature id's from GeoJSON are used to name timeseries in netCDF export
+- NetCDF's are now cropped to provided extent
+- Support remote STAC collections
+- Sentinelhub usage is now recorded for batch jobs
+- "task-cpus" job option to control number of cpu's for a single Spark task. Mostly relevant for UDF's that use multi-threaded libraries such as Tensorflow.
+- New processes:
+  - array_find
+  - exp
+
 ## 2022-05-04 (0.6.3a1)
 
 - Enable JSON logging from batch_job.py (and inject user_id/job_id)
+- New processes: 
+  - predict_catboost (not-standard)
+  - predict_random_forest
+  - fit_class_random_forest
+  - array_interpolate_linear
+- Faster sar_backscatter both for large areas and sparse sampling
+- STAC metadata for random forest models
+- Colormap support in PNG's
+- Support custom Sentinelhub collections, e.g. PlanetScope data
+- 'soft-errors' job option to allow failure of individual Sentinelhub requests
 
 ## 2022-04-07 (0.6.2a1)
 
