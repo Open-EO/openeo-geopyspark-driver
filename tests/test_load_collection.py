@@ -3,13 +3,16 @@ import pytest
 from mock import MagicMock, ANY
 
 from openeo_driver.backend import LoadParameters
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
+from tests.data import get_test_data_file
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.layercatalog import get_layer_catalog
+import geopandas as gpd
 import geopyspark as gps
 
 from .test_api_result import CreoApiMocker, TerrascopeApiMocker
@@ -334,3 +337,29 @@ def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dat
     assert len(cube.metadata.spatial_dimensions) == 2
     assert len(cube.pyramid.levels)==1
     print(cube.get_max_level().layer_metadata)
+
+
+def test_driver_vector_cube_supports_load_collection_caching(jvm_mock):
+    catalog = get_layer_catalog()
+
+    def load_params1():
+        gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection.geojson")))
+        return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
+
+    def load_params2():
+        gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection02.json")))
+        return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
+
+    with mock.patch('openeogeotrellis.layercatalog.logger') as logger:
+        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
+        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
+        catalog.load_collection('SENTINEL1_GRD', load_params=load_params2(), env=EvalEnv({'pyramid_levels': 'highest'}))
+        catalog.load_collection('SENTINEL1_GRD', load_params=load_params2(), env=EvalEnv({'pyramid_levels': 'highest'}))
+        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
+
+        # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
+        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("Creating layer for SENTINEL1_GRD"),
+                                           logger.info.call_args_list))
+
+        n_load_collection_calls = len(creating_layer_calls)
+        assert n_load_collection_calls == 2

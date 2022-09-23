@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import mock
 import textwrap
 from typing import List
 
@@ -1372,8 +1373,6 @@ def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
         }
     })
 
-    response.assert_status_code(200)
-
     output_file = tmp_path / "test_aggregate_spatial_netcdf_feature_names.nc"
 
     with open(output_file, mode="wb") as f:
@@ -1384,3 +1383,82 @@ def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
     assert ds["Month"].sel(t='2021-02-05').values.tolist() == [2.0, 2.0]
     assert ds["Day"].sel(t='2021-02-05').values.tolist() == [5.0, 5.0]
     assert ds.coords["feature_names"].values.tolist() == ["apples", "oranges"]
+
+
+def test_load_collection_is_cached(api100):
+    # unflattening this process graph will result in two calls to load_collection, unless it is cached
+
+    process_graph = {
+        'loadcollection1': {
+            'process_id': 'load_collection',
+            'arguments': {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-20"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 2.0, "north": 2.0},
+                "bands": ["Flat:1", "Month"]
+            }
+        },
+        'filterbands1': {
+            'process_id': 'filter_bands',
+            'arguments': {
+                'bands': ['Flat:1'],
+                'data': {'from_node': 'loadcollection1'}
+            }
+        },
+        'filterbands2': {
+            'process_id': 'filter_bands',
+            'arguments': {
+                'bands': ['Month'],
+                'data': {'from_node': 'loadcollection1'}
+            }
+        },
+        'mergecubes1': {
+            'process_id': 'merge_cubes',
+            'arguments': {
+                'cube1': {'from_node': 'filterbands1'},
+                'cube2': {'from_node': 'filterbands2'}
+            }
+        },
+        'loaduploadedfiles1': {
+            'process_id': 'load_uploaded_files',
+            'arguments': {
+                'format': 'GeoJSON',
+                'paths': [str(get_test_data_file("geometries/FeatureCollection.geojson"))]
+            }
+        },
+        'aggregatespatial1': {
+            'process_id': 'aggregate_spatial',
+            'arguments': {
+                'data': {'from_node': 'mergecubes1'},
+                'geometries': {'from_node': 'loaduploadedfiles1'},
+                'reducer': {
+                    'process_graph': {
+                        'mean1': {
+                            'process_id': 'mean',
+                            'arguments': {
+                                'data': {'from_parameter': 'data'}
+                            },
+                            'result': True}
+                    }
+                }
+            }, 'result': True
+        }
+    }
+
+    with mock.patch('openeogeotrellis.layercatalog.logger') as logger:
+        result = api100.check_result(process_graph).json
+
+        assert result == {
+            "2021-01-05T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+            "2021-01-15T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+            "2021-01-25T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+            "2021-02-05T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
+            "2021-02-15T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
+        }
+
+        # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
+        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("Creating layer for TestCollection-LonLat4x4"),
+                                           logger.info.call_args_list))
+
+        n_load_collection_calls = len(creating_layer_calls)
+        assert n_load_collection_calls == 1
