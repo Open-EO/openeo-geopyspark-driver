@@ -255,12 +255,15 @@ def test_load_collection_common_name_user_selected(jvm_mock):
         bands=['B03'],
     )
 
+    # TODO: where is this backend_provider set?
     load_params.backend_provider = 'sentinelhub'
     collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
     assert collection.metadata.get('id') == 'SENTINEL2_L2A_SENTINELHUB'
 
-    load_params.backend_provider = 'terrascope'
-    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
+    load_params_copy = load_params.copy()
+    load_params_copy.backend_provider = 'terrascope'
+
+    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params_copy, env=EvalEnv())
     assert collection.metadata.get('id') == 'TERRASCOPE_S2_TOC_V2'
 
 
