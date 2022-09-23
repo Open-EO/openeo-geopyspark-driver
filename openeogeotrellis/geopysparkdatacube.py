@@ -30,7 +30,7 @@ from openeo.metadata import CollectionMetadata, Band, Dimension
 from openeo.udf import UdfData, run_udf_code
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none, str_truncate
-from openeo_driver.datacube import DriverDataCube
+from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import ResolutionMergeArgs
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -1246,14 +1246,14 @@ class GeopysparkDataCube(DriverDataCube):
     def get_max_level(self):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
-    def aggregate_spatial(self, geometries: Union[str, BaseGeometry], reducer,
+    def aggregate_spatial(self, geometries: Union[str, BaseGeometry, DriverVectorCube], reducer,
                           target_dimension: str = "result") -> Union[AggregatePolygonResult,
                                                                      AggregateSpatialVectorCube]:
 
         if isinstance(reducer, dict):
             if len(reducer) == 1:
                 single_process = next(iter(reducer.values())).get('process_id')
-                return self.zonal_statistics(geometries,single_process)
+                return self.zonal_statistics(geometries, single_process)
             else:
                 visitor = GeotrellisTileProcessGraphVisitor(_builder=self._get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()).accept_process_graph(reducer)
                 return self.zonal_statistics(geometries, visitor.builder)
@@ -1263,7 +1263,7 @@ class GeopysparkDataCube(DriverDataCube):
                 code="ReducerUnsupported", status_code=400
             )
 
-    def zonal_statistics(self, regions: Union[str, BaseGeometry], func) -> Union[AggregatePolygonResult,
+    def zonal_statistics(self, regions: Union[str, BaseGeometry, DriverVectorCube], func) -> Union[AggregatePolygonResult,
                                                                                  AggregateSpatialVectorCube]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
@@ -1287,7 +1287,7 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
 
-        polygons = (None if isinstance(regions, Point) or
+        projected_polygons = (None if isinstance(regions, Point) or
                             (isinstance(regions, GeometryCollection) and
                              any(isinstance(geom, Point) for geom in regions.geoms))
                     else to_projected_polygons(self._get_jvm(), regions))
@@ -1322,18 +1322,18 @@ class GeopysparkDataCube(DriverDataCube):
             from_date = insert_timezone(layer_metadata.bounds.minKey.instant)
             to_date = insert_timezone(layer_metadata.bounds.maxKey.instant)
 
-            if polygons:
+            if projected_polygons:
                 # TODO also add dumping results first to temp json file like with "mean"
                 if func == 'histogram':
                     stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
-                        scala_data_cube, polygons, from_date.isoformat(), to_date.isoformat(), 0
+                        scala_data_cube, projected_polygons, from_date.isoformat(), to_date.isoformat(), 0
                     )
                     timeseries = self._as_python(stats)
                 elif func ==  "mean":
                     with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
                         self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
                             scala_data_cube,
-                            polygons,
+                            projected_polygons,
                             from_date.isoformat(),
                             to_date.isoformat(),
                             0,
@@ -1347,7 +1347,7 @@ class GeopysparkDataCube(DriverDataCube):
                     self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                         func,
                         wrapped,
-                        polygons,
+                        projected_polygons,
                         temp_output
                     )
                     return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)

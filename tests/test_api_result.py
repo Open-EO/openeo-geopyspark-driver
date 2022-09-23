@@ -6,6 +6,7 @@ from typing import List
 import numpy as np
 import pytest
 import rasterio
+import xarray as xr
 from numpy.testing import assert_equal
 
 from openeo_driver.testing import TEST_USER
@@ -13,6 +14,7 @@ from shapely.geometry import box, mapping
 
 from openeogeotrellis.testing import random_name
 from openeogeotrellis.utils import get_jvm, UtcNowClock
+from tests.data import get_test_data_file
 
 _log = logging.getLogger(__name__)
 
@@ -1324,3 +1326,61 @@ def test_apply_neighborhood_filter_spatial(api100, tmp_path):
         assert ds.width == 4
 
 
+def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
+    response = api100.check_result({
+        'loadcollection1': {
+            'process_id': 'load_collection',
+            'arguments': {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-20"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 2.0, "north": 2.0},
+                "bands": ["Flat:1", "Month", "Day"]
+            }
+        },
+        'loaduploadedfiles1': {
+            'process_id': 'load_uploaded_files',
+            'arguments': {
+                'format': 'GeoJSON',
+                'paths': [str(get_test_data_file("geometries/FeatureCollection.geojson"))]
+            }
+        },
+        'aggregatespatial1': {
+            'process_id': 'aggregate_spatial',
+            'arguments': {
+                'data': {'from_node': 'loadcollection1'},
+                'geometries': {'from_node': 'loaduploadedfiles1'},
+                'reducer': {
+                    'process_graph': {
+                        'mean1': {
+                            'process_id': 'mean',
+                            'arguments': {
+                                'data': {'from_parameter': 'data'}
+                            },
+                            'result': True
+                        }
+                    }
+                }
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "aggregatespatial1"},
+                "format": "netCDF"
+            },
+            "result": True
+        }
+    })
+
+    response.assert_status_code(200)
+
+    output_file = tmp_path / "test_aggregate_spatial_netcdf_feature_names.nc"
+
+    with open(output_file, mode="wb") as f:
+        f.write(response.data)
+
+    ds = xr.load_dataset(output_file)
+    assert ds["Flat:1"].sel(t='2021-02-05').values.tolist() == [1.0, 1.0]
+    assert ds["Month"].sel(t='2021-02-05').values.tolist() == [2.0, 2.0]
+    assert ds["Day"].sel(t='2021-02-05').values.tolist() == [5.0, 5.0]
+    assert ds.coords["feature_names"].values.tolist() == ["apples", "oranges"]

@@ -19,6 +19,7 @@ from kazoo.client import KazooClient
 from py4j.java_gateway import JavaGateway, JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.logging import (get_logging_config, setup_logging, user_id_trim, BatchJobLoggingFilter,
                                         FlaskRequestCorrelationIdLogging, FlaskUserIdLogging, LOGGING_CONTEXT_BATCH_JOB)
@@ -193,6 +194,9 @@ def to_projected_polygons(jvm, *args):
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
     elif len(args) == 1 and isinstance(args[0], DelayedVector):
         return to_projected_polygons(jvm, args[0].path)
+    elif len(args) == 1 and isinstance(args[0], DriverVectorCube):
+        vc: DriverVectorCube = args[0]
+        return to_projected_polygons(jvm, GeometryCollection(list(vc.get_geometries())), str(vc.get_crs()))
     elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
         # Multiple polygons
         polygon_wkts = [str(x) for x in args[0].geoms]

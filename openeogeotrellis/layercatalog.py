@@ -73,7 +73,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
         return datacubeParams, single_level
 
-    @lru_cache(maxsize=20)
+    # FIXME: LoadParameters must be hashable but DriverVectorCube in aggregate_spatial_geometries isn't
+    #  @lru_cache(maxsize=20)
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
