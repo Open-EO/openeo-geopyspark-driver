@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import re
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -8,6 +9,7 @@ from typing import List, Dict, Optional, Tuple, Union
 
 import dateutil.parser
 import geopyspark
+import py4j.protocol
 import pyproj
 import requests
 from shapely.geometry import box, Point
@@ -301,16 +303,34 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
 
         def create_pyramid(factory):
-            if single_level:
-                # TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
-                return factory.datacube_seq(projected_polygons_native_crs, from_date, to_date, metadata_properties(),
-                                            correlation_id, datacubeParams)
-            else:
-                if geometries:
-                    return factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date,
-                                               to_date, metadata_properties(), correlation_id)
+            try:
+                if single_level:
+                    # TODO EP-3561 UTM is not always the native projection of a layer (PROBA-V), need to determine optimal projection
+                    return factory.datacube_seq(
+                        projected_polygons_native_crs, from_date, to_date,
+                        metadata_properties(), correlation_id, datacubeParams
+                    )
                 else:
-                    return factory.pyramid_seq(extent, srs, from_date, to_date, metadata_properties(), correlation_id)
+                    if geometries:
+                        return factory.pyramid_seq(
+                            projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date,
+                            metadata_properties(), correlation_id
+                        )
+                    else:
+                        return factory.pyramid_seq(
+                            extent, srs, from_date, to_date,
+                            metadata_properties(), correlation_id
+                        )
+            except py4j.protocol.Py4JJavaError as e:
+                msg = e.java_exception.getMessage()
+                if "Could not find data for your load_collection request with catalog ID" in msg:
+                    logger.error(f"create_pyramid failed: {e.errmsg} {msg}", exc_info=True)
+                    raise OpenEOApiException(
+                        code="NoDataAvailable", status_code=400,
+                        message=f"There is no data available for the given extents. {msg}",
+                    )
+                raise
+
 
         def file_pyramid(pyramid_factory):
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',

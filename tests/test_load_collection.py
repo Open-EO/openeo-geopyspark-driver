@@ -149,6 +149,19 @@ def test_load_collection_old_and_new_band_names(jvm_mock):
         assert collection.metadata.temporal_dimension.extent == ('2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00')
 
 
+def test_load_file_oscars_no_data_available():
+    catalog = get_layer_catalog()
+    load_params = LoadParameters(
+        temporal_extent=("1980-01-01T10:36:00Z", "1980-01-11T10:36:00Z"),
+        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
+    )
+    with pytest.raises(OpenEOApiException) as exc_info:
+        _ = catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
+
+    assert exc_info.value.code == "NoDataAvailable"
+    assert "no data available for the given extents" in exc_info.value.message
+
+
 def test_create_params():
     pysc = gps.get_spark_context()
     gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
