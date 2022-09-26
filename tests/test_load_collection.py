@@ -247,26 +247,6 @@ def test_load_collection_data_cube_params(jvm_mock):
     getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')
 
 
-def test_load_collection_common_name_user_selected(jvm_mock):
-    catalog = get_layer_catalog()
-    load_params = LoadParameters(
-        temporal_extent=('2019-01-01', '2019-01-01'),
-        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
-        bands=['B03'],
-    )
-
-    # TODO: where is this backend_provider set?
-    load_params.backend_provider = 'sentinelhub'
-    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-    assert collection.metadata.get('id') == 'SENTINEL2_L2A_SENTINELHUB'
-
-    load_params_copy = load_params.copy()
-    load_params_copy.backend_provider = 'terrascope'
-
-    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params_copy, env=EvalEnv())
-    assert collection.metadata.get('id') == 'TERRASCOPE_S2_TOC_V2'
-
-
 @pytest.mark.parametrize(["missing_products", "expected_source"], [
     (False, "TERRASCOPE_S2_TOC_V2"),
     (True, "SENTINEL2_L2A_SENTINELHUB"),

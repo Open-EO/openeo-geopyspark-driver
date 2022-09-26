@@ -599,37 +599,24 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             self, collection_id: str, metadata: GeopysparkCubeMetadata, load_params: LoadParameters,
             temporal_extent: Tuple[str, str], spatial_extent: dict
     ) -> GeopysparkCubeMetadata:
-        upstream_metadatas = [
-            GeopysparkCubeMetadata(self.get_collection_metadata(cid))
-            for cid in metadata.get("_vito", "data_source", "merged_collections")
-        ]
-        if load_params.backend_provider:
-            # User-chosen source
-            ms = [m for m in upstream_metadatas if m.provider_backend() == load_params.backend_provider]
-            if ms:
-                resolved = ms[0]
-                logger.info(f"(common_name) {collection_id!r}: using user-chosen {resolved.provider_backend()!r}.")
-                return resolved
-            else:
-                raise OpenEOApiException(
-                    message=f"provider:backend {load_params.backend_provider} not found for {collection_id!r}",
+        upstream_metadatas = [GeopysparkCubeMetadata(self.get_collection_metadata(cid))
+                              for cid in metadata.get("_vito", "data_source", "merged_collections")]
+        # Check sources in order of priority and skip ones where we can detect missing products.
+        for m in sorted(upstream_metadatas, key=lambda m: m.common_name_priority(), reverse=True):
+            if m.get("_vito", "data_source", "check_missing_products"):
+                missing = check_missing_products(
+                    collection_metadata=m,
+                    temporal_extent=temporal_extent, spatial_extent=spatial_extent,
+                    properties=load_params.properties,
                 )
-        else:
-            # Check sources in order of priority and skip ones where we can detect missing products.
-            for m in sorted(upstream_metadatas, key=lambda m: m.common_name_priority(), reverse=True):
-                if m.get("_vito", "data_source", "check_missing_products"):
-                    missing = check_missing_products(
-                        collection_metadata=m,
-                        temporal_extent=temporal_extent, spatial_extent=spatial_extent,
-                        properties=load_params.properties,
+                if missing:
+                    logger.info(
+                        f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products."
                     )
-                    if missing:
-                        logger.info(
-                            f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products."
-                        )
-                        continue
-                logger.info(f"(common_name) {collection_id!r}: using {m.provider_backend()!r}.")
-                return m
+                    continue
+            logger.info(f"(common_name) {collection_id!r}: using {m.provider_backend()!r}.")
+            return m
+
         raise OpenEOApiException(message=f"No fitting provider:backend found for {collection_id!r}")
 
     def _native_crs(self, metadata: GeopysparkCubeMetadata) -> str:
