@@ -350,13 +350,13 @@ def ensure_executor_logging(f) -> Callable:
         if in_batch_job_context:
             user_id = os.environ["OPENEO_USER_ID"]
 
-            BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
+            BatchJobLoggingFilter.set("user_id", user_id)
             BatchJobLoggingFilter.set("job_id", job_id)
         else:  # executors started from Flask, CLI ...
             # TODO: takes advantage of "global state" BatchJobLoggingFilter/LOGGING_CONTEXT_BATCH_JOB but introducing
             #  e.g. LOGGING_CONTEXT_EXECUTOR in openeo-python-driver is not right because it is not aware of
             #  implementation details like Spark executors.
-            BatchJobLoggingFilter.set("user_id", user_id_trim(user_id) if user_id is not None else None)
+            BatchJobLoggingFilter.set("user_id", user_id)
             BatchJobLoggingFilter.set("req_id", request_id)
 
         setup_logging(get_logging_config(

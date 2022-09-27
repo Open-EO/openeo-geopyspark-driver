@@ -247,7 +247,7 @@ def main(argv: List[str]) -> None:
     api_version = argv[6]
     dependencies = _deserialize_dependencies(argv[7])
     user_id = argv[8]
-    BatchJobLoggingFilter.set("user_id", user_id_trim(user_id))
+    BatchJobLoggingFilter.set("user_id", user_id)
     max_soft_errors_ratio = float(argv[9])
 
     _create_job_dir(job_dir)
