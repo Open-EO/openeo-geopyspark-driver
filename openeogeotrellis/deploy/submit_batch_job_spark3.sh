@@ -77,7 +77,7 @@ export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="$venv_dir/lib64"
 
-export PYTHONPATH="$venv_dir/lib64/python3.8/site-packages:$venv_dir/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0"
+export PYTHONPATH="$venv_dir/lib64/python3.8/site-packages:$venv_dir/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
