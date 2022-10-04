@@ -327,12 +327,13 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             user_id: str = None, max_soft_errors_ratio: float = 0.0):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
+    job_options = job_specification.get("job_options", {})
 
     backend_implementation = GeoPySparkBackendImplementation()
     logger.info(f"Using backend implementation {backend_implementation}")
     correlation_id = generate_uuid(prefix="c")
     logger.info(f"Correlation id: {correlation_id}")
-    env = EvalEnv({
+    env_values = {
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
         'user': User(user_id=user_id),
@@ -341,7 +342,12 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
         'backend_implementation': backend_implementation,
         'max_soft_errors_ratio': max_soft_errors_ratio
-    })
+    }
+    job_option_whitelist = [
+        "data_mask_optimization",
+    ]
+    env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
+    env = EvalEnv(env_values)
     tracer = DryRunDataTracer()
     logger.info("Starting process graph evaluation")
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
