@@ -1073,6 +1073,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def start_job(self, job_id: str, user: User):
         proxy_user = self.get_proxy_user(user)
+        logger.info(f"Starting job {job_id!r} from user {user!r} (proxy user {proxy_user!r})")
 
         if proxy_user:
             with JobRegistry() as registry:
