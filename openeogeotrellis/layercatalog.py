@@ -806,7 +806,7 @@ def _merge_layers_with_common_name(metadata):
                     i = eob_names.index(b["name"])
                     merged["summaries"]["eo:bands"][i]["aliases"] = list(
                         set(merged["summaries"]["eo:bands"][i].get("aliases", []))
-                        | set(to_merge["summaries"]["eo:bands"][i].get("aliases", []))
+                        | set(b.get("aliases", []))
                     )
 
             # Union of extents
