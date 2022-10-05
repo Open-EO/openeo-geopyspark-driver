@@ -929,10 +929,19 @@ class GeopysparkDataCube(DriverDataCube):
     def mask(self, mask: 'GeopysparkDataCube',
              replacement=None) -> 'GeopysparkDataCube':
         # mask needs to be the same layout as this layer
-        mask_pyramid_levels = {
-            k: l.tile_to_layout(layout=self.pyramid.levels[k])
-            for k, l in mask.pyramid.levels.items()
-        }
+        try:
+            mask_pyramid_levels = {
+                k: l.tile_to_layout(layout=self.pyramid.levels[k])
+                for k, l in mask.pyramid.levels.items()
+            }
+        except ValueError:
+            _log.error(
+                f"Failed to retile mask: %r != %r",
+                {k: l.layer_metadata.crs for k, l in self.pyramid.levels.items()},
+                {k: l.layer_metadata.crs for k, l in mask.pyramid.levels.items()},
+                exc_info=True,
+            )
+            raise
         replacement = float(replacement) if replacement is not None else None
         if self._is_spatial() and mask._is_spatial():
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
