@@ -15,7 +15,7 @@ from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none
+from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none, repr_truncate
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.datacube import DriverDataCube, DriverMlModel
 from openeo_driver.delayed_vector import DelayedVector
@@ -323,8 +323,8 @@ def main(argv: List[str]) -> None:
                 run_driver()
 
     except Exception as e:
-        logger.exception("error processing batch job")
-        user_facing_logger.exception("error processing batch job")
+        logger.exception(f"Error processing batch job: {repr_truncate(e, width=200)}")
+        user_facing_logger.exception(f"Error processing batch job: {repr_truncate(e, width=200)}")
         if "Container killed on request. Exit code is 143" in str(e):
             user_facing_logger.error("Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate.")
         raise e
