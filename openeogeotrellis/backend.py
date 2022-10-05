@@ -1257,17 +1257,17 @@ class GpsBatchJobs(backend.BatchJobs):
                         try:
                             status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated))
                         except ApiException as e:
-                            print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                            logger.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
 
                     if('status' not in status_response):
-                        logger.info("invalid status response: {status}".format(status=str(status_response)))
+                        logger.warning("invalid status response: {status}".format(status=str(status_response)), extra={'job_id': job_id})
                         registry.set_status(job_id, user_id, 'error')
                     else:
                         application_id = status_response['status']['sparkApplicationId']
-                        logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id))
+                        logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id), extra={'job_id': job_id})
                         registry.set_application_id(job_id, user_id, application_id)
                 except ApiException as e:
-                    print("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                    logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
                     registry.set_status(job_id, user_id, 'error')
 
             else:
