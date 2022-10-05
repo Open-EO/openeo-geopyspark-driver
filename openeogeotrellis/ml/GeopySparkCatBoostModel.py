@@ -13,7 +13,7 @@ from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 from pyspark.mllib.util import JavaSaveable
 
-from openeo_driver.utils import generate_uuid
+from openeo_driver.utils import generate_unique_id
 
 
 class EModelType(Enum):
@@ -101,7 +101,7 @@ class GeopySparkCatBoostModel(DriverMlModel):
                 "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
             ],
             "type": "Feature",
-            "id": generate_uuid(prefix="cb"),
+            "id": generate_unique_id(prefix="cb"),
             "collection": "collection-id",
             "bbox": [
                 -179.999,

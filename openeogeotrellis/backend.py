@@ -45,7 +45,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
-from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable, generate_uuid
+from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -124,7 +124,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         if service_type.lower() != 'wmts':
             raise ServiceUnsupportedException(service_type)
 
-        service_id = generate_uuid(prefix="s")
+        service_id = generate_unique_id(prefix="s")
 
         image_collection = evaluate(
             process_graph,
@@ -709,7 +709,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 os.makedirs(ml_models_path)
                 _set_permissions(ml_models_path)
             # Use a random id to avoid collisions.
-            model_dir_path = ml_models_path / generate_uuid(prefix="model")
+            model_dir_path = ml_models_path / generate_unique_id(prefix="model")
             if not os.path.exists(model_dir_path):
                 logger.info("Creating directory: {}".format(model_dir_path))
                 os.makedirs(model_dir_path)
@@ -874,7 +874,7 @@ class GpsBatchJobs(backend.BatchJobs):
             self, user_id: str, process: dict, api_version: str,
             metadata: dict, job_options: dict = None
     ) -> BatchJobMetadata:
-        job_id = generate_uuid(prefix="j")
+        job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
         with JobRegistry() as registry:
@@ -978,7 +978,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         caching_service.download_and_cache_results(bucket_name, subfolder, collecting_folder)
 
                         # assembled_folder must be readable from batch job driver (load_collection)
-                        assembled_folder = f"/tmp_epod/openeo_assembled/{generate_uuid()}"
+                        assembled_folder = f"/tmp_epod/openeo_assembled/{generate_unique_id()}"
                         os.mkdir(assembled_folder)
                         os.chmod(assembled_folder, mode=0o750)  # umask prevents group read
 
@@ -1649,7 +1649,7 @@ class GpsBatchJobs(backend.BatchJobs):
                              collecting_folder) = batch_request_cache.get(batch_request_cache_key, (None, None, None))
 
                             if collecting_folder is None:
-                                subfolder = generate_uuid()  # batch process context JSON is written here as well
+                                subfolder = generate_unique_id()  # batch process context JSON is written here as well
 
                                 # collecting_folder must be writable from driver (cached tiles) and async_task
                                 # handler (new tiles))
