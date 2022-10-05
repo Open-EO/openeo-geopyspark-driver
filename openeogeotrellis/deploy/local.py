@@ -9,6 +9,7 @@ from glob import glob
 
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level
+from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 from openeogeotrellis.deploy import flask_config
 
@@ -58,8 +59,12 @@ def on_started() -> None:
 
 
 if __name__ == '__main__':
+    root_handlers = ["stderr_json"]
+    if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
+        root_handlers = None
+
     setup_logging(get_logging_config(
-        root_handlers=["stderr_json"],
+        root_handlers=root_handlers,
         loggers={
             "openeo": {"level": "DEBUG"},
             "openeo_driver": {"level": "DEBUG"},
