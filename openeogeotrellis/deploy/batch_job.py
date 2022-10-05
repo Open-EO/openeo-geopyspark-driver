@@ -31,7 +31,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.deploy import load_custom_processes
+from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions
 
@@ -227,8 +227,16 @@ def _log_container_internals():
 
 
 def main(argv: List[str]) -> None:
-    logger.info("argv: {a!r}".format(a=argv))
-    logger.info("pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
+    logger.info("batch_job.py argv: {a!r}".format(a=argv))
+    logger.info("batch_job.py pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
+    logger.warning("batch_job.py version info %r", build_gps_backend_deploy_metadata(
+        packages=[
+            "openeo",
+            "openeo_driver",
+            "openeo-geopyspark",
+            # TODO list more packages like in openeo-deploy?
+        ],
+    ))
 
     _log_container_internals()
 
