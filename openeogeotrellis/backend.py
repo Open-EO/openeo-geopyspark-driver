@@ -474,7 +474,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
             SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[])
+            TemporalDimension(name='t', extent=[]), BandDimension(name="bands", bands=[Band("unknown")])
         ])
 
         # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
