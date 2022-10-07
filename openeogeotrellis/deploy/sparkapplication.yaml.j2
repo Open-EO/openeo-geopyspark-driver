@@ -50,11 +50,11 @@ spec:
     "spark.hadoop.fs.s3a.path.style.access": "true"
     "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.EnvironmentVariableCredentialsProvider"
     "spark.eventLog.enabled": "true"
-    "spark.kubernetes.allocation.batch.size": "1"
+    "spark.kubernetes.allocation.batch.size": "4"
     "spark.kubernetes.allocation.batch.delay": "30s"
     "spark.kubernetes.driver.ownPersistentVolumeClaim": "false"
     "spark.kubernetes.driver.reusePersistentVolumeClaim": "false"
-    "spark.kubernetes.allocation.maxPendingPods": "3"
+    "spark.kubernetes.allocation.maxPendingPods": "6"
     "spark.task.cpus": "{{ task_cpus }}"
   sparkVersion: "3.2.0"
   restartPolicy:
