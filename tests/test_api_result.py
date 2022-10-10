@@ -582,12 +582,14 @@ def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process
     },
     {
         "type": "Feature",
+        "properties":{},
         "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
     },
     {
         "type": "FeatureCollection",
         "features": [{
             "type": "Feature",
+            "properties":{},
             "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
         }]
     }
