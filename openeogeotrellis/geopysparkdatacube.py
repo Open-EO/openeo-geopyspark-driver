@@ -1161,7 +1161,8 @@ class GeopysparkDataCube(DriverDataCube):
 
             currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
             currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
-            if projection == None and currentResolutionX == resolution:
+            if projection == None and abs(currentResolutionX - resolution)/resolution < 0.00001 :
+                logging.info(f"Resampling datacube not necessary, resolution already at {resolution}")
                 return self
 
 
@@ -1174,9 +1175,9 @@ class GeopysparkDataCube(DriverDataCube):
             exactTileSizeY = height / (resolution * math.ceil(nbTilesY))
             exactNbTilesY = height / (resolution * exactTileSizeY)
 
-
             newLayout = gps.LayoutDefinition(extent=extent,tileLayout=gps.TileLayout(int(exactNbTilesX),int(exactNbTilesY),int(exactTileSizeX),int(exactTileSizeY)))
 
+            logging.info(f"Reprojecting datacube to new layout {newLayout} and {projection}")
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
             else:
