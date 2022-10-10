@@ -283,6 +283,8 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
         dependencies={}, user_id="jenkins"
     )
 
+    size = (tmp_path / "randomforest.model.tar.gz").stat().st_size
+
     # 2. Check the job_metadata file that was written by batch_job.py
     metadata_result = read_json(tmp_path / JOB_METADATA_FILENAME)
     model_id = metadata_result['ml_model_metadata']['id']
@@ -329,6 +331,7 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     assert res == {
         'assets': {
             'randomforest.model.tar.gz': {
+                'file:size': size,
                 'file:nodata': [None],
                 'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/randomforest.model.tar.gz',
                 'roles': ['data'], 'title': 'randomforest.model.tar.gz', 'type': 'application/octet-stream'
