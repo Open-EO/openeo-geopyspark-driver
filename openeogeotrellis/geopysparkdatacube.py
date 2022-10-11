@@ -24,6 +24,7 @@ from pandas import Series
 from py4j.java_gateway import JVMView
 from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
+from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
@@ -45,7 +46,6 @@ from openeogeotrellis.utils import to_projected_polygons, log_memory, ensure_exe
 from openeogeotrellis._version import __version__ as softwareversion
 
 
-from shapely.geometry.base import BaseGeometry
 
 _log = logging.getLogger(__name__)
 
@@ -1273,8 +1273,9 @@ class GeopysparkDataCube(DriverDataCube):
                 code="ReducerUnsupported", status_code=400
             )
 
-    def zonal_statistics(self, regions: Union[str, BaseGeometry, DriverVectorCube], func) -> Union[AggregatePolygonResult,
-                                                                                 AggregateSpatialVectorCube]:
+    def zonal_statistics(
+        self, regions: Union[BaseGeometry, DriverVectorCube], func
+    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
@@ -1302,6 +1303,16 @@ class GeopysparkDataCube(DriverDataCube):
                              any(isinstance(geom, Point) for geom in regions.geoms))
                     else to_projected_polygons(self._get_jvm(), regions))
 
+        def regions_to_wkt(regions: Union[BaseGeometry, DriverVectorCube]) -> List[str]:
+            if isinstance(regions, BaseMultipartGeometry):
+                return [str(g) for g in regions.geoms]
+            elif isinstance(regions, BaseGeometry):
+                return [str(regions)]
+            elif isinstance(regions, DriverVectorCube):
+                return regions.to_wkt()
+            else:
+                raise ValueError(regions)
+
         highest_level = self.get_max_level()
         scala_data_cube = highest_level.srdd.rdd()
         layer_metadata = highest_level.layer_metadata
@@ -1314,7 +1325,7 @@ class GeopysparkDataCube(DriverDataCube):
         wrapped.openEOMetadata().setBandNames(bandNames)
 
         if self._is_spatial():
-            geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
+            geometry_wkts = regions_to_wkt(regions)
             geometries_srs = "EPSG:4326"
 
             temp_dir = csv_dir()
@@ -1362,7 +1373,7 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                     return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
             else:
-                geometry_wkts = [str(regions)] if isinstance(regions, Point) else [str(geom) for geom in regions.geoms]
+                geometry_wkts = regions_to_wkt(regions)
                 geometries_srs = "EPSG:4326"
 
                 temp_dir = csv_dir()

@@ -17,9 +17,7 @@ from openeogeotrellis.ml.GeopySparkRandomForestModel import GeopySparkRandomFore
 
 
 class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
-    """
-    TODO: This is a temporary class until vector cubes are fully implemented.
-    """
+    # TODO: This is a temporary class until vector cubes are fully implemented.
 
     def fit_class_random_forest(
             self,
@@ -60,7 +58,7 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         labels: List[int] = [feature["properties"]["target"] for feature in target["features"]]
 
         # 1. Check if input is correct.
-        if len(self._regions) != len(target["features"]):
+        if len(labels) != len(features):
             raise ProcessParameterInvalidException(
                 parameter='target', process='fit_class_random_forest',
                 reason="Predictor and target vector cubes should contain the same number of geometries.")
