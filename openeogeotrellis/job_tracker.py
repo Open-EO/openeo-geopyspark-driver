@@ -100,6 +100,9 @@ class JobTracker:
                                     download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    usage = self.get_kube_usage(job_id,user_id)
+                                    if usage is not None:
+                                        result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
 
                                     registry.mark_done(job_id, user_id)
@@ -162,6 +165,38 @@ class JobTracker:
                     registry.set_status(job_id, user_id, 'error')
                     registry.mark_done(job_id, user_id)
 
+    def get_kube_usage(self,job_id,user_id):
+        usage = None
+        try:
+            import requests
+            url = "http://kubecost.kube-dev.vgt.vito.be/model/allocation"
+            namespace = "spark-jobs"
+            window = "5d"
+            pod = f"{JobTracker._kube_prefix(job_id,user_id)}*"
+            params = (
+                ('aggregate', 'namespace'),
+                ('filterNamespaces', namespace),
+                ('filterPods', pod),
+                ('window', window),
+                ('accumulate', 'true'),
+            )
+
+            total_cost = requests.get(url, params=params).json()
+            if total_cost['code'] == 200:
+                cost = total_cost['data'][0][namespace]
+                _log.info(f"Successfully retrieved total cost {cost}")
+                usage = {}
+                usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
+                usage["memory"] = {"value": cost["ramByteHours"] / (1024 * 1024),
+                                   "unit": "mb-seconds"}
+
+                return usage
+            else:
+                _log.error(f"Unable to retrieve job cost {total_cost}")
+        except Exception as e:
+            _log.error(f"error while handling creo usage {e}")
+        return usage
+
     @staticmethod
     def yarn_available() -> bool:
         """Check if YARN tools are available."""
@@ -176,11 +211,16 @@ class JobTracker:
             return False
 
     @staticmethod
-    def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
-        from openeogeotrellis.utils import kube_client, truncate_user_id_k8s, truncate_job_id_k8s
-
+    def _kube_prefix(job_id: str, user_id: str):
+        from openeogeotrellis.utils import truncate_user_id_k8s, truncate_job_id_k8s
         user_id_truncated = truncate_user_id_k8s(user_id)
         job_id_truncated = truncate_job_id_k8s(job_id)
+        return "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated)
+
+    @staticmethod
+    def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
+        from openeogeotrellis.utils import kube_client
+
         try:
             api_instance = kube_client()
             status = api_instance.get_namespaced_custom_object(
@@ -188,7 +228,7 @@ class JobTracker:
                     "v1beta2",
                     "spark-jobs",
                     "sparkapplications",
-                    "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated))
+                    JobTracker._kube_prefix(job_id,user_id))
 
             return JobTracker._KubeStatus(
                 status['status']['applicationState']['state'],
