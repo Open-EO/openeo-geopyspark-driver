@@ -119,10 +119,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             area = agg_geometry.area
         elif isinstance(agg_geometry, DriverVectorCube):
             bbox = agg_geometry.get_bounding_box()
-            # TODO implement this as DriverVectorCube method? (Open-EO/openeo-python-driver#114, Open-EO/openeo-python-driver#141)
-            geometry = mapping(Polygon.from_bounds(*bbox))
-            # TODO implement area method for DriverVectorCube (Open-EO/openeo-python-driver#114, Open-EO/openeo-python-driver#141)
-            logger.warning("Result metadata: no area support for DriverVectorCube")
+            geometry = agg_geometry.get_bounding_box_geojson()
+            area = agg_geometry.get_bounding_box_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
