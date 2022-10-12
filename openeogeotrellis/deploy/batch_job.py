@@ -17,7 +17,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none, repr_truncate
 from openeo_driver import ProcessGraphDeserializer
-from openeo_driver.datacube import DriverDataCube, DriverMlModel
+from openeo_driver.datacube import DriverDataCube, DriverMlModel, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult, \
@@ -117,8 +117,14 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
             area = agg_geometry.area
+        elif isinstance(agg_geometry, DriverVectorCube):
+            bbox = agg_geometry.get_bounding_box()
+            # TODO implement this as DriverVectorCube method? (Open-EO/openeo-python-driver#114, Open-EO/openeo-python-driver#141)
+            geometry = mapping(Polygon.from_bounds(*bbox))
+            # TODO implement area method for DriverVectorCube (Open-EO/openeo-python-driver#114, Open-EO/openeo-python-driver#141)
+            logger.warning("Result metadata: no area support for DriverVectorCube")
         else:
-            logger.warning("Unsupported geometry to calculate area: " + str(agg_geometry))
+            logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
