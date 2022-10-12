@@ -68,6 +68,10 @@ spec:
       hostPath:
         path: "/eodata"
         type: DirectoryOrCreate
+    - name: "eodata2"
+      hostPath:
+        path: "/eodata2"
+        type: DirectoryOrCreate
     - name: "shared-pod-volume"
       hostPath:
         path: "/shared_pod_volume"
@@ -113,6 +117,8 @@ spec:
         mountPath: "/shared_pod_volume"
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
+      - name: "eodata2"
+        mountPath: "/eodata2"
   executor:
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
@@ -157,6 +163,8 @@ spec:
         mountPath: "/shared_pod_volume"
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
+      - name: "eodata2"
+        mountPath: "/eodata2"
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-2.3.0_2.12-SNAPSHOT.jar'
