@@ -821,6 +821,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return super().changelog()
 
+    def set_sentinel_hub_credentials(self, client_id: str, client_secret: str):
+        self.batch_jobs.set_sentinel_hub_credentials(client_id, client_secret)
+        self.catalog.set_sentinel_hub_credentials(client_id, client_secret)
+
 
 class GpsProcessing(ConcreteProcessing):
     def extra_validation(
@@ -869,6 +873,12 @@ class GpsBatchJobs(backend.BatchJobs):
         self._jvm = jvm
         self._principal = principal
         self._key_tab = key_tab
+        self._sentinel_hub_client_id = None
+        self._sentinel_hub_client_secret = None
+
+    def set_sentinel_hub_credentials(self, client_id: str, client_secret: str):
+        self._sentinel_hub_client_id = client_id
+        self._sentinel_hub_client_secret = client_secret
 
     def create_job(
             self, user_id: str, process: dict, api_version: str,
@@ -913,11 +923,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
             endpoint = layer_source_info['endpoint']
             bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
-            client_id = layer_source_info['client_id']
-            client_secret = layer_source_info['client_secret']
 
             batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                endpoint, bucket_name, client_id, client_secret)
+                endpoint, bucket_name, self._sentinel_hub_client_secret, self._sentinel_hub_client_secret)
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
                                  [batch_process_dependency['batch_request_id']])
@@ -1329,8 +1337,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(task_cpus)
 
                     try:
+                        env = dict(os.environ,
+                                   SENTINEL_HUB_CLIENT_ID=self._sentinel_hub_client_id,
+                                   SENTINEL_HUB_CLIENT_SECRET=self._sentinel_hub_client_secret)
+
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True,
+                                                                env=env)
                     except CalledProcessError as e:
                         logger.exception(e, extra={'job_id': job_id})
                         logger.error(e.stdout, extra={'job_id': job_id})
@@ -1508,8 +1521,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                         endpoint,
                         bucket_name,
-                        layer_source_info['client_id'],
-                        layer_source_info['client_secret'])
+                        self._sentinel_hub_client_id,
+                        self._sentinel_hub_client_secret)
 
                     shub_band_names = metadata.band_names
 

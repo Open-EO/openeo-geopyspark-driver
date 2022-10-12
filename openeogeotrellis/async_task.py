@@ -138,8 +138,13 @@ def main():
                                                       redirect_stdout=sys.stdout,
                                                       redirect_stderr=sys.stderr)
 
-            return GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
-                                args.keytab)
+            batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
+                                      args.keytab)
+
+            batch_jobs.set_sentinel_hub_credentials(client_id=os.environ['SENTINEL_HUB_CLIENT_ID'],
+                                                    client_secret=os.environ['SENTINEL_HUB_CLIENT_SECRET'])
+
+            return batch_jobs
 
         if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
             batch_job_id = arguments['batch_job_id']

@@ -43,7 +43,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def __init__(self, all_metadata: List[dict]):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
+        self._sentinel_hub_client_id = None
+        self._sentinel_hub_client_secret = None
 
+    def set_sentinel_hub_credentials(self, client_id: str, client_secret: str):
+        self._sentinel_hub_client_id = client_id
+        self._sentinel_hub_client_secret = client_secret
 
     def create_datacube_parameters(self, load_params, env):
         jvm = get_jvm()
@@ -435,8 +440,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     dataset_id = layer_source_info['dataset_id']
 
                 endpoint = layer_source_info['endpoint']
-                client_id = layer_source_info['client_id']
-                client_secret = layer_source_info['client_secret']
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                     layer_source_info.get('sample_type', 'UINT16'))
 
@@ -459,8 +462,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     endpoint,
                     shub_collection_id,
                     dataset_id,
-                    client_id,
-                    client_secret,
+                    self._sentinel_hub_client_id,
+                    self._sentinel_hub_client_secret,
                     sentinel_hub.processing_options(collection_id,
                                                     sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,

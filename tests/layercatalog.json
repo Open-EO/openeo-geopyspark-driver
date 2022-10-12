@@ -431,8 +431,6 @@
         "endpoint": "https://services.sentinel-hub.com",
         "dataset_id": "sentinel-1-grd",
         "collection_id": "sentinel-1-grd",
-        "client_id": "???",
-        "client_secret": "!!!",
         "cacheable": true,
         "sample_type": "FLOAT32",
         "sar_backscatter_compatible": true
@@ -649,8 +647,6 @@
         "endpoint": "https://services.sentinel-hub.com",
         "dataset_id": "S1GRD",
         "collection_id": "sentinel-1-grd",
-        "client_id": "???",
-        "client_secret": "!!!",
         "sample_type": "FLOAT32",
         "sar_backscatter_compatible": true
       }
@@ -889,8 +885,6 @@
         "endpoint": "https://services.sentinel-hub.com",
         "dataset_id": "sentinel-2-l2a",
         "collection_id": "sentinel-2-l2a",
-        "client_id": "???",
-        "client_secret": "!!!",
         "provider:backend": "sentinelhub",
         "default_provider:backend": true
       }

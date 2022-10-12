@@ -39,6 +39,8 @@ logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
 
+SENTINEL_HUB_CLIENT_ID = os.environ.get("SENTINEL_HUB_CLIENT_ID")
+SENTINEL_HUB_CLIENT_SECRET = os.environ.get("SENTINEL_HUB_CLIENT_SECRET")
 OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID")
 # TODO: also trim batch_job id a bit before logging?
 BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
@@ -342,6 +344,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     job_options = job_specification.get("job_options", {})
 
     backend_implementation = GeoPySparkBackendImplementation()
+    backend_implementation.set_sentinel_hub_credentials(SENTINEL_HUB_CLIENT_ID, SENTINEL_HUB_CLIENT_SECRET)
     logger.info(f"Using backend implementation {backend_implementation}")
     correlation_id = generate_unique_id(prefix="c")
     logger.info(f"Correlation id: {correlation_id}")
