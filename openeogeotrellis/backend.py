@@ -1166,6 +1166,7 @@ class GpsBatchJobs(backend.BatchJobs):
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
+            use_goofys = as_boolean_arg("goofys", default_value="false")
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1219,6 +1220,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("512m")
                 python_max = memOverheadBytes - jvmOverheadBytes
 
+                eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
                 rendered = Template(open(jinja_template).read()).render(
@@ -1248,7 +1250,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     swift_url=os.environ.get("SWIFT_URL"),
                     image_name=os.environ.get("IMAGE_NAME"),
                     swift_bucket=bucket,
-                    zookeeper_nodes=os.environ.get("ZOOKEEPERNODES")
+                    zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
+                    eodata_mount=eodata_mount
                 )
 
                 api_instance = kube_client()
