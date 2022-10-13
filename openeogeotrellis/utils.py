@@ -399,3 +399,13 @@ def get_sentinel_hub_credentials_from_environment() -> dict:
         }
 
     return credentials
+
+
+def drop_empty_from_aggregate_polygon_result(result: dict):
+    """
+    Drop empty items from an AggregatPolygonResult JSON export
+    :param result:
+    :return:
+    """
+    # TODO: ideally this should not be necessary and be done automatically by the back-end
+    return {k: v for (k, v) in result.items() if not all(x == [] for x in v)}

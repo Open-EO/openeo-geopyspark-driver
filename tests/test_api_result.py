@@ -1,19 +1,25 @@
 import contextlib
 import logging
 import textwrap
-from typing import List
+from typing import List, Union
 
 import mock
 import numpy as np
+import openeo
 import pytest
 import rasterio
 import xarray
 from numpy.testing import assert_equal
-from shapely.geometry import box, mapping
-
 from openeo_driver.testing import TEST_USER, ApiResponse
+from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
+from shapely.geometry.base import BaseGeometry
+
 from openeogeotrellis.testing import random_name
-from openeogeotrellis.utils import get_jvm, UtcNowClock
+from openeogeotrellis.utils import (
+    UtcNowClock,
+    drop_empty_from_aggregate_polygon_result,
+    get_jvm,
+)
 from tests.data import get_test_data_file
 
 _log = logging.getLogger(__name__)
@@ -757,7 +763,7 @@ def test_ep3718_aggregate_spatial_geometries(api100, geometries, pixels_threshol
     _log.info(repr(result))
 
     # Strip out empty entries
-    result = {k: v for (k, v) in result.items() if v != [[]]}
+    result = drop_empty_from_aggregate_polygon_result(result)
 
     expected = {
         "2021-01-05T00:00:00Z": [[1.0, 1.0, 5.0]],
@@ -1584,3 +1590,280 @@ def test_load_collection_is_cached(api100):
 
         n_load_collection_calls = len(creating_layer_calls)
         assert n_load_collection_calls == 1
+
+
+class TestPointAggregations:
+    """
+    Tests for aggregate_spatial with Point geometries,
+    originally defined in openeo-geopyspark-integrationtests test function `test_point_timeseries`
+    """
+
+    def _load_cube(
+        self, spatial_extent: Union[dict, str] = "default"
+    ) -> openeo.DataCube:
+        """Load initial dummy data cube"""
+        if spatial_extent == "default":
+            spatial_extent = {"west": 0, "south": 0, "east": 8, "north": 5}
+        return openeo.DataCube.load_collection(
+            "TestCollection-LonLat4x4",
+            temporal_extent=["2021-01-01", "2021-02-01"],
+            spatial_extent=spatial_extent,
+            bands=["Day", "Longitude", "Latitude"],
+            fetch_metadata=False,
+        )
+
+    @pytest.fixture
+    def cube(self) -> openeo.DataCube:
+        return self._load_cube()
+
+    @classmethod
+    def _as_feature(cls, geometry: BaseGeometry) -> dict:
+        return {"type": "Feature", "properties": {}, "geometry": mapping(geometry)}
+
+    @classmethod
+    def _as_feature_collection(cls, *geometries: BaseGeometry) -> dict:
+        return {
+            "type": "FeatureCollection",
+            "features": [cls._as_feature(g) for g in geometries],
+        }
+
+    @pytest.mark.parametrize(
+        ["geometry", "expected_lon_lat_agg"],
+        [
+            (Point(2.2, 2.2), [2.0, 2.0]),
+            (Point(5.5, 3.3), [5.5, 3.25]),
+            (Point(3.9, 4.6), [3.75, 4.5]),
+            (Polygon.from_bounds(3.1, 1.2, 4.9, 2.8), [3.875, 1.875]),
+            (Polygon.from_bounds(0.4, 3.2, 2.8, 4.8), [1.5, 3.875]),
+            (Polygon.from_bounds(5.6, 0.2, 7.4, 3.8), [6.375, 1.875]),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "load_collection_spatial_extent",
+        [
+            "default",
+            None,
+        ],
+    )
+    def test_aggregate_single_geometry(
+        self, api100, geometry, expected_lon_lat_agg, load_collection_spatial_extent
+    ):
+        cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
+        cube = cube.aggregate_spatial(geometry, "mean")
+        result = api100.check_result(cube).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+
+        assert result == {
+            "2021-01-05T00:00:00Z": [[5.0] + expected_lon_lat_agg],
+            "2021-01-15T00:00:00Z": [[15.0] + expected_lon_lat_agg],
+            "2021-01-25T00:00:00Z": [[25.0] + expected_lon_lat_agg],
+        }
+
+    @pytest.mark.parametrize(
+        ["geometry", "expected"],
+        [
+            (Point(1.2, 2.3), (1, 1, 2.25)),
+            (Point(2.7, 4.9), (1, 2.5, 4.75)),
+            (Polygon.from_bounds(3.1, 1.2, 4.9, 2.8), (48, 3.0, 1.25)),
+            (Polygon.from_bounds(5.6, 0.2, 7.4, 3.8), (112, 5.5, 0.25)),
+        ],
+    )
+    def test_aggregate_single_geometry_multiple_aggregations(
+        self, cube, api100, geometry, expected
+    ):
+        from openeo.processes import array_create, count, min
+
+        cube = cube.aggregate_spatial(
+            geometry, lambda data: array_create([min(data), count(data)])
+        )
+        result = api100.check_result(cube).json
+        c, o, a = expected
+        assert result == {
+            "2021-01-05T00:00:00Z": [[5.0, c, o, c, a, c]],
+            "2021-01-15T00:00:00Z": [[15.0, c, o, c, a, c]],
+            "2021-01-25T00:00:00Z": [[25.0, c, o, c, a, c]],
+        }
+
+    def test_aggregate_heterogeneous_geometry_collection(self, cube, api100):
+        # TODO #71 GeometryCollection usage is deprecated usage pattern
+        geometry = GeometryCollection(
+            [
+                Point(1.2, 2.3),
+                Point(3.7, 4.2),
+                Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
+                Point(4.5, 3.8),
+                Polygon.from_bounds(5.6, 0.2, 7.4, 3.8),
+            ]
+        )
+        cube = cube.aggregate_spatial(geometry, "mean")
+        result = api100.check_result(cube).json
+        assert result == {
+            "2021-01-05T00:00:00Z": [
+                [5.0, 1.0, 2.25],
+                [5.0, 3.5, 4.0],
+                [5.0, 3.875, 1.875],
+                [5.0, 4.5, 3.75],
+                [5.0, 6.375, 1.875],
+            ],
+            "2021-01-15T00:00:00Z": [
+                [15.0, 1.0, 2.25],
+                [15.0, 3.5, 4.0],
+                [15.0, 3.875, 1.875],
+                [15.0, 4.5, 3.75],
+                [15.0, 6.375, 1.875],
+            ],
+            "2021-01-25T00:00:00Z": [
+                [25.0, 1.0, 2.25],
+                [25.0, 3.5, 4.0],
+                [25.0, 3.875, 1.875],
+                [25.0, 4.5, 3.75],
+                [25.0, 6.375, 1.875],
+            ],
+        }
+
+    @pytest.mark.parametrize(
+        ["geometry", "expected_lon_lat_agg"],
+        [
+            (Point(1.2, 2.3), [1.0, 2.25]),
+            (Polygon.from_bounds(3.1, 1.2, 4.9, 2.8), [3.875, 1.875]),
+        ],
+    )
+    def test_aggregate_feature_with_single_geometry(
+        self, cube, api100, geometry, expected_lon_lat_agg
+    ):
+        geometry = self._as_feature(geometry)
+        cube = cube.aggregate_spatial(geometry, "mean")
+        result = api100.check_result(cube).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == {
+            "2021-01-05T00:00:00Z": [[5.0] + expected_lon_lat_agg],
+            "2021-01-15T00:00:00Z": [[15.0] + expected_lon_lat_agg],
+            "2021-01-25T00:00:00Z": [[25.0] + expected_lon_lat_agg],
+        }
+
+    def test_aggregate_feature_collection_of_points(self, cube, api100):
+        geometry = self._as_feature_collection(
+            Point(1.2, 2.3),
+            Point(3.7, 4.2),
+            Point(4.5, 3.8),
+        )
+        cube = cube.aggregate_spatial(geometry, "mean")
+        result = api100.check_result(cube).json
+        assert result == {
+            "2021-01-05T00:00:00Z": [
+                [5.0, 1.0, 2.25],
+                [5.0, 3.5, 4.0],
+                [5.0, 4.5, 3.75],
+            ],
+            "2021-01-15T00:00:00Z": [
+                [15.0, 1.0, 2.25],
+                [15.0, 3.5, 4.0],
+                [15.0, 4.5, 3.75],
+            ],
+            "2021-01-25T00:00:00Z": [
+                [25.0, 1.0, 2.25],
+                [25.0, 3.5, 4.0],
+                [25.0, 4.5, 3.75],
+            ],
+        }
+
+    def test_aggregate_feature_collection_of_polygons(self, cube, api100):
+        geometry = self._as_feature_collection(
+            Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
+            Polygon.from_bounds(0.4, 3.2, 2.8, 4.8),
+            Polygon.from_bounds(5.6, 0.2, 7.4, 3.8),
+        )
+        cube = cube.aggregate_spatial(geometry, "mean")
+        result = api100.check_result(cube).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == {
+            "2021-01-05T00:00:00Z": [
+                [5.0, 3.875, 1.875],
+                [5.0, 1.5, 3.875],
+                [5.0, 6.375, 1.875],
+            ],
+            "2021-01-15T00:00:00Z": [
+                [15.0, 3.875, 1.875],
+                [15.0, 1.5, 3.875],
+                [15.0, 6.375, 1.875],
+            ],
+            "2021-01-25T00:00:00Z": [
+                [25.0, 3.875, 1.875],
+                [25.0, 1.5, 3.875],
+                [25.0, 6.375, 1.875],
+            ],
+        }
+
+    def test_aggregate_feature_collection_heterogeneous(self, cube, api100):
+        geometry = self._as_feature_collection(
+            Point(1.2, 2.3),
+            Point(3.7, 4.2),
+            Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
+            Point(4.5, 3.8),
+            Polygon.from_bounds(5.6, 0.2, 7.4, 3.8),
+        )
+        cube = cube.aggregate_spatial(geometry, "mean")
+        result = api100.check_result(cube).json
+        assert result == {
+            "2021-01-05T00:00:00Z": [
+                [5.0, 1.0, 2.25],
+                [5.0, 3.5, 4.0],
+                [5.0, 3.875, 1.875],
+                [5.0, 4.5, 3.75],
+                [5.0, 6.375, 1.875],
+            ],
+            "2021-01-15T00:00:00Z": [
+                [15.0, 1.0, 2.25],
+                [15.0, 3.5, 4.0],
+                [15.0, 3.875, 1.875],
+                [15.0, 4.5, 3.75],
+                [15.0, 6.375, 1.875],
+            ],
+            "2021-01-25T00:00:00Z": [
+                [25.0, 1.0, 2.25],
+                [25.0, 3.5, 4.0],
+                [25.0, 3.875, 1.875],
+                [25.0, 4.5, 3.75],
+                [25.0, 6.375, 1.875],
+            ],
+        }
+
+    def test_aggregate_feature_collection_heterogeneous_multiple_aggregations(
+        self, cube, api100
+    ):
+        from openeo.processes import array_create, count, min
+
+        geometry = self._as_feature_collection(
+            Point(1.2, 2.3),
+            Point(3.7, 4.2),
+            Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
+            Point(4.5, 3.8),
+            Polygon.from_bounds(5.6, 0.2, 7.4, 3.8),
+        )
+        cube = cube.aggregate_spatial(
+            geometry, lambda data: array_create([min(data), count(data)])
+        )
+        result = api100.check_result(cube).json
+        assert result == {
+            "2021-01-05T00:00:00Z": [
+                [5.0, 1.0, 1.0, 1.0, 2.25, 1.0],
+                [5.0, 1.0, 3.5, 1.0, 4.0, 1.0],
+                [5.0, 48.0, 3.0, 48.0, 1.25, 48.0],
+                [5.0, 1.0, 4.5, 1.0, 3.75, 1.0],
+                [5.0, 112.0, 5.5, 112.0, 0.25, 112.0],
+            ],
+            "2021-01-15T00:00:00Z": [
+                [15.0, 1.0, 1.0, 1.0, 2.25, 1.0],
+                [15.0, 1.0, 3.5, 1.0, 4.0, 1.0],
+                [15.0, 48.0, 3.0, 48.0, 1.25, 48.0],
+                [15.0, 1.0, 4.5, 1.0, 3.75, 1.0],
+                [15.0, 112.0, 5.5, 112.0, 0.25, 112.0],
+            ],
+            "2021-01-25T00:00:00Z": [
+                [25.0, 1.0, 1.0, 1.0, 2.25, 1.0],
+                [25.0, 1.0, 3.5, 1.0, 4.0, 1.0],
+                [25.0, 48.0, 3.0, 48.0, 1.25, 48.0],
+                [25.0, 1.0, 4.5, 1.0, 3.75, 1.0],
+                [25.0, 112.0, 5.5, 112.0, 0.25, 112.0],
+            ],
+        }
