@@ -1,18 +1,17 @@
 import contextlib
 import logging
-import mock
 import textwrap
 from typing import List
 
+import mock
 import numpy as np
 import pytest
 import rasterio
-import xarray as xr
+import xarray
 from numpy.testing import assert_equal
-
-from openeo_driver.testing import TEST_USER
 from shapely.geometry import box, mapping
 
+from openeo_driver.testing import TEST_USER, ApiResponse
 from openeogeotrellis.testing import random_name
 from openeogeotrellis.utils import get_jvm, UtcNowClock
 from tests.data import get_test_data_file
@@ -73,6 +72,132 @@ def test_load_collection_json_basic(api100):
     ]])
 
 
+def _load_xarray_dataset_from_netcdf_response(response: ApiResponse, tmp_path) -> xarray.Dataset:
+    """Load NetCDF API response as xarray Dataset"""
+    response.assert_status_code(200)
+    assert response.headers["Content-Type"] == "application/x-netcdf"
+    path = tmp_path / f"netcd_response_{id(response)}.nc"
+    _log.info(f"Saving NetCDF response to and loading from: {path}")
+    with path.open(mode="wb") as f:
+        f.write(response.data)
+    return xarray.load_dataset(path)
+
+
+def test_load_collection_netcdf_basic(api100, tmp_path):
+    response = api100.check_result(
+        {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-01", "2021-01-10"],
+                    "spatial_extent": {
+                        "west": 0.0,
+                        "south": 0.0,
+                        "east": 1.0,
+                        "north": 1.0,
+                    },
+                    "bands": ["Flat:1", "TileRow", "Longitude", "Latitude", "Day"],
+                },
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "netcdf"},
+                "result": True,
+            },
+        }
+    )
+    ds = _load_xarray_dataset_from_netcdf_response(response, tmp_path=tmp_path)
+
+    assert ds.sizes == {"t": 1, "x": 4, "y": 4}
+    assert_equal(ds.coords["t"].values, [np.datetime64("2021-01-05")])
+    assert_equal(ds.coords["x"].values, [0.125, 0.375, 0.625, 0.875])
+    assert_equal(ds.coords["y"].values, [0.875, 0.625, 0.375, 0.125])
+    assert_equal(ds["Flat:1"].values, np.ones((1, 4, 4)))
+    assert_equal(ds["TileRow"].values, np.zeros((1, 4, 4)))
+    assert_equal(
+        ds["Longitude"].values,
+        [[[0.00, 0.25, 0.50, 0.75]] * 4],
+    )
+    assert_equal(
+        ds["Latitude"].values,
+        [
+            [
+                [0.75, 0.75, 0.75, 0.75],
+                [0.5, 0.5, 0.5, 0.5],
+                [0.25, 0.25, 0.25, 0.25],
+                [0.0, 0.0, 0.0, 0.0],
+            ]
+        ],
+    )
+    assert_equal(ds["Day"].values, np.full((1, 4, 4), fill_value=5))
+
+
+def test_load_collection_netcdf_extent(api100, tmp_path):
+    response = api100.check_result(
+        {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-01", "2021-01-10"],
+                    "spatial_extent": {
+                        "west": 0.5,
+                        "south": 1.2,
+                        "east": 3.3,
+                        "north": 2.7,
+                    },
+                    "bands": ["Flat:1", "TileRow", "Longitude", "Latitude", "Day"],
+                },
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "netcdf"},
+                "result": True,
+            },
+        }
+    )
+    ds = _load_xarray_dataset_from_netcdf_response(response, tmp_path=tmp_path)
+
+    assert ds.sizes == {"t": 1, "x": 12, "y": 7}
+    assert_equal(ds.coords["t"].values, [np.datetime64("2021-01-05")])
+    assert_equal(
+        ds.coords["x"].values,
+        [0.625, 0.875]
+        + [1.125, 1.375, 1.625, 1.875]
+        + [2.125, 2.375, 2.625, 2.875]
+        + [3.125, 3.375],
+    )
+    assert_equal(
+        ds.coords["y"].values, [2.625, 2.375, 2.125, 1.875, 1.625, 1.375, 1.125]
+    )
+    assert_equal(ds["Flat:1"].values, np.ones((1, 7, 12)))
+    assert_equal(
+        ds["TileRow"].values,
+        [
+            [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]] * 3
+            + [[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]] * 4
+        ],
+    )
+    assert_equal(
+        ds["Longitude"].values,
+        [[[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25]] * 7],
+    )
+    assert_equal(
+        ds["Latitude"].values,
+        [
+            [
+                [2.5] * 12,
+                [2.25] * 12,
+                [2.0] * 12,
+                [1.75] * 12,
+                [1.5] * 12,
+                [1.25] * 12,
+                [1.0] * 12,
+            ]
+        ],
+    )
+    assert_equal(ds["Day"].values, np.full((1, 7, 12), fill_value=5))
 def test_udp_simple_temporal_reduce(api100, user_defined_process_registry):
     """Test calling a UDP with simple temporal reduce operation"""
     udp_id = random_name("udp")
@@ -1375,12 +1500,7 @@ def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
         }
     })
 
-    output_file = tmp_path / "test_aggregate_spatial_netcdf_feature_names.nc"
-
-    with open(output_file, mode="wb") as f:
-        f.write(response.data)
-
-    ds = xr.load_dataset(output_file)
+    ds = _load_xarray_dataset_from_netcdf_response(response, tmp_path=tmp_path)
     assert ds["Flat:1"].sel(t='2021-02-05').values.tolist() == [1.0, 1.0]
     assert ds["Month"].sel(t='2021-02-05').values.tolist() == [2.0, 2.0]
     assert ds["Day"].sel(t='2021-02-05').values.tolist() == [5.0, 5.0]

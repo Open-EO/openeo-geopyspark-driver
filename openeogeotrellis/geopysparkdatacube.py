@@ -1303,6 +1303,7 @@ class GeopysparkDataCube(DriverDataCube):
             return temp_dir
 
         if isinstance(regions, (Polygon, MultiPolygon)):
+            # TODO: GeometryCollection usage is deprecated
             regions = GeometryCollection([regions])
 
         projected_polygons = (None if isinstance(regions, Point) or
