@@ -133,7 +133,8 @@ def udf_noop():
 @pytest.fixture
 def backend_implementation(request) -> 'GeoPySparkBackendImplementation':
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
-    backend = GeoPySparkBackendImplementation()
+
+    backend = GeoPySparkBackendImplementation(opensearch_enrich=False)
     if request.instance:
         request.instance.backend_implementation = backend
     return backend

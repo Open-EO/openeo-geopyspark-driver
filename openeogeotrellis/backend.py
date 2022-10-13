@@ -260,7 +260,7 @@ class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
-    def __init__(self, use_zookeeper=True):
+    def __init__(self, use_zookeeper=True, opensearch_enrich=True):
         # TODO: do this with a config instead of hardcoding rules?
         self._service_registry = (
             InMemoryServiceRegistry() if not use_zookeeper or ConfigParams().is_ci_context
@@ -273,7 +273,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
         )
 
-        catalog = get_layer_catalog(opensearch_enrich=True)
+        catalog = get_layer_catalog(opensearch_enrich=opensearch_enrich)
 
         jvm = gps.get_spark_context()._gateway.jvm
 
