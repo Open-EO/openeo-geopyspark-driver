@@ -54,10 +54,27 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
 
-    conf = geopyspark_conf(master=master_str, appName="OpenEO-GeoPySpark-Driver-Tests")
-    conf.set('spark.kryoserializer.buffer.max', value='1G')
-    conf.set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
-    conf.set(key='spark.kryo.classesToRegister', value='org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion')
+    # Make sure geopyspark can find the custom jars (e.g. geotrellis-extension)
+    # even if test suite is not run from project root (e.g. "run this test" functionality in an IDE like PyCharm)
+    additional_jar_dirs = [
+        Path(__file__).parent / "../jars",
+    ]
+
+    conf = geopyspark_conf(
+        master=master_str,
+        appName="OpenEO-GeoPySpark-Driver-Tests",
+        additional_jar_dirs=additional_jar_dirs,
+    )
+
+    conf.set("spark.kryoserializer.buffer.max", value="1G")
+    conf.set(
+        key="spark.kryo.registrator",
+        value="geopyspark.geotools.kryo.ExpandedKryoRegistrator",
+    )
+    conf.set(
+        key="spark.kryo.classesToRegister",
+        value="org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
+    )
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
 
