@@ -1284,16 +1284,22 @@ class GeopysparkDataCube(DriverDataCube):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
 
         def csv_dir() -> str:
-            clusterDir = pathlib.Path("/data/projects/OpenEO/timeseries")
-
-            if (not clusterDir.exists()):
-                clusterDir = pathlib.Path("/shared_pod_volume")
-                if (not clusterDir.exists()):
-                    clusterDir = pathlib.Path(".").resolve()
-            temp_output = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=clusterDir)
-            os.chmod(temp_output, 0o777)
-
-            return temp_output
+            parent_dir = None
+            for candidate in [
+                # TODO: this should come from config instead of trying to detect it
+                # TODO: also allow unit tests to inject `tmp_path` based parent here?
+                "/data/projects/OpenEO/timeseries",
+                "/shared_pod_volume",
+            ]:
+                if pathlib.Path(candidate).exists():
+                    parent_dir = candidate
+                    break
+            temp_dir = tempfile.mkdtemp(
+                prefix="timeseries_", suffix="_csv", dir=parent_dir
+            )
+            os.chmod(temp_dir, 0o777)
+            _log.info(f"zonal_statistics: using csv_dir {temp_dir!r}")
+            return temp_dir
 
         if isinstance(regions, (Polygon, MultiPolygon)):
             regions = GeometryCollection([regions])
