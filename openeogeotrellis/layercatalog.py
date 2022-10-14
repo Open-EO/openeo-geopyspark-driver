@@ -79,6 +79,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         single_level = env.get('pyramid_levels', 'all') != 'all'
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+        datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
         return datacubeParams, single_level
 
     @lru_cache(maxsize=20)

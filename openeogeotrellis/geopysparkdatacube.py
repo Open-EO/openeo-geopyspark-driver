@@ -1188,7 +1188,8 @@ class GeopysparkDataCube(DriverDataCube):
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
-    def _get_resample_method(self, method):
+    @staticmethod
+    def _get_resample_method( method):
         resample_method = {
             'bilinear': gps.ResampleMethod.BILINEAR,
             'average': gps.ResampleMethod.AVERAGE,
