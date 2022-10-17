@@ -215,6 +215,10 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         if pu is not None:
             usage = {"sentinelhub":{"value":pu,"unit":"sentinelhub_processing_unit"}}
 
+        pixels = tracker_results.get("InputPixels", None)
+        if pixels is not None:
+            usage = {"input_pixel":{"value":pixels/(1024*1024),"unit":"mega-pixel"}}
+
         links = tracker_results.get("links", None)
         all_links = None
         if links is not None:
