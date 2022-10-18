@@ -33,14 +33,13 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions
+from openeogeotrellis.utils import (kerberos, describe_path, log_memory, get_jvm, add_permissions,
+                                    get_sentinel_hub_credentials_from_environment)
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
 
-SENTINEL_HUB_CLIENT_ID = os.environ.get("SENTINEL_HUB_CLIENT_ID")
-SENTINEL_HUB_CLIENT_SECRET = os.environ.get("SENTINEL_HUB_CLIENT_SECRET")
 OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID")
 # TODO: also trim batch_job id a bit before logging?
 BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
@@ -250,11 +249,12 @@ def main(argv: List[str]) -> None:
 
     _log_container_internals()
 
-    if len(argv) != 10:
+    if len(argv) < 10:
         raise Exception(
             f"usage: {argv[0]} "
             "<job specification input file> <job directory> <results output file name> <user log file name> "
-            "<metadata file name> <api version> <dependencies> <user id> <max soft errors ratio>"
+            "<metadata file name> <api version> <dependencies> <user id> <max soft errors ratio> "
+            "[Sentinel Hub client alias]"
         )
 
     job_specification_file = argv[1]
@@ -267,6 +267,7 @@ def main(argv: List[str]) -> None:
     user_id = argv[8]
     BatchJobLoggingFilter.set("user_id", user_id)
     max_soft_errors_ratio = float(argv[9])
+    sentinel_hub_client_alias = argv[10] if len(argv) >= 11 else None
 
     _create_job_dir(job_dir)
 
@@ -306,7 +307,7 @@ def main(argv: List[str]) -> None:
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio
+                    max_soft_errors_ratio=max_soft_errors_ratio, sentinel_hub_client_alias=sentinel_hub_client_alias
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -342,13 +343,13 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, max_soft_errors_ratio: float = 0.0):
+            user_id: str = None, max_soft_errors_ratio: float = 0.0, sentinel_hub_client_alias='default'):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
 
     backend_implementation = GeoPySparkBackendImplementation()
-    backend_implementation.set_sentinel_hub_credentials(SENTINEL_HUB_CLIENT_ID, SENTINEL_HUB_CLIENT_SECRET)
+    backend_implementation.set_sentinel_hub_credentials(get_sentinel_hub_credentials_from_environment())
     logger.info(f"Using backend implementation {backend_implementation}")
     correlation_id = generate_unique_id(prefix="c")
     logger.info(f"Correlation id: {correlation_id}")
@@ -360,7 +361,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'correlation_id': correlation_id,
         'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
         'backend_implementation': backend_implementation,
-        'max_soft_errors_ratio': max_soft_errors_ratio
+        'max_soft_errors_ratio': max_soft_errors_ratio,
+        'sentinel_hub_client_alias': sentinel_hub_client_alias
     }
     job_option_whitelist = [
         "data_mask_optimization",
