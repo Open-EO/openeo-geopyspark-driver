@@ -36,6 +36,11 @@ def jvm_mock():
         yield jvm_mock
 
 
+@pytest.fixture
+def sentinel_hub_credentials():
+    return {'default': {'client_id': "???", 'client_secret': "!!!"}}
+
+
 def test_load_collection_bands_missing_required_extent():
     catalog = get_layer_catalog()
     load_params = LoadParameters(bands=['TOC-B03_10M'])
@@ -44,9 +49,9 @@ def test_load_collection_bands_missing_required_extent():
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
 
-def test_load_collection_sar_backscatter_compatible(jvm_mock):
+def test_load_collection_sar_backscatter_compatible(jvm_mock, sentinel_hub_credentials):
     catalog = get_layer_catalog()
-    catalog.set_sentinel_hub_credentials(client_id="???", client_secret="!!!")
+    catalog.set_sentinel_hub_credentials(sentinel_hub_credentials)
 
     load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
@@ -63,7 +68,10 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock):
     reproject.assert_called_once_with(projected_polys, 32631)
     reprojected = reproject.return_value
 
-    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd", "???", "!!!",
+    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd",
+                                         "???", "!!!",
+                                         "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
+                                         "/openeo/rlguard/access_token_default",
                                          {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock,
                                          cellsize_mock, False)
 
@@ -272,9 +280,10 @@ def test_load_collection_data_cube_params(jvm_mock):
     [{"tile_id": "16WEA", "date": "20200302"}, {"tile_id": "16WEA", "date": "20200307"}],
 ])
 def test_load_collection_common_name_by_missing_products(
-        jvm_mock, requests_mock, missing_products, expected_source, creo_features
+        jvm_mock, requests_mock, missing_products, expected_source, creo_features, sentinel_hub_credentials
 ):
     catalog = get_layer_catalog()
+    catalog.set_sentinel_hub_credentials(sentinel_hub_credentials)
 
     load_params = LoadParameters(
         temporal_extent=('2020-03-01', '2020-03-03'),
@@ -336,8 +345,9 @@ def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dat
     print(cube.get_max_level().layer_metadata)
 
 
-def test_driver_vector_cube_supports_load_collection_caching(jvm_mock):
+def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, sentinel_hub_credentials):
     catalog = get_layer_catalog()
+    catalog.set_sentinel_hub_credentials(sentinel_hub_credentials)
 
     def load_params1():
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection.geojson")))

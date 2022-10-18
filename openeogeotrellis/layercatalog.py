@@ -460,7 +460,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 sentinel_hub_client_alias = env.get('sentinel_hub_client_alias', 'default')
                 sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
-                zookeeper_connection_string = ConfigParams().zookeepernodes
+                zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
                 zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
 
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(

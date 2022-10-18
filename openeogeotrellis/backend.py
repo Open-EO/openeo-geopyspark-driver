@@ -926,7 +926,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                 endpoint, bucket_name, sentinel_hub_credentials['client_id'], sentinel_hub_credentials['client_secret'],
-                ConfigParams().zookeepernodes, f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+                ','.join(ConfigParams().zookeepernodes), f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
             )
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
@@ -1537,7 +1537,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         endpoint,
                         bucket_name,
                         sentinel_hub_credentials['client_id'], sentinel_hub_credentials['client_secret'],
-                        ConfigParams().zookeepernodes, f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+                        ','.join(ConfigParams().zookeepernodes),
+                        f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
                     )
 
                     shub_band_names = metadata.band_names
