@@ -190,7 +190,7 @@ def describe_path(path: Union[Path, str]) -> dict:
 
 
 def to_projected_polygons(
-    jvm,
+    jvm: JVMView,
     geometry: Union[
         str,
         Path,
@@ -252,6 +252,15 @@ def to_projected_polygons(
         polygons_srs = crs or "EPSG:4326"
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(
             polygon_wkts, polygons_srs
+        )
+    elif isinstance(geometry, Point):
+        geometry = DriverVectorCube.from_geometry(geometry)
+        return to_projected_polygons(
+            jvm,
+            geometry,
+            crs=crs,
+            buffer_points=buffer_points,
+            none_for_points=none_for_points,
         )
     else:
         raise ValueError(geometry)

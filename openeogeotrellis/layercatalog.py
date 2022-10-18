@@ -189,9 +189,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
-        elif isinstance(geometries, Point):
-            buffered_extent = jvm.geotrellis.vector.Extent(*buffer_point_approx(geometries, srs).bounds)
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
         else:
             projected_polygons = to_projected_polygons(
                 jvm, geometries, crs=srs, buffer_points=True
