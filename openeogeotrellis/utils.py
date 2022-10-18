@@ -188,28 +188,53 @@ def describe_path(path: Union[Path, str]) -> dict:
         }
 
 
-def to_projected_polygons(jvm, *args):
+def to_projected_polygons(
+    jvm,
+    geometry: Union[
+        str,
+        Path,
+        DelayedVector,
+        DriverVectorCube,
+        GeometryCollection,
+        Polygon,
+        MultiPolygon,
+    ],
+    *,
+    crs: Optional[str] = None,
+) -> "jvm.org.openeo.geotrellis.ProjectedPolygons":
     """Construct ProjectedPolygon instance"""
-    if len(args) == 1 and isinstance(args[0], (str, Path)):
+    if isinstance(geometry, (str, Path)):
         # Vector file
-        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
-    elif len(args) == 1 and isinstance(args[0], DelayedVector):
-        return to_projected_polygons(jvm, args[0].path)
-    elif len(args) == 1 and isinstance(args[0], DriverVectorCube):
-        vc: DriverVectorCube = args[0]
-        return to_projected_polygons(jvm, GeometryCollection(list(vc.get_geometries())), str(vc.get_crs()))
-    elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
+        assert crs is None
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(geometry))
+    elif isinstance(geometry, DelayedVector):
+        return to_projected_polygons(jvm, geometry.path, crs=crs)
+    elif isinstance(geometry, DriverVectorCube):
+        assert crs is None
+        # TODO: reverse this: make DriverVectorCube handling the reference implementation
+        #       and GeometryCollection the legacy/deprecated way
+        return to_projected_polygons(
+            jvm,
+            GeometryCollection(list(geometry.get_geometries())),
+            crs=str(geometry.get_crs()),
+        )
+    elif isinstance(geometry, GeometryCollection):
+        # TODO Open-EO/openeo-python-driver#71 deprecate/eliminate this GeometryCollection handling
         # Multiple polygons
-        polygon_wkts = [str(x) for x in args[0].geoms]
-        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
-        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
-    elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
+        polygon_wkts = [str(x) for x in geometry.geoms]
+        polygons_srs = crs or "EPSG:4326"
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(
+            polygon_wkts, polygons_srs
+        )
+    elif isinstance(geometry, (Polygon, MultiPolygon)):
         # Single polygon
-        polygon_wkts = [str(args[0])]
-        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
-        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+        polygon_wkts = [str(geometry)]
+        polygons_srs = crs or "EPSG:4326"
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(
+            polygon_wkts, polygons_srs
+        )
     else:
-        raise ValueError(args)
+        raise ValueError(geometry)
 
 
 @contextlib.contextmanager
