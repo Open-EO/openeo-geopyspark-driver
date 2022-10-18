@@ -189,14 +189,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
-        elif isinstance(geometries, Point):
-            buffered_extent = jvm.geotrellis.vector.Extent(*buffer_point_approx(geometries, srs).bounds)
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(buffered_extent, srs)
-        elif isinstance(geometries, GeometryCollection) and any(isinstance(geom, Point) for geom in geometries.geoms):
-            polygon_wkts = [str(buffer_point_approx(geom, srs)) if isinstance(geom, Point) else str(geom) for geom in geometries.geoms]
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, srs)
         else:
-            projected_polygons = to_projected_polygons(jvm, geometries)
+            projected_polygons = to_projected_polygons(
+                jvm, geometries, crs=srs, buffer_points=True
+            )
 
         if native_crs == 'UTM':
             target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)

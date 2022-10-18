@@ -18,12 +18,13 @@ import pytz
 import dateutil.parser
 from kazoo.client import KazooClient
 from py4j.java_gateway import JavaGateway, JVMView
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.logging import (get_logging_config, setup_logging, user_id_trim, BatchJobLoggingFilter,
                                         FlaskRequestCorrelationIdLogging, FlaskUserIdLogging, LOGGING_CONTEXT_BATCH_JOB)
+from openeo_driver.utils import buffer_point_approx
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
@@ -188,28 +189,81 @@ def describe_path(path: Union[Path, str]) -> dict:
         }
 
 
-def to_projected_polygons(jvm, *args):
+def to_projected_polygons(
+    jvm: JVMView,
+    geometry: Union[
+        str,
+        Path,
+        DelayedVector,
+        DriverVectorCube,
+        GeometryCollection,
+        Polygon,
+        MultiPolygon,
+    ],
+    *,
+    crs: Optional[str] = None,
+    buffer_points=False,
+    none_for_points=False,
+) -> "jvm.org.openeo.geotrellis.ProjectedPolygons":
     """Construct ProjectedPolygon instance"""
-    if len(args) == 1 and isinstance(args[0], (str, Path)):
+    if isinstance(geometry, (str, Path)):
         # Vector file
-        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(args[0]))
-    elif len(args) == 1 and isinstance(args[0], DelayedVector):
-        return to_projected_polygons(jvm, args[0].path)
-    elif len(args) == 1 and isinstance(args[0], DriverVectorCube):
-        vc: DriverVectorCube = args[0]
-        return to_projected_polygons(jvm, GeometryCollection(list(vc.get_geometries())), str(vc.get_crs()))
-    elif 1 <= len(args) <= 2 and isinstance(args[0], GeometryCollection):
+        assert crs is None
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(geometry))
+    elif isinstance(geometry, DelayedVector):
+        return to_projected_polygons(jvm, geometry.path, crs=crs)
+    elif isinstance(geometry, DriverVectorCube):
+        expected_crs = str(geometry.get_crs()).lower()
+        if crs and crs.lower() != expected_crs:
+            raise RuntimeError(f"Unexpected crs: {crs!r} != {expected_crs!r}")
+        # TODO: reverse this: make DriverVectorCube handling the reference implementation
+        #       and GeometryCollection the legacy/deprecated way
+        return to_projected_polygons(
+            jvm,
+            GeometryCollection(list(geometry.get_geometries())),
+            crs=str(geometry.get_crs()),
+            buffer_points=buffer_points,
+            none_for_points=none_for_points,
+        )
+    elif isinstance(geometry, GeometryCollection):
+        # TODO Open-EO/openeo-python-driver#71 deprecate/eliminate this GeometryCollection handling
         # Multiple polygons
-        polygon_wkts = [str(x) for x in args[0].geoms]
-        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
-        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
-    elif 1 <= len(args) <= 2 and isinstance(args[0], (Polygon, MultiPolygon)):
+        geoms = geometry.geoms
+        polygons_srs = crs or "EPSG:4326"
+        if buffer_points:
+            geoms = (
+                buffer_point_approx(g, point_crs=polygons_srs)
+                if isinstance(g, Point)
+                else g
+                for g in geoms
+            )
+        elif none_for_points and any(isinstance(g, Point) for g in geoms):
+            # Special case: if there is any point in the geometry: return None
+            # to take a different code path in zonal_statistics.
+            # TODO: can we eliminate this special case handling?
+            return None
+        polygon_wkts = [str(g) for g in geoms]
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(
+            polygon_wkts, polygons_srs
+        )
+    elif isinstance(geometry, (Polygon, MultiPolygon)):
         # Single polygon
-        polygon_wkts = [str(args[0])]
-        polygons_srs = args[1] if len(args) >= 2 else 'EPSG:4326'
-        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
+        polygon_wkts = [str(geometry)]
+        polygons_srs = crs or "EPSG:4326"
+        return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(
+            polygon_wkts, polygons_srs
+        )
+    elif isinstance(geometry, Point):
+        geometry = DriverVectorCube.from_geometry(geometry)
+        return to_projected_polygons(
+            jvm,
+            geometry,
+            crs=crs,
+            buffer_points=buffer_points,
+            none_for_points=none_for_points,
+        )
     else:
-        raise ValueError(args)
+        raise ValueError(geometry)
 
 
 @contextlib.contextmanager
@@ -399,3 +453,13 @@ def get_sentinel_hub_credentials_from_environment() -> dict:
         }
 
     return credentials
+
+
+def drop_empty_from_aggregate_polygon_result(result: dict):
+    """
+    Drop empty items from an AggregatPolygonResult JSON export
+    :param result:
+    :return:
+    """
+    # TODO: ideally this should not be necessary and be done automatically by the back-end
+    return {k: v for (k, v) in result.items() if not all(x == [] for x in v)}

@@ -1306,10 +1306,7 @@ class GeopysparkDataCube(DriverDataCube):
             # TODO: GeometryCollection usage is deprecated
             regions = GeometryCollection([regions])
 
-        projected_polygons = (None if isinstance(regions, Point) or
-                            (isinstance(regions, GeometryCollection) and
-                             any(isinstance(geom, Point) for geom in regions.geoms))
-                    else to_projected_polygons(self._get_jvm(), regions))
+        projected_polygons = to_projected_polygons(self._get_jvm(), regions, none_for_points=True)
 
         def regions_to_wkt(regions: Union[BaseGeometry, DriverVectorCube]) -> List[str]:
             if isinstance(regions, BaseMultipartGeometry):
