@@ -18,12 +18,13 @@ import pytz
 import dateutil.parser
 from kazoo.client import KazooClient
 from py4j.java_gateway import JavaGateway, JVMView
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.logging import (get_logging_config, setup_logging, user_id_trim, BatchJobLoggingFilter,
                                         FlaskRequestCorrelationIdLogging, FlaskUserIdLogging, LOGGING_CONTEXT_BATCH_JOB)
+from openeo_driver.utils import buffer_point_approx
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
@@ -201,6 +202,8 @@ def to_projected_polygons(
     ],
     *,
     crs: Optional[str] = None,
+    buffer_points=False,
+    none_for_points=False,
 ) -> "jvm.org.openeo.geotrellis.ProjectedPolygons":
     """Construct ProjectedPolygon instance"""
     if isinstance(geometry, (str, Path)):
@@ -210,19 +213,36 @@ def to_projected_polygons(
     elif isinstance(geometry, DelayedVector):
         return to_projected_polygons(jvm, geometry.path, crs=crs)
     elif isinstance(geometry, DriverVectorCube):
-        assert crs is None
+        expected_crs = str(geometry.get_crs()).lower()
+        if crs and crs.lower() != expected_crs:
+            raise RuntimeError(f"Unexpected crs: {crs!r} != {expected_crs!r}")
         # TODO: reverse this: make DriverVectorCube handling the reference implementation
         #       and GeometryCollection the legacy/deprecated way
         return to_projected_polygons(
             jvm,
             GeometryCollection(list(geometry.get_geometries())),
             crs=str(geometry.get_crs()),
+            buffer_points=buffer_points,
+            none_for_points=none_for_points,
         )
     elif isinstance(geometry, GeometryCollection):
         # TODO Open-EO/openeo-python-driver#71 deprecate/eliminate this GeometryCollection handling
         # Multiple polygons
-        polygon_wkts = [str(x) for x in geometry.geoms]
+        geoms = geometry.geoms
         polygons_srs = crs or "EPSG:4326"
+        if buffer_points:
+            geoms = (
+                buffer_point_approx(g, point_crs=polygons_srs)
+                if isinstance(g, Point)
+                else g
+                for g in geoms
+            )
+        elif none_for_points and any(isinstance(g, Point) for g in geoms):
+            # Special case: if there is any point in the geometry: return None
+            # to take a different code path in zonal_statistics.
+            # TODO: can we eliminate this special case handling?
+            return None
+        polygon_wkts = [str(g) for g in geoms]
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(
             polygon_wkts, polygons_srs
         )
