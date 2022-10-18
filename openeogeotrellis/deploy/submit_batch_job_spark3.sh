@@ -66,6 +66,7 @@ userId=${22}
 batchJobId=${23}
 maxSoftErrorsRatio=${24-"0.0"}
 taskCpus=${25}
+sentinelHubClientAlias=${26}
 
 pysparkPython="$venv_dir/bin/python"
 
@@ -191,4 +192,4 @@ spark-submit \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}" "${sentinelHubClientAlias}"

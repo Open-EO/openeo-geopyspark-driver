@@ -43,12 +43,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def __init__(self, all_metadata: List[dict]):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
-        self._sentinel_hub_client_id = None
-        self._sentinel_hub_client_secret = None
+        self._sentinel_hub_credentials = {}
 
-    def set_sentinel_hub_credentials(self, client_id: str, client_secret: str):
-        self._sentinel_hub_client_id = client_id
-        self._sentinel_hub_client_secret = client_secret
+    def set_sentinel_hub_credentials(self, credentials: dict):
+        self._sentinel_hub_credentials = credentials
 
     def create_datacube_parameters(self, load_params, env):
         jvm = get_jvm()
@@ -460,12 +458,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 max_soft_errors_ratio = env.get("max_soft_errors_ratio", 0.0)
 
+                sentinel_hub_client_alias = env.get('sentinel_hub_client_alias', 'default')
+                sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
+                zookeeper_connection_string = ConfigParams().zookeepernodes
+                zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+
                 pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(
                     endpoint,
                     shub_collection_id,
                     dataset_id,
-                    self._sentinel_hub_client_id,
-                    self._sentinel_hub_client_secret,
+                    sentinel_hub_credentials['client_id'],
+                    sentinel_hub_credentials['client_secret'],
+                    zookeeper_connection_string,
+                    zookeeper_access_token_path,
                     sentinel_hub.processing_options(collection_id,
                                                     sar_backscatter_arguments) if sar_backscatter_arguments else {},
                     sample_type,

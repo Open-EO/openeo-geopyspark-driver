@@ -15,6 +15,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.utils import get_sentinel_hub_credentials_from_environment
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.job_registry import JobRegistry
@@ -35,18 +36,19 @@ def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id:
                        'batch_job_id': batch_job_id,
                        'user_id': user_id,
                        'dependency_sources': dependency_sources
-                   },job_id=batch_job_id,user_id=user_id)
+                   }, job_id=batch_job_id, user_id=user_id)
 
 
-def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str):
+def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str, sentinel_hub_client_alias: str):
     _schedule_task(task_id=TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
                    arguments={
                        'batch_job_id': batch_job_id,
-                       'user_id': user_id
-                   },job_id=batch_job_id,user_id=user_id)
+                       'user_id': user_id,
+                       'sentinel_hub_client_alias': sentinel_hub_client_alias
+                   }, job_id=batch_job_id, user_id=user_id)
 
 
-def _schedule_task(task_id: str, arguments: dict,job_id=None,user_id=None):
+def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
     task = {
         'task_id': task_id,
         'arguments': arguments
@@ -141,8 +143,7 @@ def main():
             batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
                                       args.keytab)
 
-            batch_jobs.set_sentinel_hub_credentials(client_id=os.environ['SENTINEL_HUB_CLIENT_ID'],
-                                                    client_secret=os.environ['SENTINEL_HUB_CLIENT_SECRET'])
+            batch_jobs.set_sentinel_hub_credentials(get_sentinel_hub_credentials_from_environment())
 
             return batch_jobs
 
@@ -164,6 +165,7 @@ def main():
         elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
             batch_job_id = arguments['batch_job_id']
             user_id = arguments['user_id']
+            sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
 
             batch_jobs = get_batch_jobs(batch_job_id, user_id)
 
@@ -177,7 +179,7 @@ def main():
                     break
                 else:
                     try:
-                        batch_jobs.poll_sentinelhub_batch_processes(job_info)
+                        batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias)
                     except Exception:
                         # TODO: retry in Nifi? How to mark this job as 'error' then?
                         # TODO: don't put the stack trace in the message but add exc_info  # 141

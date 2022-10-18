@@ -14,7 +14,7 @@ from decimal import Decimal
 from functools import partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable
+from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable, Mapping
 from urllib.parse import urlparse
 
 import geopyspark as gps
@@ -821,9 +821,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return super().changelog()
 
-    def set_sentinel_hub_credentials(self, client_id: str, client_secret: str):
-        self.batch_jobs.set_sentinel_hub_credentials(client_id, client_secret)
-        self.catalog.set_sentinel_hub_credentials(client_id, client_secret)
+    def set_sentinel_hub_credentials(self, credentials: dict):
+        self.batch_jobs.set_sentinel_hub_credentials(credentials)
+        self.catalog.set_sentinel_hub_credentials(credentials)
 
 
 class GpsProcessing(ConcreteProcessing):
@@ -873,12 +873,10 @@ class GpsBatchJobs(backend.BatchJobs):
         self._jvm = jvm
         self._principal = principal
         self._key_tab = key_tab
-        self._sentinel_hub_client_id = None
-        self._sentinel_hub_client_secret = None
+        self._sentinel_hub_credentials = {}
 
-    def set_sentinel_hub_credentials(self, client_id: str, client_secret: str):
-        self._sentinel_hub_client_id = client_id
-        self._sentinel_hub_client_secret = client_secret
+    def set_sentinel_hub_credentials(self, credentials: dict):
+        self._sentinel_hub_credentials = credentials
 
     def create_job(
             self, user_id: str, process: dict, api_version: str,
@@ -910,7 +908,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return JobRegistry.job_info_to_metadata(job_info)
 
-    def poll_sentinelhub_batch_processes(self, job_info: dict):
+    def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
@@ -924,8 +922,12 @@ class GpsBatchJobs(backend.BatchJobs):
             endpoint = layer_source_info['endpoint']
             bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
+            sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
+
             batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                endpoint, bucket_name, self._sentinel_hub_client_id, self._sentinel_hub_client_secret)
+                endpoint, bucket_name, sentinel_hub_credentials['client_id'], sentinel_hub_credentials['client_secret'],
+                ConfigParams().zookeepernodes, f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+            )
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
                                  [batch_process_dependency['batch_request_id']])
@@ -1111,14 +1113,16 @@ class GpsBatchJobs(backend.BatchJobs):
             spec = json.loads(job_info['specification'])
             job_title = job_info.get('title', '')
             job_options = spec.get('job_options', {})
+            sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
             logger.debug("job_options: {o!r}".format(o=job_options))
 
             if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id, job_options)):
-                async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id)
+                                                                    user_id, job_id, job_options,
+                                                                    sentinel_hub_client_alias)):
+                async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id, sentinel_hub_client_alias)
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return
@@ -1338,15 +1342,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(job_id)
                     args.append(max_soft_errors_ratio)
                     args.append(task_cpus)
+                    args.append(sentinel_hub_client_alias)
 
                     try:
-                        env = dict(os.environ,
-                                   SENTINEL_HUB_CLIENT_ID=self._sentinel_hub_client_id,
-                                   SENTINEL_HUB_CLIENT_SECRET=self._sentinel_hub_client_secret)
-
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
                         output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True,
-                                                                env=env)
+                                                                env=self._with_sentinel_hub_credentials(os.environ))
                     except CalledProcessError as e:
                         logger.exception(e, extra={'job_id': job_id})
                         logger.error(e.stdout, extra={'job_id': job_id})
@@ -1367,6 +1368,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
+    def _with_sentinel_hub_credentials(self, environ: Mapping[str, str]) -> Mapping[str, str]:
+        result = dict(environ)
+
+        for alias, credentials in self._sentinel_hub_credentials:
+            result[f"SENTINEL_HUB_CLIENT_ID_{alias.upper()}"] = credentials['client_id']
+            result[f"SENTINEL_HUB_CLIENT_SECRET_{alias.upper()}"] = credentials['client_secret']
+
+        return result
+
     @staticmethod
     def _extract_application_id(stream) -> str:
         regex = re.compile(r"^.*Application report for (application_\d{13}_\d+)\s\(state:.*", re.MULTILINE)
@@ -1379,7 +1389,7 @@ class GpsBatchJobs(backend.BatchJobs):
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
                                                job_registry: JobRegistry, user_id: str, job_id: str,
-                                               job_options: dict) -> bool:
+                                               job_options: dict, sentinel_hub_client_alias: str) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -1521,11 +1531,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
+                    sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
+
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                         endpoint,
                         bucket_name,
-                        self._sentinel_hub_client_id,
-                        self._sentinel_hub_client_secret)
+                        sentinel_hub_credentials['client_id'], sentinel_hub_credentials['client_secret'],
+                        ConfigParams().zookeepernodes, f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+                    )
 
                     shub_band_names = metadata.band_names
 
