@@ -1599,7 +1599,7 @@ class TestPointAggregations:
     """
 
     def _load_cube(
-        self, spatial_extent: Union[dict, str] = "default"
+        self, spatial_extent: Union[dict, str, None] = "default"
     ) -> openeo.DataCube:
         """Load initial dummy data cube"""
         if spatial_extent == "default":
@@ -1638,13 +1638,7 @@ class TestPointAggregations:
             (Polygon.from_bounds(5.6, 0.2, 7.4, 3.8), [6.375, 1.875]),
         ],
     )
-    @pytest.mark.parametrize(
-        "load_collection_spatial_extent",
-        [
-            "default",
-            None,
-        ],
-    )
+    @pytest.mark.parametrize("load_collection_spatial_extent", ["default", None])
     def test_aggregate_single_geometry(
         self, api100, geometry, expected_lon_lat_agg, load_collection_spatial_extent
     ):
@@ -1728,9 +1722,12 @@ class TestPointAggregations:
             (Polygon.from_bounds(3.1, 1.2, 4.9, 2.8), [3.875, 1.875]),
         ],
     )
+    @pytest.mark.parametrize("load_collection_spatial_extent", ["default", None])
     def test_aggregate_feature_with_single_geometry(
-        self, cube, api100, geometry, expected_lon_lat_agg
+        self, api100, geometry, expected_lon_lat_agg, load_collection_spatial_extent
     ):
+        cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
+
         geometry = self._as_feature(geometry)
         cube = cube.aggregate_spatial(geometry, "mean")
         result = api100.check_result(cube).json
@@ -1741,7 +1738,11 @@ class TestPointAggregations:
             "2021-01-25T00:00:00Z": [[25.0] + expected_lon_lat_agg],
         }
 
-    def test_aggregate_feature_collection_of_points(self, cube, api100):
+    @pytest.mark.parametrize("load_collection_spatial_extent", ["default", None])
+    def test_aggregate_feature_collection_of_points(
+        self, api100, load_collection_spatial_extent
+    ):
+        cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
         geometry = self._as_feature_collection(
             Point(1.2, 2.3),
             Point(3.7, 4.2),
@@ -1794,7 +1795,12 @@ class TestPointAggregations:
             ],
         }
 
-    def test_aggregate_feature_collection_heterogeneous(self, cube, api100):
+    @pytest.mark.parametrize("load_collection_spatial_extent", ["default", None])
+    def test_aggregate_feature_collection_heterogeneous(
+        self, api100, load_collection_spatial_extent
+    ):
+        cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
+
         geometry = self._as_feature_collection(
             Point(1.2, 2.3),
             Point(3.7, 4.2),
