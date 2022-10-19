@@ -1298,9 +1298,17 @@ class GpsBatchJobs(backend.BatchJobs):
                                                  encoding='utf-8',
                                                  dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
                                                  prefix="{j}_".format(j=job_id),
-                                                 suffix=".in") as temp_input_file:
+                                                 suffix=".in") as temp_input_file, \
+                        tempfile.NamedTemporaryFile(mode="wt",
+                                                    encoding='utf-8',
+                                                    dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
+                                                    prefix="{j}_".format(j=job_id),
+                                                    suffix=".properties") as temp_properties_file:
                     temp_input_file.write(job_info['specification'])
                     temp_input_file.flush()
+
+                    self._write_sentinel_hub_credentials(temp_properties_file)
+                    temp_properties_file.flush()
 
                     # TODO: implement a saner way of passing arguments
                     job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
@@ -1343,11 +1351,11 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(max_soft_errors_ratio)
                     args.append(task_cpus)
                     args.append(sentinel_hub_client_alias)
+                    args.append(temp_properties_file.name)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True,
-                                                                env=self._with_sentinel_hub_credentials(os.environ))
+                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
                     except CalledProcessError as e:
                         logger.exception(e, extra={'job_id': job_id})
                         logger.error(e.stdout, extra={'job_id': job_id})
@@ -1368,14 +1376,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
-    def _with_sentinel_hub_credentials(self, environ: Mapping[str, str]) -> Mapping[str, str]:
-        result = dict(environ)
-
+    def _write_sentinel_hub_credentials(self, f):
         for alias, credentials in self._sentinel_hub_credentials.items():
-            result[f"SENTINEL_HUB_CLIENT_ID_{alias.upper()}"] = credentials['client_id']
-            result[f"SENTINEL_HUB_CLIENT_SECRET_{alias.upper()}"] = credentials['client_secret']
-
-        return result
+            f.write(f"spark.sentinelhub.client.id.{alias}={credentials['client_id']}\n")
+            f.write(f"spark.sentinelhub.client.secret.{alias}={credentials['client_secret']}\n")
 
     @staticmethod
     def _extract_application_id(stream) -> str:

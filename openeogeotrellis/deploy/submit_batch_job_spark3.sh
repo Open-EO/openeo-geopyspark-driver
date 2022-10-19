@@ -67,6 +67,7 @@ batchJobId=${23}
 maxSoftErrorsRatio=${24-"0.0"}
 taskCpus=${25}
 sentinelHubClientAlias=${26}
+propertiesFile=${27}
 
 pysparkPython="$venv_dir/bin/python"
 
@@ -128,6 +129,7 @@ spark-submit \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
+ --properties-file "${propertiesFile}" \
  --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
  --conf spark.kryoserializer.buffer.max=1G \

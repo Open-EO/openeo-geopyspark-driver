@@ -10,7 +10,6 @@ import resource
 import stat
 from epsel import on_first_time
 from functools import partial
-from itertools import groupby
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
 
@@ -437,29 +436,6 @@ def ensure_executor_logging(f) -> Callable:
                                       request_id=FlaskRequestCorrelationIdLogging.get_request_id()))
 
     return decorator(f)
-
-
-def get_sentinel_hub_credentials_from_environment() -> dict:
-    shub_envars = {envar: value for envar, value in os.environ.items()
-                   if envar.startswith("SENTINEL_HUB_CLIENT_")
-                   and envar not in ["SENTINEL_HUB_CLIENT_ID", "SENTINEL_HUB_CLIENT_SECRET"]}
-
-    values_by_name_alias_pair = {(envar.split("_")[-1].lower(), envar): value for envar, value in
-                                 shub_envars.items()}
-
-    grouped_by_alias = groupby(sorted(values_by_name_alias_pair.items(), key=lambda p: p[0][0]), key=lambda p: p[0][0])
-
-    credentials = {}
-
-    for alias, groups in grouped_by_alias:
-        groups = list(groups)
-
-        credentials[alias] = {
-            'client_id': [value for (_, envar), value in groups if "_ID_" in envar][0],
-            'client_secret': [value for (_, envar), value in groups if "_SECRET_" in envar][0]
-        }
-
-    return credentials
 
 
 def drop_empty_from_aggregate_polygon_result(result: dict):

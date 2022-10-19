@@ -1,3 +1,4 @@
+from itertools import groupby
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -15,7 +16,6 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
-from openeogeotrellis.utils import get_sentinel_hub_credentials_from_environment
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.job_registry import JobRegistry
@@ -71,9 +71,32 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
                       value=encode(task_message),
                       headers=[('env', encode(env))] if env else None).get(timeout=120)
 
-        _log.info(f"scheduled task {task_message} on env {env}",extra={'job_id': job_id, 'user_id':user_id})
+        _log.info(f"scheduled task {task_message} on env {env}", extra={'job_id': job_id, 'user_id': user_id})
     finally:
         producer.close()
+
+
+def _get_sentinel_hub_credentials_from_environment() -> dict:
+    shub_envars = {envar: value for envar, value in os.environ.items()
+                   if envar.startswith("SENTINEL_HUB_CLIENT_")
+                   and envar not in ["SENTINEL_HUB_CLIENT_ID", "SENTINEL_HUB_CLIENT_SECRET"]}
+
+    values_by_name_alias_pair = {(envar.split("_")[-1].lower(), envar): value for envar, value in
+                                 shub_envars.items()}
+
+    grouped_by_alias = groupby(sorted(values_by_name_alias_pair.items(), key=lambda p: p[0][0]), key=lambda p: p[0][0])
+
+    credentials = {}
+
+    for alias, groups in grouped_by_alias:
+        groups = list(groups)
+
+        credentials[alias] = {
+            'client_id': [value for (_, envar), value in groups if "_ID_" in envar][0],
+            'client_secret': [value for (_, envar), value in groups if "_SECRET_" in envar][0]
+        }
+
+    return credentials
 
 
 # TODO: DRY this, cleaner.sh and job_tracker.sh
@@ -143,7 +166,7 @@ def main():
             batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
                                       args.keytab)
 
-            batch_jobs.set_sentinel_hub_credentials(get_sentinel_hub_credentials_from_environment())
+            batch_jobs.set_sentinel_hub_credentials(_get_sentinel_hub_credentials_from_environment())
 
             return batch_jobs
 

@@ -4,7 +4,7 @@ import os
 import shutil
 import stat
 import sys
-from itertools import chain
+from itertools import chain, groupby
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
@@ -34,8 +34,7 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import (kerberos, describe_path, log_memory, get_jvm, add_permissions,
-                                    get_sentinel_hub_credentials_from_environment)
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
@@ -236,6 +235,28 @@ def _log_container_internals():
     logger.info(f"CWD is {os.getcwd()} with contents {', '.join(os.listdir())}")
 
 
+def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> dict:
+    shub_properties = {prop: value for prop, value in conf.getAll() if prop.startswith("spark.sentinelhub.client.")}
+
+    values_by_name_alias_pair = {(prop.split(".")[-1].lower(), prop): value for prop, value in shub_properties.items()}
+
+    grouped_by_alias = groupby(sorted(values_by_name_alias_pair.items(), key=lambda p: p[0][0]), key=lambda p: p[0][0])
+
+    credentials = {}
+
+    for alias, groups in grouped_by_alias:
+        groups = list(groups)
+
+        credentials[alias] = {
+            'client_id': [value for (_, prop), value in groups if ".client.id." in prop][0],
+            'client_secret': [value for (_, prop), value in groups if ".client.secret." in prop][0]
+        }
+
+    logger.debug(f"supported Sentinel Hub client alias(es): {', '.join(credentials.keys())}")
+
+    return credentials
+
+
 def main(argv: List[str]) -> None:
     logger.info("batch_job.py argv: {a!r}".format(a=argv))
     logger.info("batch_job.py pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
@@ -302,13 +323,16 @@ def main(argv: List[str]) -> None:
             principal = sc.getConf().get("spark.yarn.principal")
             key_tab = sc.getConf().get("spark.yarn.keytab")
 
+            sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
+
             kerberos(principal, key_tab)
             
             def run_driver(): 
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio, sentinel_hub_client_alias=sentinel_hub_client_alias
+                    max_soft_errors_ratio=max_soft_errors_ratio, sentinel_hub_credentials=sentinel_hub_credentials,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -344,13 +368,17 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, max_soft_errors_ratio: float = 0.0, sentinel_hub_client_alias='default'):
+            user_id: str = None, max_soft_errors_ratio: float = 0.0, sentinel_hub_credentials=None,
+            sentinel_hub_client_alias='default'):
+    if sentinel_hub_credentials is None:
+        sentinel_hub_credentials = {}
+
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
 
     backend_implementation = GeoPySparkBackendImplementation()
-    backend_implementation.set_sentinel_hub_credentials(get_sentinel_hub_credentials_from_environment())
+    backend_implementation.set_sentinel_hub_credentials(sentinel_hub_credentials)
     logger.info(f"Using backend implementation {backend_implementation}")
     correlation_id = generate_unique_id(prefix="c")
     logger.info(f"Correlation id: {correlation_id}")
