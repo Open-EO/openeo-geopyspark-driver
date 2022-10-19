@@ -23,10 +23,11 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult, \
     MlModelResult
 from openeo_driver.users import User
+from openeo_driver.util.geometry import spatial_extent_union
 from openeo_driver.util.logging import BatchJobLoggingFilter, user_id_trim, get_logging_config, setup_logging, \
     LOGGING_CONTEXT_BATCH_JOB
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, spatial_extent_union, temporal_extent_union, generate_unique_id
+from openeo_driver.utils import EvalEnv, temporal_extent_union, generate_unique_id
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor

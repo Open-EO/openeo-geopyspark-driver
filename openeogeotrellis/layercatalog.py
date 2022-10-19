@@ -1,6 +1,5 @@
 import datetime as dt
 import logging
-import re
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -12,8 +11,7 @@ import geopyspark
 import py4j.protocol
 import pyproj
 import requests
-from shapely.geometry import box, Point
-from shapely.geometry.collection import GeometryCollection
+from shapely.geometry import box
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
@@ -24,7 +22,7 @@ from openeo_driver.dry_run import ProcessType
 from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from openeo_driver.utils import buffer_point_approx, read_json, EvalEnv, to_hashable
+from openeo_driver.utils import read_json, EvalEnv
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient

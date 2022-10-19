@@ -22,9 +22,16 @@ from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.util.logging import (get_logging_config, setup_logging, user_id_trim, BatchJobLoggingFilter,
-                                        FlaskRequestCorrelationIdLogging, FlaskUserIdLogging, LOGGING_CONTEXT_BATCH_JOB)
-from openeo_driver.utils import buffer_point_approx
+from openeo_driver.util.geometry import GeometryBufferer
+from openeo_driver.util.logging import (
+    get_logging_config,
+    setup_logging,
+    user_id_trim,
+    BatchJobLoggingFilter,
+    FlaskRequestCorrelationIdLogging,
+    FlaskUserIdLogging,
+    LOGGING_CONTEXT_BATCH_JOB,
+)
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger("openeo")
@@ -231,12 +238,12 @@ def to_projected_polygons(
         geoms = geometry.geoms
         polygons_srs = crs or "EPSG:4326"
         if buffer_points:
-            geoms = (
-                buffer_point_approx(g, point_crs=polygons_srs)
-                if isinstance(g, Point)
-                else g
-                for g in geoms
+            # TODO: buffer distance of 10m assumes certain resolution (e.g. sentinel2 pixels)
+            # TODO: use proper distance for collection resolution instead of using a default distance?
+            bufferer = GeometryBufferer.from_meter_for_crs(
+                distance=10, crs=polygons_srs
             )
+            geoms = (bufferer.buffer(g) if isinstance(g, Point) else g for g in geoms)
         elif none_for_points and any(isinstance(g, Point) for g in geoms):
             # Special case: if there is any point in the geometry: return None
             # to take a different code path in zonal_statistics.

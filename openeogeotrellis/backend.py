@@ -28,7 +28,7 @@ from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
 from pystac import Collection
-from shapely.geometry import box, GeometryCollection, Point, Polygon
+from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
@@ -45,7 +45,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
-from openeo_driver.utils import buffer_point_approx, EvalEnv, to_hashable, generate_unique_id
+from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -1561,19 +1561,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         geometry = bbox
                         # string crs is unchanged
                     else:
-                        if isinstance(geometries, Point):
-                            buffered_extent = self._jvm.geotrellis.vector.Extent(*buffer_point_approx(geometries, crs).bounds)
-                            projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
-                                buffered_extent, crs)
-                        elif (isinstance(geometries, GeometryCollection) and
-                                any(isinstance(geom, Point) for geom in geometries.geoms)):
-                            polygon_wkts = [str(buffer_point_approx(geom, crs)) if isinstance(geom, Point)
-                                            else str(geom) for geom in geometries.geoms]
-                            projected_polygons = self._jvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt(polygon_wkts,
-                                                                                                           crs)
-                        else:
-                            # handles DelayedVector as well as Shapely geometries
-                            projected_polygons = to_projected_polygons(self._jvm, geometries)
+                        projected_polygons = to_projected_polygons(self._jvm, geometry=geometries, crs=crs, buffer_points=True)
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
 

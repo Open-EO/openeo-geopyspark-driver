@@ -8,7 +8,7 @@ import numpy as np
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from openeo_driver.utils import geojson_to_geometry
+from openeo_driver.util.geometry import geojson_to_geometry
 from pyspark import SparkContext
 from shapely import geometry
 from shapely.geometry import Point
