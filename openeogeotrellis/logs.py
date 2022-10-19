@@ -5,7 +5,7 @@ from elasticsearch.helpers import scan
 from openeo.util import dict_no_none
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
-ES_INDEX_PATTERN = "openeo-index-1m*"
+ES_INDEX_PATTERN = "openeo-*-index-1m*"
 ES_TAGS = ["openeo"]
 
 

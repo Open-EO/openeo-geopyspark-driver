@@ -1371,7 +1371,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def _with_sentinel_hub_credentials(self, environ: Mapping[str, str]) -> Mapping[str, str]:
         result = dict(environ)
 
-        for alias, credentials in self._sentinel_hub_credentials:
+        for alias, credentials in self._sentinel_hub_credentials.items():
             result[f"SENTINEL_HUB_CLIENT_ID_{alias.upper()}"] = credentials['client_id']
             result[f"SENTINEL_HUB_CLIENT_SECRET_{alias.upper()}"] = credentials['client_secret']
 
