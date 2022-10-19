@@ -54,7 +54,6 @@ setup(
         'numpy==1.22.4',
         'pandas>=0.24.2,<1.4.0',
         'matplotlib==3.3.3',
-        'geopandas~=0.7.0',
         'pyproj>=2.2.0,<3.0.0',
         'protobuf~=3.9.2',
         'kazoo~=2.8.0',
