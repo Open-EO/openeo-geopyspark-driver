@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 import geopyspark as gps
 import pkg_resources
 import requests
+import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
 from py4j.java_gateway import JavaGateway, JVMView, JavaObject
@@ -37,6 +38,7 @@ from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
                                    CollectionCatalog)
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
@@ -1476,8 +1478,14 @@ class GpsBatchJobs(backend.BatchJobs):
                             return (self._jvm
                                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
                                     .areaInSquareMeters())
-                        else:
+                        elif isinstance(geometries, DriverVectorCube):
+                            # TODO: only area of covered regions instead of whole bbox area?
+                            return geometries.get_bounding_box_area()
+                        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
                             return area_in_square_meters(geometries, crs)
+                        else:
+                            logger.error(f"GpsBatchJobs._scheduled_sentinelhub_batch_processes:area Unhandled geometry type {type(geometries)}")
+                            raise ValueError(geometries)
 
                     actual_area = area()
                     absolute_maximum_area = 1e+12  # 1 million km²
