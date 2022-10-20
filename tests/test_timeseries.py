@@ -130,85 +130,6 @@ class TestTimeSeries(TestCase):
         for r in result:
             self.assertTrue(r in self.expected_spacetime_points_list)
 
-    def test_zonal_statistics(self):
-        layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
-
-        polygon = Polygon(shell=[
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (1.0, 1.0),
-            (0.0, 1.0),
-            (0.0, 0.0)
-        ])
-        result = imagecollection.zonal_statistics(polygon, "mean")
-        assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
-
-        covjson = result.to_covjson()
-        assert covjson["ranges"] == {
-            "band0": {
-                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                "shape": (1, 1),
-                "values": [1.0]
-            },
-            "band1": {
-                "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                "shape": (1, 1),
-                "values": [2.0]
-            },
-        }
-
-
-    def test_zonal_statistics_datacube(self):
-        layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}))
-
-        polygon = Polygon(shell=[
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (1.0, 1.0),
-            (0.0, 1.0),
-            (0.0, 0.0)
-        ])
-
-        polygon2 = Polygon(shell=[
-            (2.0, 2.0),
-            (3.0, 2.0),
-            (3.0, 3.0),
-            (2.0, 3.0),
-            (2.0, 2.0)
-        ])
-
-        regions = GeometryCollection([polygon, MultiPolygon([polygon2])])
-
-        for use_file in [True,False]:
-            with self.subTest():
-                if use_file:
-                    with NamedTemporaryFile(delete=False,suffix='.json',mode='r+') as fp:
-                        json.dump(mapping(regions),fp)
-                        regions_serialized = fp.name
-                else:
-                    regions_serialized = regions
-
-                result = imagecollection.zonal_statistics(regions_serialized, "mean")
-                assert result.data == {
-                    '2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]
-                }
-                result._regions = regions
-
-                covjson = result.to_covjson()
-                assert covjson["ranges"] == {
-                    "band0": {
-                        "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                        "shape": (1, 2),
-                        "values": [1.0, 1.0]
-                    },
-                    "band1": {
-                        "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
-                        "shape": (1, 2),
-                        "values": [2.0, 2.0]
-                    },
-                }
 
 
 
@@ -236,9 +157,34 @@ class TestTimeSeries(TestCase):
             }
         }
 
+def test_zonal_statistics(imagecollection_with_two_bands_and_one_date):
+
+    polygon = Polygon(shell=[
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0)
+    ])
+    result = imagecollection_with_two_bands_and_one_date.zonal_statistics(polygon, "mean")
+    assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
+
+    covjson = result.to_covjson()
+    assert covjson["ranges"] == {
+        "band0": {
+            "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+            "shape": (1, 1),
+            "values": [1.0]
+        },
+        "band1": {
+            "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+            "shape": (1, 1),
+            "values": [2.0]
+        },
+    }
+
 def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_three_dates):
-    #layer = self.create_spacetime_layer()
-    #imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer}),metadata=GeopysparkCubeMetadata())
+
     polygon = Polygon(shell=[
         (0.0, 0.0),
         (1.0, 0.0),
@@ -267,6 +213,59 @@ def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_thr
             "shape": (3, 1),
             "values": [2.0, pytest.approx(np.nan,nan_ok=True), 1.0]
         }
+    }
+
+@pytest.mark.parametrize(["use_file"], [
+    [True],
+    [False],
+])
+def test_zonal_statistics_datacube(use_file, imagecollection_with_two_bands_and_one_date):
+    imagecollection = imagecollection_with_two_bands_and_one_date
+
+    polygon = Polygon(shell=[
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0)
+    ])
+
+    polygon2 = Polygon(shell=[
+        (2.0, 2.0),
+        (3.0, 2.0),
+        (3.0, 3.0),
+        (2.0, 3.0),
+        (2.0, 2.0)
+    ])
+
+    regions = GeometryCollection([polygon, MultiPolygon([polygon2])])
+
+
+    if use_file:
+        with NamedTemporaryFile(delete=False,suffix='.json',mode='r+') as fp:
+            json.dump(mapping(regions),fp)
+            regions_serialized = fp.name
+    else:
+        regions_serialized = regions
+
+    result = imagecollection.zonal_statistics(regions_serialized, "mean")
+    assert result.data == {
+        '2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]
+    }
+    result._regions = regions
+
+    covjson = result.to_covjson()
+    assert covjson["ranges"] == {
+        "band0": {
+            "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+            "shape": (1, 2),
+            "values": [1.0, 1.0]
+        },
+        "band1": {
+            "type": "NdArray", "dataType": "float", "axisNames": ["t", "composite"],
+            "shape": (1, 2),
+            "values": [2.0, 2.0]
+        },
     }
 
 def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_dates):
