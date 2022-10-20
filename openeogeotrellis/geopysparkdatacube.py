@@ -1355,18 +1355,6 @@ class GeopysparkDataCube(DriverDataCube):
                         scala_data_cube, projected_polygons, from_date.isoformat(), to_date.isoformat(), 0
                     )
                     timeseries = self._as_python(stats)
-                elif func ==  "mean":
-                    with tempfile.NamedTemporaryFile(suffix=".json.tmp") as temp_file:
-                        self._compute_stats_geotrellis().compute_average_timeseries_from_datacube(
-                            scala_data_cube,
-                            projected_polygons,
-                            from_date.isoformat(),
-                            to_date.isoformat(),
-                            0,
-                            temp_file.name
-                        )
-                        with open(temp_file.name, encoding='utf-8') as f:
-                            timeseries = json.load(f)
                 else:
                     temp_output = csv_dir()
 
