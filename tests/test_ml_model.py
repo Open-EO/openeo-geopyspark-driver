@@ -18,7 +18,7 @@ from shapely.geometry import GeometryCollection, Point
 
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.save_result import MlModelResult
-from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester
+from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester, RegexMatcher
 from openeo_driver.utils import EvalEnv, read_json
 from pyspark.mllib.tree import RandomForestModel
 
@@ -112,7 +112,8 @@ def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir,
     assert metadata_result == {
         'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
         'assets': {'catboost_model.cbm': {'href': 'catboost_model.cbm'}}, 'epsg': None, 'instruments': [],
-        'processing:facility': 'VITO - SPARK', 'processing:software': 'openeo-geotrellis-0.6.4a1',
+        "processing:facility": "VITO - SPARK",
+        "processing:software":  RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+"),
         'unique_process_ids': ['discard_result'], 'ml_model_metadata': {
             'stac_version': '1.0.0',
             'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
@@ -297,7 +298,8 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
                 'href': str(tmp_path / "randomforest.model.tar.gz")
             }
         }, 'epsg': None, 'instruments': [], 'processing:facility': 'VITO - SPARK',
-        'processing:software': 'openeo-geotrellis-0.6.4a1', 'unique_process_ids': ['discard_result'],
+        "processing:software": RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+"),
+        'unique_process_ids': ['discard_result'],
         'ml_model_metadata': {
             'stac_version': '1.0.0',
             'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
