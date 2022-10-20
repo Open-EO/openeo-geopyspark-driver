@@ -33,7 +33,7 @@ from openeo_driver.util.logging import (
 )
 from openeogeotrellis.configparams import ConfigParams
 
-logger = logging.getLogger("openeo")
+logger = logging.getLogger(__name__)
 
 
 def log_memory(function):
@@ -212,9 +212,11 @@ def to_projected_polygons(
     none_for_points=False,
 ) -> "jvm.org.openeo.geotrellis.ProjectedPolygons":
     """Construct ProjectedPolygon instance"""
+    logger.info(f"to_projected_polygons with {type(geometry)} ({buffer_points=}, {none_for_points=})")
     if isinstance(geometry, (str, Path)):
         # Vector file
-        assert crs is None
+        # TODO: crs should be None or lonlat-like
+        # assert crs is None
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(geometry))
     elif isinstance(geometry, DelayedVector):
         return to_projected_polygons(jvm, geometry.path, crs=crs)
