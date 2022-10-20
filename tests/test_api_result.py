@@ -5,15 +5,15 @@ from typing import List, Union
 
 import mock
 import numpy as np
-import openeo
 import pytest
 import rasterio
 import xarray
 from numpy.testing import assert_equal
-from openeo_driver.testing import TEST_USER, ApiResponse
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
-from shapely.geometry.base import BaseGeometry
 
+import openeo
+from openeo_driver.testing import TEST_USER, ApiResponse
+from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
 from openeogeotrellis.testing import random_name
 from openeogeotrellis.utils import (
     UtcNowClock,
@@ -1592,9 +1592,9 @@ def test_load_collection_is_cached(api100):
         assert n_load_collection_calls == 1
 
 
-class TestPointAggregations:
+class TestAggregateSpatial:
     """
-    Tests for aggregate_spatial with Point geometries,
+    Various tests for aggregate_spatial (e.g. with Point geometries),
     originally defined in openeo-geopyspark-integrationtests test function `test_point_timeseries`
     """
 
@@ -1615,17 +1615,6 @@ class TestPointAggregations:
     @pytest.fixture
     def cube(self) -> openeo.DataCube:
         return self._load_cube()
-
-    @classmethod
-    def _as_feature(cls, geometry: BaseGeometry) -> dict:
-        return {"type": "Feature", "properties": {}, "geometry": mapping(geometry)}
-
-    @classmethod
-    def _as_feature_collection(cls, *geometries: BaseGeometry) -> dict:
-        return {
-            "type": "FeatureCollection",
-            "features": [cls._as_feature(g) for g in geometries],
-        }
 
     @pytest.mark.parametrize(
         ["geometry", "expected_lon_lat_agg"],
@@ -1728,7 +1717,7 @@ class TestPointAggregations:
     ):
         cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
 
-        geometry = self._as_feature(geometry)
+        geometry = as_geojson_feature(geometry)
         cube = cube.aggregate_spatial(geometry, "mean")
         result = api100.check_result(cube).json
         result = drop_empty_from_aggregate_polygon_result(result)
@@ -1743,7 +1732,7 @@ class TestPointAggregations:
         self, api100, load_collection_spatial_extent
     ):
         cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
-        geometry = self._as_feature_collection(
+        geometry = as_geojson_feature_collection(
             Point(1.2, 2.3),
             Point(3.7, 4.2),
             Point(4.5, 3.8),
@@ -1769,7 +1758,7 @@ class TestPointAggregations:
         }
 
     def test_aggregate_feature_collection_of_polygons(self, cube, api100):
-        geometry = self._as_feature_collection(
+        geometry = as_geojson_feature_collection(
             Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
             Polygon.from_bounds(0.4, 3.2, 2.8, 4.8),
             Polygon.from_bounds(5.6, 0.2, 7.4, 3.8),
@@ -1801,7 +1790,7 @@ class TestPointAggregations:
     ):
         cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
 
-        geometry = self._as_feature_collection(
+        geometry = as_geojson_feature_collection(
             Point(1.2, 2.3),
             Point(3.7, 4.2),
             Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
@@ -1839,7 +1828,7 @@ class TestPointAggregations:
     ):
         from openeo.processes import array_create, count, min
 
-        geometry = self._as_feature_collection(
+        geometry = as_geojson_feature_collection(
             Point(1.2, 2.3),
             Point(3.7, 4.2),
             Polygon.from_bounds(3.1, 1.2, 4.9, 2.8),
