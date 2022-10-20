@@ -215,8 +215,8 @@ def to_projected_polygons(
     logger.info(f"to_projected_polygons with {type(geometry)} ({buffer_points=}, {none_for_points=})")
     if isinstance(geometry, (str, Path)):
         # Vector file
-        # TODO: crs should be None or lonlat-like
-        # assert crs is None
+        if not (crs is None or isinstance(crs, str) and crs.upper() == "EPSG:4326"):
+            raise ValueError(f"Expected default CRS (EPSG:4326) but got {crs!r}")
         return jvm.org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(str(geometry))
     elif isinstance(geometry, DelayedVector):
         return to_projected_polygons(jvm, geometry.path, crs=crs)

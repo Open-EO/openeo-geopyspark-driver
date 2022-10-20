@@ -20,7 +20,7 @@ from openeogeotrellis.utils import (
     drop_empty_from_aggregate_polygon_result,
     get_jvm,
 )
-from tests.data import get_test_data_file
+from .data import get_test_data_file
 
 _log = logging.getLogger(__name__)
 
@@ -1872,4 +1872,18 @@ class TestPointAggregations:
                 [25.0, 1.0, 4.5, 1.0, 3.75, 1.0],
                 [25.0, 112.0, 5.5, 112.0, 0.25, 112.0],
             ],
+        }
+
+    @pytest.mark.parametrize("load_collection_spatial_extent", ["default", None])
+    def test_aggregate_geometry_from_file(self, api100, load_collection_spatial_extent):
+        cube = self._load_cube(spatial_extent=load_collection_spatial_extent)
+        cube = cube.aggregate_spatial(
+            get_test_data_file("geometries/FeatureCollection.geojson"), "mean"
+        )
+        result = api100.check_result(cube).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == {
+            "2021-01-05T00:00:00Z": [[5.0, 0.375, 0.25], [5.0, 1.625, 1.625]],
+            "2021-01-15T00:00:00Z": [[15.0, 0.375, 0.25], [15.0, 1.625, 1.625]],
+            "2021-01-25T00:00:00Z": [[25.0, 0.375, 0.25], [25.0, 1.625, 1.625]],
         }
