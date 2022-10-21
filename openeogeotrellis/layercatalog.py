@@ -453,7 +453,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 max_soft_errors_ratio = env.get("max_soft_errors_ratio", 0.0)
 
                 sentinel_hub_client_alias = env.get('sentinel_hub_client_alias', 'default')
+
+                logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
                 sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
+
                 zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
                 zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
 

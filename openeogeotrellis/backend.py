@@ -924,6 +924,7 @@ class GpsBatchJobs(backend.BatchJobs):
             endpoint = layer_source_info['endpoint']
             bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
+            logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
             sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
 
             batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
@@ -1543,6 +1544,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
+                    logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
                     sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
 
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
