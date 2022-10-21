@@ -5,6 +5,13 @@ metadata:
   name: {{ job_name }}
   namespace: spark-jobs
 spec:
+  initContainers:
+  - name: init-tmp-dir
+    image: busybox:1.28
+    command: ['chown', '18585:18585', '/spark_tmp']
+    volumeMounts:
+      - name: "spark-local-dir-1"
+        mountPath: "/spark_tmp"
   type: Python
   pythonVersion: "3"
   mode: cluster
@@ -74,7 +81,7 @@ spec:
         type: "DirectoryOrCreate"
     - name: "spark-local-dir-1"
       hostPath:
-        path: "/opt/spark_tmp"
+        path: "/opt/{{ job_id }}"
         type: "DirectoryOrCreate"
   driver:
     envVars:
