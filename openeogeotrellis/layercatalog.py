@@ -76,6 +76,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if single_level:
             getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 
+        if load_params.pixel_buffer is not None:
+            datacubeParams.setPixelBuffer(load_params.pixel_buffer[0],load_params.pixel_buffer[1])
+
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
         return datacubeParams, single_level
 
