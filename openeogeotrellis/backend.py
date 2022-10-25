@@ -940,7 +940,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id})
 
-            if sentinel_hub_client_alias is 'default':
+            if sentinel_hub_client_alias == 'default':
                 sentinel_hub_client_id = self._default_sentinel_hub_client_id
                 sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
             else:
