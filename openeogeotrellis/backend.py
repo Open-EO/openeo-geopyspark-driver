@@ -939,7 +939,7 @@ class GpsBatchJobs(backend.BatchJobs):
             endpoint = layer_source_info['endpoint']
             bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
-            logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
+            logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id})
 
             if sentinel_hub_client_alias is 'default':
                 sentinel_hub_client_id = self._default_sentinel_hub_client_id
@@ -1573,7 +1573,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
-                    logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
+                    logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id})
 
                     if sentinel_hub_client_alias == 'default':
                         sentinel_hub_client_id = self._default_sentinel_hub_client_id
