@@ -1,6 +1,10 @@
+import logging
 from typing import NamedTuple
 
 import hvac
+
+
+_log = logging.getLogger(__name__)
 
 
 class SentinelHubCredentials(NamedTuple):
@@ -21,7 +25,12 @@ class Vault:
             mount_point="kv")
 
         credentials = secret['data']['data']
-        return SentinelHubCredentials(client_id=credentials['client_id'], client_secret=credentials['client_secret'])
+        client_id = credentials['client_id']
+        client_secret = credentials['client_secret']
+
+        _log.debug(f'{self._url}: Sentinel Hub client ID for "{sentinel_hub_client_alias}" is {client_id}')
+
+        return SentinelHubCredentials(client_id, client_secret)
 
     def login_jwt(self, access_token: str) -> str:
         client = self._client()
@@ -30,3 +39,6 @@ class Vault:
 
     def _client(self):
         return hvac.Client(self._url)
+
+    def __str__(self):
+        return self._url
