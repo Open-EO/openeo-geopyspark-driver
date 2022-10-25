@@ -9,10 +9,12 @@ from openeo.util import deep_get
 from openeo_driver.utils import read_json
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.vault import Vault
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
-    catalog = get_layer_catalog()
+    vault = Vault("http://example.org")
+    catalog = get_layer_catalog(vault)
     layers = catalog.get_all_metadata()
     return [(layer["id"], layer) for layer in layers]
 
@@ -54,13 +56,13 @@ def test_layer_metadata(id, layer):
 
 
 
-def test_get_layer_catalog_with_updates():
+def test_get_layer_catalog_with_updates(vault):
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             "tests/data/layercatalog01.json",
             "tests/data/layercatalog02.json",
         ]
-        catalog = get_layer_catalog()
+        catalog = get_layer_catalog(vault)
         assert sorted(l["id"] for l in catalog.get_all_metadata()) == ["BAR", "BZZ", "FOO", "QUU"]
         foo = catalog.get_collection_metadata("FOO")
         assert foo["license"] == "apache"
@@ -71,8 +73,8 @@ def test_get_layer_catalog_with_updates():
 
 
 # skip because test depends on external config
-def skip_sentinelhub_layer():
-    catalog = get_layer_catalog()
+def skip_sentinelhub_layer(vault):
+    catalog = get_layer_catalog(vault)
     viewingParameters = {}
     viewingParameters["from"] = "2018-01-01"
     viewingParameters["to"] = "2018-01-02"
@@ -85,7 +87,7 @@ def skip_sentinelhub_layer():
     datacube = catalog.load_collection("SENTINEL1_GAMMA0_SENTINELHUB", viewingParameters)
 
 
-def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
+def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
     test_root = Path(__file__).parent / "data"
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
@@ -98,7 +100,7 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
         collections_response = read_json(test_root / "collections_oscars01.json")
         requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
-        all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
+        all_metadata = get_layer_catalog(vault, opensearch_enrich=True).get_all_metadata()
 
     assert all_metadata == [
         {
@@ -188,7 +190,7 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock):
     ]
 
 
-def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock):
+def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             "tests/data/layercatalog01.json",
@@ -197,7 +199,7 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock):
         collections_response = read_json("tests/data/collections_creodias01.json")
         requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
 
-        all_metadata = get_layer_catalog(opensearch_enrich=True).get_all_metadata()
+        all_metadata = get_layer_catalog(vault, opensearch_enrich=True).get_all_metadata()
 
     assert all_metadata == [
         {

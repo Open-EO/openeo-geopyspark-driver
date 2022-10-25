@@ -235,26 +235,8 @@ def _log_container_internals():
     logger.info(f"CWD is {os.getcwd()} with contents {', '.join(os.listdir())}")
 
 
-def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> dict:
-    shub_properties = {prop: value for prop, value in conf.getAll() if prop.startswith("spark.sentinelhub.client.")}
-
-    values_by_name_alias_pair = {(prop.split(".")[-1].lower(), prop): value for prop, value in shub_properties.items()}
-
-    grouped_by_alias = groupby(sorted(values_by_name_alias_pair.items(), key=lambda p: p[0][0]), key=lambda p: p[0][0])
-
-    credentials = {}
-
-    for alias, groups in grouped_by_alias:
-        groups = list(groups)
-
-        credentials[alias] = {
-            'client_id': [value for (_, prop), value in groups if ".client.id." in prop][0],
-            'client_secret': [value for (_, prop), value in groups if ".client.secret." in prop][0]
-        }
-
-    logger.debug(f"supported Sentinel Hub client alias(es): {', '.join(credentials.keys())}")
-
-    return credentials
+def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> (str, str):
+    return conf.get('spark.sentinelhub.client.id.default'), conf.get('spark.sentinelhub.client.secret.default')
 
 
 def main(argv: List[str]) -> None:
@@ -276,7 +258,7 @@ def main(argv: List[str]) -> None:
             f"usage: {argv[0]} "
             "<job specification input file> <job directory> <results output file name> <user log file name> "
             "<metadata file name> <api version> <dependencies> <user id> <max soft errors ratio> "
-            "[Sentinel Hub client alias]"
+            "[Sentinel Hub client alias] [Vault token]"
         )
 
     job_specification_file = argv[1]
@@ -290,6 +272,7 @@ def main(argv: List[str]) -> None:
     BatchJobLoggingFilter.set("user_id", user_id)
     max_soft_errors_ratio = float(argv[9])
     sentinel_hub_client_alias = argv[10] if len(argv) >= 11 else None
+    vault_token = argv[11] if len(argv) >= 12 else None
 
     _create_job_dir(job_dir)
 
@@ -323,7 +306,7 @@ def main(argv: List[str]) -> None:
             principal = sc.getConf().get("spark.yarn.principal")
             key_tab = sc.getConf().get("spark.yarn.keytab")
 
-            sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
+            default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
 
             kerberos(principal, key_tab)
             
@@ -331,8 +314,9 @@ def main(argv: List[str]) -> None:
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio, sentinel_hub_credentials=sentinel_hub_credentials,
-                    sentinel_hub_client_alias=sentinel_hub_client_alias
+                    max_soft_errors_ratio=max_soft_errors_ratio,
+                    default_sentinel_hub_credentials=default_sentinel_hub_credentials,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -368,17 +352,17 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, max_soft_errors_ratio: float = 0.0, sentinel_hub_credentials=None,
-            sentinel_hub_client_alias='default'):
-    if sentinel_hub_credentials is None:
-        sentinel_hub_credentials = {}
-
+            user_id: str = None, max_soft_errors_ratio: float = 0.0, default_sentinel_hub_credentials=None,
+            sentinel_hub_client_alias='default', vault_token: str = None):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
 
     backend_implementation = GeoPySparkBackendImplementation()
-    backend_implementation.set_sentinel_hub_credentials(sentinel_hub_credentials)
+
+    if default_sentinel_hub_credentials is not None:
+        backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
+
     logger.info(f"Using backend implementation {backend_implementation}")
     correlation_id = generate_unique_id(prefix="c")
     logger.info(f"Correlation id: {correlation_id}")
@@ -391,7 +375,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
         'backend_implementation': backend_implementation,
         'max_soft_errors_ratio': max_soft_errors_ratio,
-        'sentinel_hub_client_alias': sentinel_hub_client_alias
+        'sentinel_hub_client_alias': sentinel_hub_client_alias,
+        'vault_token': vault_token
     }
     job_option_whitelist = [
         "data_mask_optimization",

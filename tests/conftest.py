@@ -9,6 +9,8 @@ from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.testing import ApiTester
 from openeo_driver.views import build_app
+from openeogeotrellis.vault import Vault
+
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
 from .data import get_test_data_file, TEST_DATA_ROOT
@@ -169,3 +171,8 @@ def api(api_version, client) -> ApiTester:
 @pytest.fixture
 def api100(client) -> ApiTester:
     return ApiTester(api_version="1.0.0", client=client, data_root=TEST_DATA_ROOT)
+
+
+@pytest.fixture
+def vault() -> Vault:
+    return Vault("http://example.org")

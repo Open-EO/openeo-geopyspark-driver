@@ -32,19 +32,23 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
+from openeogeotrellis.vault import Vault
 
 logger = logging.getLogger(__name__)
 
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
 
-    def __init__(self, all_metadata: List[dict]):
+    def __init__(self, all_metadata: List[dict], vault: Vault):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
-        self._sentinel_hub_credentials = {}
+        self._default_sentinel_hub_client_id = None
+        self._default_sentinel_hub_client_secret = None
+        self._vault = vault
 
-    def set_sentinel_hub_credentials(self, credentials: dict):
-        self._sentinel_hub_credentials = credentials
+    def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
+        self._default_sentinel_hub_client_id = client_id
+        self._default_sentinel_hub_client_secret = client_secret
 
     def create_datacube_parameters(self, load_params, env):
         jvm = get_jvm()
@@ -456,9 +460,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 max_soft_errors_ratio = env.get("max_soft_errors_ratio", 0.0)
 
                 sentinel_hub_client_alias = env.get('sentinel_hub_client_alias', 'default')
-
                 logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
-                sentinel_hub_credentials = self._sentinel_hub_credentials[sentinel_hub_client_alias]
+
+                if sentinel_hub_client_alias == 'default':
+                    sentinel_hub_client_id = self._default_sentinel_hub_client_id
+                    sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
+                else:
+                    vault_token = env.get['vault_token']
+                    sentinel_hub_client_id, sentinel_hub_client_secret = (
+                        self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
                 zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
                 zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
@@ -467,8 +477,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     endpoint,
                     shub_collection_id,
                     dataset_id,
-                    sentinel_hub_credentials['client_id'],
-                    sentinel_hub_credentials['client_secret'],
+                    sentinel_hub_client_id,
+                    sentinel_hub_client_secret,
                     zookeeper_connection_string,
                     zookeeper_access_token_path,
                     sentinel_hub.processing_options(collection_id,
@@ -676,7 +686,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
-def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(vault: Vault, opensearch_enrich=False) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
@@ -770,7 +780,7 @@ def get_layer_catalog(opensearch_enrich=False) -> GeoPySparkLayerCatalog:
 
     metadata = _merge_layers_with_common_name(metadata)
 
-    return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()))
+    return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()), vault=vault)
 
 
 def _merge_layers_with_common_name(metadata):

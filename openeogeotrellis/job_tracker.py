@@ -39,7 +39,7 @@ class JobTracker:
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
-        self._batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=principal, key_tab=keytab)
+        self._batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=principal, key_tab=keytab, vault=None)
 
     def loop_update_statuses(self, interval_s: int = 60):
         with self._job_registry() as registry:

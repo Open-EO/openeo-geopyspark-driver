@@ -37,22 +37,20 @@ def jvm_mock():
 
 
 @pytest.fixture
-def sentinel_hub_credentials():
-    return {'default': {'client_id': "???", 'client_secret': "!!!"}}
+def catalog(vault):
+    catalog = get_layer_catalog(vault)
+    catalog.set_default_sentinel_hub_credentials(client_id="???", client_secret="!!!")
+    return catalog
 
 
-def test_load_collection_bands_missing_required_extent():
-    catalog = get_layer_catalog()
+def test_load_collection_bands_missing_required_extent(catalog):
     load_params = LoadParameters(bands=['TOC-B03_10M'])
     env = EvalEnv({'require_bounds': True})
     with pytest.raises(OpenEOApiException):
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=env)
 
 
-def test_load_collection_sar_backscatter_compatible(jvm_mock, sentinel_hub_credentials):
-    catalog = get_layer_catalog()
-    catalog.set_sentinel_hub_credentials(sentinel_hub_credentials)
-
+def test_load_collection_sar_backscatter_compatible(jvm_mock, catalog):
     load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
                                  sar_backscatter=SarBackscatterArgs())
@@ -83,8 +81,7 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock, sentinel_hub_crede
                                                  datacubeParams)
 
 
-def test_load_collection_sar_backscatter_incompatible():
-    catalog = get_layer_catalog()
+def test_load_collection_sar_backscatter_incompatible(catalog):
     load_params = LoadParameters(sar_backscatter=SarBackscatterArgs())
     with pytest.raises(OpenEOApiException) as exc_info:
         catalog.load_collection('TERRASCOPE_S2_TOC_V2', load_params=load_params, env=EvalEnv())
@@ -94,8 +91,7 @@ def test_load_collection_sar_backscatter_incompatible():
             """Process "sar_backscatter" is not applicable for collection TERRASCOPE_S2_TOC_V2.""")
 
 
-def test_load_file_oscars(jvm_mock):
-    catalog = get_layer_catalog()
+def test_load_file_oscars(jvm_mock, catalog):
     load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326})
     env = EvalEnv()
@@ -108,8 +104,7 @@ def test_load_file_oscars(jvm_mock):
     cellsize_call_mock.assert_called_once_with(0.002777777777777778, 0.002777777777777778)
 
 
-def test_load_file_oscars_resample(jvm_mock):
-    catalog = get_layer_catalog()
+def test_load_file_oscars_resample(jvm_mock, catalog):
     load_params = LoadParameters(temporal_extent=("2010-01-01T10:36:00Z", "2012-01-01T10:36:00Z"),
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
                                  target_resolution=[15,15],
@@ -138,9 +133,7 @@ def test_load_file_oscars_resample(jvm_mock):
     factory_mock.return_value.datacube_seq.assert_called_once_with(ANY, '2010-01-01T10:36:00+00:00', '2012-01-01T10:36:00+00:00', {}, '', datacubeParams)
 
 
-def test_load_collection_old_and_new_band_names(jvm_mock):
-    catalog = get_layer_catalog()
-
+def test_load_collection_old_and_new_band_names(jvm_mock, catalog):
     temporal_extent = ('2019-01-01', '2019-01-01')
     spatial_extent = {'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
 
@@ -158,8 +151,7 @@ def test_load_collection_old_and_new_band_names(jvm_mock):
         assert collection.metadata.temporal_dimension.extent == ('2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00')
 
 
-def test_load_file_oscars_no_data_available():
-    catalog = get_layer_catalog()
+def test_load_file_oscars_no_data_available(catalog):
     load_params = LoadParameters(
         temporal_extent=("1980-01-01T10:36:00Z", "1980-01-11T10:36:00Z"),
         spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326}
@@ -193,9 +185,7 @@ def test_reprojection():
     assert reprojected.ymax == 5677503.191395153
 
 
-def test_load_collection_bands_with_required_extent(jvm_mock):
-    catalog = get_layer_catalog()
-
+def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
     load_params = LoadParameters(
         temporal_extent=('2019-01-01', '2019-01-01'),
         bands=['TOC-B03_10M'],
@@ -220,9 +210,7 @@ def test_load_collection_bands_with_required_extent(jvm_mock):
     factory_mock.return_value.pyramid_seq.assert_called_once_with(extent_mock, "EPSG:4326", '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '')
 
 
-def test_load_collection_data_cube_params(jvm_mock):
-    catalog = get_layer_catalog()
-
+def test_load_collection_data_cube_params(jvm_mock, catalog):
     crs = {'$schema': 'https://proj.org/schemas/v0.2/projjson.schema.json', 'type': 'GeodeticCRS',
            'name': 'AUTO 42001 (Universal Transverse Mercator)',
            'datum': {'type': 'GeodeticReferenceFrame', 'name': 'World Geodetic System 1984',
@@ -280,11 +268,8 @@ def test_load_collection_data_cube_params(jvm_mock):
     [{"tile_id": "16WEA", "date": "20200302"}, {"tile_id": "16WEA", "date": "20200307"}],
 ])
 def test_load_collection_common_name_by_missing_products(
-        jvm_mock, requests_mock, missing_products, expected_source, creo_features, sentinel_hub_credentials
+        jvm_mock, requests_mock, missing_products, expected_source, creo_features, catalog
 ):
-    catalog = get_layer_catalog()
-    catalog.set_sentinel_hub_credentials(sentinel_hub_credentials)
-
     load_params = LoadParameters(
         temporal_extent=('2020-03-01', '2020-03-03'),
         spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
@@ -345,10 +330,7 @@ def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dat
     print(cube.get_max_level().layer_metadata)
 
 
-def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, sentinel_hub_credentials):
-    catalog = get_layer_catalog()
-    catalog.set_sentinel_hub_credentials(sentinel_hub_credentials)
-
+def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
     def load_params1():
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection.geojson")))
         return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
@@ -371,8 +353,8 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, sentinel_
         n_load_collection_calls = len(creating_layer_calls)
         assert n_load_collection_calls == 2
 
-def test_data_cube_params():
-    catalog = get_layer_catalog()
+
+def test_data_cube_params(catalog):
     load_params = LoadParameters(bands=['TOC-B03_10M'], resample_method="average", target_crs="EPSG:4326", global_extent = {"east":2.0,"west":1.0,"south":2.0,"north":3.0, "crs":"EPSG:4326"}, featureflags={"tilesize":128})
     env = EvalEnv({'require_bounds': True})
 

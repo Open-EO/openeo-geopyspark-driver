@@ -1,4 +1,3 @@
-from itertools import groupby
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -6,7 +5,7 @@ import os
 import sys
 import time
 import traceback
-from typing import List
+from typing import List, Optional
 
 import kazoo.client
 import openeogeotrellis
@@ -39,12 +38,14 @@ def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id:
                    }, job_id=batch_job_id, user_id=user_id)
 
 
-def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str, sentinel_hub_client_alias: str):
+def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str, sentinel_hub_client_alias: str,
+                                              vault_token: Optional[str]):
     _schedule_task(task_id=TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
                    arguments={
                        'batch_job_id': batch_job_id,
                        'user_id': user_id,
-                       'sentinel_hub_client_alias': sentinel_hub_client_alias
+                       'sentinel_hub_client_alias': sentinel_hub_client_alias,
+                       'vault_token': vault_token
                    }, job_id=batch_job_id, user_id=user_id)
 
 
@@ -76,27 +77,8 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
         producer.close()
 
 
-def _get_sentinel_hub_credentials_from_environment() -> dict:
-    shub_envars = {envar: value for envar, value in os.environ.items()
-                   if envar.startswith("SENTINEL_HUB_CLIENT_")
-                   and envar not in ["SENTINEL_HUB_CLIENT_ID", "SENTINEL_HUB_CLIENT_SECRET"]}
-
-    values_by_name_alias_pair = {(envar.split("_")[-1].lower(), envar): value for envar, value in
-                                 shub_envars.items()}
-
-    grouped_by_alias = groupby(sorted(values_by_name_alias_pair.items(), key=lambda p: p[0][0]), key=lambda p: p[0][0])
-
-    credentials = {}
-
-    for alias, groups in grouped_by_alias:
-        groups = list(groups)
-
-        credentials[alias] = {
-            'client_id': [value for (_, envar), value in groups if "_ID_" in envar][0],
-            'client_secret': [value for (_, envar), value in groups if "_SECRET_" in envar][0]
-        }
-
-    return credentials
+def _get_sentinel_hub_credentials_from_environment() -> (str, str):
+    return os.environ['SENTINEL_HUB_CLIENT_ID_DEFAULT'], os.environ['SENTINEL_HUB_CLIENT_SECRET_DEFAULT']
 
 
 # TODO: DRY this, cleaner.sh and job_tracker.sh
@@ -163,10 +145,11 @@ def main():
                                                       redirect_stdout=sys.stdout,
                                                       redirect_stderr=sys.stderr)
 
-            batch_jobs = GpsBatchJobs(get_layer_catalog(opensearch_enrich=True), java_gateway.jvm, args.principal,
-                                      args.keytab)
+            vault = None
+            catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
+            batch_jobs = GpsBatchJobs(catalog, java_gateway.jvm, args.principal, args.keytab, vault=vault)
 
-            batch_jobs.set_sentinel_hub_credentials(_get_sentinel_hub_credentials_from_environment())
+            batch_jobs.set_default_sentinel_hub_credentials(*_get_sentinel_hub_credentials_from_environment())
 
             return batch_jobs
 
@@ -189,6 +172,7 @@ def main():
             batch_job_id = arguments['batch_job_id']
             user_id = arguments['user_id']
             sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
+            vault_token = arguments.get('vault_token')
 
             batch_jobs = get_batch_jobs(batch_job_id, user_id)
 
@@ -202,7 +186,7 @@ def main():
                     break
                 else:
                     try:
-                        batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias)
+                        batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias, vault_token)
                     except Exception:
                         # TODO: retry in Nifi? How to mark this job as 'error' then?
                         # TODO: don't put the stack trace in the message but add exc_info  # 141
