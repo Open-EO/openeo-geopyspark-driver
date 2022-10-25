@@ -466,7 +466,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     sentinel_hub_client_id = self._default_sentinel_hub_client_id
                     sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
                 else:
-                    vault_token = env.get['vault_token']
+                    vault_token = env['vault_token']
                     sentinel_hub_client_id, sentinel_hub_client_secret = (
                         self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
