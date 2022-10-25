@@ -15,6 +15,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.vault import Vault
 from py4j.java_gateway import JavaGateway
 
 from openeogeotrellis.job_registry import JobRegistry
@@ -145,7 +146,7 @@ def main():
                                                       redirect_stdout=sys.stdout,
                                                       redirect_stderr=sys.stderr)
 
-            vault = None
+            vault = Vault("https://vault.vgt.vito.be")
             catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
             batch_jobs = GpsBatchJobs(catalog, java_gateway.jvm, args.principal, args.keytab, vault=vault)
 
