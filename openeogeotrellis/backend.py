@@ -11,7 +11,7 @@ import tempfile
 import traceback
 import uuid
 from decimal import Decimal
-from functools import partial, reduce
+from functools import lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable, Mapping
@@ -54,7 +54,6 @@ from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCu
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
-from openeogeotrellis.lazy import Lazy
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
@@ -831,7 +830,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         self.batch_jobs.set_default_sentinel_hub_credentials(client_id, client_secret)
         self.catalog.set_default_sentinel_hub_credentials(client_id, client_secret)
 
-    def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User], str]):
+    def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self.batch_jobs.set_terrascope_access_token_getter(get_terrascope_access_token)
 
 
@@ -884,14 +883,14 @@ class GpsBatchJobs(backend.BatchJobs):
         self._key_tab = key_tab
         self._default_sentinel_hub_client_id = None
         self._default_sentinel_hub_client_secret = None
-        self._get_terrascope_access_token: Optional[Callable[[User], str]] = None
+        self._get_terrascope_access_token: Optional[Callable[[User, str], str]] = None
         self._vault = vault
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
-    def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User], str]):
+    def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self._get_terrascope_access_token = get_terrascope_access_token
 
     def create_job(
@@ -1051,7 +1050,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(job_id, user_id, 'available')
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
-            self._start_job(job_id, user_id, Lazy(lambda: vault_token), dependencies)
+            self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
         elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
                 with JobRegistry() as registry:
@@ -1114,13 +1113,15 @@ class GpsBatchJobs(backend.BatchJobs):
                 # TODO: add dedicated method
                 registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
 
-        self._start_job(job_id, user.user_id, Lazy(lambda: self._get_vault_token(user)))
+        # only fetch it when necessary (SHub collection with non-default credentials) and only once
+        @lru_cache(maxsize=None)
+        def _get_vault_token(sentinel_hub_client_alias: str) -> str:
+            terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
+            return self._vault.login_jwt(terrascope_access_token)
 
-    def _get_vault_token(self, user: User) -> str:
-        terrascope_access_token = self._get_terrascope_access_token(user)
-        return self._vault.login_jwt(terrascope_access_token)
+        self._start_job(job_id, user.user_id, _get_vault_token)
 
-    def _start_job(self, job_id: str, user_id: str, vault_token: Lazy[str],
+    def _start_job(self, job_id: str, user_id: str, get_vault_token: Callable[[str], str],
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
@@ -1150,11 +1151,11 @@ class GpsBatchJobs(backend.BatchJobs):
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
                     and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
                                                                     user_id, job_id, job_options,
-                                                                    sentinel_hub_client_alias, vault_token)):
+                                                                    sentinel_hub_client_alias, get_vault_token)):
                 async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id, sentinel_hub_client_alias,
                                                                      vault_token=None
                                                                      if sentinel_hub_client_alias == 'default'
-                                                                     else vault_token.value)
+                                                                     else get_vault_token(sentinel_hub_client_alias))
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, 'queued')
                 return
@@ -1425,7 +1426,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
                                                job_registry: JobRegistry, user_id: str, job_id: str,
                                                job_options: dict, sentinel_hub_client_alias: str,
-                                               vault_token: Lazy[str]) -> bool:
+                                               get_vault_token: Callable[[str], str]) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -1580,7 +1581,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
                     else:
                         sentinel_hub_client_id, sentinel_hub_client_secret = (
-                            self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token.value))
+                            self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias,
+                                                                     get_vault_token(sentinel_hub_client_alias)))
 
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                         endpoint,
