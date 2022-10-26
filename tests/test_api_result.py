@@ -1876,3 +1876,96 @@ class TestAggregateSpatial:
             "2021-01-15T00:00:00Z": [[15.0, 0.375, 0.25], [15.0, 1.625, 1.625]],
             "2021-01-25T00:00:00Z": [[25.0, 0.375, 0.25], [25.0, 1.625, 1.625]],
         }
+
+
+class TestVectorCubeRunUdf:
+    """
+    Tests about running `run_udf` on a vector cube (e.g. output of aggregate_spatial)
+    in scalable way (parallelized)
+
+    ref: https://github.com/Open-EO/openeo-geopyspark-driver/issues/251
+    """
+
+    def test_udf_apply_udf_data_scalar(self, api100):
+        from openeo.processes import run_udf
+
+        cube = openeo.DataCube.load_collection(
+            "TestCollection-LonLat4x4",
+            temporal_extent=["2021-01-01", "2021-02-01"],
+            spatial_extent={"west": 0, "south": 0, "east": 8, "north": 8},
+            # TODO: influence of tight spatial_extent that excludes some geometries? e.g.:
+            # spatial_extent={"west": 3.5, "south": 0, "east": 8, "north": 8},
+            bands=["Day", "Longitude", "Latitude"],
+            fetch_metadata=False,
+        )
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import UdfData
+
+            def udf_apply_udf_data(udf_data: UdfData) -> float:
+                data = udf_data.get_structured_data_list()[0].data
+                # data's structure: {datetime: [[float for each band] for each polygon]}
+                assert isinstance(data, dict)
+                ((_, lon, lat),) = data["2021-01-05T01:00:00Z"]
+                return 1000 * lon + lat
+        """
+        )
+        processed = run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert isinstance(result, dict)
+        assert result["columns"] == ["feature_index", "0"]
+        assert sorted(result["data"]) == [
+            [0, 1001.0],
+            [1, 4002.0],
+            [2, 2004.0],
+            [3, 5000.0],
+        ]
+
+    def test_udf_apply_feature_dataframe_basic(self, api100):
+        from openeo.processes import run_udf
+
+        cube = openeo.DataCube.load_collection(
+            "TestCollection-LonLat4x4",
+            temporal_extent=["2021-01-01", "2021-02-01"],
+            spatial_extent={"west": 0, "south": 0, "east": 2, "north": 2},
+            bands=["Day", "Longitude", "Latitude"],
+            fetch_metadata=False,
+        )
+        aggregates = cube.aggregate_spatial(
+            get_test_data_file("geometries/FeatureCollection.geojson"), "mean"
+        )
+
+        udf = textwrap.dedent(
+            """
+            import pandas as pd
+            def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+                print(f"{type(df)=}")
+                print(df.head())
+                return df + 1000
+        """
+        )
+        processed = run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == {
+            "2021-01-05T00:00:00Z": [
+                [1005.0, 1000.375, 1000.25],
+                [1005.0, 1001.625, 1001.625],
+            ],
+            "2021-01-25T00:00:00Z": [
+                [1025.0, 1000.375, 1000.25],
+                [1025.0, 1001.625, 1001.625],
+            ],
+            "2021-01-15T00:00:00Z": [
+                [1015.0, 1000.375, 1000.25],
+                [1015.0, 1001.625, 1001.625],
+            ],
+        }
+
+    # TODO: tests for different udf: eliminate time dim, eliminate band dim, eliminate both
+    # TODO test that df index is timestamp

@@ -8,6 +8,8 @@ import os
 import pwd
 import resource
 import stat
+import tempfile
+
 from epsel import on_first_time
 from functools import partial
 from pathlib import Path
@@ -460,3 +462,23 @@ def drop_empty_from_aggregate_polygon_result(result: dict):
     """
     # TODO: ideally this should not be necessary and be done automatically by the back-end
     return {k: v for (k, v) in result.items() if not all(x == [] for x in v)}
+
+
+def temp_csv_dir(message: str = "n/a") -> str:
+    """Create (temporary) work directory for CSV output"""
+    # TODO: make this more generic for other file types too
+    parent_dir = None
+    for candidate in [
+        # TODO: this should come from config instead of trying to detect it
+        "/data/projects/OpenEO/timeseries",
+        "/shared_pod_volume",
+        # TODO: also allow unit tests to inject `tmp_path` based parent here?
+        # TODO: also use batch job specific parent candidate?
+    ]:
+        if Path(candidate).exists():
+            parent_dir = candidate
+            break
+    temp_dir = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=parent_dir)
+    os.chmod(temp_dir, 0o777)
+    logger.info(f"Created temp csv dir {temp_dir!r}: {message}")
+    return temp_dir

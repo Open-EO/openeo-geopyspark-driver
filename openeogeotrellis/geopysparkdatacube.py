@@ -37,14 +37,20 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
     ProcessParameterInvalidException
-from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonSpatialResult, AggregatePolygonResultCSV
+from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
-from openeogeotrellis.utils import to_projected_polygons, log_memory, ensure_executor_logging, get_jvm
+from openeogeotrellis.utils import (
+    to_projected_polygons,
+    log_memory,
+    ensure_executor_logging,
+    get_jvm,
+    temp_csv_dir,
+)
 from openeogeotrellis._version import __version__ as softwareversion
-
+from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
 
 
 _log = logging.getLogger(__name__)
@@ -1282,31 +1288,18 @@ class GeopysparkDataCube(DriverDataCube):
 
     def zonal_statistics(
         self, regions: Union[BaseGeometry, DriverVectorCube], func
-    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube]:
+    ) -> Union[
+        # TODO simplify these return options https://github.com/Open-EO/openeo-python-driver/issues/149
+        AggregatePolygonResult,
+        AggregateSpatialVectorCube,
+        AggregateSpatialResultCSV,
+    ]:
         # TODO: rename to aggregate_spatial?
         # TODO eliminate code duplication
         _log.info("zonal_statistics with {f!r}, {r}".format(f=func, r=type(regions)))
 
         def insert_timezone(instant):
             return instant.replace(tzinfo=pytz.UTC) if instant.tzinfo is None else instant
-
-        def csv_dir() -> str:
-            parent_dir = None
-            for candidate in [
-                # TODO: this should come from config instead of trying to detect it
-                # TODO: also allow unit tests to inject `tmp_path` based parent here?
-                "/data/projects/OpenEO/timeseries",
-                "/shared_pod_volume",
-            ]:
-                if pathlib.Path(candidate).exists():
-                    parent_dir = candidate
-                    break
-            temp_dir = tempfile.mkdtemp(
-                prefix="timeseries_", suffix="_csv", dir=parent_dir
-            )
-            os.chmod(temp_dir, 0o777)
-            _log.info(f"zonal_statistics: using csv_dir {temp_dir!r}")
-            return temp_dir
 
         if isinstance(regions, (Polygon, MultiPolygon)):
             # TODO: GeometryCollection usage is deprecated
@@ -1339,7 +1332,7 @@ class GeopysparkDataCube(DriverDataCube):
             geometry_wkts = regions_to_wkt(regions)
             geometries_srs = "EPSG:4326"
 
-            temp_dir = csv_dir()
+            temp_dir = temp_csv_dir(message=f"{type(self).__name__}.zonal_statistics (spatial)")
 
             self._compute_stats_geotrellis().compute_generic_timeseries_from_spatial_datacube(
                 func,
@@ -1362,30 +1355,36 @@ class GeopysparkDataCube(DriverDataCube):
                     )
                     timeseries = self._as_python(stats)
                 else:
-                    temp_output = csv_dir()
-
+                    temp_dir = temp_csv_dir(
+                        message=f"{type(self).__name__}.zonal_statistics (projected_polygons)"
+                    )
                     self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                         func,
                         wrapped,
                         projected_polygons,
-                        temp_output
+                        temp_dir,
                     )
-                    return AggregatePolygonResultCSV(temp_output, regions=regions, metadata=self.metadata)
+                    return AggregateSpatialResultCSV(
+                        temp_dir, regions=regions, metadata=self.metadata
+                    )
             else:
                 geometry_wkts = regions_to_wkt(regions)
                 geometries_srs = "EPSG:4326"
 
-                temp_dir = csv_dir()
-
+                temp_dir = temp_csv_dir(
+                    message=f"{type(self).__name__}.zonal_statistics (no projected_polygons)"
+                )
                 self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                     func,
                     wrapped,
                     geometry_wkts,
                     geometries_srs,
-                    temp_dir
+                    temp_dir,
                 )
 
-                return AggregatePolygonResultCSV(temp_dir, regions=regions, metadata=self.metadata)
+                return AggregateSpatialResultCSV(
+                    temp_dir, regions=regions, metadata=self.metadata
+                )
 
             return AggregatePolygonResult(
                 timeseries=timeseries,
