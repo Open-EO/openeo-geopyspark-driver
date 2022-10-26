@@ -1133,7 +1133,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         resample_method = self._get_resample_method(method)
         max_level = self.get_max_level()
-        current_crs_proj4 = max_level.layer_metadata.crs
+        cube_crs = max_level.layer_metadata.crs
+        current_crs_proj4 = cube_crs
         logging.info(f"Reprojecting datacube with crs {current_crs_proj4} and layout {max_level.layer_metadata.layout_definition} to {projection} and {resolution}")
         if projection is not None and CRS.from_user_input(projection).equals(CRS.from_user_input(current_crs_proj4)):
             projection = None
@@ -1148,34 +1149,15 @@ class GeopysparkDataCube(DriverDataCube):
 
             extent = max_level.layer_metadata.layout_definition.extent
             currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
-            currentTileCols = currentTileLayout.tileCols
-            currentTileRows = currentTileLayout.tileRows
 
             if projection is not None:
-                extent = self._reproject_extent(
-                    max_level.layer_metadata.crs, projection, extent.xmin, extent.ymin, extent.xmax, extent.ymax
+                extent = GeopysparkDataCube._reproject_extent(
+                    cube_crs, projection, extent.xmin, extent.ymin, extent.xmax, extent.ymax
                 )
 
-            width = extent.xmax - extent.xmin
-            height = extent.ymax - extent.ymin
-
-            currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
-            currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
-            if projection == None and abs(currentResolutionX - resolution)/resolution < 0.00001 :
-                logging.info(f"Resampling datacube not necessary, resolution already at {resolution}")
+            newLayout = GeopysparkDataCube._layout_for_resolution(extent,currentTileLayout, projection,resolution)
+            if newLayout == None:
                 return self
-
-
-            nbTilesX = width / (currentTileCols * resolution)
-            nbTilesY = height / (currentTileRows * resolution)
-
-            exactTileSizeX = width/(resolution * math.ceil(nbTilesX))
-            exactNbTilesX = width/(resolution * exactTileSizeX)
-
-            exactTileSizeY = height / (resolution * math.ceil(nbTilesY))
-            exactNbTilesY = height / (resolution * exactTileSizeY)
-
-            newLayout = gps.LayoutDefinition(extent=extent,tileLayout=gps.TileLayout(int(exactNbTilesX),int(exactNbTilesY),int(exactTileSizeX),int(exactTileSizeY)))
 
             logging.info(f"Reprojecting datacube to new layout {newLayout} and {projection}")
             if(projection is not None):
@@ -1188,6 +1170,34 @@ class GeopysparkDataCube(DriverDataCube):
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
+    @staticmethod
+    def _layout_for_resolution(extent, currentTileLayout, projection, target_resolution):
+        currentTileCols = currentTileLayout.tileCols
+        currentTileRows = currentTileLayout.tileRows
+
+        width = extent.xmax - extent.xmin
+        height = extent.ymax - extent.ymin
+
+        currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
+        currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
+        if projection == None and abs(currentResolutionX - target_resolution) / target_resolution < 0.00001:
+            logging.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
+            return None
+
+        newPixelCountX = math.ceil(width /target_resolution)
+        newPixelCountY = math.ceil(height / target_resolution)
+
+        #keep tile cols constant
+        nbTilesX = math.ceil(newPixelCountX / currentTileCols)
+        nbTilesY = math.ceil(newPixelCountY / currentTileRows)
+
+        newWidth = nbTilesX*currentTileCols*target_resolution
+        newHeight = nbTilesY * currentTileRows * target_resolution
+
+        newExtent = Extent(extent.xmin, extent.ymin,extent.xmin+newWidth,extent.ymin+newHeight)
+
+        return gps.LayoutDefinition(extent=newExtent, tileLayout=gps.TileLayout(int(nbTilesX), int(nbTilesY),
+                                                                             int(currentTileCols), int(currentTileRows)))
     @staticmethod
     def _get_resample_method( method):
         resample_method = {

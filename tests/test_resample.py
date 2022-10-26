@@ -1,5 +1,8 @@
 import datetime
 import math
+import geopyspark as gps
+import pytest
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
 
 def test_resample_cube_spatial_single_level(imagecollection_with_two_bands_and_three_dates,imagecollection_with_two_bands_and_three_dates_webmerc):
@@ -26,3 +29,20 @@ def test_resample__spatial_single_level(imagecollection_with_two_bands_and_three
     info = Info(str(path), format='json')
     print(info)
     assert math.floor(info['geoTransform'][1]) == 111319.0 #new resolution is rather approximate for some reason?
+
+def test_compute_new_layout():
+
+    extent = gps.Extent(xmin=32.7901792, ymin=3.01934520952576, xmax=48.79017919999744, ymax=15.2098214)
+    target_res = 0.008928571428569999
+    newLayout = GeopysparkDataCube._layout_for_resolution(extent, gps.TileLayout(layoutCols=21, layoutRows=16, tileCols=256, tileRows=256), None,
+                                                          target_res)
+
+    newExtent = newLayout.extent
+    width = newExtent.xmax - newExtent.xmin
+    height = newExtent.ymax - newExtent.ymin
+
+    tileLayout = newLayout.tileLayout
+    currentResolutionX = width / (tileLayout.tileCols * tileLayout.layoutCols)
+    currentResolutionY = height / (tileLayout.tileRows * tileLayout.layoutRows)
+    assert currentResolutionX == pytest.approx(target_res, 0.00000001)
+    assert currentResolutionY == pytest.approx(target_res, 0.00000001)
