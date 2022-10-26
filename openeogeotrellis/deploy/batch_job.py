@@ -4,7 +4,7 @@ import os
 import shutil
 import stat
 import sys
-from itertools import chain, groupby
+from itertools import chain
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
@@ -236,7 +236,12 @@ def _log_container_internals():
 
 
 def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> (str, str):
-    return conf.get('spark.sentinelhub.client.id.default'), conf.get('spark.sentinelhub.client.secret.default')
+    return (conf.get('spark.openeo.sentinelhub.client.id.default'),
+            conf.get('spark.openeo.sentinelhub.client.secret.default'))
+
+
+def _get_vault_token(conf: SparkConf) -> Optional[str]:
+    return conf.get('spark.openeo.vault.token')
 
 
 def main(argv: List[str]) -> None:
@@ -258,7 +263,7 @@ def main(argv: List[str]) -> None:
             f"usage: {argv[0]} "
             "<job specification input file> <job directory> <results output file name> <user log file name> "
             "<metadata file name> <api version> <dependencies> <user id> <max soft errors ratio> "
-            "[Sentinel Hub client alias] [Vault token]"
+            "[Sentinel Hub client alias]"
         )
 
     job_specification_file = argv[1]
@@ -272,7 +277,6 @@ def main(argv: List[str]) -> None:
     BatchJobLoggingFilter.set("user_id", user_id)
     max_soft_errors_ratio = float(argv[9])
     sentinel_hub_client_alias = argv[10] if len(argv) >= 11 else None
-    vault_token = argv[11] if len(argv) >= 12 else None
 
     _create_job_dir(job_dir)
 
@@ -307,6 +311,7 @@ def main(argv: List[str]) -> None:
             key_tab = sc.getConf().get("spark.yarn.keytab")
 
             default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
+            vault_token = _get_vault_token(sc.getConf())
 
             kerberos(principal, key_tab)
             

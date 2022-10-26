@@ -1340,7 +1340,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     temp_input_file.write(job_info['specification'])
                     temp_input_file.flush()
 
-                    self._write_sentinel_hub_credentials(temp_properties_file)
+                    self._write_sensitive_values(temp_properties_file,
+                                                 vault_token=None if sentinel_hub_client_alias == 'default'
+                                                 else get_vault_token(sentinel_hub_client_alias))
                     temp_properties_file.flush()
 
                     # TODO: implement a saner way of passing arguments
@@ -1409,9 +1411,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
-    def _write_sentinel_hub_credentials(self, f):
-        f.write(f"spark.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
-        f.write(f"spark.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
+    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
+        output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
+        output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
+
+        if vault_token is not None:
+            output_file.write(f"spark.openeo.vault.token={vault_token}\n")
 
     @staticmethod
     def _extract_application_id(stream) -> str:
