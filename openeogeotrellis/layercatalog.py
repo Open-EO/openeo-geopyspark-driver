@@ -309,7 +309,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 'opensearch_collection_id'), layer_source_info.get('root_path'),
                                                                           jvm.geotrellis.raster.CellSize(cell_width,
                                                                                                          cell_height))
-            if single_level:
+            if False:
                 return factory.datacube_seq(
                     projected_polygons_native_crs, from_date, to_date,
                     metadata_properties(), correlation_id, datacubeParams, band_indices
