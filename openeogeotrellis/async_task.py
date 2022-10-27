@@ -68,14 +68,22 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
     )
 
     try:
-        task_message = json.dumps(task)
         producer.send(topic="openeo-async-tasks",
-                      value=encode(task_message),
+                      value=encode(json.dumps(task)),
                       headers=[('env', encode(env))] if env else None).get(timeout=120)
 
-        _log.info(f"scheduled task {task_message} on env {env}", extra={'job_id': job_id, 'user_id': user_id})
+        _log.info(f"scheduled task {json.dumps(_redact(task))} on env {env}", extra={'job_id': job_id,
+                                                                                     'user_id': user_id})
     finally:
         producer.close()
+
+
+def _redact(task: dict) -> dict:
+    def redacted_value(prop: str, value):
+        sensitive = any(sensitive_value in prop.lower() for sensitive_value in ["secret", "token"])
+        return value if not sensitive else "(redacted)"
+
+    return {prop: redacted_value(prop, value) for prop, value in task.items()}
 
 
 def _get_sentinel_hub_credentials_from_environment() -> (str, str):
@@ -103,7 +111,6 @@ def main():
     root_logger.addHandler(stdout_handler)
     root_logger.addHandler(rolling_file_handler)
 
-    _log.info("argv: {a!r}".format(a=sys.argv))
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
     try:

@@ -19,13 +19,13 @@ if [ -z "${HADOOP_CONF_DIR}" ]; then
     exit 1
 fi
 
-if [ -z "${SENTINEL_HUB_CLIENT_ID}" ]; then
-    >&2 echo "Environment variable SENTINEL_HUB_CLIENT_ID is not set"
+if [ -z "${SENTINEL_HUB_CLIENT_ID_DEFAULT}" ]; then
+    >&2 echo "Environment variable SENTINEL_HUB_CLIENT_ID_DEFAULT is not set"
     exit 1
 fi
 
-if [ -z "${SENTINEL_HUB_CLIENT_SECRET}" ]; then
-    >&2 echo "Environment variable SENTINEL_HUB_CLIENT_SECRET is not set"
+if [ -z "${SENTINEL_HUB_CLIENT_SECRET_DEFAULT}" ]; then
+    >&2 echo "Environment variable SENTINEL_HUB_CLIENT_SECRET_DEFAULT is not set"
     exit 1
 fi
 
