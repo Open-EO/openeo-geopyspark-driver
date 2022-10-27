@@ -305,9 +305,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
                                                         ConfigParams().default_opensearch_endpoint)
 
-            return jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(opensearch_endpoint,
-                                                                       layer_source_info.get('opensearch_collection_id'), layer_source_info.get('root_path'),jvm.geotrellis.raster.CellSize(cell_width, cell_height)) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
+            factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(opensearch_endpoint, layer_source_info.get(
+                'opensearch_collection_id'), layer_source_info.get('root_path'),
+                                                                          jvm.geotrellis.raster.CellSize(cell_width,
+                                                                                                         cell_height))
+            if single_level:
+                return factory.datacube_seq(
+                    projected_polygons_native_crs, from_date, to_date,
+                    metadata_properties(), correlation_id, datacubeParams, band_indices
+                )
+            else:
+                return factory.pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
+
 
         def create_pyramid(factory):
             try:

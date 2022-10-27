@@ -10,6 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2022-10-27 (0.6.3a1)
+- Reprojection is performed at load time whenever possible, by pushing down parameters from resample_spatial and resample_cube_spatial
+- PROBA-V collections can now be loaded at original resolution
+- Overlap between original products is now handled based on the footprint in STAC/Opensearch metadata
+
 ## 2022-09-21 (0.6.3a1)
 - Expose logging from UDF's
 - Feature id's from GeoJSON are used to name timeseries in netCDF export
