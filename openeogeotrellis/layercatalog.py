@@ -736,7 +736,6 @@ def get_layer_catalog(vault: Vault, opensearch_enrich=False) -> GeoPySparkLayerC
             os_cid = data_source.get("opensearch_collection_id")
             if os_cid:
                 os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
-                logger.info(f"Updating {cid} metadata from {os_endpoint}:{os_cid}")
                 try:
                     opensearch_metadata[cid] = opensearch_instance(os_endpoint).get_metadata(collection_id=os_cid)
                 except Exception:
@@ -776,7 +775,6 @@ def get_layer_catalog(vault: Vault, opensearch_enrich=False) -> GeoPySparkLayerC
 
                     sh_metadata = sh_metadatas[0]
 
-                logger.info(f"Updating {cid} metadata from {sh_stac_endpoint}:{sh_metadata['id']}")
                 opensearch_metadata[cid] = sh_metadata
                 if not data_source.get("endpoint"):
                     endpoint = opensearch_metadata[cid]["providers"][0]["url"]
