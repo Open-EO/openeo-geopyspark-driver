@@ -42,23 +42,98 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
         # TODO: Port this UDF detection to openeo.udf.run_code?
         if "udf_apply_udf_data" in udf_globals:
-            return self._run_udf_udf_data(
-                udf_function=udf_globals["udf_apply_udf_data"], context=context
+            udf_function = udf_globals["udf_apply_udf_data"]
+            callback = self._get_run_udf_udf_data_callback(
+                udf_function=udf_function, context=context
             )
         elif "udf_apply_feature_dataframe" in udf_globals:
-            return self._run_udf_dataframes(
-                udf_function=udf_globals["udf_apply_feature_dataframe"], context=context
+            udf_function = udf_globals["udf_apply_feature_dataframe"]
+            callback = self._get_run_udf_pandas_callback(
+                udf_function=udf_function, context=context
             )
         else:
             raise openeo.udf.OpenEoUdfException("No UDF found")
 
-    def _run_udf_udf_data(self, udf_function: Callable, context: Optional[dict] = None):
         csv_paths = list(Path(self._csv_dir).glob("*.csv"))
         _log.info(
-            f"{type(self).__name__} _run_udf_udf_data with {self._csv_dir=} ({len(csv_paths)=})"
+            f"{type(self).__name__} run_udf with {self._csv_dir=} ({len(csv_paths)=})"
         )
         csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
 
+        processed_df = csv_df.groupby("feature_index").apply(callback).reset_index()
+
+        output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
+        processed_df.to_csv(output_dir)
+
+        # Read CSV result(s) as a single pandas DataFrame
+        # TODO: make "feature_index" the real index, instead of generic autoincrement index?
+        result_df = pandas.concat(
+            (pd.read_csv(p) for p in Path(output_dir).glob("*.csv")),
+            ignore_index=True,
+        )
+        # TODO: return real vector cube instead of adhoc jsonifying the data here
+        return JSONResult(data=result_df.to_dict("split"))
+
+    @staticmethod
+    def _get_run_udf_pandas_callback(
+        udf_function: Callable, context: Optional[dict] = None
+    ) -> Callable:
+        """
+        Build `pyspark.pandas.groupby.GroupBy.apply` callback
+
+        :param udf_function: UDF that takes apandas.DataFrame and returns one of:
+            - pandas.DataFrame
+            - pandas.Series
+            - scalar (float, str)
+        :param context:
+        :return:
+        """
+
+        def callback(data: pandas.DataFrame):
+            # Get current feature index and drop whole column
+            feature_index = data["feature_index"].iloc[0]
+            feature_data = data.drop("feature_index", axis=1).set_index("date")
+            # TODO: also pass feature_index to udf?
+            processed = udf_function(feature_data)
+
+            # Post-process UDF output
+            if isinstance(processed, (int, float, str)):
+                processed = pandas.Series([processed])
+            elif isinstance(processed, dict):
+                _log.warning(
+                    f"Experimental UDF return data support: auto-convert dict to DataFrame "
+                )
+                processed = pandas.DataFrame.from_dict(processed, orient="index")
+            elif isinstance(processed, list):
+                _log.warning(
+                    f"Experimental UDF return data support: auto-convert list to DataFrame "
+                )
+                processed = pandas.DataFrame(processed)
+
+            if not isinstance(processed, (pandas.Series, pandas.DataFrame)):
+                raise openeo.udf.OpenEoUdfException(
+                    f"Failed to convert UDF return type to pandas Series/DataFrame: {type(processed)}"
+                )
+            return processed
+
+        return callback
+
+    @staticmethod
+    def _get_run_udf_udf_data_callback(
+        udf_function: Callable, context: Optional[dict] = None
+    ) -> Callable:
+        """
+        Build `pyspark.pandas.groupby.GroupBy.apply` callback
+
+        :param udf_function: UDF that takes an openeo.udf.UdfData object and returns one of:
+            - openeo.udf.UdfData
+            - scalar (float, str)
+            - dict (to be auto-converted with pandas.DataFrame.from_dict)
+            - list (to be auto-converted with pandas.DataFrame()
+            - pandas.DataFrame or pandas.Series
+        :param context:
+        :return:
+        """
         def callback(data: pandas.DataFrame):
             # Get current feature index and drop whole column
             feature_index = data["feature_index"].iloc[0]
@@ -98,12 +173,12 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
                 processed = pandas.Series([processed])
             elif isinstance(processed, dict):
                 _log.warning(
-                    f"{type(self).__name__}._run_udf_udf_data experimental return data support: auto-convert dict to DataFrame "
+                    f"Experimental UDF return data support: auto-convert dict to DataFrame "
                 )
                 processed = pandas.DataFrame.from_dict(processed, orient="index")
             elif isinstance(processed, list):
                 _log.warning(
-                    f"{type(self).__name__}._run_udf_udf_data experimental return data support: auto-convert list to DataFrame "
+                    f"Experimental UDF return data support: auto-convert list to DataFrame "
                 )
                 processed = pandas.DataFrame(processed)
 
@@ -113,45 +188,5 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
                 )
             return processed
 
-        processed_df = csv_df.groupby("feature_index").apply(callback).reset_index()
+        return callback
 
-        output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
-        # TODO: apparently once CSV per polygon at the moment: repartition first to avoid a lot of small files?
-        processed_df.to_csv(output_dir)
-
-        # Read CSV result(s) as a single pandas DataFrame
-        # TODO: make "feature_index" the real index, instead of generic autoincrement index?
-        result_df = pandas.concat(
-            (pd.read_csv(p) for p in Path(output_dir).glob("*.csv")),
-            ignore_index=True,
-        )
-        # TODO: return real vector cube instead of adhoc jsonifying the data here
-        return JSONResult(data=result_df.to_dict("split"))
-
-    def _run_udf_dataframes(
-        self, udf_function: Callable, context: Optional[dict] = None
-    ):
-        csv_paths = list(Path(self._csv_dir).glob("*.csv"))
-        _log.info(
-            f"{type(self).__name__} _run_udf_udf_data with {self._csv_dir=} ({len(csv_paths)=})"
-        )
-        csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
-
-        def callback(data: pandas.DataFrame):
-            feature_index = data["feature_index"].iloc[0]
-            feature_data = data.drop("feature_index", axis=1).set_index("date")
-            # TODO: also pass feature_index to udf?
-            processed = udf_function(feature_data)
-            # TODO: this assumes `processed` is dataframe
-            result = processed.assign(feature_index=feature_index).reset_index()
-            return result
-
-        processed = csv_df.groupby("feature_index").apply(callback)
-
-        output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
-        # TODO: apparently once CSV per polygon at the moment: repartition first to avoid a lot of small files?
-        processed.to_csv(output_dir)
-        # TODO: support different output shapes/dimensions: time-polygon-bands, time-polygon, polygon-bands, polygon, ....
-        return AggregateSpatialResultCSV(
-            csv_dir=output_dir, regions=self._regions, metadata=self._metadata
-        )
