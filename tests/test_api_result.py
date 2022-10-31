@@ -1908,7 +1908,7 @@ class TestVectorCubeRunUdf:
                 data = udf_data.get_structured_data_list()[0].data
                 # data's structure: {datetime: [[float for each band] for each polygon]}
                 assert isinstance(data, dict)
-                ((_, lon, lat),) = data["2021-01-05T01:00:00Z"]
+                ((_, lon, lat),) = data["2021-01-05T00:00:00Z"]
                 return 1000 * lon + lat
         """
         )

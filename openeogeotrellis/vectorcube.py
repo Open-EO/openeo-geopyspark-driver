@@ -63,12 +63,11 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             # Get current feature index and drop whole column
             feature_index = data["feature_index"].iloc[0]
             feature_data = data.drop("feature_index", axis=1)
-            # TODO: We assume here that the `date` column already has parsed dates.
+            # TODO: We assume here that the `date` column already has parsed dates (naive, without timezone info).
             #       At the moment `pyspark.pandas.read_csv` seems to parse dates automatically
             #       (as pandas timestamp) even-though the docs states otherwise
             #       also see https://issues.apache.org/jira/browse/SPARK-40934
             feature_data = feature_data.set_index("date")
-            # TODO: check/ensure UTC usage here?
             feature_data.index = feature_data.index.strftime("%Y-%m-%dT%H:%M:%SZ")
 
             # Convert to AggregatePolygonResult-style construct: {datetime: [[float for each band] for each polygon]}
