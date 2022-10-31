@@ -70,7 +70,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             feature_data = feature_data.set_index("date")
             feature_data.index = feature_data.index.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            # Convert to AggregatePolygonResult-style construct: {datetime: [[float for each band] for each polygon]}
+            # Convert to legacy AggregatePolygonResult-style construct:
+            #       {datetime: [[float for each band] for each polygon]}
             # and wrap in UdfData/StructuredData
             timeseries = {
                 date: [row.to_list()] for date, row in feature_data.iterrows()
@@ -95,6 +96,16 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
                 processed = processed.structured_data_list[0].data
             if isinstance(processed, (int, float, str)):
                 processed = pandas.Series([processed])
+            elif isinstance(processed, dict):
+                _log.warning(
+                    f"{type(self).__name__}._run_udf_udf_data experimental return data support: auto-convert dict to DataFrame "
+                )
+                processed = pandas.DataFrame.from_dict(processed, orient="index")
+            elif isinstance(processed, list):
+                _log.warning(
+                    f"{type(self).__name__}._run_udf_udf_data experimental return data support: auto-convert list to DataFrame "
+                )
+                processed = pandas.DataFrame(processed)
 
             if not isinstance(processed, (pandas.Series, pandas.DataFrame)):
                 raise openeo.udf.OpenEoUdfException(
