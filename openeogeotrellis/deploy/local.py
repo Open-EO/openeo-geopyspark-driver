@@ -23,10 +23,7 @@ def setup_local_spark(additional_jar_dirs=[]):
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
     _log.debug('sys.path: {p!r}'.format(p=sys.path))
-    if 'TRAVIS' in os.environ:
-        master_str = "local[2]"
-    else:
-        master_str = "local[*]"
+    master_str = "local[2]"
 
     from geopyspark import geopyspark_conf
     conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs)
@@ -35,9 +32,8 @@ def setup_local_spark(additional_jar_dirs=[]):
     # Some options to allow attaching a Java debugger to running Spark driver
     conf.set('spark.driver.extraJavaOptions', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009')
 
-    if 'TRAVIS' in os.environ:
-        conf.set(key='spark.driver.memory', value='2G')
-        conf.set(key='spark.executor.memory', value='2G')
+    conf.set(key='spark.driver.memory', value='2G')
+    conf.set(key='spark.executor.memory', value='2G')
 
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable

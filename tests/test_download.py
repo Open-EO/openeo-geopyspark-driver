@@ -263,7 +263,7 @@ class TestDownload:
 
 
 
-    #skipped because gdal_merge.py is not available on jenkins and Travis
+    #skipped because gdal_merge.py is not available on jenkins
     @skip
     def test_download_as_catalog(self):
         input = self.create_spacetime_layer()

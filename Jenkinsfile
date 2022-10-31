@@ -1,8 +1,8 @@
 #!/usr/bin/env groovy
 
 /*
-    This Jenkinsfile is used to provide snapshot builds using the VITO CI system. Travis is used to provide publicly accessible test results.
-    This Jenkinsfile uses the Jenkins shared library. (ssh://git@git.vito.local:7999/biggeo/jenkinslib.git)
+    This Jenkinsfile is used to provide snapshot builds using the VITO CI system.
+    This Jenkinsfile uses the internal "biggeo/jenkinslib.git" library.
     Information about the pythonPipeline method can be found in pythonPipeline.groovy
 */
 
@@ -13,7 +13,7 @@ pythonPipeline {
   wipeout_workspace = true
   hadoop = true
   pre_test_script = 'pre_test.sh'
-  extra_env_variables = ['TRAVIS=1','JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.0.9-2.el8_5.x86_64']
+  extra_env_variables = ['JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.0.9-2.el8_5.x86_64']
   python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
   downstream_job = 'openEO/openeo-integrationtests'

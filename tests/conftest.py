@@ -47,8 +47,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
     out.write_line("[conftest.py] Setting up local Spark")
 
-    travis_mode = 'TRAVIS' in os.environ
-    master_str = "local[2]" if travis_mode else "local[2]"
+    master_str = "local[2]"
 
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable
@@ -80,12 +79,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
 
-    if travis_mode:
-        conf.set(key='spark.driver.memory', value='2G')
-        conf.set(key='spark.executor.memory', value='2G')
-        conf.set('spark.ui.enabled', False)
-    else:
-        conf.set('spark.ui.enabled', True)
+    conf.set(key='spark.driver.memory', value='2G')
+    conf.set(key='spark.executor.memory', value='2G')
+    conf.set('spark.ui.enabled', False)
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
