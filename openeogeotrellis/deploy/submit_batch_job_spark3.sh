@@ -1,35 +1,16 @@
 #!/bin/sh -e
 
-if [ -z "${OPENEO_VENV_ZIP}" ]; then
-    >&2 echo "Environment variable OPENEO_VENV_ZIP is not set, falling back to default.\n"
-    OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
-fi
-
 if [ "$#" -lt 7 ]; then
     >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> <OpenEO user> [api version] [driver memory] [executor memory]"
     exit 1
 fi
 
-if [ -n "${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE}" ]; then
-  image=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE}
-  # WORKDIR /opt in Dockerfile is apparently not respected
-  venv_dir="/opt/venv"
-  archives=""
-else
-  image="vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0"
-  venv_dir="venv"
-
-  openeo_zip="$(basename "${OPENEO_VENV_ZIP}")"
-
-  if [ ! -f "${openeo_zip}" ]; then
-    echo "Downloading ${OPENEO_VENV_ZIP}"
-    curl --fail --retry 3 --connect-timeout 60 -C - -O "${OPENEO_VENV_ZIP}"
-  fi
-
-  archives="--archives ${openeo_zip}#venv"
+if [ -z "${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE}" ]; then
+    >&2 echo "Environment variable YARN_CONTAINER_RUNTIME_DOCKER_IMAGE is not set"
+    exit 1
 fi
 
-sparkSubmitLog4jConfigurationFile="$venv_dir/openeo-geopyspark-driver/submit_batch_job_log4j.properties"
+sparkSubmitLog4jConfigurationFile="/opt/venv/openeo-geopyspark-driver/submit_batch_job_log4j.properties"
 
 if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
     # TODO: is this path still valid?
@@ -69,7 +50,7 @@ taskCpus=${25}
 sentinelHubClientAlias=${26}
 propertiesFile=${27}
 
-pysparkPython="$venv_dir/bin/python"
+pysparkPython="/opt/venv/bin/python"
 
 kinit -kt ${keyTab} ${principal} || true
 
@@ -77,9 +58,9 @@ export HDP_VERSION=3.1.4.0-315
 export SPARK_HOME=/opt/spark3_2_0
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
-export LD_LIBRARY_PATH="$venv_dir/lib64"
+export LD_LIBRARY_PATH="/opt/venv/lib64"
 
-export PYTHONPATH="$venv_dir/lib64/python3.8/site-packages:$venv_dir/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
+export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
@@ -99,17 +80,17 @@ if [ -f "http_credentials.json" ]; then
   files="${files},http_credentials.json"
 fi
 
-main_py_file="$venv_dir/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py"
+main_py_file="/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py"
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
- -Dlog4j.debug=true -Dlog4j.configuration=file:$venv_dir/openeo-geopyspark-driver/batch_job_log4j.properties\
+ -Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
 
-sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:$venv_dir/openeo-geopyspark-driver/batch_job_log4j.properties\
+sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
- -Dscala.concurrent.context.numThreads=8 -Djava.library.path=$venv_dir/lib/python3.8/site-packages/jep"
+ -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep"
 
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
@@ -151,9 +132,9 @@ spark-submit \
  --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
  --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
- --conf spark.executorEnv.LD_LIBRARY_PATH=$venv_dir/lib64 \
- --conf spark.executorEnv.PATH=$venv_dir/bin:$PATH \
- --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=$venv_dir/lib64 \
+ --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
+ --conf spark.executorEnv.PATH=/opt/venv/bin:$PATH \
+ --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
  --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
@@ -169,9 +150,9 @@ spark-submit \
  --conf spark.ui.view.acls.groups=vito \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw,/opt/tensorflow:/opt/tensorflow:ro \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${image} \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
- --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${image} \
+ --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw,/opt/tensorflow:/opt/tensorflow:ro \
  --conf spark.driver.extraClassPath=${logging_jar:-} \
  --conf spark.executor.extraClassPath=${logging_jar:-} \
@@ -189,7 +170,6 @@ spark-submit \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
  --files "${files}" \
  --py-files "${pyfiles}" \
- ${archives} \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \

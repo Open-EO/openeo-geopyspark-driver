@@ -1320,6 +1320,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     registry.set_status(job_id, user_id, 'error')
 
             else:
+                # TODO: remove old submit scripts?
                 submit_script = 'submit_batch_job.sh'
                 if( pysparkversion.startswith('2.4')):
                     submit_script = 'submit_batch_job_spark24.sh'
