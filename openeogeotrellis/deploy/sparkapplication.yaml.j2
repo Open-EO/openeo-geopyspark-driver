@@ -88,6 +88,8 @@ spec:
       preStop:
         exec:
           command: ["rm", "-r", "/spark_tmp/*"]
+    podSecurityContext:
+      fsGroup: 18585
     envVars:
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
