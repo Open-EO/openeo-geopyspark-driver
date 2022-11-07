@@ -12,10 +12,10 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
+from openeo_driver.save_result import AggregatePolygonResultCSV
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from .data import get_test_data_file
 
 
 @pytest.mark.usefixtures("imagecollection_with_two_bands_and_one_date")
@@ -75,9 +75,9 @@ class TestCustomFunctions(TestCase):
 
     def test_polygon_series(self):
         polygon = Polygon([(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)])
-
         means = self.imagecollection_with_two_bands_and_one_date.zonal_statistics(regions=polygon, func="mean")
-        assert means.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
+        assert isinstance(means, AggregatePolygonResultCSV)
+        assert means.get_data() == {"2017-09-25T11:37:00Z": [[1.0, 2.0]]}
 
     def _create_spacetime_layer(self, no_data):
         def tile(value):
@@ -119,7 +119,12 @@ class TestCustomFunctions(TestCase):
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         polygon = Polygon(shell=[(2.0, 6.0), (6.0, 6.0), (6.0, 2.0), (2.0, 2.0), (2.0, 6.0)])
         means = imagecollection.zonal_statistics(regions=polygon, func="mean")
-        assert means.data == {'2017-09-25T11:37:00Z': [[(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]]}
+        assert isinstance(means, AggregatePolygonResultCSV)
+        assert means.get_data() == {
+            "2017-09-25T11:37:00Z": [
+                [(0 + 0 + 0 + 0 + 1 + 1 + 1 + 1 + 2 + 2 + 2 + 2) / 12]
+            ]
+        }
 
 
 @pytest.mark.parametrize("udf_code", [
