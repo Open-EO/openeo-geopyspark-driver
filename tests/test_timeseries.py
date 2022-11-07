@@ -13,6 +13,7 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
 
+from openeo_driver.save_result import AggregatePolygonResultCSV, AggregatePolygonResult
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from .data import get_test_data_file
 
@@ -146,7 +147,8 @@ class TestTimeSeries(TestCase):
         ])
         result = imagecollection.zonal_statistics(polygon, "mean")
         # FIXME: the Python implementation doesn't return a time zone (Z)
-        assert result.data == {'2017-09-25T11:37:00Z': [[220.0]]}
+        assert isinstance(result, AggregatePolygonResultCSV)
+        assert result.get_data() == {"2017-09-25T11:37:00Z": [[220.0]]}
 
         covjson = result.to_covjson()
         assert covjson["ranges"] == {
@@ -167,7 +169,8 @@ def test_zonal_statistics(imagecollection_with_two_bands_and_one_date):
         (0.0, 0.0)
     ])
     result = imagecollection_with_two_bands_and_one_date.zonal_statistics(polygon, "mean")
-    assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]]}
+    assert isinstance(result, AggregatePolygonResultCSV)
+    assert result.get_data() == {"2017-09-25T11:37:00Z": [[1.0, 2.0]]}
 
     covjson = result.to_covjson()
     assert covjson["ranges"] == {
@@ -194,12 +197,14 @@ def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_thr
     ])
 
     result = imagecollection_with_two_bands_and_three_dates.zonal_statistics(polygon, "median")
-
-    print(result)
-    #result.to_csv("median.csv")
-    assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 2.0]],
-                           '2017-09-30T00:37:00Z': [[pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True)]],
-                            '2017-10-25T11:37:00Z': [[2.0, 1.0]]}
+    assert isinstance(result, AggregatePolygonResultCSV)
+    assert result.get_data() == {
+        "2017-09-25T11:37:00Z": [[1.0, 2.0]],
+        "2017-09-30T00:37:00Z": [
+            [pytest.approx(np.nan, nan_ok=True), pytest.approx(np.nan, nan_ok=True)]
+        ],
+        "2017-10-25T11:37:00Z": [[2.0, 1.0]],
+    }
 
     covjson = result.to_covjson()
     assert covjson["ranges"] == {
@@ -249,9 +254,8 @@ def test_zonal_statistics_datacube(use_file, imagecollection_with_two_bands_and_
         regions_serialized = regions
 
     result = imagecollection.zonal_statistics(regions_serialized, "mean")
-    assert result.data == {
-        '2017-09-25T11:37:00Z': [[1.0, 2.0], [1.0, 2.0]]
-    }
+    assert isinstance(result, AggregatePolygonResultCSV)
+    assert result.get_data() == {"2017-09-25T11:37:00Z": [[1.0, 2.0], [1.0, 2.0]]}
     result._regions = regions
 
     covjson = result.to_covjson()
@@ -305,13 +309,21 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
     }
 
     result = imagecollection_with_two_bands_and_three_dates.aggregate_spatial(polygon, callback)
-
-    print(result)
-    #result.to_csv("median.csv")
-    assert result.data == {'2017-09-25T11:37:00Z': [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
-                            '2017-09-30T00:37:00Z': [[pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True), pytest.approx(np.nan,nan_ok=True), 0.0,pytest.approx(np.nan,nan_ok=True)]],
-                            '2017-10-25T11:37:00Z': [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]]}
-
+    assert isinstance(result, AggregatePolygonResultCSV)
+    assert result.get_data() == {
+        "2017-09-25T11:37:00Z": [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
+        "2017-09-30T00:37:00Z": [
+            [
+                pytest.approx(np.nan, nan_ok=True),
+                0.0,
+                pytest.approx(np.nan, nan_ok=True),
+                pytest.approx(np.nan, nan_ok=True),
+                0.0,
+                pytest.approx(np.nan, nan_ok=True),
+            ]
+        ],
+        "2017-10-25T11:37:00Z": [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]],
+    }
 
 
 def _build_cube():
@@ -376,7 +388,8 @@ def test_zonal_statistics_single_polygon(func, expected):
     cube = _build_cube()
     polygon = box(0.0, 0.0, 1.0, 1.0)
     result = cube.zonal_statistics(polygon, func=func)
-    assert result.data == expected
+    assert isinstance(result, AggregatePolygonResult)
+    assert result.get_data() == expected
 
 
 @pytest.mark.parametrize(["func", "expected"], [
@@ -392,7 +405,8 @@ def test_zonal_statistics_geometry_collection(func, expected):
         MultiPolygon([box(2.0, 0.5, 4.0, 1.5), box(1.5, 2, 4.0, 3.5)])
     ])
     result = cube.zonal_statistics(geometry, func=func)
-    assert result.data == expected
+    assert isinstance(result, AggregatePolygonResult)
+    assert result.get_data() == expected
 
 
 @pytest.mark.parametrize(["func", "expected"], [
@@ -405,7 +419,8 @@ def test_zonal_statistics_shapefile(func, expected):
     cube = _build_cube()
     shapefile = str(get_test_data_file("geometries/polygons01.shp"))
     result = cube.zonal_statistics(regions=shapefile, func=func)
-    assert result.data == expected
+    assert isinstance(result, AggregatePolygonResult)
+    assert result.get_data() == expected
 
 
 @pytest.mark.parametrize(["func", "expected"], [
@@ -418,4 +433,5 @@ def test_zonal_statistics_geojson(func, expected):
     cube = _build_cube()
     shapefile = str(get_test_data_file("geometries/polygons01.geojson"))
     result = cube.zonal_statistics(regions=shapefile, func=func)
-    assert result.data == expected
+    assert isinstance(result, AggregatePolygonResult)
+    assert result.get_data() == expected
