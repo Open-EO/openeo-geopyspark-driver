@@ -81,7 +81,7 @@ spec:
         type: "DirectoryOrCreate"
     - name: "spark-local-dir-1"
       hostPath:
-        path: "/opt/{{ job_id }}"
+        path: "/opt/spark_temp/{{ job_id }}"
         type: "DirectoryOrCreate"
   driver:
     lifecycle:
