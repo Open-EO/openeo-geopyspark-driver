@@ -62,12 +62,9 @@ export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 
-extensions=$(ls geotrellis-extensions-*.jar)
-backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
-if [ -z "${backend_assembly}" ]; then
-   backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
-fi
-logging_jar=$(ls openeo-logging-*.jar) || true
+extensions="geotrellis-extensions-static.jar"
+backend_assembly="geotrellis-backend-assembly-static.jar"
+logging_jar=$(ls openeo-logging-static.jar) || true
 
 files="layercatalog.json,${processGraphFile}"
 if [ -n "${logging_jar}" ]; then
