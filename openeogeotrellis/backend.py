@@ -23,7 +23,7 @@ import requests
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import TiledRasterLayer, LayerType
-from py4j.java_gateway import JavaGateway, JVMView, JavaObject
+from py4j.java_gateway import JVMView, JavaObject
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
@@ -62,7 +62,7 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions
+    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm
 from openeogeotrellis.vault import Vault
 
 JOB_METADATA_FILENAME = "job_metadata.json"
@@ -197,7 +197,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
     def _wmts_service(self, image_collection, configuration: dict, wmts_base_url: str) -> SecondaryService:
         random_port = 0
 
-        jvm = gps.get_spark_context()._gateway.jvm
+        jvm = get_jvm()
         wmts = jvm.be.vito.eodata.gwcgeotrellis.wmts.WMTSServer.createServer(random_port, wmts_base_url)
         logger.info('Created WMTSServer: {w!s} ({u!s}/service/wmts, {p!r})'.format(w=wmts, u=wmts.getURI(), p=wmts.getPort()))
 
@@ -280,7 +280,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         catalog = get_layer_catalog(vault, opensearch_enrich=opensearch_enrich)
 
-        jvm = gps.get_spark_context()._gateway.jvm
+        jvm = get_jvm()
 
         conf = SparkContext.getOrCreate().getConf()
         principal = conf.get("spark.yarn.principal", conf.get("spark.kerberos.principal"))
@@ -306,7 +306,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             res = {"mode": "spark", "status": "OK" if count == 14 else "FAIL", "count": count}
         elif mode == "jvm":
             # Check if we have a working jvm context
-            jvm = gps.get_spark_context()._gateway.jvm
+            jvm = get_jvm()
             pi = jvm.Math.PI
             res = {"mode": "jvm", "status": "OK" if repr(pi).startswith("3.14") else "FAIL", "pi": repr(jvm.Math.PI)}
         else:
@@ -507,10 +507,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         else:
             band_indices = None
 
-        sc = gps.get_spark_context()
-
-        gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
-        jvm = gateway.jvm
+        jvm = get_jvm()
 
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
@@ -645,10 +642,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         else:
             band_indices = None
 
-        sc = gps.get_spark_context()
-
-        gateway = JavaGateway(eager_load=True, gateway_parameters=sc._gateway.gateway_parameters)
-        jvm = gateway.jvm
+        jvm = get_jvm()
 
         pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
 

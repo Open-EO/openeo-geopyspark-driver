@@ -16,7 +16,8 @@ from typing import Callable, Optional, Tuple, Union
 import pytz
 import dateutil.parser
 from kazoo.client import KazooClient
-from py4j.java_gateway import JavaGateway, JVMView
+from py4j.clientserver import ClientServer
+from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
@@ -65,9 +66,9 @@ def log_memory(function):
 def get_jvm() -> JVMView:
     import geopyspark
     pysc = geopyspark.get_spark_context()
-    gateway = JavaGateway(eager_load=True, gateway_parameters=pysc._gateway.gateway_parameters)
-    jvm = gateway.jvm
-    return jvm
+    gateway = pysc._gateway
+    assert isinstance(gateway, ClientServer), f"Java logging assumes ThreadLocals behave; got a {type(gateway)} instead"
+    return gateway.jvm
 
 
 def kerberos(principal, key_tab, jvm: JVMView = None):
