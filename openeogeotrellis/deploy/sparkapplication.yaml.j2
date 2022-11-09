@@ -8,7 +8,7 @@ spec:
   initContainers:
   - name: init-tmp-dir
     image: busybox:1.28
-    command: ['chown', '18585:18585', '/spark_tmp']
+    command: ['chown', '18585:18585', '/spark_tmp/{{ job_id }}']
     volumeMounts:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
