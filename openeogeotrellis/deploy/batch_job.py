@@ -54,6 +54,16 @@ def _setup_user_logging(log_file: Path) -> None:
     add_permissions(log_file, stat.S_IWGRP)
 
 
+def _setup_java_logging(sc: SparkContext, user_id: str):
+    jvm = get_jvm()
+    mdc = jvm.org.slf4j.MDC
+
+    mdc.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+    sc.setLocalProperty(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+    mdc.put(jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
+    sc.setLocalProperty(jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
+
+
 def _create_job_dir(job_dir: Path):
     logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
@@ -307,6 +317,8 @@ def main(argv: List[str]) -> None:
                 .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
         with SparkContext(conf=conf) as sc:
+            _setup_java_logging(sc, user_id)
+
             principal = sc.getConf().get("spark.yarn.principal")
             key_tab = sc.getConf().get("spark.yarn.keytab")
 
