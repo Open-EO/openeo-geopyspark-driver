@@ -5,13 +5,6 @@ metadata:
   name: {{ job_name }}
   namespace: spark-jobs
 spec:
-  initContainers:
-  - name: init-tmp-dir
-    image: busybox:1.28
-    command: ['chown', '18585:18585', '/spark_tmp']
-    volumeMounts:
-      - name: "spark-local-dir-1"
-        mountPath: "/spark_tmp"
   type: Python
   pythonVersion: "3"
   mode: cluster
@@ -84,6 +77,13 @@ spec:
         path: "/opt/spark_tmp/{{ job_id }}"
         type: "DirectoryOrCreate"
   driver:
+    initContainers:
+      - name: init-tmp-dir
+        image: busybox:1.28
+        command: ['chown', '18585:18585', '/spark_tmp']
+        volumeMounts:
+          - name: "spark-local-dir-1"
+            mountPath: "/spark_tmp"
     lifecycle:
       preStop:
         exec:
@@ -127,6 +127,17 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
   executor:
+    initContainers:
+      - name: init-tmp-dir
+        image: busybox:1.28
+        command: ['chown', '18585:18585', '/spark_tmp']
+        volumeMounts:
+          - name: "spark-local-dir-1"
+            mountPath: "/spark_tmp"
+    lifecycle:
+      preStop:
+        exec:
+          command: ["rm", "-r", "/spark_tmp/{{ job_id }}/*"]
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
     podSecurityContext:
