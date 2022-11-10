@@ -17,6 +17,7 @@ from subprocess import CalledProcessError
 from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable, Mapping
 from urllib.parse import urlparse
 
+import flask
 import geopyspark as gps
 import pkg_resources
 import requests
@@ -46,6 +47,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
                                   ServiceUnsupportedException)
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging, FlaskUserIdLogging
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
@@ -62,7 +64,7 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm
+    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm, mdc_include, mdc_remove
 from openeogeotrellis.vault import Vault
 
 JOB_METADATA_FILENAME = "job_metadata.json"
@@ -819,6 +821,29 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 return root / "CHANGELOG.md"
 
         return super().changelog()
+
+    def set_request_id(self, request_id: str):
+        sc = SparkContext.getOrCreate()
+        jvm = sc._gateway.jvm
+
+        mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.RequestId(), request_id)
+
+    def user_access_validation(self, user: User, request: flask.Request) -> User:
+        # TODO: add dedicated method instead of abusing this one?
+        sc = SparkContext.getOrCreate()
+        jvm = sc._gateway.jvm
+        user_id = user.user_id
+
+        mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+
+        return user
+
+    def after_request(self):
+        sc = SparkContext.getOrCreate()
+        jvm = sc._gateway.jvm
+
+        for mdc_key in [jvm.org.openeo.logging.JsonLayout.RequestId(), jvm.org.openeo.logging.JsonLayout.UserId()]:
+            mdc_remove(sc, jvm, mdc_key)
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self.batch_jobs.set_default_sentinel_hub_credentials(client_id, client_secret)

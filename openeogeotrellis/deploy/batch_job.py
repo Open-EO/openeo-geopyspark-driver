@@ -34,7 +34,7 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, mdc_include
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
@@ -56,12 +56,8 @@ def _setup_user_logging(log_file: Path) -> None:
 
 def _setup_java_logging(sc: SparkContext, user_id: str):
     jvm = get_jvm()
-    mdc = jvm.org.slf4j.MDC
-
-    mdc.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
-    sc.setLocalProperty(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
-    mdc.put(jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
-    sc.setLocalProperty(jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
+    mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+    mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
 
 
 def _create_job_dir(job_dir: Path):

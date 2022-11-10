@@ -71,6 +71,17 @@ def get_jvm() -> JVMView:
     return gateway.jvm
 
 
+def mdc_include(sc, jvm, mdc_key, mdc_value):
+    jvm.org.slf4j.MDC.put(mdc_key, mdc_value)
+    sc.setLocalProperty(mdc_key, mdc_value)
+
+
+def mdc_remove(sc, jvm, *mdc_keys):
+    for key in mdc_keys:
+        jvm.org.slf4j.MDC.remove(key)
+        sc.setLocalProperty(key, None)
+
+
 def kerberos(principal, key_tab, jvm: JVMView = None):
     if jvm is None:
         jvm = get_jvm()
