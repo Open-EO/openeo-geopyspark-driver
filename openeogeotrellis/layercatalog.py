@@ -10,6 +10,7 @@ import dateutil.parser
 import geopyspark
 import py4j.protocol
 import pyproj
+import pyspark.sql.utils
 import requests
 from shapely.geometry import box
 
@@ -340,10 +341,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                             extent, srs, from_date, to_date,
                             metadata_properties(), correlation_id
                         )
-            except py4j.protocol.Py4JJavaError as e:
-                msg = e.java_exception.getMessage()
+            except Exception as e:
+                if isinstance(e, py4j.protocol.Py4JJavaError):
+                    msg = e.java_exception.getMessage()
+                elif isinstance(e, pyspark.sql.utils.IllegalArgumentException):
+                    msg = e.desc
+                else:
+                    msg = str(e)
                 if "Could not find data for your load_collection request with catalog ID" in msg:
-                    logger.error(f"create_pyramid failed: {e.errmsg} {msg}", exc_info=True)
+                    logger.error(f"create_pyramid failed: {msg}", exc_info=True)
                     raise OpenEOApiException(
                         code="NoDataAvailable", status_code=400,
                         message=f"There is no data available for the given extents. {msg}",

@@ -1,23 +1,17 @@
-import shutil
-import typing
-import uuid
-from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
-from openeo_driver.datacube import DriverMlModel
-from openeo_driver.datastructs import StacAsset
-from openeo_driver.errors import ProcessParameterInvalidException
-from openeo_driver.save_result import AggregatePolygonSpatialResult
 import geopyspark as gps
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest
-from pyspark.mllib.util import JavaSaveable
 
+from openeo_driver.errors import ProcessParameterInvalidException
+from openeo_driver.save_result import AggregatePolygonSpatialResult
 from openeogeotrellis.ml.GeopySparkRandomForestModel import GeopySparkRandomForestModel
 
 
 class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
     # TODO: This is a temporary class until vector cubes are fully implemented.
+    # TODO: move to openeogeotrellis.vectorcube module
 
     def fit_class_random_forest(
             self,

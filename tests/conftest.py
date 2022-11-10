@@ -67,6 +67,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         additional_jar_dirs=additional_jar_dirs,
     )
 
+    # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
+    conf.set("spark.sql.session.timeZone", "UTC")
+
     conf.set("spark.kryoserializer.buffer.max", value="1G")
     conf.set(
         key="spark.kryo.registrator",

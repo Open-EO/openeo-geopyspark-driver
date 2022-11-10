@@ -1,7 +1,8 @@
 import contextlib
+import functools
 import logging
 import textwrap
-from typing import List, Union
+from typing import List, Union, Sequence, Tuple
 
 import mock
 import numpy as np
@@ -12,7 +13,8 @@ from numpy.testing import assert_equal
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 
 import openeo
-from openeo_driver.testing import TEST_USER, ApiResponse
+import openeo.processes
+from openeo_driver.testing import TEST_USER, ApiResponse, DictSubSet, IgnoreOrder
 from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
 from openeogeotrellis.testing import random_name
 from openeogeotrellis.utils import (
@@ -1876,3 +1878,341 @@ class TestAggregateSpatial:
             "2021-01-15T00:00:00Z": [[15.0, 0.375, 0.25], [15.0, 1.625, 1.625]],
             "2021-01-25T00:00:00Z": [[25.0, 0.375, 0.25], [25.0, 1.625, 1.625]],
         }
+
+
+class TestVectorCubeRunUdf:
+    """
+    Tests about running `run_udf` on a vector cube (e.g. output of aggregate_spatial)
+    in scalable way (parallelized)
+
+    ref: https://github.com/Open-EO/openeo-geopyspark-driver/issues/251
+    """
+
+    def _load_cube(
+        self,
+        temporal_extent: Sequence[str] = ("2021-01-01", "2021-02-01"),
+        spatial_extent: Union[str, dict, None] = "default",
+    ) -> openeo.DataCube:
+        if spatial_extent == "default":
+            spatial_extent = {"west": 0, "south": 0, "east": 8, "north": 8}
+        cube = openeo.DataCube.load_collection(
+            "TestCollection-LonLat4x4",
+            temporal_extent=temporal_extent,
+            spatial_extent=spatial_extent,
+            bands=["Day", "Longitude", "Latitude"],
+            fetch_metadata=False,
+        )
+        return cube
+
+    def test_udf_apply_udf_data_scalar(self, api100):
+        # TODO: influence of tight spatial_extent that excludes some geometries? e.g.:
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import UdfData
+
+            def udf_apply_udf_data(udf_data: UdfData) -> float:
+                data = udf_data.get_structured_data_list()[0].data
+                # Data's structure: {datetime: [[float for each band] for each polygon]}
+                assert isinstance(data, dict)
+                # Convert to single scalar value
+                ((_, lon, lat),) = data["2021-01-05T00:00:00Z"]
+                return 1000 * lon + lat
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "0"],
+            data=IgnoreOrder(
+                [
+                    [0, 1001.0],
+                    [1, 4002.0],
+                    [2, 2004.0],
+                    [3, 5000.0],
+                ]
+            ),
+        )
+
+    def test_udf_apply_udf_data_reduce_bands(self, api100):
+        cube = self._load_cube(temporal_extent=["2021-01-01", "2021-01-20"])
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import UdfData, StructuredData
+
+            def udf_apply_udf_data(udf_data: UdfData) -> UdfData:
+                data = udf_data.get_structured_data_list()[0].data
+                # Data's structure: {datetime: [[float for each band] for each polygon]}
+                # Convert to {datetime: [float for each polygon]}
+                data = {date: [sum(bands) for bands in geometry_data] for date, geometry_data in data.items()}
+                return UdfData(structured_data_list=[StructuredData(data)])
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "level_1", "0"],
+            data=IgnoreOrder(
+                [
+                    [0, "2021-01-05T00:00:00Z", 5 + 1 + 1],
+                    [0, "2021-01-15T00:00:00Z", 15 + 1 + 1],
+                    [1, "2021-01-05T00:00:00Z", 5 + 4 + 2],
+                    [1, "2021-01-15T00:00:00Z", 15 + 4 + 2],
+                    [2, "2021-01-05T00:00:00Z", 5 + 2 + 4],
+                    [2, "2021-01-15T00:00:00Z", 15 + 2 + 4],
+                    [3, "2021-01-05T00:00:00Z", 5 + 5 + 0],
+                    [3, "2021-01-15T00:00:00Z", 15 + 5 + 0],
+                ]
+            ),
+        )
+
+    def test_udf_apply_udf_data_reduce_time(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import UdfData, StructuredData
+            import functools
+
+            def udf_apply_udf_data(udf_data: UdfData) -> UdfData:
+                data = udf_data.get_structured_data_list()[0].data
+                # Data's structure: {datetime: [[float for each band] for each polygon]}
+                # Convert to [[float for each band] for each polygon]}
+                data = functools.reduce(
+                    lambda d1, d2: [[b1 + b2 for (b1, b2) in zip(d1[0], d2[0])]],
+                    data.values()
+                )
+                return UdfData(structured_data_list=[StructuredData(data)])
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "level_1", "0", "1", "2"],
+            data=IgnoreOrder(
+                [
+                    [0, 0, 5 + 15 + 25, 3 * 1, 3 * 1],
+                    [1, 0, 5 + 15 + 25, 3 * 4, 3 * 2],
+                    [2, 0, 5 + 15 + 25, 3 * 2, 3 * 4],
+                    [3, 0, 5 + 15 + 25, 3 * 5, 3 * 0],
+                ]
+            ),
+        )
+
+    def test_udf_apply_udf_data_return_series(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            import pandas
+            from openeo.udf import UdfData, StructuredData
+
+            def udf_apply_udf_data(udf_data: UdfData) -> UdfData:
+                data = udf_data.get_structured_data_list()[0].data
+                # Data's structure: {datetime: [[float for each band] for each polygon]}
+                # Convert to series {"start": sum(bands), "end": sum(bands)}
+                series = pandas.Series({
+                    "start": sum(min(data.items())[1][0]),
+                    "end": sum(max(data.items())[1][0]),
+                })
+                return series
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "start", "end"],
+            data=IgnoreOrder(
+                [
+                    [0, 5 + 1 + 1, 25 + 1 + 1],
+                    [1, 5 + 4 + 2, 25 + 4 + 2],
+                    [2, 5 + 2 + 4, 25 + 2 + 4],
+                    [3, 5 + 5 + 0, 25 + 5 + 0],
+                ]
+            ),
+        )
+
+    def test_udf_apply_udf_data_return_dataframe(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            import pandas
+            from openeo.udf import UdfData, StructuredData
+
+            def udf_apply_udf_data(udf_data: UdfData) -> UdfData:
+                data = udf_data.get_structured_data_list()[0].data
+                # Data's structure: {datetime: [[float for each band] for each polygon]}
+                # Convert to series {"start": [floats], "end": [floats]}
+                start_values = min(data.items())[1][0]
+                end_values = max(data.items())[1][0]
+                df = pandas.DataFrame(
+                    {
+                        "start": [min(start_values), max(start_values)],
+                        "end": [min(end_values), max(end_values)],
+                    },
+                    index = pandas.Index(["min", "max"], name="band_range")
+                )
+                return df
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "band_range", "start", "end"],
+            data=IgnoreOrder(
+                [
+                    [0, "max", 5, 25],
+                    [0, "min", 1, 1],
+                    [1, "max", 5, 25],
+                    [1, "min", 2, 2],
+                    [2, "max", 5, 25],
+                    [2, "min", 2, 2],
+                    [3, "max", 5, 25],
+                    [3, "min", 0, 0],
+                ]
+            ),
+        )
+
+    def test_udf_apply_feature_dataframe_basic(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection02.json")
+        aggregates = cube.aggregate_spatial(geometries, "max")
+        udf = textwrap.dedent(
+            """
+            import pandas as pd
+            def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+                return df + 1000
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=[
+                "feature_index",
+                "date",
+                "max(band_0)",
+                "max(band_1)",
+                "max(band_2)",
+            ],
+            data=IgnoreOrder(
+                [
+                    [0, "2021-01-05T00:00:00.000Z", 1005.0, 1002.75, 1002.5],
+                    [0, "2021-01-15T00:00:00.000Z", 1015.0, 1002.75, 1002.5],
+                    [0, "2021-01-25T00:00:00.000Z", 1025.0, 1002.75, 1002.5],
+                    [1, "2021-01-05T00:00:00.000Z", 1005.0, 1004.75, 1003.75],
+                    [1, "2021-01-15T00:00:00.000Z", 1015.0, 1004.75, 1003.75],
+                    [1, "2021-01-25T00:00:00.000Z", 1025.0, 1004.75, 1003.75],
+                ],
+            ),
+        )
+
+    def test_udf_apply_feature_dataframe_reduce_time(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "max")
+        udf = textwrap.dedent(
+            """
+            import pandas as pd
+            def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
+                return df.sum(axis=0)
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=[
+                "feature_index",
+                "max(band_0)",
+                "max(band_1)",
+                "max(band_2)",
+            ],
+            data=IgnoreOrder(
+                [
+                    [0, 5 + 15 + 25, 3 * 2.75, 3 * 2.75],
+                    [1, 5 + 15 + 25, 3 * 6.75, 3 * 3.75],
+                    [2, 5 + 15 + 25, 3 * 2.75, 3 * 7.75],
+                    [3, 5 + 15 + 25, 3 * 5.75, 3 * 0.75],
+                ]
+            ),
+        )
+
+    def test_udf_apply_feature_dataframe_reduce_bands(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "max")
+        udf = textwrap.dedent(
+            """
+            import pandas as pd
+            def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
+                series = df.sum(axis=1)
+                series.index = series.index.strftime("%Y-%m-%d")
+                return series
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "2021-01-05", "2021-01-15", "2021-01-25"],
+            data=IgnoreOrder(
+                [
+                    [0, 5 + 2.75 + 2.75, 15 + 2.75 + 2.75, 25 + 2.75 + 2.75],
+                    [1, 5 + 6.75 + 3.75, 15 + 6.75 + 3.75, 25 + 6.75 + 3.75],
+                    [2, 5 + 2.75 + 7.75, 15 + 2.75 + 7.75, 25 + 2.75 + 7.75],
+                    [3, 5 + 5.75 + 0.75, 15 + 5.75 + 0.75, 25 + 5.75 + 0.75],
+                ]
+            ),
+        )
+
+    def test_udf_apply_feature_dataframe_reduce_both_to_float(self, api100):
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "max")
+        udf = textwrap.dedent(
+            """
+            import pandas as pd
+            def udf_apply_feature_dataframe(df: pd.DataFrame) -> float:
+                return df.sum().sum()
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        result = drop_empty_from_aggregate_polygon_result(result)
+        assert result == DictSubSet(
+            columns=["feature_index", "0"],
+            data=IgnoreOrder(
+                [
+                    [0, 5 + 15 + 25 + 3 * (2.75 + 2.75)],
+                    [1, 5 + 15 + 25 + 3 * (6.75 + 3.75)],
+                    [2, 5 + 15 + 25 + 3 * (2.75 + 7.75)],
+                    [3, 5 + 15 + 25 + 3 * (5.75 + 0.75)],
+                ]
+            ),
+        )
+
+    # TODO test that df index is timestamp
+    # TODO: test that creates new series/dataframe with band stats
