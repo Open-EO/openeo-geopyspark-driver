@@ -1287,6 +1287,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     log_file="log",
                     metadata_file=JOB_METADATA_FILENAME,
                     job_id=job_id_truncated,
+                    job_id_full=job_id,
                     driver_cores=driver_cores,
                     driver_memory=driver_memory,
                     executor_cores=executor_cores,

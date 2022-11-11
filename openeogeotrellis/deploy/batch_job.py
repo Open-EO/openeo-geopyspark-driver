@@ -40,7 +40,7 @@ logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
 
-OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID")
+OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID","unknown-job")
 # TODO: also trim batch_job id a bit before logging?
 BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
