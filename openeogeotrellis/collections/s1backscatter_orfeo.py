@@ -234,7 +234,7 @@ class S1BackscatterOrfeo:
                 if match:
                     band_tiffs[match.group(1).lower()] = tiff
             if not band_tiffs:
-                raise OpenEOApiException("No tiffs found")
+                raise OpenEOApiException(f"sar_backscatter: No tiffs found in ${str(creo_path)}")
             logger.info(f"{log_prefix} Detected band tiffs: {band_tiffs}")
         return band_tiffs
 
@@ -785,7 +785,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
-                        raise OpenEOApiException(f"No tiff for band {band}")
+                        raise OpenEOApiException(f"{log_prefix} sar_backscatter: No tiff for band {band} in {creo_path}")
                     data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
                         input_tiff=band_tiffs[band.lower()],
                         extent=layout_extent, extent_epsg=layout_epsg,
