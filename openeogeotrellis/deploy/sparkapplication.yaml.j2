@@ -80,14 +80,14 @@ spec:
     initContainers:
       - name: init-tmp-dir
         image: busybox:1.28
-        command: ['chown', '18585:18585', '/spark_tmp']
+        command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
     lifecycle:
       preStop:
         exec:
-          command: ["rm", "-r", "/spark_tmp/{{ job_id }}/*"]
+          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
     podSecurityContext:
       fsGroup: 18585
     envVars:
@@ -131,14 +131,14 @@ spec:
     initContainers:
       - name: init-tmp-dir
         image: busybox:1.28
-        command: ['chown', '18585:18585', '/spark_tmp']
+        command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
     lifecycle:
       preStop:
         exec:
-          command: ["rm", "-r", "/spark_tmp/{{ job_id }}/*"]
+          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
     podSecurityContext:
