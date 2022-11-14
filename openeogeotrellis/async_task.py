@@ -16,7 +16,7 @@ from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
-from py4j.java_gateway import JavaGateway
+from py4j.clientserver import ClientServer
 
 from openeogeotrellis.job_registry import JobRegistry
 from pythonjsonlogger.jsonlogger import JsonFormatter
@@ -136,9 +136,6 @@ def main():
         arguments: dict = task.get('arguments', {})
 
         def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-            os.environ['OPENEO_BATCH_JOB_ID'] = batch_job_id
-            os.environ['OPENEO_USER_ID'] = user_id
-
             java_opts = [
                 "-client",
                 f"-Xmx{args.py4j_maximum_heap_size}",
@@ -146,17 +143,21 @@ def main():
                 "-Dlog4j.configuration=file:async_task_log4j.properties"
             ]
 
-            java_gateway = JavaGateway.launch_gateway(jarpath=args.py4j_jarpath,
-                                                      classpath=args.py4j_classpath,
-                                                      javaopts=java_opts,
-                                                      die_on_exit=True,
-                                                      redirect_stdout=sys.stdout,
-                                                      redirect_stderr=sys.stderr)
+            java_gateway = ClientServer.launch_gateway(jarpath=args.py4j_jarpath,
+                                                       classpath=args.py4j_classpath,
+                                                       javaopts=java_opts,
+                                                       die_on_exit=True,
+                                                       redirect_stdout=sys.stdout,
+                                                       redirect_stderr=sys.stderr)
 
             vault = Vault("https://vault.vgt.vito.be")
             catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
-            batch_jobs = GpsBatchJobs(catalog, java_gateway.jvm, args.principal, args.keytab, vault=vault)
 
+            jvm = java_gateway.jvm
+            jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+            jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
+
+            batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
             batch_jobs.set_default_sentinel_hub_credentials(*_get_sentinel_hub_credentials_from_environment())
 
             return batch_jobs
