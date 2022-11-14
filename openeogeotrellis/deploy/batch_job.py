@@ -237,10 +237,6 @@ def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
 
-def _log_container_internals():
-    logger.info(f"CWD is {os.getcwd()} with contents {', '.join(os.listdir())}")
-
-
 def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> (str, str):
     return (conf.get('spark.openeo.sentinelhub.client.id.default'),
             conf.get('spark.openeo.sentinelhub.client.secret.default'))
@@ -261,8 +257,6 @@ def main(argv: List[str]) -> None:
             # TODO list more packages like in openeo-deploy?
         ],
     ))
-
-    _log_container_internals()
 
     if len(argv) < 10:
         raise Exception(
