@@ -741,7 +741,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
-                raise OpenEOApiException("Creo path does not exist")
+                raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
 
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)
