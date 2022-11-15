@@ -5,9 +5,12 @@ import os
 import sys
 import time
 import traceback
+from subprocess import Popen, PIPE
 from typing import List, Optional
 
 import kazoo.client
+from py4j.java_gateway import OutputConsumer, ProcessConsumer
+
 import openeogeotrellis
 from kafka import KafkaProducer
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
@@ -16,7 +19,7 @@ from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
-from py4j.clientserver import ClientServer
+from py4j.clientserver import ClientServer, JavaParameters
 
 from openeogeotrellis.job_registry import JobRegistry
 from pythonjsonlogger.jsonlogger import JsonFormatter
@@ -90,6 +93,26 @@ def _get_sentinel_hub_credentials_from_environment() -> (str, str):
     return os.environ['SENTINEL_HUB_CLIENT_ID_DEFAULT'], os.environ['SENTINEL_HUB_CLIENT_SECRET_DEFAULT']
 
 
+def launch_client_server(jarpath, redirect_stdout, redirect_stderr, classpath, javaopts) -> ClientServer:
+    # mimics py4j.java_gateway.JavaGateway.launch_gateway
+    daemonize_redirect = True
+
+    classpath = os.pathsep.join((jarpath, classpath))
+
+    command = ["java", "-classpath", classpath] + javaopts + ["org.openeo.logging.py4j.ClientServer"]
+
+    stderr = redirect_stderr
+
+    proc = Popen(command, stdout=PIPE, stdin=PIPE, stderr=stderr)
+
+    _port = int(proc.stdout.readline())
+
+    OutputConsumer(redirect_stdout, proc.stdout, daemon=daemonize_redirect).start()
+    ProcessConsumer(proc, [redirect_stdout], daemon=daemonize_redirect).start()
+
+    return ClientServer(JavaParameters(port=_port, eager_load=True))
+
+
 # TODO: DRY this, cleaner.sh and job_tracker.sh
 def main():
     import argparse
@@ -135,82 +158,84 @@ def main():
 
         arguments: dict = task.get('arguments', {})
 
-        def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-            java_opts = [
-                "-client",
-                f"-Xmx{args.py4j_maximum_heap_size}",
-                "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService",
-                "-Dlog4j.configuration=file:async_task_log4j.properties"
-            ]
+        java_opts = [
+            "-client",
+            f"-Xmx{args.py4j_maximum_heap_size}",
+            "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService",
+            "-Dlog4j.configuration=file:async_task_log4j.properties"
+        ]
 
-            java_gateway = ClientServer.launch_gateway(jarpath=args.py4j_jarpath,
-                                                       classpath=args.py4j_classpath,
-                                                       javaopts=java_opts,
-                                                       die_on_exit=True,
-                                                       redirect_stdout=sys.stdout,
-                                                       redirect_stderr=sys.stderr)
+        java_gateway = launch_client_server(jarpath=args.py4j_jarpath,
+                                            classpath=args.py4j_classpath,
+                                            javaopts=java_opts,
+                                            redirect_stdout=sys.stdout,
+                                            redirect_stderr=sys.stderr)
 
-            vault = Vault("https://vault.vgt.vito.be")
-            catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
+        try:
+            def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
+                vault = Vault("https://vault.vgt.vito.be")
+                catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
 
-            jvm = java_gateway.jvm
-            jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
-            jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
+                jvm = java_gateway.jvm
+                jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+                jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
 
-            batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
-            batch_jobs.set_default_sentinel_hub_credentials(*_get_sentinel_hub_credentials_from_environment())
+                batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
+                batch_jobs.set_default_sentinel_hub_credentials(*_get_sentinel_hub_credentials_from_environment())
 
-            return batch_jobs
+                return batch_jobs
 
-        if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
-            batch_job_id = arguments['batch_job_id']
-            user_id = arguments.get('user_id')
-            dependency_sources = (arguments.get('dependency_sources')
-                                  or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
-                                      for subfolder in arguments['subfolders']])
+            if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
+                batch_job_id = arguments['batch_job_id']
+                user_id = arguments.get('user_id')
+                dependency_sources = (arguments.get('dependency_sources')
+                                      or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
+                                          for subfolder in arguments['subfolders']])
 
-            _log.info(f"removing dependency sources {dependency_sources} for batch job {batch_job_id}...",
-                      extra={'job_id': batch_job_id})
+                _log.info(f"removing dependency sources {dependency_sources} for batch job {batch_job_id}...",
+                          extra={'job_id': batch_job_id})
 
-            batch_jobs = get_batch_jobs(batch_job_id, user_id)
-            batch_jobs.delete_batch_process_dependency_sources(
-                job_id=batch_job_id,
-                dependency_sources=dependency_sources,
-                propagate_errors=True)
-        elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
-            batch_job_id = arguments['batch_job_id']
-            user_id = arguments['user_id']
-            sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
-            vault_token = arguments.get('vault_token')
+                batch_jobs = get_batch_jobs(batch_job_id, user_id)
+                batch_jobs.delete_batch_process_dependency_sources(
+                    job_id=batch_job_id,
+                    dependency_sources=dependency_sources,
+                    propagate_errors=True)
+            elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
+                batch_job_id = arguments['batch_job_id']
+                user_id = arguments['user_id']
+                sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
+                vault_token = arguments.get('vault_token')
 
-            batch_jobs = get_batch_jobs(batch_job_id, user_id)
+                batch_jobs = get_batch_jobs(batch_job_id, user_id)
 
-            while True:
-                time.sleep(SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S)
+                while True:
+                    time.sleep(SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S)
 
-                with JobRegistry() as registry:
-                    job_info = registry.get_job(batch_job_id, user_id)
+                    with JobRegistry() as registry:
+                        job_info = registry.get_job(batch_job_id, user_id)
 
-                if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
-                    break
-                else:
-                    try:
-                        batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias, vault_token)
-                    except Exception:
-                        # TODO: retry in Nifi? How to mark this job as 'error' then?
-                        # TODO: don't put the stack trace in the message but add exc_info  # 141
-                        _log.error("failed to handle polling batch processes for batch job {j}:\n{e}"
-                                   .format(j=batch_job_id, e=traceback.format_exc()),
-                                   extra={'job_id': batch_job_id})
+                    if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
+                        break
+                    else:
+                        try:
+                            batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias, vault_token)
+                        except Exception:
+                            # TODO: retry in Nifi? How to mark this job as 'error' then?
+                            # TODO: don't put the stack trace in the message but add exc_info  # 141
+                            _log.error("failed to handle polling batch processes for batch job {j}:\n{e}"
+                                       .format(j=batch_job_id, e=traceback.format_exc()),
+                                       extra={'job_id': batch_job_id})
 
-                        with JobRegistry() as registry:
-                            registry.set_status(batch_job_id, user_id, 'error')
-                            registry.mark_done(batch_job_id, user_id)
+                            with JobRegistry() as registry:
+                                registry.set_status(batch_job_id, user_id, 'error')
+                                registry.mark_done(batch_job_id, user_id)
 
-                        raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
+                            raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
 
-        else:
-            raise AssertionError(f'unexpected task_id "{task_id}"')
+            else:
+                raise AssertionError(f'unexpected task_id "{task_id}"')
+        finally:
+            java_gateway.shutdown()
     except Exception as e:
         _log.error(e, exc_info=True)  # TODO: add a more descriptive message instead of the exception itself  # 141
         raise e
