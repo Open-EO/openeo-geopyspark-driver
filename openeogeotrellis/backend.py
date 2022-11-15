@@ -957,7 +957,8 @@ class GpsBatchJobs(backend.BatchJobs):
             endpoint = layer_source_info['endpoint']
             bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
-            logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id})
+            logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id,
+                                                                                           'user_id': user_id})
 
             if sentinel_hub_client_alias == 'default':
                 sentinel_hub_client_id = self._default_sentinel_hub_client_id
@@ -979,7 +980,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     assert request_id is not None, "retry is for PARTIAL statuses but a 'None' request_id is DONE"
 
                     logger.warning(f"retrying Sentinel Hub batch process {request_id} for batch job {job_id}",
-                                   extra={'job_id': job_id})
+                                   extra={'job_id': job_id, 'user_id': user_id})
                     batch_processing_service.restart_partially_failed_batch_process(request_id)
 
                 return retry
@@ -996,7 +997,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                   for batch_request_id, (details, _) in batch_processes.items()}
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
-                     .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id})
+                     .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
             with JobRegistry() as registry:
@@ -1041,7 +1042,8 @@ class GpsBatchJobs(backend.BatchJobs):
                         assembled_location_cache[collecting_folder] = assembled_location
 
                         logger.debug("saved new assembled location {a} for near future use (key {k!r})"
-                                     .format(a=assembled_location, k=collecting_folder), extra={'job_id': job_id})
+                                     .format(a=assembled_location, k=collecting_folder), extra={'job_id': job_id,
+                                                                                                'user_id': user_id})
 
                         try:
                             # TODO: if the subsequent spark-submit fails, the collecting_folder is gone so this job
@@ -1049,10 +1051,10 @@ class GpsBatchJobs(backend.BatchJobs):
                             shutil.rmtree(collecting_folder)
                         except Exception as e:
                             logger.warning("Could not recursively delete {p}".format(p=collecting_folder), exc_info=e,
-                                           extra={'job_id': job_id})
+                                           extra={'job_id': job_id, 'user_id': user_id})
                     else:
                         logger.debug("recycling saved assembled location {a} (key {k!r})".format(
-                            a=assembled_location, k=collecting_folder), extra={'job_id': job_id})
+                            a=assembled_location, k=collecting_folder), extra={'job_id': job_id, 'user_id': user_id})
 
                     dependency['assembled_location'] = assembled_location
                 else:  # no caching involved, the collection is fully defined by these batch process results
@@ -1063,7 +1065,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                                            for details, _ in batch_processes.values())
 
                 logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units} PU",
-                             extra={'job_id': job_id})
+                             extra={'job_id': job_id, 'user_id': user_id})
 
                 registry.set_dependencies(job_id, user_id, dependencies)
                 registry.set_dependency_status(job_id, user_id, 'available')
