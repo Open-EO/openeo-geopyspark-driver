@@ -45,6 +45,7 @@ export AWS_ACCESS_KEY_ID=$aws_access_key_id
 export AWS_SECRET_ACCESS_KEY=$aws_secret_access_key
 export OPENEO_SPARK_SUBMIT_PY_FILES="$(python3 /opt/get-py-files.py)"
 export YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=$batch_job_docker_image
+export PYARROW_IGNORE_TIMEZONE=1
 
 kinit -kt $keytab openeo@VGT.VITO.BE
 

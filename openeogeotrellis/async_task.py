@@ -82,11 +82,18 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
 
 
 def _redact(task: dict) -> dict:
-    def redacted_value(prop: str, value):
-        sensitive = any(sensitive_value in prop.lower() for sensitive_value in ["secret", "token"])
-        return value if not sensitive else "(redacted)"
+    def redact(prop, value):
+        sensitive = isinstance(prop, str) and any(sensitive_value in prop.lower()
+                                                  for sensitive_value in ["secret", "token"])
 
-    return {prop: redacted_value(prop, value) for prop, value in task.items()}
+        if sensitive:
+            return "(redacted)"
+        elif isinstance(value, dict):
+            return {prop: redact(prop, value) for prop, value in value.items()}
+        else:
+            return value
+
+    return redact(None, task)
 
 
 def _get_sentinel_hub_credentials_from_environment() -> (str, str):

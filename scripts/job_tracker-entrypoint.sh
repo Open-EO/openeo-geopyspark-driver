@@ -17,5 +17,6 @@ kinit -kt openeo.keytab openeo@VGT.VITO.BE
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages"
 export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
 export ASYNC_TASK_HANDLER_ENV=$async_task_handler_env
+export PYARROW_IGNORE_TIMEZONE=1
 
 python3 -m openeogeotrellis.job_tracker
