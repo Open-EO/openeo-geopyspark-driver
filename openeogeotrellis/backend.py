@@ -1278,7 +1278,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("512m")
                 python_max = memOverheadBytes - jvmOverheadBytes
 
-                eodata_mount = "/eodata2" if use_goofys else "/eodata"
+                eodata_mount = "/eodata2" if use_goofys != "false" else "/eodata"
 
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
                 rendered = Template(open(jinja_template).read()).render(
