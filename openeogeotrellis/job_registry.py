@@ -278,22 +278,24 @@ class JobRegistry:
         assert job_id, "Shouldn't be empty: job_id"
         assert user_id, "Shouldn't be empty: user_id"
 
-        paths = [self._ongoing(user_id, job_id)]
-        if include_done:
-            paths.append(self._done(user_id, job_id))
+        path = self._ongoing(user_id, job_id)
 
-        no_node_error = None
+        try:
+            data, stat = self._zk.get(path)
+        except NoNodeError as e:
+            e.args += (path,)
+            if include_done:
+                path = self._done(user_id, job_id)
 
-        for path in paths:
-            try:
-                data, stat = self._zk.get(path)
-            except NoNodeError as e:
-                e.args += (path,)
-                no_node_error = e
-                continue
-            return json.loads(data.decode()), stat.version
+                try:
+                    data, stat = self._zk.get(path)
+                except NoNodeError as e:
+                    e.args += (path,)
+                    raise JobNotFoundException(job_id) from e
+            else:
+                raise JobNotFoundException(job_id) from e
 
-        raise JobNotFoundException(job_id) from no_node_error
+        return json.loads(data.decode()), stat.version
 
     def _update(self, job_info: Dict, version: int) -> None:
         job_id = job_info['job_id']
