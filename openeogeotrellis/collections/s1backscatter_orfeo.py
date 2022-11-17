@@ -141,6 +141,10 @@ class S1BackscatterOrfeo:
                 "polarisation", "missionTakeId",
             ]
         })
+        if "polarization" in extra_properties:
+            #british vs US English Sentinelhub + STAC use US variant!!
+            attributeValues["polarisation"] = extra_properties["polarization"]
+
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
             collection_id, [], attributeValues, correlation_id
         )
