@@ -16,6 +16,7 @@ from openeo.util import date_to_rfc3339
 import re
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
+from openeo_driver.errors import JobNotFoundException
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.job_registry import JobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
@@ -360,6 +361,8 @@ if __name__ == '__main__':
 
     try:
         JobTracker(JobRegistry, args.principal, args.keytab).update_statuses()
+    except JobNotFoundException as e:
+        _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e
