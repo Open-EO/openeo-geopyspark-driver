@@ -224,16 +224,19 @@ class JobRegistry:
         self._zk.close()
 
     def delete(self, job_id: str, user_id: str) -> None:
+        path = self._ongoing(user_id, job_id)
+
         try:
-            path = self._ongoing(user_id, job_id)
             self._zk.delete(path)
-        except NoNodeError:
+        except NoNodeError as e:
+            e.args += (path,)
             path = self._done(user_id, job_id)
 
             try:
                 self._zk.delete(path)
-            except NoNodeError:
-                raise JobNotFoundException(job_id)
+            except NoNodeError as e:
+                e.args += (path,)
+                raise JobNotFoundException(job_id) from e
 
     def get_all_jobs_before(self, upper: datetime) -> List[Dict]:
         def get_jobs_in(get_path: Callable[[Union[str, None], Union[str, None]], str]) -> List[Dict]:
@@ -274,18 +277,23 @@ class JobRegistry:
     def _read(self, job_id: str, user_id: str, include_done=False) -> (Dict, int):
         assert job_id, "Shouldn't be empty: job_id"
         assert user_id, "Shouldn't be empty: user_id"
+
         paths = [self._ongoing(user_id, job_id)]
         if include_done:
             paths.append(self._done(user_id, job_id))
 
+        no_node_error = None
+
         for path in paths:
             try:
                 data, stat = self._zk.get(path)
-            except NoNodeError:
+            except NoNodeError as e:
+                e.args += (path,)
+                no_node_error = e
                 continue
             return json.loads(data.decode()), stat.version
-        _log.error(f"Job not found: {job_id!r} from user {user_id!r}")
-        raise JobNotFoundException(job_id)
+
+        raise JobNotFoundException(job_id) from no_node_error
 
     def _update(self, job_info: Dict, version: int) -> None:
         job_id = job_info['job_id']
