@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Called from cleaner-docker.sh to do the actual work in a Docker container.
-
 set -eo pipefail
 
 if [ "$#" -lt 4 ]; then

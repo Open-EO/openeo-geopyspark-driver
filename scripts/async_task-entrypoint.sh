@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Called from async_task-docker.sh to do the actual work in a Docker container.
-
 set -eo pipefail
 
 if [ "$#" -lt 6 ]; then

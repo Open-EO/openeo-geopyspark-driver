@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Called from job_tracker-docker.sh to do the actual work in a Docker container.
-
 set -eo pipefail
 
 if [ "$#" -lt 2 ]; then
