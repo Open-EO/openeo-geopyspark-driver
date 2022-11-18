@@ -110,6 +110,7 @@ spark-submit \
  --properties-file "${propertiesFile}" \
  --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
+ --conf spark.executor.processTreeMetrics.enabled=true \
  --conf spark.kryoserializer.buffer.max=1G \
  --conf spark.kryo.classesToRegister=org.openeo.geotrellis.layers.BandCompositeRasterSource,geotrellis.raster.RasterRegion,geotrellis.raster.geotiff.GeoTiffResampleRasterSource,geotrellis.raster.RasterSource,geotrellis.raster.SourceName,geotrellis.raster.geotiff.GeoTiffPath \
  --conf spark.rpc.message.maxSize=200 \
