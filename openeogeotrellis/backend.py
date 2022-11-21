@@ -379,6 +379,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "GeoJSON": {
                     "gis_data_types": ["vector"],
                     "parameters": {},
+                },
+                "Parquet": {
+                    "gis_data_types": ["vector"],
+                    "parameters": {},
                 }
             },
             "output": {
