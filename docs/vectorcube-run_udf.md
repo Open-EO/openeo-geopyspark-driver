@@ -38,6 +38,23 @@ aggregates = cube.aggregate_spatial(geometries, reducer="mean")
 result = openeo.processes.run_udf(data=aggregates, udf=udf_code, runtime="Python")
 ```
 
+The resulting dataframe structure (to be downloaded in JSON format)
+is currently structured according to the
+["split" mode of `pandas.DataFrame.to_dict`](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_dict.html)
+For example, when using synchronous execution/download:
+
+```pycon
+>>> data = result.execute()
+>>> data
+{
+    "columns": ["feature_index", "mean(band_0)", "mean(band_1)", "mean(band_2)"],
+    "data": [
+        [0, 0.4, 0.8, 1.4],
+        [1, 0.3, 0.6, 1.9],
+        ...
+```
+
+
 ### Simple Pandas DataFrame mode with `udf_apply_feature_dataframe`
 
 This mode can be enabled by defining your UDF entry point function as `udf_apply_feature_dataframe`,
