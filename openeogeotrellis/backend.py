@@ -1106,6 +1106,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 for job_info in registry.get_user_jobs(user_id)
             ]
 
+    # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     @staticmethod
     def get_job_output_dir(job_id: str) -> Path:
         return GpsBatchJobs._OUTPUT_ROOT_DIR / job_id
@@ -1258,7 +1259,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 from kubernetes.client.rest import ApiException
                 from openeogeotrellis.utils import kube_client, s3_client, truncate_user_id_k8s
 
-                bucket = 'OpenEO-data'
+                # TODO: how do we cover this change with a test?
+                # bucket = 'OpenEO-data'
+                bucket = ConfigParams().s3_bucket_name
                 s3_instance = s3_client()
 
                 s3_instance.create_bucket(Bucket=bucket)

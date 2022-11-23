@@ -342,6 +342,15 @@ def download_s3_dir(bucketName, directory):
         bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
 
 
+def get_s3_url(file_or_dir_name: str, bucketname: str = "OpenEO-data") -> str:
+    """Get a URL for S3 to the file or directory, in the correct format."""
+    # TODO: Does this function belong in the openeo-python-driver?
+    # TODO: Using ConfigParams would be better, do we always we have a ConfigParams?
+    #   Because there are multiple executables in this code base and I'm not sure that
+    #   they all load a configuration the same way.
+    return f"s3://{bucketname}{file_or_dir_name}"
+
+
 def lonlat_to_mercator_tile_indices(
         longitude: float, latitude: float, zoom: int,
         tile_size: int = 512, flip_y: bool = False

@@ -1,3 +1,4 @@
+import os
 import kazoo.client
 import logging
 from decimal import Decimal
@@ -98,7 +99,12 @@ class JobTracker:
                                 if state == "COMPLETED":
                                     # TODO: do we support SHub batch processes in this environment? The AWS
                                     #  credentials conflict.
-                                    download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
+                                    # TODO Issue #232, k8s: manage job results directly on object storage
+                                    # TODO Issue #232, hard coded bucket name "OpenEO-data" How to get this from a configuration?
+                                    # => Probably simplest to get it from an env var, like so:
+                                    # => Can we get this value from ConfigParams though? That would be better.
+                                    s3_bucket_name = os.environ.get("OPENEO_S3_BUCKET_NAME", "OpenEO-data")
+                                    download_s3_dir(s3_bucket_name, "batch_jobs/{j}".format(j=job_id))
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                     usage = self.get_kube_usage(job_id,user_id)
