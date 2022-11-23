@@ -1291,7 +1291,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
-                    log_file="log",
+                    log_file="stdout",
                     metadata_file=JOB_METADATA_FILENAME,
                     job_id=job_id_truncated,
                     job_id_full=job_id,
