@@ -64,8 +64,8 @@ spec:
     onFailureRetryInterval: 10
     onSubmissionFailureRetries: 5
     onSubmissionFailureRetryInterval: 20
-{% if env['DATASHIM'] == "true" %}
   volumes:
+{% if env['DATASHIM'] %}
     - name: "eodata"
       persistentVolumeClaim:
         claimName: "eodata"
