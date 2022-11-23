@@ -1131,7 +1131,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def start_job(self, job_id: str, user: User):
         proxy_user = self.get_proxy_user(user)
-        logger.info(f"Starting job {job_id!r} from user {user!r} (proxy user {proxy_user!r})")
+        logger.info(f"Starting job {job_id!r} from user {user!r} (proxy user {proxy_user!r})",
+                    extra={'job_id': job_id, 'user_id': user.user_id})
 
         if proxy_user:
             with JobRegistry() as registry:
@@ -1170,7 +1171,7 @@ class GpsBatchJobs(backend.BatchJobs):
             job_options = spec.get('job_options', {})
             sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-            logger.debug("job_options: {o!r}".format(o=job_options))
+            logger.debug("job_options: {o!r}".format(o=job_options), extra={'job_id': job_id, 'user_id': user_id})
 
             if (batch_process_dependencies is None
                     and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
