@@ -1317,7 +1317,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     image_name=os.environ.get("IMAGE_NAME"),
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
-                    eodata_mount=eodata_mount
+                    eodata_mount=eodata_mount,
+                    datashim=os.environ.get("DATASHIM", "")
                 )
 
                 api_instance = kube_client()

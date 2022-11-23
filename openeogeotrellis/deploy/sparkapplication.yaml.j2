@@ -65,14 +65,14 @@ spec:
     onSubmissionFailureRetries: 5
     onSubmissionFailureRetryInterval: 20
   volumes:
-{% if env['DATASHIM'] %}
+{%- if datashim %}
     - name: "eodata"
       persistentVolumeClaim:
         claimName: "eodata"
     - name: "shared-pod-volume"
       persistentVolumeClaim:
         claimName: "shared-pod-volume"
-{% else %}
+{%- else %}
     - name: "eodata"
       hostPath:
         path: {{eodata_mount}}
@@ -81,7 +81,7 @@ spec:
       hostPath:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
-{% endif %}
+{%- endif %}
     - name: "spark-local-dir-1"
       hostPath:
         path: "/opt/spark_tmp/{{ job_id }}"
