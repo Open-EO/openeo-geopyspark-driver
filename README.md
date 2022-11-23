@@ -29,7 +29,7 @@ Set up your (virtual) environment with necessary dependencies:
     # Install Python package and its depdendencies
     pip install .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
     
-    # Get necessary jars for Geopyspark
+    # Get necessary JAR dependency files for running Geopyspark driver
     python scripts/get-jars.py
 
  
