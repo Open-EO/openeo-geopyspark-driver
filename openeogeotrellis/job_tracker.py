@@ -338,18 +338,19 @@ if __name__ == '__main__':
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
 
-    # Note: The Java logging is also supposed to match.
-    json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)
-
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.formatter = json_formatter
-
-    rolling_file_handler = RotatingFileHandler("logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024, backupCount=1)
-    rolling_file_handler.formatter = json_formatter
-
     root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
-    root_logger.addHandler(rolling_file_handler)
+    json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)  # Note: The Java logging is also supposed to match.
+
+    stdout_handler = logging.StreamHandler(stream=sys.stdout)
+    stdout_handler.formatter = json_formatter
+
+    root_logger.addHandler(stdout_handler)
+
+    if not ConfigParams().is_kube_deploy:
+        rolling_file_handler = RotatingFileHandler("logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024,
+                                                   backupCount=1)
+        rolling_file_handler.formatter = json_formatter
+        root_logger.addHandler(rolling_file_handler)
 
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
