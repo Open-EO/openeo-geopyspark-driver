@@ -4,7 +4,6 @@ Script to start a production server on Kubernetes. This script can serve as the 
 
 import logging
 import os
-import threading
 
 from openeo_driver.server import run_gunicorn, build_backend_deploy_metadata
 from openeo_driver.util.logging import get_logging_config, setup_logging
@@ -40,9 +39,6 @@ def main():
         if not ConfigParams().is_ci_context:
             with JobRegistry() as job_registry:
                 job_registry.ensure_paths()
-
-            job_tracker = JobTracker(JobRegistry, principal="", keytab="")
-            threading.Thread(target=job_tracker.loop_update_statuses, daemon=True).start()
 
     def on_started():
         app.logger.setLevel('DEBUG')
