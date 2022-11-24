@@ -222,23 +222,19 @@ class JobTracker:
     def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
         from openeogeotrellis.utils import kube_client
 
-        try:
-            api_instance = kube_client()
-            status = api_instance.get_namespaced_custom_object(
-                    "sparkoperator.k8s.io",
-                    "v1beta2",
-                    "spark-jobs",
-                    "sparkapplications",
-                    JobTracker._kube_prefix(job_id,user_id))
+        api_instance = kube_client()
+        status = api_instance.get_namespaced_custom_object(
+                "sparkoperator.k8s.io",
+                "v1beta2",
+                "spark-jobs",
+                "sparkapplications",
+                JobTracker._kube_prefix(job_id,user_id))
 
-            return JobTracker._KubeStatus(
-                status['status']['applicationState']['state'],
-                status['status']['lastSubmissionAttemptTime'],
-                status['status']['terminationTime']
-            )
-
-        except Exception as e:
-            _log.info(e)
+        return JobTracker._KubeStatus(
+            status['status']['applicationState']['state'],
+            status['status']['lastSubmissionAttemptTime'],
+            status['status']['terminationTime']
+        )
 
     @staticmethod
     def _yarn_status(application_id: str) -> '_YarnStatus':
