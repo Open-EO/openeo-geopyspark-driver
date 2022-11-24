@@ -6,7 +6,6 @@ import subprocess
 import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union
-import traceback
 import time
 from collections import namedtuple
 from datetime import datetime
@@ -58,8 +57,7 @@ class JobTracker:
 
                     self.update_statuses()
                 except Exception:
-                    _log.warning("scheduling new run after failing to track batch jobs:\n{e}"
-                                 .format(e=traceback.format_exc()))
+                    _log.warning("scheduling new run after failing to track batch jobs", exc_info=True)
 
                 time.sleep(interval_s)
 
@@ -161,8 +159,8 @@ class JobTracker:
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
                 except Exception:
-                    _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
-                                 .format(j=job_id, e=traceback.format_exc()), extra={'job_id': job_id})
+                    _log.warning("resuming with remaining jobs after failing to handle batch job {j}", exc_info=True,
+                                 extra={'job_id': job_id})
                     registry.set_status(job_id, user_id, 'error')
                     registry.mark_done(job_id, user_id)
 
