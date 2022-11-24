@@ -1325,8 +1325,6 @@ class GeopysparkDataCube(DriverDataCube):
         if self.metadata.has_band_dimension():
             bandNames = self.metadata.band_names
 
-        # TODO: This filter is a temporary solution in cases where aggregate_temporal introduces EmptyMultiBand tiles.
-        scala_data_cube = get_jvm().org.openeo.geotrellis.OpenEOProcesses().filterEmptyTileTypeTag(scala_data_cube)
         wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(scala_data_cube)
         wrapped.openEOMetadata().setBandNames(bandNames)
 

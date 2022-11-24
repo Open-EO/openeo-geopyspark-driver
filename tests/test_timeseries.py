@@ -242,6 +242,9 @@ def test_zonal_statistics_with_empty_mutliband_tiles(imagecollection_with_two_ba
     result = aggregate_temporal.zonal_statistics(polygon, "median")
     assert isinstance(result, AggregatePolygonResultCSV)
     assert result.get_data() == {
+        "2015-01-01T00:00:00Z": [
+            [pytest.approx(np.nan, nan_ok = True), pytest.approx(np.nan, nan_ok = True)]
+        ],
         "2017-09-25T00:00:00Z": [[1.0, 2.0]],
         "2017-09-30T00:00:00Z": [
             [pytest.approx(np.nan, nan_ok=True), pytest.approx(np.nan, nan_ok=True)]
