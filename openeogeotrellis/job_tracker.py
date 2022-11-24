@@ -99,7 +99,7 @@ class JobTracker:
                                     download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                    usage = self.get_kube_usage(job_id,user_id)
+                                    usage = self.get_kube_usage(job_id, user_id)
                                     if usage is not None:
                                         result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
@@ -192,8 +192,8 @@ class JobTracker:
                 return usage
             else:
                 _log.error(f"Unable to retrieve job cost {total_cost}")
-        except Exception as e:
-            _log.error(f"error while handling creo usage {e}")
+        except Exception:
+            _log.error(f"error while handling creo usage", exc_info=True, extra={'job_id': job_id})
         return usage
 
     @staticmethod
@@ -205,8 +205,8 @@ class JobTracker:
             hadoop_yarn_available = "hadoop" in output.lower()
             _log.info("Hadoop yarn available: {a}".format(a=hadoop_yarn_available))
             return hadoop_yarn_available
-        except Exception as e:
-            _log.info("Failed to run 'yarn': {e!r}".format(e=e))
+        except Exception:
+            _log.info("Failed to run 'yarn'", exc_info=True)
             return False
 
     @staticmethod
