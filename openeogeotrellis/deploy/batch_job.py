@@ -46,7 +46,11 @@ BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
 
 def _setup_user_logging(log_file: Path) -> None:
-    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler = None
+    if str(log_file.name) == "stdout":
+        file_handler = logging.StreamHandler(sys.stdout)
+    else:
+        file_handler = logging.FileHandler(log_file, mode='w')
     file_handler.setLevel(logging.ERROR)
 
     user_facing_logger.addHandler(file_handler)
@@ -387,6 +391,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     }
     job_option_whitelist = [
         "data_mask_optimization",
+        "node_caching"
     ]
     env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
     env = EvalEnv(env_values)
@@ -531,8 +536,9 @@ def _transform_stac_metadata(job_dir: Path):
 
 
 if __name__ == '__main__':
+    handler = "stderr_json" if ConfigParams().is_kube_deploy else "file_json"
     setup_logging(get_logging_config(
-        root_handlers=["file_json"],
+        root_handlers=[handler],
         loggers={
             "openeo": {"level": "DEBUG"},
             "openeo_driver": {"level": "DEBUG"},

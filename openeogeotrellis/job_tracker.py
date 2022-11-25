@@ -7,7 +7,6 @@ import subprocess
 import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union
-import traceback
 import time
 from collections import namedtuple
 from datetime import datetime
@@ -59,8 +58,7 @@ class JobTracker:
 
                     self.update_statuses()
                 except Exception:
-                    _log.warning("scheduling new run after failing to track batch jobs:\n{e}"
-                                 .format(e=traceback.format_exc()))
+                    _log.warning("scheduling new run after failing to track batch jobs", exc_info=True)
 
                 time.sleep(interval_s)
 
@@ -103,11 +101,11 @@ class JobTracker:
                                     # TODO Issue #232, hard coded bucket name "OpenEO-data" How to get this from a configuration?
                                     # => Probably simplest to get it from an env var, like so:
                                     # => Can we get this value from ConfigParams though? That would be better.
-                                    s3_bucket_name = os.environ.get("OPENEO_S3_BUCKET_NAME", "OpenEO-data")
+                                    s3_bucket_name = ConfigParams().s3_bucket_name
                                     download_s3_dir(s3_bucket_name, "batch_jobs/{j}".format(j=job_id))
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                    usage = self.get_kube_usage(job_id,user_id)
+                                    usage = self.get_kube_usage(job_id, user_id)
                                     if usage is not None:
                                         result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
@@ -167,8 +165,8 @@ class JobTracker:
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
                 except Exception:
-                    _log.warning("resuming with remaining jobs after failing to handle batch job {j}:\n{e}"
-                                 .format(j=job_id, e=traceback.format_exc()), extra={'job_id': job_id})
+                    _log.warning("resuming with remaining jobs after failing to handle batch job {j}", exc_info=True,
+                                 extra={'job_id': job_id})
                     registry.set_status(job_id, user_id, 'error')
                     registry.mark_done(job_id, user_id)
 
@@ -200,8 +198,8 @@ class JobTracker:
                 return usage
             else:
                 _log.error(f"Unable to retrieve job cost {total_cost}")
-        except Exception as e:
-            _log.error(f"error while handling creo usage {e}")
+        except Exception:
+            _log.error(f"error while handling creo usage", exc_info=True, extra={'job_id': job_id})
         return usage
 
     @staticmethod
@@ -213,8 +211,8 @@ class JobTracker:
             hadoop_yarn_available = "hadoop" in output.lower()
             _log.info("Hadoop yarn available: {a}".format(a=hadoop_yarn_available))
             return hadoop_yarn_available
-        except Exception as e:
-            _log.info("Failed to run 'yarn': {e!r}".format(e=e))
+        except Exception:
+            _log.info("Failed to run 'yarn'", exc_info=True)
             return False
 
     @staticmethod
@@ -228,23 +226,19 @@ class JobTracker:
     def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
         from openeogeotrellis.utils import kube_client
 
-        try:
-            api_instance = kube_client()
-            status = api_instance.get_namespaced_custom_object(
-                    "sparkoperator.k8s.io",
-                    "v1beta2",
-                    "spark-jobs",
-                    "sparkapplications",
-                    JobTracker._kube_prefix(job_id,user_id))
+        api_instance = kube_client()
+        status = api_instance.get_namespaced_custom_object(
+                "sparkoperator.k8s.io",
+                "v1beta2",
+                "spark-jobs",
+                "sparkapplications",
+                JobTracker._kube_prefix(job_id,user_id))
 
-            return JobTracker._KubeStatus(
-                status['status']['applicationState']['state'],
-                status['status']['lastSubmissionAttemptTime'],
-                status['status']['terminationTime']
-            )
-
-        except Exception as e:
-            _log.info(e)
+        return JobTracker._KubeStatus(
+            status['status']['applicationState']['state'],
+            status['status']['lastSubmissionAttemptTime'],
+            status['status']['terminationTime']
+        )
 
     @staticmethod
     def _yarn_status(application_id: str) -> '_YarnStatus':
@@ -344,18 +338,19 @@ if __name__ == '__main__':
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
 
-    # Note: The Java logging is also supposed to match.
-    json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)
-
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.formatter = json_formatter
-
-    rolling_file_handler = RotatingFileHandler("logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024, backupCount=1)
-    rolling_file_handler.formatter = json_formatter
-
     root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
-    root_logger.addHandler(rolling_file_handler)
+    json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)  # Note: The Java logging is also supposed to match.
+
+    stdout_handler = logging.StreamHandler(stream=sys.stdout)
+    stdout_handler.formatter = json_formatter
+
+    root_logger.addHandler(stdout_handler)
+
+    if not ConfigParams().is_kube_deploy:
+        rolling_file_handler = RotatingFileHandler("logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024,
+                                                   backupCount=1)
+        rolling_file_handler.formatter = json_formatter
+        root_logger.addHandler(rolling_file_handler)
 
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 

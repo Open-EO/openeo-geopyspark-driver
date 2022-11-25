@@ -43,24 +43,8 @@ def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):
         import faulthandler
         faulthandler.enable()
-        enable_logging = True
-        try:
-            from spark_memlogger import memlogger
-        except ImportError:
-            enable_logging = False
 
-        if enable_logging:
-            ml = memlogger.MemLogger(5,api_version_auto_timeout_ms=60000)
-            try:
-                try:
-                    ml.start()
-                except:
-                    logger.warning("Error while configuring memory logging, will not be available!", exc_info=True)
-                return function(*args, **kwargs)
-            finally:
-                ml.stop()
-        else:
-            return function(*args, **kwargs)
+        return function(*args, **kwargs)
 
     return memory_logging_wrapper
 
@@ -489,6 +473,9 @@ def temp_csv_dir(message: str = "n/a") -> str:
             parent_dir = candidate
             break
     temp_dir = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=parent_dir)
-    os.chmod(temp_dir, 0o777)
+    try:
+        os.chmod(temp_dir, 0o777)
+    except PermissionError as e:
+        logger.warning(f"Got permission error while setting up temp dir: {str(temp_dir)}, but will try to continue.")
     logger.info(f"Created temp csv dir {temp_dir!r}: {message}")
     return temp_dir

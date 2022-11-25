@@ -4,7 +4,6 @@ from logging.handlers import RotatingFileHandler
 import os
 import sys
 import time
-import traceback
 from subprocess import Popen, PIPE
 from typing import List, Optional
 
@@ -82,7 +81,7 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
 
 
 def _redact(task: dict) -> dict:
-    def redact(prop, value):
+    def redact(prop: Optional[str], value):
         sensitive = isinstance(prop, str) and any(sensitive_value in prop.lower()
                                                   for sensitive_value in ["secret", "token"])
 
@@ -143,22 +142,23 @@ def main():
 
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
+    parser = argparse.ArgumentParser(usage="OpenEO AsyncTask --task <task>",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.7.jar", help='Path to the Py4J jar')
+    parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
+                        help='Classpath used to launch the Java Gateway')
+    parser.add_argument("--py4j-maximum-heap-size", default="1G",
+                        help='Maximum heap size for the Java Gateway JVM')
+    parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
+    parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
+                        help="Path to the file that contains the keytab for the principal")
+    parser.add_argument("--task", required=True, dest="task_json", help="The task description in JSON")
+
+    args = parser.parse_args()
+
+    task = json.loads(args.task_json)
+
     try:
-        parser = argparse.ArgumentParser(usage="OpenEO AsyncTask --task <task>",
-                                         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.7.jar", help='Path to the Py4J jar')
-        parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
-                            help='Classpath used to launch the Java Gateway')
-        parser.add_argument("--py4j-maximum-heap-size", default="1G",
-                            help='Maximum heap size for the Java Gateway JVM')
-        parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
-        parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
-                            help="Path to the file that contains the keytab for the principal")
-        parser.add_argument("--task", required=True, dest="task_json", help="The task description in JSON")
-
-        args = parser.parse_args()
-
-        task = json.loads(args.task_json)
         task_id = task['task_id']
         if task_id not in [TASK_POLL_SENTINELHUB_BATCH_PROCESSES, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
             raise ValueError(f'unsupported task_id "{task_id}"')
@@ -228,10 +228,8 @@ def main():
                             batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias, vault_token)
                         except Exception:
                             # TODO: retry in Nifi? How to mark this job as 'error' then?
-                            # TODO: don't put the stack trace in the message but add exc_info  # 141
-                            _log.error("failed to handle polling batch processes for batch job {j}:\n{e}"
-                                       .format(j=batch_job_id, e=traceback.format_exc()),
-                                       extra={'job_id': batch_job_id})
+                            _log.error("failed to handle polling batch processes", exc_info=True,
+                                       extra={'job_id': batch_job_id, 'user_id': user_id})
 
                             with JobRegistry() as registry:
                                 registry.set_status(batch_job_id, user_id, 'error')
@@ -244,7 +242,7 @@ def main():
         finally:
             java_gateway.shutdown()
     except Exception as e:
-        _log.error(e, exc_info=True)  # TODO: add a more descriptive message instead of the exception itself  # 141
+        _log.error(f"failed to handle task {json.dumps(_redact(task))}", exc_info=True)
         raise e
 
 

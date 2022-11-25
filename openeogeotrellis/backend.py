@@ -1297,7 +1297,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
-                    log_file="log",
+                    log_file="stdout",
                     metadata_file=JOB_METADATA_FILENAME,
                     job_id=job_id_truncated,
                     job_id_full=job_id,
@@ -1861,7 +1861,13 @@ class GpsBatchJobs(backend.BatchJobs):
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
+
         job_dir = self.get_job_output_dir(job_id=job_id)
+
+        # TODO: remove this temporary workaround once we get rid of intermediate job_dir and read from S3 directly
+        if ConfigParams().is_kube_deploy and not os.path.exists(job_dir):
+            from openeogeotrellis.utils import download_s3_dir
+            download_s3_dir("OpenEO-data", f"batch_jobs/{job_id}")
 
         results_metadata = self.get_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
