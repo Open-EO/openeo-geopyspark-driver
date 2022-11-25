@@ -27,7 +27,7 @@ class ConfigParams:
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
-        self.s3_bucket_name = os.environ.get("OPENEO_S3_BUCKET_NAME", "OpenEO-data")
+        self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
     def __str__(self) -> str:
         return pformat(vars(self))

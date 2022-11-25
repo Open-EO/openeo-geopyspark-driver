@@ -1,3 +1,6 @@
+from moto import mock_s3
+import boto3
+
 import contextlib
 import datetime
 import json
@@ -278,6 +281,90 @@ class TestCollections:
                 assert [b[f] for b in resp['summaries']['eo:bands'] if f in b] == [b[f] for b in eo_bands if f in b]
 
 
+TEST_AWS_REGION_NAME = 'eu-central-1'
+
+@pytest.fixture
+def run_as_kube_deploy():
+    os.environ["KUBE"] = False
+
+@pytest.fixture(scope='function')
+def aws_credentials():
+    """Mocked AWS Credentials for moto."""
+    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
+    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
+    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
+    os.environ['AWS_SESSION_TOKEN'] = 'testing'
+    os.environ['AWS_DEFAULT_REGION'] = TEST_AWS_REGION_NAME
+
+
+@pytest.fixture(scope='function')
+def s3_resource(aws_credentials):
+    with mock_s3():
+        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
+
+
+@pytest.fixture(scope='function')
+def s3_client(aws_credentials):
+    with mock_s3():
+        yield boto3.s3_client("s3", region_name=TEST_AWS_REGION_NAME)
+
+
+@pytest.fixture(scope='function')
+def s3_bucket(s3_resource):
+    # TODO: setup fixture with fake bucketname in ConfigParams().s3_bucket_name?
+    bucket_name = "openeo-fake-bucketname" 
+    bucket = s3_resource.Bucket(bucket_name)
+    bucket.create(CreateBucketConfiguration={'LocationConstraint': TEST_AWS_REGION_NAME})
+    yield bucket
+
+
+def create_files_on_s3(s3_bucket, file_names, file_contents):
+    for fname, contents in zip(file_names, file_contents):
+        s3_bucket.put_object(Key=fname, Body=contents)
+
+
+# TODO: This test is temporary, its only purpose was to figure out how to use moto.
+def test_moto(s3_resource, s3_bucket, tmp_path):
+    
+    # sanity check do we really have an S3 bucket?
+    assert [b.name for b in s3_resource.buckets.all()] == [s3_bucket.name]
+
+    in_file_name = "file_to_upload.tiff"
+    out_path = tmp_path / "downloaded_file.tiff"
+    s3_bucket.put_object(Key=in_file_name, Body=TIFF_DUMMY_DATA)
+
+    # download it
+    s3_resource.Object(s3_bucket.name, in_file_name).download_file(str(out_path))
+    with open(out_path, "rb") as out_f:
+        out_contents = out_f.read()
+    
+    # The downloaded file contents should be identical to uploaded contents. 
+    assert out_contents == TIFF_DUMMY_DATA
+
+
+# TODO: This test is temporary, its only purpose was to figure out how to use moto.
+@pytest.mark.parametrize(
+    "file_name,contents",
+    [
+        ("file1.txt", b"Hello world!"),
+        ("file2.tiff", TIFF_DUMMY_DATA)
+    ]
+)
+def test_moto_multiple(s3_resource, s3_bucket, tmp_path, file_name, contents):
+    # sanity check do we really have an S3 bucket?
+    assert [b.name for b in s3_resource.buckets.all()] == [s3_bucket.name]
+
+    out_fname = "downloaded_" + file_name
+    out_path = tmp_path / out_fname
+    s3_bucket.put_object(Key=file_name, Body=contents)
+
+    s3_resource.Object(s3_bucket.name, file_name).download_file(str(out_path))
+    with open(out_path, "rb") as out_f:
+        out_contents = out_f.read()
+    
+    assert out_contents == contents
+
+
 class TestBatchJobs:
     DUMMY_PROCESS_GRAPH = {
         "loadcollection1": {
@@ -401,6 +488,113 @@ class TestBatchJobs:
                 ],
                 "links": []
             }
+
+    def test_download_from_object_storage(self, api, tmp_path, s3_resource, s3_bucket, monkeypatch):
+        """
+        Given an object storage (s3 / swift)
+        (and a Kubernetes backend)?
+        
+        and I have created a BatchJob that writes some output file
+        and that BatchJob has been started
+        and the BatchJob has now finished
+        
+        then the result file is present on the object storage (s3/swift)
+        
+        when I download the result
+        then the GPS driver / backend gives get a URL that point to the GPS driver and not to S3
+        and when it downloads it gets it from S3
+        and it streams the S3 file into a streaming flask response. 
+
+        """
+        # Pretend it runs in kubernetes 
+        monkeypatch.setenv("KUBE", True)
+
+        with self._mock_kazoo_client() as zk, \
+                self._mock_utcnow() as un, \
+                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
+            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
+
+            # openeo_flask_dir = tmp_path / "openeo-flask"
+            # openeo_flask_dir.mkdir()
+            # (openeo_flask_dir / "foolib.whl").touch()
+            # (openeo_flask_dir / "__pyfiles__").mkdir()
+            # (openeo_flask_dir / "__pyfiles__" / "custom_processes.py").touch()
+            # monkeypatch.chdir(openeo_flask_dir)
+
+            # Create job
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+            job_id = res.headers['OpenEO-Identifier']
+            # Start job
+            with mock.patch('subprocess.run') as run:
+                os.mkdir(tmp_path / job_id)
+                stdout = api.read_file("spark-submit-stdout.txt")
+                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+                # Trigger job start
+                api.post(
+                    '/jobs/{j}/results'.format(j=job_id), json={}, headers=TEST_USER_AUTH_HEADER
+                ).assert_status_code(202)
+                run.assert_called_once()
+                batch_job_args = run.call_args[0][0]
+
+            # # Check batch in/out files
+            job_dir = (tmp_path / job_id)
+            job_output = (job_dir / "out")
+            job_log = (job_dir / "log")
+            job_metadata = (job_dir / JOB_METADATA_FILENAME)
+            # assert batch_job_args[2].endswith(".in")
+            # assert batch_job_args[3] == str(job_dir)
+            # assert batch_job_args[4] == job_output.name
+            # assert batch_job_args[5] == job_log.name
+            # assert batch_job_args[6] == job_metadata.name
+            # assert batch_job_args[9] == TEST_USER
+            # assert batch_job_args[10] == api.api_version
+            # assert batch_job_args[11:17] == ['8G', '2G', '3G', '5', '2', '2G']
+            # assert batch_job_args[17:22] == [
+            #     'default', 'false', '[]',
+            #     "__pyfiles__/custom_processes.py,foolib.whl", '100'
+            # ]
+            # assert batch_job_args[22:24] == [TEST_USER, job_id]
+            # assert batch_job_args[24] == '0.0'
+
+
+            # Set up fake output and finish
+            # with job_output.open('wb') as f:
+            #     f.write(TIFF_DUMMY_DATA)
+            # with job_log.open('w') as f:
+            #     f.write("[INFO] Hello world")
+            # with job_metadata.open('w') as f:
+            #     metadata = api.load_json(JOB_METADATA_FILENAME)
+            #     json.dump(metadata,f)
+
+            # sanity check do we really have an S3 bucket?
+            # assert [b.name for b in s3_resource.buckets.all()] == [s3_bucket.name]
+
+            s3_bucket.put_object(Key="out", Body=TIFF_DUMMY_DATA)
+            s3_bucket.put_object(Key="log", Body="[INFO] Hello world")
+            metadata = str(api.load_json(JOB_METADATA_FILENAME))
+            s3_bucket.put_object(Key=JOB_METADATA_FILENAME, Body=metadata)
+
+
+            with openeogeotrellis.job_registry.JobRegistry() as reg:
+                reg.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
+            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+            assert res["status"] == "finished"
+
+            # Download
+            res = api.get(
+                '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(200).json
+            if api.api_version_compare.at_least("1.0.0"):
+                download_url = res["assets"]["out"]["href"]
+                assert "openEO_2017-11-21Z.tif" in res["assets"]
+                assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
+            else:
+                download_url = res["links"][0]["href"]
+
+            res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
+            assert res.status_code == 200
+            assert res.data == TIFF_DUMMY_DATA
 
     def test_create_and_start_and_download(self, api, tmp_path, monkeypatch):
         with self._mock_kazoo_client() as zk, \

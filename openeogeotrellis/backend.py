@@ -64,7 +64,8 @@ from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm, mdc_include, mdc_remove
+    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm, mdc_include, mdc_remove, \
+    to_s3_url
 from openeogeotrellis.vault import Vault
 
 JOB_METADATA_FILENAME = "job_metadata.json"
@@ -1275,6 +1276,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
+                # TODO: Issue #232: should we upload to obj storage using io stream instead of a file? 
+                # if not, should this become a temp file instead?
                 s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
 
                 if api_version:
@@ -1876,43 +1879,49 @@ class GpsBatchJobs(backend.BatchJobs):
             ml_model_metadata['asset'] = False
             results_dict['ml_model_metadata.json'] = ml_model_metadata
 
-        if os.path.isfile(job_dir / 'out'):
-            results_dict['out'] = {
-                # TODO: give meaningful filename and extension
-                "asset": True,
-                "output_dir": str(job_dir),
-                "type": media_type,
-                "bands": bands,
-                "nodata": nodata
-            }
-
-        if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
-            results_dict['profile_dumps.tar.gz'] = {
-                "asset": True,
-                "output_dir": str(job_dir),
-                "type": "application/gzip"
-            }
-
-        for file_name in os.listdir(job_dir):
-            if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME:
-                results_dict[file_name] = {
+        # On Kubernetes the files with be in the object storage, not in the container.
+        if not ConfigParams().is_kube_deploy:
+            if os.path.isfile(job_dir / 'out'):
+                results_dict['out'] = {
+                    # TODO: give meaningful filename and extension
                     "asset": True,
                     "output_dir": str(job_dir),
-                    "type": "application/json"
+                    "type": media_type,
+                    "bands": bands,
+                    "nodata": nodata
                 }
-            elif file_name.endswith("_MULTIBAND.tif"):
-                results_dict[file_name] = {
+
+            if os.path.isfile(job_dir / 'profile_dumps.tar.gz'):
+                results_dict['profile_dumps.tar.gz'] = {
                     "asset": True,
                     "output_dir": str(job_dir),
-                    "type": "image/tiff; application=geotiff"
+                    "type": "application/gzip"
                 }
+
+            for file_name in os.listdir(job_dir):
+                if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME:
+                    results_dict[file_name] = {
+                        "asset": True,
+                        "output_dir": str(job_dir),
+                        "type": "application/json"
+                    }
+                elif file_name.endswith("_MULTIBAND.tif"):
+                    results_dict[file_name] = {
+                        "asset": True,
+                        "output_dir": str(job_dir),
+                        "type": "image/tiff; application=geotiff"
+                    }
 
         #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
         #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
         for title, asset in out_assets.items():
             if title not in results_dict:
                 asset['asset'] = True
-                asset["output_dir"] = str(job_dir)
+                # TODO: Issue #232, Check this is the correct URL when it is a kube deploy.
+                if ConfigParams().is_kube_deploy:
+                    asset["output_dir"] = to_s3_url(str(job_dir))
+                else:
+                    asset["output_dir"] = str(job_dir)
                 if "bands" in asset:
                     asset["bands"] = [Band(**b) for b in asset["bands"]]
                 results_dict[title] = asset
