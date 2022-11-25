@@ -94,8 +94,6 @@ class JobTracker:
                                               (job_id, current_status, new_status), extra={'job_id': job_id})
 
                                 if state == "COMPLETED":
-                                    # TODO: do we support SHub batch processes in this environment? The AWS
-                                    #  credentials conflict.
                                     download_s3_dir("OpenEO-data", "batch_jobs/{j}".format(j=job_id))
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
