@@ -49,6 +49,7 @@ maxSoftErrorsRatio=${24-"0.0"}
 taskCpus=${25}
 sentinelHubClientAlias=${26}
 propertiesFile=${27}
+archives=${28}
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -166,6 +167,7 @@ spark-submit \
  --conf spark.history.provider=org.apache.spark.deploy.history.FsHistoryProvider \
  --conf spark.history.store.path=/var/lib/spark2/shs_db \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
+ --conf spark.archives=${archives} \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \

@@ -1229,6 +1229,7 @@ class GpsBatchJobs(backend.BatchJobs):
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
+            archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false")
 
             def serialize_dependencies() -> str:
@@ -1318,7 +1319,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                     eodata_mount=eodata_mount,
-                    datashim=os.environ.get("DATASHIM", "")
+                    datashim=os.environ.get("DATASHIM", ""),
+                    archives=archives
                 )
 
                 api_instance = kube_client()
@@ -1418,6 +1420,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(task_cpus)
                     args.append(sentinel_hub_client_alias)
                     args.append(temp_properties_file.name)
+                    args.append(archives)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})

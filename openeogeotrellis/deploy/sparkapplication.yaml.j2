@@ -57,6 +57,7 @@ spec:
     "spark.kubernetes.driver.reusePersistentVolumeClaim": "false"
     "spark.kubernetes.allocation.maxPendingPods": "6"
     "spark.task.cpus": "{{ task_cpus }}"
+    "spark.archives": "{{ archives }}"
   sparkVersion: "3.2.0"
   restartPolicy:
     type: OnFailure
