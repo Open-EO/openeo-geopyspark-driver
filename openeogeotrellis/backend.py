@@ -289,11 +289,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
 
         super().__init__(
-            secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=catalog,
             batch_jobs=GpsBatchJobs(catalog, jvm, principal, key_tab, vault),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
+            # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
         self._principal = principal
