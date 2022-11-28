@@ -295,25 +295,26 @@ def aws_credentials():
     os.environ['AWS_SECURITY_TOKEN'] = 'testing'
     os.environ['AWS_SESSION_TOKEN'] = 'testing'
     os.environ['AWS_DEFAULT_REGION'] = TEST_AWS_REGION_NAME
+    os.environ['AWS_REGION'] = TEST_AWS_REGION_NAME
 
 
 @pytest.fixture(scope='function')
-def s3_resource(aws_credentials):
+def mock_s3_resource(aws_credentials):
     with mock_s3():
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
 
 
 @pytest.fixture(scope='function')
-def s3_client(aws_credentials):
+def mock_s3_client(aws_credentials):
     with mock_s3():
         yield boto3.s3_client("s3", region_name=TEST_AWS_REGION_NAME)
 
 
 @pytest.fixture(scope='function')
-def s3_bucket(s3_resource):
+def mock_s3_bucket(mock_s3_resource):
     # TODO: setup fixture with fake bucketname in ConfigParams().s3_bucket_name?
     bucket_name = "openeo-fake-bucketname" 
-    bucket = s3_resource.Bucket(bucket_name)
+    bucket = mock_s3_resource.Bucket(bucket_name)
     bucket.create(CreateBucketConfiguration={'LocationConstraint': TEST_AWS_REGION_NAME})
     yield bucket
 
@@ -324,17 +325,17 @@ def create_files_on_s3(s3_bucket, file_names, file_contents):
 
 
 # TODO: This test is temporary, its only purpose was to figure out how to use moto.
-def test_moto(s3_resource, s3_bucket, tmp_path):
+def test_moto(mock_s3_resource, mock_s3_bucket, tmp_path):
     
     # sanity check do we really have an S3 bucket?
-    assert [b.name for b in s3_resource.buckets.all()] == [s3_bucket.name]
+    assert [b.name for b in mock_s3_resource.buckets.all()] == [mock_s3_bucket.name]
 
     in_file_name = "file_to_upload.tiff"
     out_path = tmp_path / "downloaded_file.tiff"
-    s3_bucket.put_object(Key=in_file_name, Body=TIFF_DUMMY_DATA)
+    mock_s3_bucket.put_object(Key=in_file_name, Body=TIFF_DUMMY_DATA)
 
     # download it
-    s3_resource.Object(s3_bucket.name, in_file_name).download_file(str(out_path))
+    mock_s3_resource.Object(mock_s3_bucket.name, in_file_name).download_file(str(out_path))
     with open(out_path, "rb") as out_f:
         out_contents = out_f.read()
     
@@ -350,15 +351,15 @@ def test_moto(s3_resource, s3_bucket, tmp_path):
         ("file2.tiff", TIFF_DUMMY_DATA)
     ]
 )
-def test_moto_multiple(s3_resource, s3_bucket, tmp_path, file_name, contents):
+def test_moto_multiple(mock_s3_resource, mock_s3_bucket, tmp_path, file_name, contents):
     # sanity check do we really have an S3 bucket?
-    assert [b.name for b in s3_resource.buckets.all()] == [s3_bucket.name]
+    assert [b.name for b in mock_s3_resource.buckets.all()] == [mock_s3_bucket.name]
 
     out_fname = "downloaded_" + file_name
     out_path = tmp_path / out_fname
-    s3_bucket.put_object(Key=file_name, Body=contents)
+    mock_s3_bucket.put_object(Key=file_name, Body=contents)
 
-    s3_resource.Object(s3_bucket.name, file_name).download_file(str(out_path))
+    mock_s3_resource.Object(mock_s3_bucket.name, file_name).download_file(str(out_path))
     with open(out_path, "rb") as out_f:
         out_contents = out_f.read()
     
@@ -489,38 +490,30 @@ class TestBatchJobs:
                 "links": []
             }
 
-    def test_download_from_object_storage(self, api, tmp_path, s3_resource, s3_bucket, monkeypatch):
+    def test_download_from_object_storage(self, api, tmp_path, mock_s3_bucket):
         """
         Given an object storage (s3 / swift)
         (and a Kubernetes backend)?
-        
         and I have created a BatchJob that writes some output file
         and that BatchJob has been started
         and the BatchJob has now finished
         
+        [intermediate outcome, maybe this should be asserted too:]
         then the result file is present on the object storage (s3/swift)
         
         when I download the result
         then the GPS driver / backend gives get a URL that point to the GPS driver and not to S3
-        and when it downloads it gets it from S3
+        and when it downloads from that URL the backend gets it from S3
         and it streams the S3 file into a streaming flask response. 
 
         """
-        # Pretend it runs in kubernetes 
-        monkeypatch.setenv("KUBE", True)
 
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
-            # openeo_flask_dir = tmp_path / "openeo-flask"
-            # openeo_flask_dir.mkdir()
-            # (openeo_flask_dir / "foolib.whl").touch()
-            # (openeo_flask_dir / "__pyfiles__").mkdir()
-            # (openeo_flask_dir / "__pyfiles__" / "custom_processes.py").touch()
-            # monkeypatch.chdir(openeo_flask_dir)
-
+            # TODO: Simplify test, you can skip creating a job if you setup pre-made job metadata.
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
@@ -537,45 +530,28 @@ class TestBatchJobs:
                 run.assert_called_once()
                 batch_job_args = run.call_args[0][0]
 
-            # # Check batch in/out files
+            # Check batch in/out files
             job_dir = (tmp_path / job_id)
             job_output = (job_dir / "out")
             job_log = (job_dir / "log")
             job_metadata = (job_dir / JOB_METADATA_FILENAME)
-            # assert batch_job_args[2].endswith(".in")
-            # assert batch_job_args[3] == str(job_dir)
-            # assert batch_job_args[4] == job_output.name
-            # assert batch_job_args[5] == job_log.name
-            # assert batch_job_args[6] == job_metadata.name
-            # assert batch_job_args[9] == TEST_USER
-            # assert batch_job_args[10] == api.api_version
-            # assert batch_job_args[11:17] == ['8G', '2G', '3G', '5', '2', '2G']
-            # assert batch_job_args[17:22] == [
-            #     'default', 'false', '[]',
-            #     "__pyfiles__/custom_processes.py,foolib.whl", '100'
-            # ]
-            # assert batch_job_args[22:24] == [TEST_USER, job_id]
-            # assert batch_job_args[24] == '0.0'
-
 
             # Set up fake output and finish
-            # with job_output.open('wb') as f:
-            #     f.write(TIFF_DUMMY_DATA)
-            # with job_log.open('w') as f:
-            #     f.write("[INFO] Hello world")
-            # with job_metadata.open('w') as f:
-            #     metadata = api.load_json(JOB_METADATA_FILENAME)
-            #     json.dump(metadata,f)
+            with job_output.open('wb') as f:
+                f.write(TIFF_DUMMY_DATA)
+            with job_log.open('w') as f:
+                f.write("[INFO] Hello world")
+            with job_metadata.open('w') as f:
+                metadata = api.load_json(JOB_METADATA_FILENAME)
+                json.dump(metadata,f)
 
-            # sanity check do we really have an S3 bucket?
-            # assert [b.name for b in s3_resource.buckets.all()] == [s3_bucket.name]
-
-            s3_bucket.put_object(Key="out", Body=TIFF_DUMMY_DATA)
-            s3_bucket.put_object(Key="log", Body="[INFO] Hello world")
+            # TODO: we can use a pre-made example of the metatdata instead of the setup / test scenario above.
+            mock_s3_bucket.put_object(Key="out", Body=TIFF_DUMMY_DATA)
+            mock_s3_bucket.put_object(Key="log", Body="[INFO] Hello world")
             metadata = str(api.load_json(JOB_METADATA_FILENAME))
-            s3_bucket.put_object(Key=JOB_METADATA_FILENAME, Body=metadata)
+            mock_s3_bucket.put_object(Key=JOB_METADATA_FILENAME, Body=metadata)
 
-
+            # TODO: simplify test, we can skip this part
             with openeogeotrellis.job_registry.JobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json

@@ -490,6 +490,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
     unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
+    # TODO: Issue #232 I think we should overwrite asset hrefs here, unless you want to fix the write_assets methods in the openeo-python-driver.
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
                             unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
                             ml_model_metadata=ml_model_metadata)
@@ -498,6 +499,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         import boto3
         from openeogeotrellis.utils import s3_client
 
+        # TODO: Issue #232, is this the place where we should overwrite the assets' paths to point to object storage.
+        # Would be nicer if we get the info correct from the start.
         bucket = os.environ.get('SWIFT_BUCKET')
         s3_instance = s3_client()
 
