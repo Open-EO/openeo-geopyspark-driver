@@ -103,6 +103,7 @@ spec:
       fsGroup: 18585
     envVars:
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
+      OPENEO_USER_ID: {{ user_id }}
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
@@ -157,6 +158,7 @@ spec:
       fsGroup: 18585
     envVars:
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
+      OPENEO_USER_ID: {{ user_id }}
       SPARK_USER: "spark"
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
