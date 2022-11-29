@@ -50,6 +50,7 @@ taskCpus=${25}
 sentinelHubClientAlias=${26}
 propertiesFile=${27}
 archives=${28}
+logging_threshold=${29}
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -84,11 +85,13 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dhdp.version=3.1.4.0-315\
- -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+ -Dopeneo.logging.threshold=$logging_threshold"
 
 sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
- -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep"
+ -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
+ -Dopeneo.logging.threshold=$logging_threshold"
 
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")

@@ -1231,6 +1231,7 @@ class GpsBatchJobs(backend.BatchJobs):
             task_cpus = str(job_options.get("task-cpus", 1))
             archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false")
+            logging_threshold = job_options.get("logging-threshold", "info")  # TODO: map from OpenEO levels to Log4j/Python log levels?
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1320,7 +1321,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                     eodata_mount=eodata_mount,
                     datashim=os.environ.get("DATASHIM", ""),
-                    archives=archives
+                    archives=archives,
+                    logging_threshold=logging_threshold
                 )
 
                 api_instance = kube_client()
@@ -1421,6 +1423,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(sentinel_hub_client_alias)
                     args.append(temp_properties_file.name)
                     args.append(archives)
+                    args.append(logging_threshold)
 
                     try:
                         logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
