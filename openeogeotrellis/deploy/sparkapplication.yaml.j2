@@ -181,7 +181,7 @@ spec:
       PYTHON_MAX_MEMORY: "{{ python_max_memory }}"
       PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib64/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
-      CPL_DEBUG: "ON"
+      CPL_DEBUG: "OFF"
     cores: {{ executor_cores }}
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
