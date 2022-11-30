@@ -1426,17 +1426,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(logging_threshold)
 
                     try:
-                        logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
+                        logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
                         output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                        logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
                     except CalledProcessError as e:
-                        logger.exception(e, extra={'job_id': job_id})
-                        logger.error(e.stdout, extra={'job_id': job_id})
-                        logger.error(e.stderr, extra={'job_id': job_id})
+                        logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
+                                     extra={'job_id': job_id})
                         raise e
 
                 try:
-                    # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-                    logger.info(output_string, extra={'job_id': job_id})
                     application_id = self._extract_application_id(output_string)
                     logger.info("mapped job_id %s to application ID %s" % (job_id, application_id),
                                 extra={'job_id': job_id})
