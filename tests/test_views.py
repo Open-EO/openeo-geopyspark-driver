@@ -600,14 +600,19 @@ class TestBatchJobs:
                 res.assert_status_code(204)
                 run.assert_called_once()
                 command = run.call_args[0][0]
-                assert command == [ 'curl',
-                                    '--negotiate',
-                                    '-u',
-                                    ':',
-                                    '--insecure',
-                                    '-X',
-                                    'PUT',
-                                    '-d',
-                                    '{"state": "KILLED"}',
-                                    'https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842']
-
+                assert command == [
+                    'curl',
+                    '--location-trusted',
+                    '--fail',
+                    '--negotiate',
+                    '-u',
+                    ':',
+                    '--insecure',
+                    '-X',
+                    'PUT',
+                    '-H',
+                    'Content-Type: application/json',
+                    '-d',
+                    '{"state": "KILLED"}',
+                    'https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state'
+                ]
