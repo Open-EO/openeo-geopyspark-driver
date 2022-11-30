@@ -1989,13 +1989,11 @@ class GpsBatchJobs(backend.BatchJobs):
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
                 )
 
-                logger.debug("Killed corresponding Spark job {s} for job {j}: {a!r}".format(s=application_id, j=job_id,
-                                                                                            a=kill_spark_job.args),
+                logger.debug(f"Killed corresponding Spark job {application_id} with command {kill_spark_job.args!r}",
                              extra={'job_id': job_id})
             except CalledProcessError as e:
-                logger.warning(
-                    "Could not kill corresponding Spark job {s} for job {j}".format(s=application_id, j=job_id),
-                    exc_info=e, extra={'job_id': job_id})
+                logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
+                               exc_info=True, extra={'job_id': job_id})
             finally:
                 with JobRegistry() as registry:
                     registry.set_status(job_id, user_id, 'canceled')
