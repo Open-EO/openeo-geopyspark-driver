@@ -40,7 +40,8 @@ logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
 
-OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID","unknown-job")
+OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
+OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID", "unknown-job")
 # TODO: also trim batch_job id a bit before logging?
 BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
@@ -536,17 +537,10 @@ def _transform_stac_metadata(job_dir: Path):
 
 
 if __name__ == '__main__':
-    handler = "stderr_json" if ConfigParams().is_kube_deploy else "file_json"
     setup_logging(get_logging_config(
-        root_handlers=[handler],
-        loggers={
-            "openeo": {"level": "DEBUG"},
-            "openeo_driver": {"level": "DEBUG"},
-            "openeogeotrellis": {"level": "DEBUG"},
-            "kazoo": {"level": "WARN"},
-            "cropsar": {"level": "DEBUG"},
-        },
-        context=LOGGING_CONTEXT_BATCH_JOB))
+        root_handlers=["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
+        context=LOGGING_CONTEXT_BATCH_JOB,
+        root_level=OPENEO_LOGGING_THRESHOLD))
 
     with TimingLogger("batch_job.py main", logger=logger):
         main(sys.argv)

@@ -104,6 +104,7 @@ spec:
     envVars:
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
       OPENEO_USER_ID: {{ user_id }}
+      OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
@@ -159,6 +160,7 @@ spec:
     envVars:
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
       OPENEO_USER_ID: {{ user_id }}
+      OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
       SPARK_USER: "spark"
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"

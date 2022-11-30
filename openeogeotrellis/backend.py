@@ -1195,8 +1195,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     return value
                 elif isinstance(value, bool):
                     return str(value).lower()
-                else:
-                    raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
+
+                raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
             def as_max_soft_errors_ratio_arg() -> str:
                 value = job_options.get("soft-errors")
@@ -1209,11 +1209,24 @@ class GpsBatchJobs(backend.BatchJobs):
                     return "1.0" if value else "0.0"
                 elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
                     return str(value)
-                else:
-                    raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
-                                                     f"supported values include false/true and values in the "
-                                                     f"interval [0.0, 1.0]",
-                                             status_code=400)
+
+                raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
+                                                 f"supported values include false/true and values in the "
+                                                 f"interval [0.0, 1.0]",
+                                         status_code=400)
+
+            def as_logging_threshold_arg() -> str:
+                value = job_options.get("logging-threshold", "info").upper()
+
+                if value == "WARNING":
+                    value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
+
+                if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
+                    return value
+
+                raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
+                                                 f'supported values include "debug", "info", "warning" and "error"',
+                                         status_code=400)
 
             driver_memory = job_options.get("driver-memory", "8G")
             driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
@@ -1231,7 +1244,7 @@ class GpsBatchJobs(backend.BatchJobs):
             task_cpus = str(job_options.get("task-cpus", 1))
             archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false")
-            logging_threshold = job_options.get("logging-threshold", "info")  # TODO: map from OpenEO levels to Log4j/Python log levels?
+            logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
