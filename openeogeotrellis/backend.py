@@ -65,7 +65,7 @@ from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefine
     InMemoryUserDefinedProcessRepository
 from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
     truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm, mdc_include, mdc_remove, \
-    to_s3_url
+    get_s3_file_contents
 from openeogeotrellis.vault import Vault
 
 JOB_METADATA_FILENAME = "job_metadata.json"
@@ -1276,7 +1276,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
-                # TODO: Issue #232: should we upload to obj storage using io stream instead of a file? 
+                # TODO: Issue #232: should we upload to obj storage using io stream instead of a file?
                 # if not, should this become a temp file instead?
                 s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
 
@@ -1885,7 +1885,10 @@ class GpsBatchJobs(backend.BatchJobs):
             ml_model_metadata['asset'] = False
             results_dict['ml_model_metadata.json'] = ml_model_metadata
 
-        # On Kubernetes the files with be in the object storage, not in the container.
+        # Updating the asset info based on what is on the file system was a solution for some old edge cases.
+        # For a kuberenetes deployment we can skip this, the edge cases should not happen here.
+        # On Kubernetes the result files with be put in the object storage instead of the container,
+        # because the k8s pods can be replaced at any moment and then the files would be gone.
         if not ConfigParams().is_kube_deploy:
             if os.path.isfile(job_dir / 'out'):
                 results_dict['out'] = {
@@ -1918,27 +1921,32 @@ class GpsBatchJobs(backend.BatchJobs):
                         "type": "image/tiff; application=geotiff"
                     }
 
-        #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
-        #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
-        for title, asset in out_assets.items():
-            if title not in results_dict:
-                asset['asset'] = True
-                # TODO: Issue #232, Check this is the correct URL when it is a kube deploy.
-                if ConfigParams().is_kube_deploy:
-                    asset["output_dir"] = to_s3_url(str(job_dir))
-                else:
+            # TODO: Issue #232 Do we need to put this also under `if not ConfigParams().is_kube_deploy:` ?
+            #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
+            #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
+            for title, asset in out_assets.items():
+                if title not in results_dict:
+                    asset['asset'] = True
+                    # TODO: Issue #232 Check this is the correct URL when it is a kube deploy.
+                    # TODO: Issue #232 Is it actually necessary to overwrite with an S3 URL here. See: batchjobs.py: def run_job --> call to _export_result_metadata
                     asset["output_dir"] = str(job_dir)
-                if "bands" in asset:
-                    asset["bands"] = [Band(**b) for b in asset["bands"]]
-                results_dict[title] = asset
+                    if "bands" in asset:
+                        asset["bands"] = [Band(**b) for b in asset["bands"]]
+                    results_dict[title] = asset
 
         return results_dict
 
+    # TODO: Issue #232 job metadata lookup will need to be specialized for object storage
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
         """
         metadata_file = self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
+
+        # Get it from S3 if it is not a local file.
+        if not metadata_file.exists():
+            contents = get_s3_file_contents(str(metadata_file))
+            return json.loads(contents)
 
         try:
             with open(metadata_file) as f:

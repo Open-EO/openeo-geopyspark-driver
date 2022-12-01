@@ -34,8 +34,7 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, mdc_include
-
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, mdc_include, to_s3_url
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
@@ -204,6 +203,8 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     if ml_model_metadata is not None:
         metadata['ml_model_metadata'] = ml_model_metadata
 
+    # TODO: Issue #232, should we put this on S3 when it is a kube deploy, instead of the local file system?
+    # Though this is currently done in the function that calls _export_result_metadata. Perhaps that's enough.
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f)
 
@@ -495,6 +496,8 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
                             unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
                             ml_model_metadata=ml_model_metadata)
 
+    _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+
     if ConfigParams().is_kube_deploy:
         import boto3
         from openeogeotrellis.utils import s3_client
@@ -508,6 +511,23 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         for file in os.listdir(job_dir):
             full_path = str(job_dir) + "/" + file
             s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+
+
+def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
+    """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
+    with open(metadata_file, "rt") as mdf:
+        metadata_to_update = json.load(mdf)
+    with open(metadata_file, "wt") as mdf:
+        _convert_asset_outputs_to_s3_urls(metadata_to_update)
+        json.dump(mdf, metadata_to_update)
+
+
+def _convert_asset_outputs_to_s3_urls(job_metadata: dict):
+    """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+    out_assets = job_metadata.get("assets", {})
+    for asset in out_assets.values():
+        if "output_dir" in asset and not asset["output_dir"].startswith("s3://"):
+            asset["output_dir"] = to_s3_url(asset["output_dir"])
 
 
 def _transform_stac_metadata(job_dir: Path):

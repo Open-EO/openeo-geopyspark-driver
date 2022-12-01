@@ -298,6 +298,7 @@ def kube_client():
 
 def s3_client():
     import boto3
+    # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
     swift_url = os.environ.get("SWIFT_URL")
@@ -310,6 +311,7 @@ def s3_client():
 def download_s3_dir(bucketName, directory):
     import boto3
 
+    # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
     swift_url = os.environ.get("SWIFT_URL")
@@ -326,7 +328,23 @@ def download_s3_dir(bucketName, directory):
         bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
 
 
-def to_s3_url(file_or_dir_name: str, bucketname: str = None) -> str:
+def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
+    """Get contents of a text file with the contents of filename from the the S3 bucket
+
+        The bucket is set in ConfigParams().s3_bucket_name
+    """
+    import boto3
+    from botocore.response import StreamingBody
+
+    s3_instance = s3_client()
+    s3_file_object = s3_instance.get_object(
+        Bucket=ConfigParams().s3_bucket_name, Key=str(filename)
+    )
+    body: StreamingBody = s3_file_object["Body"]
+    return body.read().decode("utf8")
+
+
+def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: Does this function belong in the openeo-python-driver?
     # TODO: Using ConfigParams would be better, do we always we have a ConfigParams?
