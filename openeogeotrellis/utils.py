@@ -457,7 +457,8 @@ def ensure_executor_logging(f) -> Callable:
                 "kazoo": {"level": "WARN"},
                 "cropsar": {"level": "DEBUG"},
             },
-            context=LOGGING_CONTEXT_BATCH_JOB))
+            context=LOGGING_CONTEXT_BATCH_JOB,
+            root_level=os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")))
 
     decorator = on_first_time(partial(setup_context_aware_logging,
                                       user_id=FlaskUserIdLogging.get_user_id(),

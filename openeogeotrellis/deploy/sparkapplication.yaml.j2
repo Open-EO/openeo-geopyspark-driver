@@ -57,6 +57,7 @@ spec:
     "spark.kubernetes.driver.reusePersistentVolumeClaim": "false"
     "spark.kubernetes.allocation.maxPendingPods": "6"
     "spark.task.cpus": "{{ task_cpus }}"
+    "spark.archives": "{{ archives }}"
   sparkVersion: "3.2.0"
   restartPolicy:
     type: OnFailure
@@ -102,6 +103,8 @@ spec:
       fsGroup: 18585
     envVars:
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
+      OPENEO_USER_ID: {{ user_id }}
+      OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
       AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
@@ -111,6 +114,7 @@ spec:
       AWS_REGION: "{{aws_region}}"
       AWS_HTTPS: "NO"
       AWS_VIRTUAL_HOSTING: "FALSE"
+      AWS_DIRECT: "TRUE"
       SWIFT_URL: {{ swift_url }}
       SWIFT_BUCKET: {{ swift_bucket }}
       ZOOKEEPERNODES: {{ zookeeper_nodes }}
@@ -124,7 +128,7 @@ spec:
       PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
     cores: {{ driver_cores }}
-    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=file:/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=file:/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }}"
     memory: "{{ driver_memory }}"
     labels:
       version: 3.2.0
@@ -155,6 +159,8 @@ spec:
       fsGroup: 18585
     envVars:
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
+      OPENEO_USER_ID: {{ user_id }}
+      OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
       SPARK_USER: "spark"
       OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
       KUBE: "true"
@@ -165,6 +171,7 @@ spec:
       AWS_REGION: "{{aws_region}}"
       AWS_HTTPS: "NO"
       AWS_VIRTUAL_HOSTING: "FALSE"
+      AWS_DIRECT: "TRUE"
       SWIFT_URL: {{ swift_url }}
       SWIFT_BUCKET: {{ swift_bucket }}
       ZOOKEEPERNODES: {{ zookeeper_nodes }}
@@ -178,12 +185,12 @@ spec:
       PYTHON_MAX_MEMORY: "{{ python_max_memory }}"
       PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib64/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
-      CPL_DEBUG: "ON"
+      CPL_DEBUG: "OFF"
     cores: {{ executor_cores }}
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Dlog4j.configuration=file:/opt/log4j.properties -Dscala.concurrent.context.numThreads=15 -Dscala.concurrent.context.maxThreads=15 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+    javaOptions: "-Dlog4j.configuration=file:/opt/log4j.properties -Dscala.concurrent.context.numThreads=15 -Dscala.concurrent.context.maxThreads=15 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }}"
     labels:
       version: 3.2.0
     volumeMounts:

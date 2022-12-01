@@ -290,11 +290,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
 
         super().__init__(
-            secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
             catalog=catalog,
             batch_jobs=GpsBatchJobs(catalog, jvm, principal, key_tab, vault),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
+            # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
         self._principal = principal
@@ -1091,6 +1091,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 #  still see the previous status (PARTIAL), consider it the new status and immediately mark it as
                 #  unrecoverable.
             else:  # still some PARTIALs after one retry: not recoverable
+                logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
+                             f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
+
                 with JobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'error')
                     registry.set_status(job_id, user_id, 'error')
@@ -1197,8 +1200,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     return value
                 elif isinstance(value, bool):
                     return str(value).lower()
-                else:
-                    raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
+
+                raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
             def as_max_soft_errors_ratio_arg() -> str:
                 value = job_options.get("soft-errors")
@@ -1211,11 +1214,24 @@ class GpsBatchJobs(backend.BatchJobs):
                     return "1.0" if value else "0.0"
                 elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
                     return str(value)
-                else:
-                    raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
-                                                     f"supported values include false/true and values in the "
-                                                     f"interval [0.0, 1.0]",
-                                             status_code=400)
+
+                raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
+                                                 f"supported values include false/true and values in the "
+                                                 f"interval [0.0, 1.0]",
+                                         status_code=400)
+
+            def as_logging_threshold_arg() -> str:
+                value = job_options.get("logging-threshold", "info").upper()
+
+                if value == "WARNING":
+                    value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
+
+                if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
+                    return value
+
+                raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
+                                                 f'supported values include "debug", "info", "warning" and "error"',
+                                         status_code=400)
 
             driver_memory = job_options.get("driver-memory", "8G")
             driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
@@ -1231,7 +1247,9 @@ class GpsBatchJobs(backend.BatchJobs):
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
+            archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false")
+            logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
                 dependencies = batch_process_dependencies or job_info.get('dependencies') or []
@@ -1324,7 +1342,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                     eodata_mount=eodata_mount,
-                    datashim=os.environ.get("DATASHIM", "")
+                    datashim=os.environ.get("DATASHIM", ""),
+                    archives=archives,
+                    logging_threshold=logging_threshold
                 )
 
                 api_instance = kube_client()
@@ -1424,19 +1444,19 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(task_cpus)
                     args.append(sentinel_hub_client_alias)
                     args.append(temp_properties_file.name)
+                    args.append(archives)
+                    args.append(logging_threshold)
 
                     try:
-                        logger.info("Submitting job: {a!r}".format(a=args), extra={'job_id': job_id})
+                        logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
                         output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                        logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
                     except CalledProcessError as e:
-                        logger.exception(e, extra={'job_id': job_id})
-                        logger.error(e.stdout, extra={'job_id': job_id})
-                        logger.error(e.stderr, extra={'job_id': job_id})
+                        logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
+                                     extra={'job_id': job_id})
                         raise e
 
                 try:
-                    # note: a job_id is returned as soon as an application ID is found in stderr, not when the job is finished
-                    logger.info(output_string, extra={'job_id': job_id})
                     application_id = self._extract_application_id(output_string)
                     logger.info("mapped job_id %s to application ID %s" % (job_id, application_id),
                                 extra={'job_id': job_id})
@@ -1996,21 +2016,20 @@ class GpsBatchJobs(backend.BatchJobs):
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             try:
                 kill_spark_job = subprocess.run(
-                    ["curl", "--negotiate", "-u", ":", "--insecure", "-X", "PUT", "-d", '{"state": "KILLED"}',
-                     f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}"],
+                    ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
+                     "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
+                     f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}/state"],
                     timeout=20,
                     check=True,
                     universal_newlines=True,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
                 )
 
-                logger.debug("Killed corresponding Spark job {s} for job {j}: {a!r}".format(s=application_id, j=job_id,
-                                                                                            a=kill_spark_job.args),
+                logger.debug(f"Killed corresponding Spark job {application_id} with command {kill_spark_job.args!r}",
                              extra={'job_id': job_id})
             except CalledProcessError as e:
-                logger.warning(
-                    "Could not kill corresponding Spark job {s} for job {j}".format(s=application_id, j=job_id),
-                    exc_info=e, extra={'job_id': job_id})
+                logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
+                               exc_info=True, extra={'job_id': job_id})
             finally:
                 with JobRegistry() as registry:
                     registry.set_status(job_id, user_id, 'canceled')

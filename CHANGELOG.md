@@ -10,10 +10,18 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2022-11-28 (0.6.3a1)
+- Added an experimental job option 'udf-dependency-archives' to pass on archives of UDF dependencies
+
 ## 2022-10-27 (0.6.3a1)
 - Reprojection is performed at load time whenever possible, by pushing down parameters from resample_spatial and resample_cube_spatial
 - PROBA-V collections can now be loaded at original resolution
 - Overlap between original products is now handled based on the footprint in STAC/Opensearch metadata
+- Logging for synchronous jobs is now more complete
+- First prototype for running vector data UDF's on Spark
+- Bugfix: allow large (multiple GB) CSV output
+- Try to avoid going out of memory by reducing default partition size
+
 
 ## 2022-09-21 (0.6.3a1)
 - Expose logging from UDF's

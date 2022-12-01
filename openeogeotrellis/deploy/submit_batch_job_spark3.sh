@@ -49,6 +49,8 @@ maxSoftErrorsRatio=${24-"0.0"}
 taskCpus=${25}
 sentinelHubClientAlias=${26}
 propertiesFile=${27}
+archives=${28}
+logging_threshold=${29}
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -83,11 +85,13 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
  -Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dhdp.version=3.1.4.0-315\
- -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService"
+ -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+ -Dopeneo.logging.threshold=$logging_threshold"
 
 sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j.properties\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
- -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep"
+ -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
+ -Dopeneo.logging.threshold=$logging_threshold"
 
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
@@ -138,11 +142,13 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
+ --conf spark.yarn.appMasterEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
  --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
+ --conf spark.executorEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.dynamicAllocation.enabled=true \
  --conf spark.shuffle.service.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
@@ -166,6 +172,7 @@ spark-submit \
  --conf spark.history.provider=org.apache.spark.deploy.history.FsHistoryProvider \
  --conf spark.history.store.path=/var/lib/spark2/shs_db \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
+ --conf spark.archives=${archives} \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
