@@ -1941,15 +1941,16 @@ class GpsBatchJobs(backend.BatchJobs):
                         "type": "image/tiff; application=geotiff"
                     }
 
-            # TODO: Issue #232 Do we need to put this also under `if not ConfigParams().is_kube_deploy:` ?
             #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
             #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
             for title, asset in out_assets.items():
                 if title not in results_dict:
                     asset['asset'] = True
-                    # TODO: Issue #232 Check this is the correct URL when it is a kube deploy.
-                    # TODO: Issue #232 Is it actually necessary to overwrite with an S3 URL here. See: batchjobs.py: def run_job --> call to _export_result_metadata
-                    asset["output_dir"] = str(job_dir)
+                    # TODO: Issue #232 Can't really test with Kubernetes deploy and if ConfigParams().is_kube_deploy is True we would not really arrive at this line.
+                    # When the value of output_dir is an S3 URL this is already filled in
+                    # (from the job metadata retreived from the object storage) so we should skip it.
+                    if not asset["output_dir"]:
+                        asset["output_dir"] = str(job_dir)
                     if "bands" in asset:
                         asset["bands"] = [Band(**b) for b in asset["bands"]]
                     results_dict[title] = asset

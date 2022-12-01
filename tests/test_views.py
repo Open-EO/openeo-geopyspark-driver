@@ -575,7 +575,7 @@ class TestBatchJobs:
         job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
         job_dir: pathlib.Path = (tmp_path / job_id)
         job_dir.mkdir(parents=True)
-        output_dir_s3_url = to_s3_url(job_dir),
+        output_dir_s3_url = to_s3_url(job_dir)
         job_metadata = (job_dir / JOB_METADATA_FILENAME)
 
         job_metadata_contents = {
@@ -600,8 +600,7 @@ class TestBatchJobs:
                         'common_name': None,
                         'wavelength_um': None
                     }],
-                    'nodata':
-                    255
+                    'nodata': 255
                 }
             },
             'epsg': 4326,
@@ -633,24 +632,6 @@ class TestBatchJobs:
                 )
                 registry.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
 
-                # Check batch in/out files
-                # job_dir = (tmp_path / job_id)
-                # job_output = (job_dir / "out")
-                # job_log = (job_dir / "log")
-                # job_metadata = (job_dir / JOB_METADATA_FILENAME)
-
-                # Set up fake output and finish
-                # with job_output.open('wb') as f:
-                #     f.write(TIFF_DUMMY_DATA)
-                # with job_log.open('w') as f:
-                #     f.write("[INFO] Hello world")
-                # with job_metadata.open('w') as f:
-                #     metadata = api.load_json(JOB_METADATA_FILENAME)
-                #     json.dump(metadata,f)
-
-
-                # mock_s3_bucket.put_object(Key="out", Body=TIFF_DUMMY_DATA)
-                # mock_s3_bucket.put_object(Key="log", Body="[INFO] Hello world")
                 mock_s3_bucket.put_object(Key=str(job_metadata), Body=json.dumps(job_metadata_contents))
                 output_file = str(job_dir / "openEO_2017-11-21Z.tif")
                 mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
