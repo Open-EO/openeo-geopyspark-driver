@@ -1090,6 +1090,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 #  still see the previous status (PARTIAL), consider it the new status and immediately mark it as
                 #  unrecoverable.
             else:  # still some PARTIALs after one retry: not recoverable
+                logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
+                             f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
+
                 with JobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'error')
                     registry.set_status(job_id, user_id, 'error')
