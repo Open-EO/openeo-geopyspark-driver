@@ -1241,6 +1241,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(executor_cores)/2*1000)+"m"
             max_executors = str(job_options.get("max-executors", 100))
+            executor_threads_jvm = str(job_options.get("executor-threads-jvm", 10))
             queue = job_options.get("queue", "default")
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
@@ -1319,6 +1320,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     executor_corerequest=executor_corerequest,
                     executor_memory=executor_memory,
                     executor_memory_overhead=executor_memory_overhead,
+                    executor_threads_jvm=executor_threads_jvm,
                     python_max_memory = python_max,
                     max_executors=max_executors,
                     api_version=api_version,
