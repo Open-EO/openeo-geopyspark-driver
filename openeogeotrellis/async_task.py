@@ -12,6 +12,7 @@ from py4j.java_gateway import OutputConsumer, ProcessConsumer
 
 import openeogeotrellis
 from kafka import KafkaProducer
+from openeo.util import dict_no_none
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
@@ -22,6 +23,10 @@ from py4j.clientserver import ClientServer, JavaParameters
 
 from openeogeotrellis.job_registry import JobRegistry
 from pythonjsonlogger.jsonlogger import JsonFormatter
+
+ARG_BATCH_JOB_ID = 'batch_job_id'
+ARG_USER_ID = 'user_id'
+
 
 # TODO: include job_id in log statements not issued by our own code e.g. Py4J  # 141
 _log = logging.getLogger(__name__)
@@ -35,8 +40,8 @@ TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'
 def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id: str, dependency_sources: List[str]):
     _schedule_task(task_id=TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES,
                    arguments={
-                       'batch_job_id': batch_job_id,
-                       'user_id': user_id,
+                       ARG_BATCH_JOB_ID: batch_job_id,
+                       ARG_USER_ID: user_id,
                        'dependency_sources': dependency_sources
                    }, job_id=batch_job_id, user_id=user_id)
 
@@ -45,8 +50,8 @@ def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str, s
                                               vault_token: Optional[str]):
     _schedule_task(task_id=TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
                    arguments={
-                       'batch_job_id': batch_job_id,
-                       'user_id': user_id,
+                       ARG_BATCH_JOB_ID: batch_job_id,
+                       ARG_USER_ID: user_id,
                        'sentinel_hub_client_alias': sentinel_hub_client_alias,
                        'vault_token': vault_token
                    }, job_id=batch_job_id, user_id=user_id)
@@ -157,13 +162,12 @@ def main():
     args = parser.parse_args()
 
     task = json.loads(args.task_json)
+    arguments: dict = task.get('arguments', {})
 
     try:
         task_id = task['task_id']
         if task_id not in [TASK_POLL_SENTINELHUB_BATCH_PROCESSES, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
             raise ValueError(f'unsupported task_id "{task_id}"')
-
-        arguments: dict = task.get('arguments', {})
 
         java_opts = [
             "-client",
@@ -193,8 +197,8 @@ def main():
                 return batch_jobs
 
             if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
-                batch_job_id = arguments['batch_job_id']
-                user_id = arguments.get('user_id')
+                batch_job_id = arguments[ARG_BATCH_JOB_ID]
+                user_id = arguments.get(ARG_USER_ID)
                 dependency_sources = (arguments.get('dependency_sources')
                                       or [f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
                                           for subfolder in arguments['subfolders']])
@@ -208,8 +212,8 @@ def main():
                     dependency_sources=dependency_sources,
                     propagate_errors=True)
             elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
-                batch_job_id = arguments['batch_job_id']
-                user_id = arguments['user_id']
+                batch_job_id = arguments[ARG_BATCH_JOB_ID]
+                user_id = arguments[ARG_USER_ID]
                 sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
                 vault_token = arguments.get('vault_token')
 
@@ -242,7 +246,12 @@ def main():
         finally:
             java_gateway.shutdown()
     except Exception as e:
-        _log.error(f"failed to handle task {json.dumps(_redact(task))}", exc_info=True)
+        extra = dict_no_none(
+            job_id=arguments.get(ARG_BATCH_JOB_ID),
+            user_id=arguments.get(ARG_USER_ID)
+        )
+
+        _log.error(f"failed to handle task {json.dumps(_redact(task))}", exc_info=True, extra=extra)
         raise e
 
 
