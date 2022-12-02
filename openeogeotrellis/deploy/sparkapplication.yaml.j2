@@ -149,10 +149,6 @@ spec:
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
-    lifecycle:
-      preStop:
-        exec:
-          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
     podSecurityContext:
