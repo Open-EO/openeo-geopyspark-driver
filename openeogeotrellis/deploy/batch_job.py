@@ -497,11 +497,11 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
                             unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
                             ml_model_metadata=ml_model_metadata)
 
-    _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
-
     if ConfigParams().is_kube_deploy:
         import boto3
         from openeogeotrellis.utils import s3_client
+
+        _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
         # TODO: Issue #232, is this the place where we should overwrite the assets' paths to point to object storage.
         # Would be nicer if we get the info correct from the start.
@@ -520,7 +520,7 @@ def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
         metadata_to_update = json.load(mdf)
     with open(metadata_file, "wt") as mdf:
         _convert_asset_outputs_to_s3_urls(metadata_to_update)
-        json.dump(mdf, metadata_to_update)
+        json.dump(metadata_to_update, mdf)
 
 
 def _convert_asset_outputs_to_s3_urls(job_metadata: dict):

@@ -311,9 +311,7 @@ def mock_s3_client(aws_credentials):
 
 @pytest.fixture(scope='function')
 def mock_s3_bucket(mock_s3_resource, monkeypatch):
-    # TODO: bucket_name hard coded here. Better to set up fixture with fake bucketname in ConfigParams().s3_bucket_name?
-    # TODO: bucket_name: there is an environment variable for this: SWIFT_BUCKET. Better to monkepatch SWIFT_BUCKET? 
-    # Though that should be monkey patched before the ConfigParams is use in any fixtures or test setup.
+    # TODO: bucket_name: there could be a mismatch with ConfigParams().s3_bucket_name if any ConfigParams instances were created earlier in the test setup.
     bucket_name = "openeo-fake-bucketname"
     monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
     from openeogeotrellis.configparams import ConfigParams

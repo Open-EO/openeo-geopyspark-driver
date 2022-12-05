@@ -1278,8 +1278,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 from kubernetes.client.rest import ApiException
                 from openeogeotrellis.utils import kube_client, s3_client, truncate_user_id_k8s
 
-                # TODO: how do we cover this change with a test?
-                # bucket = 'OpenEO-data'
                 bucket = ConfigParams().s3_bucket_name
                 s3_instance = s3_client()
 
@@ -1294,8 +1292,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jobspec_bytes = str.encode(job_info['specification'])
                 file = io.BytesIO(jobspec_bytes)
-                # TODO: Issue #232: should we upload to obj storage using io stream instead of a file?
-                # if not, should this become a temp file instead?
                 s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
 
                 if api_version:
@@ -1946,9 +1942,12 @@ class GpsBatchJobs(backend.BatchJobs):
             for title, asset in out_assets.items():
                 if title not in results_dict:
                     asset['asset'] = True
-                    # TODO: Issue #232 Can't really test with Kubernetes deploy and if ConfigParams().is_kube_deploy is True we would not really arrive at this line.
-                    # When the value of output_dir is an S3 URL this is already filled in
-                    # (from the job metadata retreived from the object storage) so we should skip it.
+                    # TODO: HACK: Issue #232 Can't really test with Kubernetes deploy and if ConfigParams().is_kube_deploy is True we would not really arrive at this line.
+                    # It is hard to set up an entire Kubernetes setup just to run the unit test suite, therefor we test
+                    # without Kubernetes, i.e. ConfigParams().is_kube_deploy is False.
+                    # In a kubernetes deploy we would not reach the line below, but during the tests we do.
+                    # So this is a bit of a hack: when output_dir already has a value, we assume it is correct
+                    # as it would be using s3:// URLs, so we don't overwrite it.
                     if not asset["output_dir"]:
                         asset["output_dir"] = str(job_dir)
                     if "bands" in asset:
