@@ -1956,7 +1956,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return results_dict
 
-    # TODO: Issue #232 job metadata lookup will need to be specialized for object storage
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.

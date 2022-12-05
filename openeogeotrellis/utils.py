@@ -329,27 +329,21 @@ def download_s3_dir(bucketName, directory):
 
 
 def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
-    """Get contents of a text file with the contents of filename from the the S3 bucket
+    """Get contents of a text file from the S3 bucket.
 
         The bucket is set in ConfigParams().s3_bucket_name
     """
-    import boto3
-    from botocore.response import StreamingBody
-
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
         Bucket=ConfigParams().s3_bucket_name, Key=str(filename)
     )
-    body: StreamingBody = s3_file_object["Body"]
+    body = s3_file_object["Body"]
     return body.read().decode("utf8")
 
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: Does this function belong in the openeo-python-driver?
-    # TODO: Using ConfigParams would be better, do we always we have a ConfigParams?
-    #   Because there are multiple executables in this code base and I'm not sure that
-    #   they all load a configuration the same way.
     bucketname = bucketname or ConfigParams().s3_bucket_name
     return f"s3://{bucketname}{file_or_dir_name}"
 

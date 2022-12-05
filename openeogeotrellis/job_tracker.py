@@ -97,10 +97,6 @@ class JobTracker:
                                 if state == "COMPLETED":
                                     # TODO: do we support SHub batch processes in this environment? The AWS
                                     #  credentials conflict.
-                                    # TODO Issue #232, k8s: manage job results directly on object storage
-                                    # TODO Issue #232, hard coded bucket name "OpenEO-data" How to get this from a configuration?
-                                    # => Probably simplest to get it from an env var, like so:
-                                    # => Can we get this value from ConfigParams though? That would be better.
                                     s3_bucket_name = ConfigParams().s3_bucket_name
                                     download_s3_dir(s3_bucket_name, "batch_jobs/{j}".format(j=job_id))
 
