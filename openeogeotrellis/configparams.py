@@ -15,6 +15,7 @@ class ConfigParams:
         self.async_task_handler_environment = env.get("ASYNC_TASK_HANDLER_ENV")
         self.cache_shub_batch_results = ConfigParams._as_boolean(env.get("CACHE_SHUB_BATCH_RESULTS"))
 
+        # TODO #283 using this "is_ci_context" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         # Are we running in a unittest or continuous integration context?
         self.is_ci_context = any(v in env for v in ['PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])
 
@@ -23,6 +24,7 @@ class ConfigParams:
 
         self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")
 
+        # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         self.is_kube_deploy = env.get("KUBE", False)
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
@@ -32,4 +34,5 @@ class ConfigParams:
 
     @staticmethod
     def _as_boolean(envar_value: Optional[str]) -> bool:
+        # TODO: use `openeo_driver.utils.smart_bool` instead?
         return envar_value is not None and envar_value.lower() == "true"

@@ -45,9 +45,14 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
+from openeo_driver.jobregistry import ElasticJobRegistry
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
-from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging, FlaskUserIdLogging
+from openeo_driver.util.logging import (
+    FlaskRequestCorrelationIdLogging,
+    FlaskUserIdLogging,
+    just_log_exceptions,
+)
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
@@ -884,6 +889,7 @@ class GpsProcessing(ConcreteProcessing):
 
 
 class GpsBatchJobs(backend.BatchJobs):
+    # TODO #283 get this from a real config instead of ugly `is_kube_deploy` check
     _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
 
     def __init__(self, catalog: CollectionCatalog, jvm: JVMView, principal: str, key_tab: str, vault: Vault):
@@ -896,6 +902,10 @@ class GpsBatchJobs(backend.BatchJobs):
         self._default_sentinel_hub_client_secret = None
         self._get_terrascope_access_token: Optional[Callable[[User, str], str]] = None
         self._vault = vault
+
+        self._elastic_job_registry: Optional[ElasticJobRegistry] = None
+        with just_log_exceptions(logger=logger, name="EJR init"):
+            self._elastic_job_registry = ElasticJobRegistry.from_environ()
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -922,6 +932,17 @@ class GpsBatchJobs(backend.BatchJobs):
                 ),
                 title=title, description=description,
             )
+        if self._elastic_job_registry:
+            with just_log_exceptions(logger=logger, name="EJR create job"):
+                self._elastic_job_registry.create_job(
+                    process=process,
+                    user_id=user_id,
+                    job_id=job_id,
+                    title=title,
+                    description=description,
+                    api_version=api_version,
+                    job_options=job_options,
+                )
         return BatchJobMetadata(
             id=job_id, process=process, status=job_info["status"],
             created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options,
