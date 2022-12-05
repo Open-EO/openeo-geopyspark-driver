@@ -97,8 +97,6 @@ class JobTracker:
                                 if state == "COMPLETED":
                                     # TODO: do we support SHub batch processes in this environment? The AWS
                                     #  credentials conflict.
-                                    s3_bucket_name = ConfigParams().s3_bucket_name
-                                    download_s3_dir(s3_bucket_name, "batch_jobs/{j}".format(j=job_id))
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                     usage = self.get_kube_usage(job_id, user_id)
