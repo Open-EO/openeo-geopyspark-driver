@@ -570,9 +570,13 @@ class TestBatchJobs:
             assert res["logs"] == [{"id": "error", "level": "error", "message": "[INFO] Hello world"}]
 
     def test_download_from_object_storage(self, api, tmp_path, mock_s3_bucket):
+        """Test the scenario where the result files we want to download are stored on the objects storage,
+        but they are not present in the container that receives the download request.
+
+        Namely: the pod/container that ran the job has been replaced => new container, no files there.
+        """
         job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
         job_dir: pathlib.Path = (tmp_path / job_id)
-        job_dir.mkdir(parents=True)
         output_dir_s3_url = to_s3_url(job_dir)
         job_metadata = (job_dir / JOB_METADATA_FILENAME)
 
@@ -590,7 +594,7 @@ class TestBatchJobs:
             'assets': {
                 'openEO_2017-11-21Z.tif': {
                     'href': f'{job_dir}/openEO_2017-11-21Z.tif',
-                    'output_dir': output_dir_s3_url,
+                    'output_dir': output_dir_s3_url,  # Will not exist on the local file system at download time.
                     'type': 'image/tiff; application=geotiff',
                     'roles': ['data'],
                     'bands': [{
@@ -607,9 +611,17 @@ class TestBatchJobs:
             'processing:software': 'openeo-geotrellis-0.3.3a1'
         }
 
-        with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un, \
-                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
+        mock_s3_bucket.put_object(Key=str(job_metadata), Body=json.dumps(job_metadata_contents))
+        output_file = str(job_dir / "openEO_2017-11-21Z.tif")
+        mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
+
+        # Do a pre-test check: Make sure we are testing that it works when the job_dir is **not** present.
+        # Otherwise the test may pass but it passes for the wrong reasons.
+        assert not job_dir.exists()
+
+        with mock.patch("openeogeotrellis.configparams.ConfigParams.is_using_object_storage") as mock_config_is_using_object_storage, \
+                self._mock_kazoo_client() as zk:
+            mock_config_is_using_object_storage.return_value = True
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # where to import dict_no_none from
@@ -617,7 +629,7 @@ class TestBatchJobs:
             job_options = {}
 
             with JobRegistry() as registry:
-                job_info = registry.register(
+                registry.register(
                     job_id=job_id,
                     user_id=TEST_USER,
                     api_version="1.0.0",
@@ -629,10 +641,6 @@ class TestBatchJobs:
                     description="Fake job for the purpose of testing"
                 )
                 registry.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
-
-                mock_s3_bucket.put_object(Key=str(job_metadata), Body=json.dumps(job_metadata_contents))
-                output_file = str(job_dir / "openEO_2017-11-21Z.tif")
-                mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
 
                 # Download
                 res = api.get(
@@ -648,6 +656,112 @@ class TestBatchJobs:
                 res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
                 assert res.status_code == 200
                 assert res.data == TIFF_DUMMY_DATA
+
+    def test_download_without_object_storage(self, api, tmp_path):
+        """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
+
+        Some changes were introduced be able to download from S3, so we want to be sure the existing
+        stuff works the same as before.
+        """
+
+        job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
+        job_dir: pathlib.Path = (tmp_path / job_id)
+        job_metadata = (job_dir / JOB_METADATA_FILENAME)
+
+        job_metadata_contents = {
+            'geometry': {
+                'type':
+                'Polygon',
+                'coordinates': [[[2.0, 51.0], [2.0, 52.0], [3.0, 52.0],
+                                 [3.0, 51.0], [2.0, 51.0]]]
+            },
+            'bbox': [2, 51, 3, 52],
+            'start_datetime': '2017-11-21T00:00:00Z',
+            'end_datetime': '2017-11-21T00:00:00Z',
+            'links': [],
+            'assets': {
+                'openEO_2017-11-21Z.tif': {
+                    'href': f'{job_dir}/openEO_2017-11-21Z.tif',
+                    'output_dir': str(job_dir),  # dir on local file, not in object storage
+                    'type': 'image/tiff; application=geotiff',
+                    'roles': ['data'],
+                    'bands': [{
+                        'name': 'ndvi',
+                        'common_name': None,
+                        'wavelength_um': None
+                    }],
+                    'nodata': 255
+                }
+            },
+            'epsg': 4326,
+            'instruments': [],
+            'processing:facility': 'VITO - SPARK',
+            'processing:software': 'openeo-geotrellis-0.3.3a1'
+        }
+
+        # Set up fake output files and job metadata on the local file system.
+        job_dir.mkdir(parents=True)
+
+        # We want to check that download succeeds for both files "openEO_2017-11-21Z.tif" and "out".
+        # The generic name "out" has a different decision branch handling it, so we test it explicitely.
+        job_output1 = (job_dir / "out")
+        with job_output1.open('wb') as f:
+            f.write(TIFF_DUMMY_DATA)
+
+        job_output2 = (job_dir / "openEO_2017-11-21Z.tif")
+        with job_output2.open('wb') as f:
+            f.write(TIFF_DUMMY_DATA)
+
+        with job_metadata.open('w') as f:
+            json.dump(job_metadata_contents,f)
+
+
+        with mock.patch("openeogeotrellis.configparams.ConfigParams.is_using_object_storage") as mock_config_is_using_object_storage, \
+                self._mock_kazoo_client() as zk:
+            mock_config_is_using_object_storage.return_value = False
+            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
+
+            # where to import dict_no_none from
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            job_options = {}
+
+            with JobRegistry() as registry:
+                registry.register(
+                    job_id=job_id,
+                    user_id=TEST_USER,
+                    api_version="1.0.0",
+                    specification=dict(
+                        process_graph=data,
+                        job_options=job_options,
+                    ),
+                    title="Fake Test Job",
+                    description="Fake job for the purpose of testing"
+                )
+                registry.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
+
+                # Download
+                res = api.get(
+                    '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+                ).assert_status_code(200).json
+
+                # Verify download of "openEO_2017-11-21Z.tif" works
+                if api.api_version_compare.at_least("1.0.0"):
+                    assert "openEO_2017-11-21Z.tif" in res["assets"]
+                    download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
+                    download_url_out = res["assets"]["out"]["href"]
+                    assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
+                else:
+                    download_url = res["links"][0]["href"]
+
+                res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
+                assert res.status_code == 200
+                assert res.data == TIFF_DUMMY_DATA
+
+                # Also verify that downloading the file named "out" works.
+                if api.api_version_compare.at_least("1.0.0"):
+                    res = api.client.get(download_url_out, headers=TEST_USER_AUTH_HEADER)
+                    assert res.status_code == 200
+                    assert res.data == TIFF_DUMMY_DATA
 
     def test_create_and_start_job_options(self, api, tmp_path, monkeypatch):
         with self._mock_kazoo_client() as zk, \

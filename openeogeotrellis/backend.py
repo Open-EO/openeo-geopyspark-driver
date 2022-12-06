@@ -1901,11 +1901,13 @@ class GpsBatchJobs(backend.BatchJobs):
             ml_model_metadata['asset'] = False
             results_dict['ml_model_metadata.json'] = ml_model_metadata
 
-        # Updating the asset info based on what is on the file system was a solution for some old edge cases.
-        # For a kuberenetes deployment we can skip this, the edge cases should not happen here.
-        # On Kubernetes the result files with be put in the object storage instead of the container,
-        # because the k8s pods can be replaced at any moment and then the files would be gone.
-        if not ConfigParams().is_kube_deploy:
+        # If we are retrieving the result files from object storage (S3) then the job directory
+        # might not exist inside this container.
+        # Normally we would use object storage with a Kubernetes deployment and the original
+        # container that ran the job can already be gone.
+        # We only want to apply the cases below when we effectively have a job directory:
+        # it should exists and should be a directory.
+        if job_dir.is_dir():
             if os.path.isfile(job_dir / 'out'):
                 results_dict['out'] = {
                     # TODO: give meaningful filename and extension
@@ -1937,22 +1939,20 @@ class GpsBatchJobs(backend.BatchJobs):
                         "type": "image/tiff; application=geotiff"
                     }
 
-            #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
-            #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
-            for title, asset in out_assets.items():
-                if title not in results_dict:
-                    asset['asset'] = True
-                    # TODO: HACK: Issue #232 Can't really test with Kubernetes deploy and if ConfigParams().is_kube_deploy is True we would not really arrive at this line.
-                    # It is hard to set up an entire Kubernetes setup just to run the unit test suite, therefore we test
-                    # without Kubernetes, i.e. ConfigParams().is_kube_deploy is False.
-                    # In a kubernetes deploy we would not reach the line below, but during the tests we do.
-                    # So this is a bit of a hack: when output_dir already has a value, we assume it is correct
-                    # as it would be using s3:// URLs, so we don't overwrite it.
-                    if not asset.get("output_dir"):
-                        asset["output_dir"] = str(job_dir)
-                    if "bands" in asset:
-                        asset["bands"] = [Band(**b) for b in asset["bands"]]
-                    results_dict[title] = asset
+        #TODO: this is a more generic approach, we should be able to avoid and reduce the guesswork being done above
+        #Batch jobs should construct the full metadata, which can be passed on, and only augmented if needed
+        for title, asset in out_assets.items():
+            if title not in results_dict:
+                asset['asset'] = True
+
+                # When we have retrieved the job metadata from S3 then output_dir will already be filled in,
+                # and the value will point to the S3 storage. In that case we don't want to overwrite it here.
+                if not ConfigParams.is_using_object_storage:
+                    asset["output_dir"] = str(job_dir)
+
+                if "bands" in asset:
+                    asset["bands"] = [Band(**b) for b in asset["bands"]]
+                results_dict[title] = asset
 
         return results_dict
 
@@ -1962,10 +1962,16 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         metadata_file = self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-        # Get it from S3 if it is not a local file.
-        if not metadata_file.exists():
-            contents = get_s3_file_contents(str(metadata_file))
-            return json.loads(contents)
+        if ConfigParams().is_using_object_storage():
+            try:
+                contents = get_s3_file_contents(str(metadata_file))
+                return json.loads(contents)
+            except Exception:
+                logger.error(
+                    "Could not retrieve result metadata from object storage %s",
+                    metadata_file, exc_info=True,
+                    extra={'job_id': job_id})
+                raise
 
         try:
             with open(metadata_file) as f:
