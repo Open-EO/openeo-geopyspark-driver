@@ -80,7 +80,7 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expe
             "t": {"type": "temporal"},
             "bands": {"type": "bands", "values": ["VH", "VV"]}
         }
-    }])
+    }],vault=None)
 
     load_params = LoadParameters(
         temporal_extent=temporal_extent, spatial_extent=spatial_extent,
