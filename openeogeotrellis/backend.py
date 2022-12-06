@@ -1943,12 +1943,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 if title not in results_dict:
                     asset['asset'] = True
                     # TODO: HACK: Issue #232 Can't really test with Kubernetes deploy and if ConfigParams().is_kube_deploy is True we would not really arrive at this line.
-                    # It is hard to set up an entire Kubernetes setup just to run the unit test suite, therefor we test
+                    # It is hard to set up an entire Kubernetes setup just to run the unit test suite, therefore we test
                     # without Kubernetes, i.e. ConfigParams().is_kube_deploy is False.
                     # In a kubernetes deploy we would not reach the line below, but during the tests we do.
                     # So this is a bit of a hack: when output_dir already has a value, we assume it is correct
                     # as it would be using s3:// URLs, so we don't overwrite it.
-                    if not asset["output_dir"]:
+                    if not asset.get("output_dir"):
                         asset["output_dir"] = str(job_dir)
                     if "bands" in asset:
                         asset["bands"] = [Band(**b) for b in asset["bands"]]
