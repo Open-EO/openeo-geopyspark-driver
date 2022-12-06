@@ -1,4 +1,5 @@
 import collections
+import collections.abc
 import contextlib
 import datetime
 import grp
@@ -99,7 +100,7 @@ def kerberos(principal, key_tab, jvm: JVMView = None):
     # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
 
 
-def dict_merge_recursive(a: collections.Mapping, b: collections.Mapping, overwrite=False) -> collections.Mapping:
+def dict_merge_recursive(a: collections.abc.Mapping, b: collections.abc.Mapping, overwrite=False) -> collections.abc.Mapping:
     """
     Merge two dictionaries recursively
 
@@ -114,7 +115,7 @@ def dict_merge_recursive(a: collections.Mapping, b: collections.Mapping, overwri
     result = dict(a)
     for key, value in b.items():
         if key in result:
-            if isinstance(value, collections.Mapping) and isinstance(result[key], collections.Mapping):
+            if isinstance(value, collections.abc.Mapping) and isinstance(result[key], collections.abc.Mapping):
                 result[key] = dict_merge_recursive(result[key], value, overwrite=overwrite)
             elif overwrite:
                 result[key] = value
