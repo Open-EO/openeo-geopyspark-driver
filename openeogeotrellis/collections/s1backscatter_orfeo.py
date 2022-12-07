@@ -289,8 +289,7 @@ class S1BackscatterOrfeo:
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
 
-        utm_zone, utm_northhem = utm_zone_from_epsg(extent_epsg)
-        logger.info(f"{log_prefix} extent {extent} (UTM {utm_zone}, EPSG {extent_epsg})")
+        logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
 
         max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
 
@@ -305,11 +304,9 @@ class S1BackscatterOrfeo:
 
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
-                                                               sar_calibration_lut, utm_northhem, utm_zone)
+                                                               sar_calibration_lut, epsg=extent_epsg)
 
             def run():
-
-
                 ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
                 ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
                 ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
@@ -344,7 +341,7 @@ class S1BackscatterOrfeo:
     @staticmethod
     @functools.lru_cache(10,False)
     def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff, log_prefix, noise_removal, orfeo_memory,
-                           sar_calibration_lut, utm_northhem, utm_zone):
+                           sar_calibration_lut, epsg:int):
         otb = _import_orfeo_toolbox()
 
         def otb_param_dump(app):
@@ -371,9 +368,9 @@ class S1BackscatterOrfeo:
             ortho_rect.SetParameterString("elev.geoid", elev_geoid)
         if elev_default is not None:
             ortho_rect.SetParameterFloat("elev.default", float(elev_default))
-        ortho_rect.SetParameterString("map", "utm")
-        ortho_rect.SetParameterInt("map.utm.zone", utm_zone)
-        ortho_rect.SetParameterValue("map.utm.northhem", utm_northhem)
+        ortho_rect.SetParameterString("map", "epsg")
+        ortho_rect.SetParameterString("map.epsg.code", epsg)
+
         ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
         ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
         ortho_rect.SetParameterString("interpolator", "linear")
