@@ -369,7 +369,7 @@ class S1BackscatterOrfeo:
         if elev_default is not None:
             ortho_rect.SetParameterFloat("elev.default", float(elev_default))
         ortho_rect.SetParameterString("map", "epsg")
-        ortho_rect.SetParameterString("map.epsg.code", epsg)
+        ortho_rect.SetParameterInt("map.epsg.code", epsg)
 
         ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
         ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
