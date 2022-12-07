@@ -908,6 +908,7 @@ class GpsBatchJobs(backend.BatchJobs):
             log=ElasticJobRegistry.logger.warning, name="EJR init"
         ):
             self._elastic_job_registry = ElasticJobRegistry.from_environ()
+            self._elastic_job_registry.health_check(log=True)
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
