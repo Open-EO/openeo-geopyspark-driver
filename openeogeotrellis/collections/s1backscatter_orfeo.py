@@ -462,7 +462,7 @@ class S1BackscatterOrfeo:
                                 elev_geoid=elev_geoid, elev_default=elev_default,
                                 log_prefix=f"{log_prefix}-{band}"
                             )
-                            tile_data[b] = data.T
+                            tile_data[b] = data
 
                         if sar_backscatter_arguments.options.get("to_db", False):
                             # TODO: keep this "to_db" shortcut feature or drop it
