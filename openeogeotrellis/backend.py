@@ -904,7 +904,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self._vault = vault
 
         self._elastic_job_registry: Optional[ElasticJobRegistry] = None
-        with just_log_exceptions(logger=logger, name="EJR init"):
+        with just_log_exceptions(logger=ElasticJobRegistry._log, name="EJR init"):
             self._elastic_job_registry = ElasticJobRegistry.from_environ()
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
@@ -933,7 +933,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 title=title, description=description,
             )
         if self._elastic_job_registry:
-            with just_log_exceptions(logger=logger, name="EJR create job"):
+            with just_log_exceptions(logger=ElasticJobRegistry._log, name="EJR create job"):
                 self._elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
