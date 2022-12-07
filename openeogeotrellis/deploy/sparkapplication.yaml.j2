@@ -128,7 +128,7 @@ spec:
       PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
     cores: {{ driver_cores }}
-    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=file:/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }}"
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=file:/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json"
     memory: "{{ driver_memory }}"
     labels:
       version: 3.2.0
@@ -149,10 +149,6 @@ spec:
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
-    lifecycle:
-      preStop:
-        exec:
-          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
     podSecurityContext:
@@ -190,7 +186,7 @@ spec:
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Dlog4j.configuration=file:/opt/log4j.properties -Dscala.concurrent.context.numThreads=15 -Dscala.concurrent.context.maxThreads=15 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }}"
+    javaOptions: "-Dlog4j.configuration=file:/opt/log4j.properties -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json"
     labels:
       version: 3.2.0
     volumeMounts:

@@ -462,7 +462,7 @@ class S1BackscatterOrfeo:
                                 elev_geoid=elev_geoid, elev_default=elev_default,
                                 log_prefix=f"{log_prefix}-{band}"
                             )
-                            tile_data[b] = data.T
+                            tile_data[b] = data
 
                         if sar_backscatter_arguments.options.get("to_db", False):
                             # TODO: keep this "to_db" shortcut feature or drop it
@@ -785,7 +785,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             msg = f"{log_prefix} Process {creo_path} "
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
-                orfeo_bands = numpy.zeros((len(bands),layout_width_px, layout_height_px ), dtype=result_dtype)
+                orfeo_bands = numpy.zeros((len(bands),layout_height_px,layout_width_px ), dtype=result_dtype)
 
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
@@ -801,7 +801,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         log_prefix=f"{log_prefix}-{band}",
                         orfeo_memory=orfeo_memory
                     )
-                    orfeo_bands[b] = data.T
+                    #orfeo_bands = y,x
+                    orfeo_bands[b] = data
 
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
