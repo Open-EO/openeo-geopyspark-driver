@@ -2003,6 +2003,7 @@ class GpsBatchJobs(backend.BatchJobs):
             return
 
         application_id = job_info['application_id']
+        logger.debug(f"Cancelling job with application_id: {application_id}", extra=job_info)
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
@@ -2014,6 +2015,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 namespace = "spark-jobs"
                 plural = "sparkapplications"
                 name = JobTracker._kube_prefix(job_id, user_id)
+                logger.debug(f"Sending API call to kubernetes to delete job: {name}")
                 delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(
                     f"Killed corresponding Spark job {application_id} with kubernetes API call "
