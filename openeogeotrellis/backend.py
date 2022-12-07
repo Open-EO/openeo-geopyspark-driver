@@ -904,7 +904,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self._vault = vault
 
         self._elastic_job_registry: Optional[ElasticJobRegistry] = None
-        with just_log_exceptions(logger=logger, name="EJR init"):
+        with just_log_exceptions(logger=ElasticJobRegistry._log, name="EJR init"):
             self._elastic_job_registry = ElasticJobRegistry.from_environ()
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
@@ -933,7 +933,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 title=title, description=description,
             )
         if self._elastic_job_registry:
-            with just_log_exceptions(logger=logger, name="EJR create job"):
+            with just_log_exceptions(logger=ElasticJobRegistry._log, name="EJR create job"):
                 self._elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
@@ -1882,7 +1882,7 @@ class GpsBatchJobs(backend.BatchJobs):
         :param user_id: The id of the user that started the job.
 
         :return: A mapping between a filename and a dict containing information about that file.
-        """ 
+        """
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status != 'finished':
             raise JobNotFinishedException
@@ -2005,25 +2005,43 @@ class GpsBatchJobs(backend.BatchJobs):
         application_id = job_info['application_id']
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
-            try:
-                kill_spark_job = subprocess.run(
-                    ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
-                     "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
-                     f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}/state"],
-                    timeout=20,
-                    check=True,
-                    universal_newlines=True,
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
+            if ConfigParams().is_kube_deploy:
+                from openeogeotrellis.utils import kube_client
+                from openeogeotrellis.job_tracker import JobTracker
+                api_instance = kube_client()
+                group = "sparkoperator.k8s.io"
+                version = "v1beta2"
+                namespace = "spark-jobs"
+                plural = "sparkapplications"
+                name = JobTracker._kube_prefix(job_id, user_id)
+                delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
+                logger.debug(
+                    f"Killed corresponding Spark job {application_id} with kubernetes API call "
+                    f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
+                    extra = {'job_id': job_id, 'API response': delete_response}
                 )
-
-                logger.debug(f"Killed corresponding Spark job {application_id} with command {kill_spark_job.args!r}",
-                             extra={'job_id': job_id})
-            except CalledProcessError as e:
-                logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
-                               exc_info=True, extra={'job_id': job_id})
-            finally:
                 with JobRegistry() as registry:
                     registry.set_status(job_id, user_id, 'canceled')
+            else:
+                try:
+                    kill_spark_job = subprocess.run(
+                        ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
+                         "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
+                         f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}/state"],
+                        timeout=20,
+                        check=True,
+                        universal_newlines=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT  # combine both output streams into one
+                    )
+
+                    logger.debug(f"Killed corresponding Spark job {application_id} with command {kill_spark_job.args!r}",
+                                 extra={'job_id': job_id})
+                except CalledProcessError as e:
+                    logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
+                                   exc_info=True, extra={'job_id': job_id})
+                finally:
+                    with JobRegistry() as registry:
+                        registry.set_status(job_id, user_id, 'canceled')
         else:
             with JobRegistry() as registry:
                 registry.remove_dependencies(job_id, user_id)
