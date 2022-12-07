@@ -36,10 +36,13 @@ class ConfigParams:
     def _as_boolean(envar_value: Optional[str]) -> bool:
         return envar_value is not None and envar_value.lower() == "true"
 
-    def is_using_object_storage(self):
-        """Whether to get the results / assets files from object storage.
+    @property
+    def use_object_storage(self):
+        """Whether or not to get the result files / assets from object storage.
 
-        TODO: for now this is basically an alias for is_kube_deploy be we should decouple whether or not we use object storage from is_kube_deploy.
+        TODO: Give this its own configutation (env var) with sensible default. For now this is basically an alias for is_kube_deploy.
+        In the near future we should decouple whether or not we use object storage from is_kube_deploy.
         Reason being that we intend to remove the is_kube_deploy attribute to make the code cleaner and simplify testing.
+        See https://github.com/Open-EO/openeo-geopyspark-driver/issues/283
         """
         return self.is_kube_deploy

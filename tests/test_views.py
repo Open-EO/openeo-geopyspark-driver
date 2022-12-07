@@ -569,12 +569,15 @@ class TestBatchJobs:
             ).assert_status_code(200).json
             assert res["logs"] == [{"id": "error", "level": "error", "message": "[INFO] Hello world"}]
 
-    def test_download_from_object_storage(self, api, tmp_path, mock_s3_bucket):
+    @mock.patch("openeogeotrellis.configparams.ConfigParams.use_object_storage", new_callable=mock.PropertyMock)
+    def test_download_from_object_storage(self, mock_config_use_object_storage, api, tmp_path, mock_s3_bucket):
         """Test the scenario where the result files we want to download are stored on the objects storage,
         but they are not present in the container that receives the download request.
 
         Namely: the pod/container that ran the job has been replaced => new container, no files there.
         """
+
+        mock_config_use_object_storage.return_value = True
         job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
         job_dir: pathlib.Path = (tmp_path / job_id)
         output_dir_s3_url = to_s3_url(job_dir)
@@ -619,9 +622,7 @@ class TestBatchJobs:
         # Otherwise the test may pass but it passes for the wrong reasons.
         assert not job_dir.exists()
 
-        with mock.patch("openeogeotrellis.configparams.ConfigParams.is_using_object_storage") as mock_config_is_using_object_storage, \
-                self._mock_kazoo_client() as zk:
-            mock_config_is_using_object_storage.return_value = True
+        with self._mock_kazoo_client() as zk:
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # where to import dict_no_none from
@@ -657,13 +658,15 @@ class TestBatchJobs:
                 assert res.status_code == 200
                 assert res.data == TIFF_DUMMY_DATA
 
-    def test_download_without_object_storage(self, api, tmp_path):
+    @mock.patch("openeogeotrellis.configparams.ConfigParams.use_object_storage", new_callable=mock.PropertyMock)
+    def test_download_without_object_storage(self, mock_config_use_object_storage, api, tmp_path):
         """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
 
         Some changes were introduced be able to download from S3, so we want to be sure the existing
         stuff works the same as before.
         """
 
+        mock_config_use_object_storage.return_value = False
         job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
         job_dir: pathlib.Path = (tmp_path / job_id)
         job_metadata = (job_dir / JOB_METADATA_FILENAME)
@@ -716,9 +719,7 @@ class TestBatchJobs:
             json.dump(job_metadata_contents,f)
 
 
-        with mock.patch("openeogeotrellis.configparams.ConfigParams.is_using_object_storage") as mock_config_is_using_object_storage, \
-                self._mock_kazoo_client() as zk:
-            mock_config_is_using_object_storage.return_value = False
+        with self._mock_kazoo_client() as zk:
             GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             # where to import dict_no_none from

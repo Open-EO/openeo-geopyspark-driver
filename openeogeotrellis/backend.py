@@ -1947,7 +1947,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 # When we have retrieved the job metadata from S3 then output_dir will already be filled in,
                 # and the value will point to the S3 storage. In that case we don't want to overwrite it here.
-                if not ConfigParams.is_using_object_storage:
+                if not ConfigParams().use_object_storage:
                     asset["output_dir"] = str(job_dir)
 
                 if "bands" in asset:
@@ -1962,7 +1962,7 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         metadata_file = self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-        if ConfigParams().is_using_object_storage():
+        if ConfigParams().use_object_storage:
             try:
                 contents = get_s3_file_contents(str(metadata_file))
                 return json.loads(contents)
