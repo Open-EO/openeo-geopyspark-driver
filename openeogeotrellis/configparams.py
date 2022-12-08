@@ -4,6 +4,8 @@ from typing import Optional
 
 
 class ConfigParams:
+    # TODO: start using real config files instead of this thin wrapper around env vars?
+    #       see https://github.com/Open-EO/openeo-geopyspark-driver/issues/285
 
     def __init__(self, env=os.environ):
         self.zookeepernodes = env.get(

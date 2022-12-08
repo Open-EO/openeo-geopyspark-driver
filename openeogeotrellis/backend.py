@@ -905,8 +905,11 @@ class GpsBatchJobs(backend.BatchJobs):
         self._vault = vault
 
         self._elastic_job_registry: Optional[ElasticJobRegistry] = None
-        with just_log_exceptions(logger=ElasticJobRegistry._log, name="EJR init"):
+        with just_log_exceptions(
+            log=ElasticJobRegistry.logger.warning, name="EJR init"
+        ):
             self._elastic_job_registry = ElasticJobRegistry.from_environ()
+            self._elastic_job_registry.health_check(log=True)
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -934,7 +937,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 title=title, description=description,
             )
         if self._elastic_job_registry:
-            with just_log_exceptions(logger=ElasticJobRegistry._log, name="EJR create job"):
+            with just_log_exceptions(
+                log=ElasticJobRegistry.logger.warning, name="EJR create job"
+            ):
                 self._elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
@@ -2028,6 +2033,7 @@ class GpsBatchJobs(backend.BatchJobs):
             return
 
         application_id = job_info['application_id']
+        logger.debug(f"Cancelling job with application_id: {application_id}", extra=job_info)
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
@@ -2039,6 +2045,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 namespace = "spark-jobs"
                 plural = "sparkapplications"
                 name = JobTracker._kube_prefix(job_id, user_id)
+                logger.debug(f"Sending API call to kubernetes to delete job: {name}")
                 delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(
                     f"Killed corresponding Spark job {application_id} with kubernetes API call "
