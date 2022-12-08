@@ -299,6 +299,7 @@ def kube_client():
 
 def s3_client():
     import boto3
+    # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
     swift_url = os.environ.get("SWIFT_URL")
@@ -311,6 +312,7 @@ def s3_client():
 def download_s3_dir(bucketName, directory):
     import boto3
 
+    # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
     swift_url = os.environ.get("SWIFT_URL")
@@ -325,6 +327,26 @@ def download_s3_dir(bucketName, directory):
         if not os.path.exists("/" + os.path.dirname(obj.key)):
             os.makedirs("/" + os.path.dirname(obj.key))
         bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
+
+
+def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
+    """Get contents of a text file from the S3 bucket.
+
+        The bucket is set in ConfigParams().s3_bucket_name
+    """
+    s3_instance = s3_client()
+    s3_file_object = s3_instance.get_object(
+        Bucket=ConfigParams().s3_bucket_name, Key=str(filename)
+    )
+    body = s3_file_object["Body"]
+    return body.read().decode("utf8")
+
+
+def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
+    """Get a URL for S3 to the file or directory, in the correct format."""
+    # TODO: Does this function belong in the openeo-python-driver?
+    bucketname = bucketname or ConfigParams().s3_bucket_name
+    return f"s3://{bucketname}{file_or_dir_name}"
 
 
 def lonlat_to_mercator_tile_indices(

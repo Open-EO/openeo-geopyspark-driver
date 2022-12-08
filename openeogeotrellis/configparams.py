@@ -31,6 +31,8 @@ class ConfigParams:
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
+        self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
+
     def __str__(self) -> str:
         return pformat(vars(self))
 
@@ -38,3 +40,14 @@ class ConfigParams:
     def _as_boolean(envar_value: Optional[str]) -> bool:
         # TODO: use `openeo_driver.utils.smart_bool` instead?
         return envar_value is not None and envar_value.lower() == "true"
+
+    @property
+    def use_object_storage(self):
+        """Whether or not to get the result files / assets from object storage.
+
+        TODO: Give this its own configutation (env var) with sensible default. For now this is basically an alias for is_kube_deploy.
+        In the near future we should decouple whether or not we use object storage from is_kube_deploy.
+        Reason being that we intend to remove the is_kube_deploy attribute to make the code cleaner and simplify testing.
+        See https://github.com/Open-EO/openeo-geopyspark-driver/issues/283
+        """
+        return self.is_kube_deploy
