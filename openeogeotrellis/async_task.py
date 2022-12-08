@@ -13,6 +13,7 @@ from py4j.java_gateway import OutputConsumer, ProcessConsumer
 import openeogeotrellis
 from kafka import KafkaProducer
 from openeo.util import dict_no_none
+from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
@@ -236,7 +237,7 @@ def main():
                                        extra={'job_id': batch_job_id, 'user_id': user_id})
 
                             with ZkJobRegistry() as registry:
-                                registry.set_status(batch_job_id, user_id, 'error')
+                                registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
                                 registry.mark_done(batch_job_id, user_id)
 
                             raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141

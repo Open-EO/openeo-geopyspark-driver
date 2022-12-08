@@ -1,4 +1,4 @@
-
+from openeo_driver.jobregistry import JOB_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
 import datetime
 import pandas as pd
@@ -9,8 +9,12 @@ with ZkJobRegistry() as registry:
     df.created = pd.to_datetime(df.created)
     df.index = df.created
     print(df.status.unique())
-    df = df[(df.status == 'finished') | (df.status == 'error')| (df.status == 'canceled')]
-    df = df[(df.user_id != 'jenkins') & (df.user_id != 'geopyspark-integrationtester')]
+    df = df[
+        (df.status == JOB_STATUS.FINISHED)
+        | (df.status == JOB_STATUS.ERROR)
+        | (df.status == JOB_STATUS.CANCELED)
+    ]
+    df = df[(df.user_id != "jenkins") & (df.user_id != "geopyspark-integrationtester")]
 
     df['yearmonth'] = df.index.strftime('%Y%m')
     df['cpuhour'] = df.cpu_time_seconds / 3600.0

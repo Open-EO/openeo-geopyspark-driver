@@ -45,7 +45,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
-from openeo_driver.jobregistry import ElasticJobRegistry
+from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.logging import (
@@ -1021,10 +1021,10 @@ class GpsBatchJobs(backend.BatchJobs):
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
             with ZkJobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
-                registry.set_status(job_id, user_id, 'error')
+                registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                 registry.mark_done(job_id, user_id)
 
-            job_info['status'] = 'error'  # TODO: avoid mutation
+            job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
         elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: resume batch job with available data
             assembled_location_cache = {}
 
@@ -1110,10 +1110,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 with ZkJobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'error')
-                    registry.set_status(job_id, user_id, 'error')
+                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                     registry.mark_done(job_id, user_id)
 
-                job_info['status'] = 'error'  # TODO: avoid mutation
+                job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
         else:  # still some in progress and none FAILED yet: continue polling
             pass
 
@@ -1178,12 +1178,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 # restart logic
                 current_status = job_info['status']
 
-                if current_status in ['queued', 'running']:
+                if current_status in [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]:
                     return
-                elif current_status != 'created':  # TODO: not in line with the current spec (it must first be canceled)
+                elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
                     registry.mark_ongoing(job_id, user_id)
                     registry.set_application_id(job_id, user_id, None)
-                    registry.set_status(job_id, user_id, 'created')
+                    registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
 
             spec = json.loads(job_info['specification'])
             job_title = job_info.get('title', '')
@@ -1202,7 +1202,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                                                      if sentinel_hub_client_alias == 'default'
                                                                      else get_vault_token(sentinel_hub_client_alias))
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
-                registry.set_status(job_id, user_id, 'queued')
+                registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                 return
 
             def as_boolean_arg(job_option_key: str, default_value: str) -> str:
@@ -1378,14 +1378,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if('status' not in status_response):
                         logger.warning("invalid status response: {status}".format(status=str(status_response)), extra={'job_id': job_id})
-                        registry.set_status(job_id, user_id, 'error')
+                        registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                     else:
                         application_id = status_response['status']['sparkApplicationId']
                         logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id), extra={'job_id': job_id})
                         registry.set_application_id(job_id, user_id, application_id)
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
-                    registry.set_status(job_id, user_id, 'error')
+                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             else:
                 # TODO: remove old submit scripts?
@@ -1474,7 +1474,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                 extra={'job_id': job_id})
 
                     registry.set_application_id(job_id, user_id, application_id)
-                    registry.set_status(job_id, user_id, 'queued')
+                    registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)
                     # TODO: why reraise as CalledProcessError?
@@ -1891,7 +1891,7 @@ class GpsBatchJobs(backend.BatchJobs):
         :return: A mapping between a filename and a dict containing information about that file.
         """
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status != 'finished':
+        if job_info.status != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
         job_dir = self.get_job_output_dir(job_id=job_id)
@@ -2001,7 +2001,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status in ['created', 'queued']:
+        if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
         if not ConfigParams().is_kube_deploy:
@@ -2029,7 +2029,12 @@ class GpsBatchJobs(backend.BatchJobs):
         with ZkJobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
 
-        if job_info['status'] in ['created', 'finished', 'error', 'canceled']:
+        if job_info["status"] in [
+            JOB_STATUS.CREATED,
+            JOB_STATUS.FINISHED,
+            JOB_STATUS.ERROR,
+            JOB_STATUS.CANCELED,
+        ]:
             return
 
         application_id = job_info['application_id']
@@ -2053,7 +2058,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra = {'job_id': job_id, 'API response': delete_response}
                 )
                 with ZkJobRegistry() as registry:
-                    registry.set_status(job_id, user_id, 'canceled')
+                    registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:
                 try:
                     kill_spark_job = subprocess.run(
@@ -2073,11 +2078,11 @@ class GpsBatchJobs(backend.BatchJobs):
                                    exc_info=True, extra={'job_id': job_id})
                 finally:
                     with ZkJobRegistry() as registry:
-                        registry.set_status(job_id, user_id, 'canceled')
+                        registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
         else:
             with ZkJobRegistry() as registry:
                 registry.remove_dependencies(job_id, user_id)
-                registry.set_status(job_id, user_id, 'canceled')
+                registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
                 registry.mark_done(job_id, user_id)
 
     def delete_job(self, job_id: str, user_id: str):

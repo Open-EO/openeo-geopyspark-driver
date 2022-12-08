@@ -17,6 +17,7 @@ import re
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
+from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
@@ -161,7 +162,7 @@ class JobTracker:
                 except Exception:
                     _log.warning("resuming with remaining jobs after failing to handle batch job {j}", exc_info=True,
                                  extra={'job_id': job_id})
-                    registry.set_status(job_id, user_id, 'error')
+                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                     registry.mark_done(job_id, user_id)
 
     def get_kube_usage(self,job_id,user_id):
@@ -271,33 +272,33 @@ class JobTracker:
     def _to_openeo_status(state: str, final_state: str) -> str:
         # TODO: encapsulate status
         if state == 'ACCEPTED':
-            new_status = 'queued'
+            new_status = JOB_STATUS.QUEUED
         elif state == 'RUNNING':
-            new_status = 'running'
+            new_status = JOB_STATUS.RUNNING
         else:
-            new_status = 'created'
+            new_status = JOB_STATUS.CREATED
 
         if final_state == 'KILLED':
-            new_status = 'canceled'
+            new_status = JOB_STATUS.CANCELED
         elif final_state == 'SUCCEEDED':
-            new_status = 'finished'
+            new_status = JOB_STATUS.FINISHED
         elif final_state == 'FAILED':
-            new_status = 'error'
+            new_status = JOB_STATUS.ERROR
 
         return new_status
 
     @staticmethod
     def _kube_status_parser(state: str) -> str:
         if state == 'PENDING':
-            new_status = 'queued'
+            new_status = JOB_STATUS.QUEUED
         elif state == 'RUNNING':
-            new_status = 'running'
+            new_status = JOB_STATUS.RUNNING
         elif state == 'COMPLETED':
-            new_status = 'finished'
+            new_status = JOB_STATUS.FINISHED
         elif state == 'FAILED':
-            new_status = 'error'
+            new_status = JOB_STATUS.ERROR
         else:
-            new_status = 'created'
+            new_status = JOB_STATUS.CREATED
 
         return new_status
 

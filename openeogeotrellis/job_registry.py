@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.jobregistry import JOB_STATUS
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import sentinel_hub
 from openeo_driver.errors import JobNotFoundException
@@ -37,9 +38,9 @@ class ZkJobRegistry:
         """Registers a to-be-run batch job."""
         # TODO: use `BatchJobMetadata` instead of free form dict here?
         job_info = {
-            'job_id': job_id,
-            'user_id': user_id,
-            'status': 'created',
+            "job_id": job_id,
+            "user_id": user_id,
+            "status": JOB_STATUS.CREATED,
             # TODO: move api_Version into specification?
             'api_version': api_version,
             # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
@@ -57,7 +58,7 @@ class ZkJobRegistry:
         """Convert job info dict to BatchJobMetadata"""
         status = job_info.get("status")
         if status == "submitted":
-            status = "created"
+            status = JOB_STATUS.CREATED
         specification = job_info["specification"]
         if isinstance(specification, str):
             specification = json.loads(specification)

@@ -12,6 +12,7 @@ from unittest import mock
 import pytest
 
 import openeogeotrellis.job_registry
+from openeo_driver.jobregistry import JOB_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeo.util import deep_get
 from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
@@ -523,7 +524,7 @@ class TestBatchJobs:
 
             # Fake update from job tracker
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status="running")
+                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
             meta_data = json.loads(raw.decode())
             assert meta_data["status"] == "running"
@@ -544,7 +545,7 @@ class TestBatchJobs:
                 json.dump(metadata,f)
 
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
+                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "finished"
 
@@ -641,7 +642,7 @@ class TestBatchJobs:
                     title="Fake Test Job",
                     description="Fake job for the purpose of testing"
                 )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
+                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
                 # Download
                 res = api.get(
@@ -738,7 +739,7 @@ class TestBatchJobs:
                     title="Fake Test Job",
                     description="Fake job for the purpose of testing"
                 )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
+                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
                 # Download
                 res = api.get(
@@ -834,7 +835,7 @@ class TestBatchJobs:
 
             # Fake running
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status="running")
+                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "running"
 
