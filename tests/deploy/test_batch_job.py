@@ -1,7 +1,9 @@
-from unittest import mock
-from pytest import approx
-
+import json
 from mock import MagicMock
+from pathlib import Path
+from unittest import mock
+
+from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
 from shapely.geometry import shape
 
@@ -136,9 +138,6 @@ def test_run_job(evaluate, tmp_path):
                                }
     t.setGlobalTracking(False)
 
-
-import json
-from pathlib import Path
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
     """Helper function to create test data."""

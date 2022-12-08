@@ -287,14 +287,14 @@ class TestCollections:
 TEST_AWS_REGION_NAME = 'eu-central-1'
 
 @pytest.fixture(scope='function')
-def aws_credentials():
+def aws_credentials(monkeypatch):
     """Mocked AWS Credentials for moto."""
-    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
-    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
-    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
-    os.environ['AWS_SESSION_TOKEN'] = 'testing'
-    os.environ['AWS_DEFAULT_REGION'] = TEST_AWS_REGION_NAME
-    os.environ['AWS_REGION'] = TEST_AWS_REGION_NAME
+    monkeypatch.setenv('AWS_ACCESS_KEY_ID', 'testing')
+    monkeypatch.setenv('AWS_SECRET_ACCESS_KEY', 'testing')
+    monkeypatch.setenv('AWS_SECURITY_TOKEN', 'testing')
+    monkeypatch.setenv('AWS_SESSION_TOKEN', 'testing')
+    monkeypatch.setenv('AWS_DEFAULT_REGION', TEST_AWS_REGION_NAME)
+    monkeypatch.setenv('AWS_REGION', TEST_AWS_REGION_NAME)
 
 
 @pytest.fixture(scope='function')
