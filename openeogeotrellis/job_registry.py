@@ -19,7 +19,7 @@ from openeo_driver.errors import JobNotFoundException
 _log = logging.getLogger(__name__)
 
 
-class JobRegistry:
+class ZkJobRegistry:
     # TODO: improve encapsulation
     def __init__(self, root_path: str = ConfigParams().batch_jobs_zookeeper_root_path,
                  zookeeper_hosts: str = ','.join(ConfigParams().zookeepernodes)):
@@ -109,7 +109,7 @@ class JobRegistry:
             uri_parts = urlparse(results_location)
             return uri_parts.path[1:]
 
-        return [subfolder(location) for location in JobRegistry.get_dependency_sources(job_info)
+        return [subfolder(location) for location in ZkJobRegistry.get_dependency_sources(job_info)
                 if location.startswith("s3:")]
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
@@ -215,7 +215,7 @@ class JobRegistry:
 
         return jobs
 
-    def __enter__(self) -> 'JobRegistry':
+    def __enter__(self) -> 'ZkJobRegistry':
         self._zk.start()
         return self
 
@@ -321,3 +321,7 @@ class JobRegistry:
             return "{r}/done/{u}".format(r=self._root, u=user_id)
 
         return "{r}/done".format(r=self._root)
+
+
+# Legacy alias
+JobRegistry = ZkJobRegistry

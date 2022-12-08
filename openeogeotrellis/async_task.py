@@ -21,7 +21,7 @@ from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
 from py4j.clientserver import ClientServer, JavaParameters
 
-from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 ARG_BATCH_JOB_ID = 'batch_job_id'
@@ -222,7 +222,7 @@ def main():
                 while True:
                     time.sleep(SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S)
 
-                    with JobRegistry() as registry:
+                    with ZkJobRegistry() as registry:
                         job_info = registry.get_job(batch_job_id, user_id)
 
                     if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
@@ -235,7 +235,7 @@ def main():
                             _log.error("failed to handle polling batch processes", exc_info=True,
                                        extra={'job_id': batch_job_id, 'user_id': user_id})
 
-                            with JobRegistry() as registry:
+                            with ZkJobRegistry() as registry:
                                 registry.set_status(batch_job_id, user_id, 'error')
                                 registry.mark_done(batch_job_id, user_id)
 

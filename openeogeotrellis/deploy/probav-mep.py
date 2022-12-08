@@ -12,7 +12,7 @@ from openeo_driver.views import build_app
 sys.path.insert(0, 'py4j-0.10.7-src.zip')
 sys.path.insert(0, 'pyspark.zip')
 from openeogeotrellis.deploy import flask_config, get_socket, load_custom_processes
-from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry
 
 
 log = logging.getLogger("openeogeotrellis.deploy.probav-mep")
@@ -42,7 +42,7 @@ def main():
     SparkContext(conf=conf)
 
     def setup_batch_jobs() -> None:
-        with JobRegistry() as job_registry:
+        with ZkJobRegistry() as job_registry:
             job_registry.ensure_paths()
 
     def on_started() -> None:

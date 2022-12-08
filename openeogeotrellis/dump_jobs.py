@@ -1,9 +1,9 @@
 
-from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry
 import datetime
 import pandas as pd
 
-with JobRegistry() as registry:
+with ZkJobRegistry() as registry:
     jobs_before = registry.get_all_jobs_before(datetime.datetime.now())
     df = pd.DataFrame(jobs_before)
     df.created = pd.to_datetime(df.created)
