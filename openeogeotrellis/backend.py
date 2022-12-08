@@ -59,7 +59,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -924,7 +924,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             job_info = registry.register(
                 job_id=job_id,
                 user_id=user_id,
@@ -955,10 +955,10 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
 
-        return JobRegistry.job_info_to_metadata(job_info)
+        return ZkJobRegistry.job_info_to_metadata(job_info)
 
     def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str,
                                          vault_token: Optional[str]):
@@ -1018,7 +1018,7 @@ class GpsBatchJobs(backend.BatchJobs):
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
-            with JobRegistry() as registry:
+            with ZkJobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, 'error')
                 registry.mark_done(job_id, user_id)
@@ -1078,7 +1078,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:  # no caching involved, the collection is fully defined by these batch process results
                     pass
 
-            with JobRegistry() as registry:
+            with ZkJobRegistry() as registry:
                 batch_process_processing_units = sum(details.processing_units_spent() or Decimal("0.0")
                                                            for details, _ in batch_processes.values())
 
@@ -1092,7 +1092,7 @@ class GpsBatchJobs(backend.BatchJobs):
             self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
         elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
-                with JobRegistry() as registry:
+                with ZkJobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
 
                 retries = [retry for details, retry in batch_processes.values() if details.status() == "PARTIAL"]
@@ -1107,7 +1107,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
                              f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
 
-                with JobRegistry() as registry:
+                with ZkJobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'error')
                     registry.set_status(job_id, user_id, 'error')
                     registry.mark_done(job_id, user_id)
@@ -1117,7 +1117,7 @@ class GpsBatchJobs(backend.BatchJobs):
             pass
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             return [
                 registry.job_info_to_metadata(job_info)
                 for job_info in registry.get_user_jobs(user_id)
@@ -1152,7 +1152,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id, 'user_id': user.user_id})
 
         if proxy_user:
-            with JobRegistry() as registry:
+            with ZkJobRegistry() as registry:
                 # TODO: add dedicated method
                 registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
 
@@ -1168,7 +1168,7 @@ class GpsBatchJobs(backend.BatchJobs):
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
@@ -1496,7 +1496,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: JobRegistry, user_id: str, job_id: str,
+                                               job_registry: ZkJobRegistry, user_id: str, job_id: str,
                                                job_options: dict, sentinel_hub_client_alias: str,
                                                get_vault_token: Callable[[str], str]) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
@@ -2001,7 +2001,7 @@ class GpsBatchJobs(backend.BatchJobs):
             }
 
     def cancel_job(self, job_id: str, user_id: str):
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
 
         if job_info['status'] in ['created', 'finished', 'error', 'canceled']:
@@ -2027,7 +2027,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
                     extra = {'job_id': job_id, 'API response': delete_response}
                 )
-                with JobRegistry() as registry:
+                with ZkJobRegistry() as registry:
                     registry.set_status(job_id, user_id, 'canceled')
             else:
                 try:
@@ -2047,10 +2047,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
                                    exc_info=True, extra={'job_id': job_id})
                 finally:
-                    with JobRegistry() as registry:
+                    with ZkJobRegistry() as registry:
                         registry.set_status(job_id, user_id, 'canceled')
         else:
-            with JobRegistry() as registry:
+            with ZkJobRegistry() as registry:
                 registry.remove_dependencies(job_id, user_id)
                 registry.set_status(job_id, user_id, 'canceled')
                 registry.mark_done(job_id, user_id)
@@ -2085,14 +2085,14 @@ class GpsBatchJobs(backend.BatchJobs):
             if propagate_errors:
                 raise
 
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
-            dependency_sources = JobRegistry.get_dependency_sources(job_info)
+            dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
 
         if dependency_sources:
             self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
 
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
@@ -2154,7 +2154,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
-        with JobRegistry() as registry:
+        with ZkJobRegistry() as registry:
             jobs_before = registry.get_all_jobs_before(upper)
 
         for job_info in jobs_before:

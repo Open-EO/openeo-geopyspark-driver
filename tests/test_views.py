@@ -473,7 +473,7 @@ class TestBatchJobs:
             assert res["logs"] == []
 
             # Fake update from job tracker
-            with openeogeotrellis.job_registry.JobRegistry() as reg:
+            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status="running")
             raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
             meta_data = json.loads(raw.decode())
@@ -494,7 +494,7 @@ class TestBatchJobs:
                 metadata = api.load_json(JOB_METADATA_FILENAME)
                 json.dump(metadata,f)
 
-            with openeogeotrellis.job_registry.JobRegistry() as reg:
+            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status="finished")
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "finished"
@@ -589,7 +589,7 @@ class TestBatchJobs:
                 run.assert_called_once()
 
             # Fake running
-            with openeogeotrellis.job_registry.JobRegistry() as reg:
+            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status="running")
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "running"

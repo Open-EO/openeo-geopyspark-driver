@@ -11,7 +11,7 @@ from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import flask_config, get_socket
-from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 
 log = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def main():
 
     def setup_batch_jobs():
         if not ConfigParams().is_ci_context:
-            with JobRegistry() as job_registry:
+            with ZkJobRegistry() as job_registry:
                 job_registry.ensure_paths()
 
     def on_started():

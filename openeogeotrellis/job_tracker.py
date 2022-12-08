@@ -17,7 +17,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
-from openeogeotrellis.job_registry import JobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import async_task
@@ -35,7 +35,7 @@ class JobTracker:
                                             'aggregate_resource_allocation'])
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
-    def __init__(self, job_registry: Callable[[], JobRegistry], principal: str, keytab: str):
+    def __init__(self, job_registry: Callable[[], ZkJobRegistry], principal: str, keytab: str):
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
@@ -132,7 +132,7 @@ class JobTracker:
                                     registry.remove_dependencies(job_id, user_id)
 
                                     # there can be duplicates if batch processes are recycled
-                                    dependency_sources = list(set(JobRegistry.get_dependency_sources(job_info)))
+                                    dependency_sources = list(set(ZkJobRegistry.get_dependency_sources(job_info)))
 
                                     if dependency_sources:
                                         async_task.schedule_delete_batch_process_dependency_sources(
@@ -143,7 +143,7 @@ class JobTracker:
                                     sentinelhub_processing_units = (result_metadata.get("usage", {})
                                                                     .get("sentinelhub", {}).get("value", 0.0))
 
-                                    sentinelhub_batch_processing_units = (JobRegistry.get_dependency_usage(job_info)
+                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
                                                                           or Decimal("0.0"))
 
                                     _log.info("marked %s as done" % job_id, extra={
@@ -353,7 +353,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     try:
-        JobTracker(JobRegistry, args.principal, args.keytab).update_statuses()
+        JobTracker(ZkJobRegistry, args.principal, args.keytab).update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:
