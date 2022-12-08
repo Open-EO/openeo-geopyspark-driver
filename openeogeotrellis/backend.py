@@ -2008,7 +2008,7 @@ class GpsBatchJobs(backend.BatchJobs):
             return
 
         application_id = job_info['application_id']
-        logger.debug(f"Cancelling job with application_id: {application_id}", extra=job_info)
+        logger.debug(f"Cancelling job with application_id: {application_id}")
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
