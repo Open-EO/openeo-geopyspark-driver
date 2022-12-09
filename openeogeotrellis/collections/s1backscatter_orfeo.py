@@ -325,7 +325,7 @@ class S1BackscatterOrfeo:
             if(p.exitcode == -signal.SIGSEGV):
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
 
-            data =  np.reshape(np.frombuffer(arr.get_obj()),(extent_height_px,extent_width_px))
+            data =  np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
 
 
 
