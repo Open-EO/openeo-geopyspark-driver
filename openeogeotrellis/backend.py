@@ -2003,27 +2003,9 @@ class GpsBatchJobs(backend.BatchJobs):
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
+        
+        yield from elasticsearch_logs(job_id)
 
-        if not ConfigParams().is_kube_deploy:
-            yield from elasticsearch_logs(job_id)
-
-        try:
-            with (self.get_job_output_dir(job_id) / "log").open('r') as f:
-                log_file_contents = f.read()
-            # TODO: provide log line per line, with correct level?
-            # TODO: support offset
-            if log_file_contents.strip():
-                yield {
-                    'id': 'error',
-                    'level': 'error',
-                    'message': log_file_contents
-                }
-        except FileNotFoundError:  # some context if the Spark job didn't run and therefore didn't create the log file
-            yield {
-                'id': 'error',
-                'level': 'error',
-                'message': traceback.format_exc()
-            }
 
     def cancel_job(self, job_id: str, user_id: str):
         with ZkJobRegistry() as registry:
