@@ -299,8 +299,7 @@ class S1BackscatterOrfeo:
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
 
-
-            arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px)
+            arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
 
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
