@@ -315,7 +315,7 @@ class S1BackscatterOrfeo:
                 # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
                 try:
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
-                    np.copyto(np.frombuffer(arr.get_obj()).reshape((extent_height_px,extent_width_px)),localdata)
+                    np.copyto(np.frombuffer(arr).reshape((extent_height_px,extent_width_px)),localdata)
                 except RuntimeError as e:
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
 
