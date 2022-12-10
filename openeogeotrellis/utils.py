@@ -336,7 +336,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
     """
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
-        Bucket=ConfigParams().s3_bucket_name, Key=str(filename).startswith("/")
+        Bucket=ConfigParams().s3_bucket_name, Key=str(filename).strip("/")
     )
     body = s3_file_object["Body"]
     return body.read().decode("utf8")
