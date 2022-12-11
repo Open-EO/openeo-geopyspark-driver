@@ -616,7 +616,7 @@ class TestBatchJobs:
             'processing:software': 'openeo-geotrellis-0.3.3a1'
         }
 
-        mock_s3_bucket.put_object(Key=str(job_metadata), Body=json.dumps(job_metadata_contents))
+        mock_s3_bucket.put_object(Key=str(job_metadata).strip("/"), Body=json.dumps(job_metadata_contents))
         output_file = str(job_dir / "openEO_2017-11-21Z.tif")
         mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
 
