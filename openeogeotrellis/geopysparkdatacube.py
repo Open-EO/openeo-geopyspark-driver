@@ -531,7 +531,9 @@ class GeopysparkDataCube(DriverDataCube):
                          Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
-            float_rdd = rdd.to_numpy_rdd()
+            layer_celltype = str(rdd.layer_metadata.cell_type)
+            converted = rdd.convert_data_type(CellType.FLOAT32) if "float" in layer_celltype and "ud" in layer_celltype else rdd
+            float_rdd = converted.to_numpy_rdd()
 
             def to_spatial_key(tile: Tuple[SpaceTimeKey, Tile]):
                 key: SpatialKey = gps.SpatialKey(tile[0].col, tile[0].row)
