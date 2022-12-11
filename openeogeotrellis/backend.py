@@ -1315,7 +1315,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     api_version = '0.4.0'
 
                 memOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes(executor_memory_overhead)
-                jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("512m")
+                jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("128m")
                 python_max = memOverheadBytes - jvmOverheadBytes
 
                 eodata_mount = "/eodata2" if use_goofys != "false" else "/eodata"
