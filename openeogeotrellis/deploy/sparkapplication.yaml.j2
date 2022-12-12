@@ -99,7 +99,6 @@ spec:
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
-{%- if mount_tmp %}
     lifecycle:
       preStop:
         exec:
