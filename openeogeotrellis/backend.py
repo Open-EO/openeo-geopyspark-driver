@@ -1262,8 +1262,8 @@ class GpsBatchJobs(backend.BatchJobs):
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
             archives = ",".join(job_options.get("udf-dependency-archives", []))
-            use_goofys = as_boolean_arg("goofys", default_value="false")
-            mount_tmp = as_boolean_arg("mount_tmp", default_value="false")
+            use_goofys = job_options.get("goofys", False)
+            mount_tmp = job_options.get("mount_tmp", False)
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
