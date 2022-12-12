@@ -188,8 +188,8 @@ def test_convert_asset_outputs_to_s3_urls():
     metadata = get_job_metadata_without_s3(Path("/data/projects/OpenEO/6d11e901-bb5d-4589-b600-8dfb50524740/"))
     _convert_asset_outputs_to_s3_urls(metadata)
 
-    assert metadata['assets']['openEO_2017-11-21Z.tif']["output_dir"].startswith("s3://")
-    assert metadata['assets']['a-second-asset-file.tif']["output_dir"].startswith("s3://")
+    assert metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
+    assert metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
 
 
 def test_convert_job_metadatafile_outputs_to_s3_urls(tmp_path):
@@ -209,7 +209,7 @@ def test_convert_job_metadatafile_outputs_to_s3_urls(tmp_path):
     with open(metadata_path, "rt") as md_file:
         converted_metadata = json.load(md_file)
 
-    assert converted_metadata['assets']['openEO_2017-11-21Z.tif']["output_dir"].startswith("s3://")
-    assert converted_metadata['assets']['a-second-asset-file.tif']["output_dir"].startswith("s3://")
+    assert converted_metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
+    assert converted_metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
 
 
