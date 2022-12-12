@@ -28,6 +28,7 @@ spec:
     minExecutors: 2
     maxExecutors: {{ max_executors }}
   sparkConf:
+    "spark.network.timeout": "300s"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
     "spark.driver.maxResultSize": "5g"
@@ -83,22 +84,27 @@ spec:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
 {%- endif %}
+{%- if mount_tmp %}
     - name: "spark-local-dir-1"
       hostPath:
         path: "/opt/spark_tmp/{{ job_id }}"
         type: "DirectoryOrCreate"
+{%- endif %}
   driver:
     initContainers:
+{%- if mount_tmp %}
       - name: init-tmp-dir
         image: busybox:1.28
         command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
+{%- if mount_tmp %}
     lifecycle:
       preStop:
         exec:
           command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
+{%- endif %}
     podSecurityContext:
       fsGroup: 18585
     envVars:
@@ -139,9 +145,12 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
+{%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
+{%- endif %}
   executor:
+{%- if mount_tmp %}
     initContainers:
       - name: init-tmp-dir
         image: busybox:1.28
@@ -149,6 +158,7 @@ spec:
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
+{%- endif %}
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
     podSecurityContext:
@@ -194,8 +204,10 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
+{%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
+{%- endif %}
   deps:
     jars:
       - 'local:///opt/geotrellis-extensions-static.jar'
