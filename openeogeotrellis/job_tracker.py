@@ -17,7 +17,7 @@ import re
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
-from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs
@@ -90,6 +90,8 @@ class JobTracker:
                                                status=new_status,
                                                started=start_time,
                                                finished=finish_time)
+                                with ElasticJobRegistry.just_log_errors(f"job_tracker update status {new_status}"):
+                                    self._batch_jobs._elastic_job_registry.set_status(job_id, new_status)
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
@@ -122,6 +124,8 @@ class JobTracker:
                                                finished=JobTracker._to_serializable_datetime(finish_time),
                                                memory_time_megabyte_seconds=memory_time_megabyte_seconds,
                                                cpu_time_seconds=cpu_time_seconds)
+                                with ElasticJobRegistry.just_log_errors(f"job_tracker update status from YARN"):
+                                    self._batch_jobs._elastic_job_registry.set_status(job_id, new_status)
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %

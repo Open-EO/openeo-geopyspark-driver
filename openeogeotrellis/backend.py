@@ -51,7 +51,6 @@ from openeo_driver.users import User
 from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
-    just_log_exceptions,
 )
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
@@ -905,9 +904,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self._vault = vault
 
         self._elastic_job_registry: Optional[ElasticJobRegistry] = None
-        with just_log_exceptions(
-            log=ElasticJobRegistry.logger.warning, name="EJR init"
-        ):
+        with ElasticJobRegistry.just_log_errors(name="init"):
             self._elastic_job_registry = ElasticJobRegistry.from_environ()
             self._elastic_job_registry.health_check(log=True)
 
@@ -937,9 +934,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 title=title, description=description,
             )
         if self._elastic_job_registry:
-            with just_log_exceptions(
-                log=ElasticJobRegistry.logger.warning, name="EJR create job"
-            ):
+            with ElasticJobRegistry.just_log_errors(name="Create job"):
                 self._elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
@@ -1203,6 +1198,10 @@ class GpsBatchJobs(backend.BatchJobs):
                                                                      else get_vault_token(sentinel_hub_client_alias))
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                with ElasticJobRegistry.just_log_errors(name="Queue job"):
+                    if self._elastic_job_registry:
+                        self._elastic_job_registry.set_status(job_id, JOB_STATUS.QUEUED)
+
                 return
 
             def as_boolean_arg(job_option_key: str, default_value: str) -> str:
@@ -1477,6 +1476,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     registry.set_application_id(job_id, user_id, application_id)
                     registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    with ElasticJobRegistry.just_log_errors(name="Queue job"):
+                        self._elastic_job_registry.set_status(job_id, JOB_STATUS.QUEUED)
+
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)
                     # TODO: why reraise as CalledProcessError?
@@ -2177,4 +2179,3 @@ class GpsBatchJobs(backend.BatchJobs):
 
 class _BatchJobError(Exception):
     pass
-
