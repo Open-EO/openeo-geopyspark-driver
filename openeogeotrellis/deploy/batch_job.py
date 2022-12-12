@@ -522,8 +522,8 @@ def _convert_asset_outputs_to_s3_urls(job_metadata: dict):
     """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
     out_assets = job_metadata.get("assets", {})
     for asset in out_assets.values():
-        if "output_dir" in asset and not asset["output_dir"].startswith("s3://"):
-            asset["output_dir"] = to_s3_url(asset["output_dir"])
+        if "href" in asset and not asset["href"].startswith("s3://"):
+            asset["href"] = to_s3_url(asset["href"])
 
 
 def _transform_stac_metadata(job_dir: Path):
