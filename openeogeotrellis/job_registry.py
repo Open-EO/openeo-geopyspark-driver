@@ -3,18 +3,19 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Callable, Union, Optional
 import logging
+from urllib.parse import urlparse
 
 from deprecated import deprecated
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
-from urllib.parse import urlparse
 
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import sentinel_hub
-from openeo_driver.errors import JobNotFoundException
+from openeogeotrellis.testing import KazooClientMock
 
 
 _log = logging.getLogger(__name__)
@@ -22,10 +23,17 @@ _log = logging.getLogger(__name__)
 
 class ZkJobRegistry:
     # TODO: improve encapsulation
-    def __init__(self, root_path: str = ConfigParams().batch_jobs_zookeeper_root_path,
-                 zookeeper_hosts: str = ','.join(ConfigParams().zookeepernodes)):
-        self._root = root_path
-        self._zk = KazooClient(hosts=zookeeper_hosts)
+    def __init__(
+        self,
+        root_path: Optional[str] = None,
+        zk_client: Union[str, KazooClient, KazooClientMock, None] = None,
+    ):
+        self._root = root_path or ConfigParams().batch_jobs_zookeeper_root_path
+        if zk_client is None:
+            zk_client = KazooClient(hosts=",".join(ConfigParams().zookeepernodes))
+        elif isinstance(zk_client, str):
+            zk_client = KazooClient(hosts=zk_client)
+        self._zk = zk_client
 
     def ensure_paths(self):
         self._zk.ensure_path(self._ongoing())
@@ -123,6 +131,9 @@ class ZkJobRegistry:
 
         self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
+
+    def get_status(self, job_id: str, user_id: str) -> str:
+        return self.get_job(job_id=job_id, user_id=user_id)["status"]
 
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
@@ -325,4 +336,5 @@ class ZkJobRegistry:
 
 
 # Legacy alias
+# TODO: remove this legacy alias
 JobRegistry = ZkJobRegistry

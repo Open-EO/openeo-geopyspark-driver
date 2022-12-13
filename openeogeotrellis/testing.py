@@ -56,6 +56,8 @@ class _ZNode:
 class KazooClientMock:
     """Simple mock for KazooClient that stores data in memory"""
 
+    # TODO: unify (for better reuse/sharing) with DummyKazooClient from https://github.com/Open-EO/openeo-aggregator/blob/720fc26311c9a377cd45dfb2dc6b81616adb5850/src/openeo_aggregator/testing.py#L17
+
     def __init__(self, root: _ZNode = None):
         """Create client and optionally initialize state of root node (and its children)."""
         self.root = root or _ZNode()

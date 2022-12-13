@@ -26,7 +26,8 @@ from openeogeotrellis import async_task
 
 _log = logging.getLogger(__name__)
 
-# TODO: make this job tracker logic an internal implementation detail of JobRegistry?
+# TODO: current implementation mixes YARN and Kubernetes logic. Instead use composition/inheritance for better separation of concerns?
+#       Especially because the job registry storage will also get different options: legacy ZooKeeper and ElasticJobRegistry (and maybe even a simple in-memory option)
 
 
 class JobTracker:
@@ -44,6 +45,7 @@ class JobTracker:
         self._batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=principal, key_tab=keytab, vault=None)
 
     def loop_update_statuses(self, interval_s: int = 60):
+        # TODO: this method seems to be unused
         with self._job_registry() as registry:
             registry.ensure_paths()
 
@@ -74,9 +76,13 @@ class JobTracker:
             jobs_to_track = registry.get_running_jobs()
 
             for job_info in jobs_to_track:
+                job_id = None
+                user_id = None
                 try:
-                    job_id, user_id = job_info['job_id'], job_info['user_id']
-                    application_id, current_status = job_info['application_id'], job_info['status']
+                    job_id = job_info["job_id"]
+                    user_id = job_info["user_id"]
+                    application_id = job_info["application_id"]
+                    current_status = job_info["status"]
 
                     if application_id:
                         try:
@@ -91,6 +97,7 @@ class JobTracker:
                                                started=start_time,
                                                finished=finish_time)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker update status {new_status}"):
+                                    # TODO: also set started/finished
                                     self._batch_jobs._elastic_job_registry.set_status(job_id, new_status)
 
                                 if current_status != new_status:
@@ -125,6 +132,7 @@ class JobTracker:
                                                memory_time_megabyte_seconds=memory_time_megabyte_seconds,
                                                cpu_time_seconds=cpu_time_seconds)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker update status from YARN"):
+                                    # TODO: also set started/finished, ...
                                     self._batch_jobs._elastic_job_registry.set_status(job_id, new_status)
 
                                 if current_status != new_status:
@@ -164,10 +172,14 @@ class JobTracker:
                         except JobTracker._UnknownApplicationIdException:
                             registry.mark_done(job_id, user_id)
                 except Exception:
-                    _log.warning("resuming with remaining jobs after failing to handle batch job {j}", exc_info=True,
-                                 extra={'job_id': job_id})
-                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                    registry.mark_done(job_id, user_id)
+                    _log.warning(
+                        f"resuming with remaining jobs after failing to handle batch job {job_id}",
+                        exc_info=True,
+                        extra={"job_id": job_id},
+                    )
+                    if job_id and user_id:
+                        registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                        registry.mark_done(job_id, user_id)
 
     def get_kube_usage(self,job_id,user_id):
         usage = None
@@ -204,6 +216,7 @@ class JobTracker:
     @staticmethod
     def yarn_available() -> bool:
         """Check if YARN tools are available."""
+        # TODO: this methods seems to be unused?
         try:
             _log.info("Checking if Hadoop 'yarn' tool is available")
             output = subprocess.check_output(["yarn", "version"]).decode("ascii")
@@ -333,6 +346,7 @@ class JobTracker:
 if __name__ == '__main__':
     import argparse
 
+    # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
     logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
