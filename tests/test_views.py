@@ -598,7 +598,7 @@ class TestBatchJobs:
             'links': [],
             'assets': {
                 'openEO_2017-11-21Z.tif': {
-                    'href': f'{job_dir}/openEO_2017-11-21Z.tif',
+                    'href': f'{output_dir_s3_url}/openEO_2017-11-21Z.tif',
                     'output_dir': output_dir_s3_url,  # Will not exist on the local file system at download time.
                     'type': 'image/tiff; application=geotiff',
                     'roles': ['data'],
@@ -618,7 +618,7 @@ class TestBatchJobs:
 
         mock_s3_bucket.put_object(Key=str(job_metadata).strip("/"), Body=json.dumps(job_metadata_contents))
         output_file = str(job_dir / "openEO_2017-11-21Z.tif")
-        mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
+        mock_s3_bucket.put_object(Key=output_file.lstrip("/"), Body=TIFF_DUMMY_DATA)
 
         # Do a pre-test check: Make sure we are testing that it works when the job_dir is **not** present.
         # Otherwise the test may pass but it passes for the wrong reasons.
