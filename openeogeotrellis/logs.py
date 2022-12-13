@@ -1,7 +1,6 @@
 from typing import Iterable, Optional
 
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import scan
 from openeo.util import dict_no_none
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
@@ -9,13 +8,14 @@ ES_INDEX_PATTERN = "openeo-*-index-1m*"
 ES_TAGS = ["openeo"]
 
 
-def elasticsearch_logs(job_id: str) -> Iterable[dict]:
+def elasticsearch_logs(job_id: str, from_: int) -> Iterable[dict]:
+    page_size = 100
+
     with Elasticsearch(ES_HOSTS) as es:
-        hits = scan(
-            es,
-            index=ES_INDEX_PATTERN,
-            query={
-                'query': {
+        while True:
+            search_result = es.search(
+                index=ES_INDEX_PATTERN,
+                query={
                     'bool': {
                         'filter': [{
                             'term': {
@@ -27,17 +27,23 @@ def elasticsearch_logs(job_id: str) -> Iterable[dict]:
                             }
                         }]
                     }
-                }
-            },
-            sort='@timestamp',
-            preserve_order=True,
-            size=100)
+                },
+                from_=from_,
+                size=page_size,
+                sort='@timestamp'
+            )
 
-        for hit in hits:
-            yield _as_log_entry(hit)
+            hits = search_result['hits']['hits']
+
+            for hit in hits:
+                yield _as_log_entry(log_id=str(from_), hit=hit)
+                from_ += 1
+
+            if len(hits) < page_size:
+                break
 
 
-def _as_log_entry(hit: dict) -> dict:
+def _as_log_entry(log_id: str, hit: dict) -> dict:
     _source = hit['_source']
 
     time = _source.get('@timestamp')
@@ -47,7 +53,7 @@ def _as_log_entry(hit: dict) -> dict:
     code = _source.get('code')
 
     return dict_no_none(
-        id="%(_index)s/%(_id)s" % hit,
+        id=log_id,
         time=time,
         level=_openeo_log_level(internal_log_level),
         message=message,
@@ -70,17 +76,15 @@ def _openeo_log_level(internal_log_level: Optional[str]) -> Optional[str]:
 
 
 def main():
-    index = "openeo-index-1m"
-    job_id = 'j-93e8f12ba1a0404f984e55c4e1e6ea3f'
+    from itertools import islice
 
-    with Elasticsearch(hosts=ES_HOSTS) as es:
-        res = es.get(index=index, id="p3tgQIMBVWXUH_mWoFM2")
+    job_id = 'j-0ec6fb2b02a741cd91139cbf08eb8dff'
+    offset = 8
 
-    print(res['_source'])
-    
-    for log in elasticsearch_logs(job_id):
-        if "len" in log['message']:
-            print(log)
+    logs = elasticsearch_logs(job_id, offset)
+
+    for log in islice(logs, 20):
+        print(log)
 
 
 if __name__ == '__main__':
