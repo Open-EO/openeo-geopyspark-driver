@@ -22,6 +22,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.dry_run import ProcessType
 from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
+from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
 from openeogeotrellis import sentinel_hub
@@ -891,6 +892,9 @@ def check_missing_products(
     if check_data:
         logger.info(f"Check missing products for {collection_metadata.get('id')} using {check_data}")
         temporal_extent = [dateutil.parser.parse(t) for t in temporal_extent]
+
+        if "crs" in spatial_extent and spatial_extent["crs"] != 4326:
+            spatial_extent = reproject_bounding_box(spatial_extent,from_crs=spatial_extent["crs"],to_crs="EPSG:4326")
         # Merge given properties with global layer properties
         properties = {
             **collection_metadata.get("_vito", "properties", default={}),
@@ -899,7 +903,6 @@ def check_missing_products(
         query_kwargs = {
             "start_date": dt.datetime.combine(temporal_extent[0], dt.time.min),
             "end_date": dt.datetime.combine(temporal_extent[1], dt.time.max),
-            # TODO: do we know for sure that spatial extent is lon-lat?
             "ulx": spatial_extent["west"],
             "brx": spatial_extent["east"],
             "bry": spatial_extent["south"],
