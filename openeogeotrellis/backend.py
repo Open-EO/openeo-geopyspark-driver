@@ -692,7 +692,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return image_collection.filter_bands(band_indices) if band_indices else image_collection
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
-        
+
+        # Trick to make sure IDE infers right type of `self.batch_jobs` and can resolve `get_job_output_dir`
+        gps_batch_jobs: GpsBatchJobs = self.batch_jobs
+
         def _create_model_dir():
             def _set_permissions(job_dir: Path):
                 if not ConfigParams().is_kube_deploy:
@@ -701,7 +704,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     except LookupError as e:
                         logger.warning(f"Could not change group of {job_dir} to eodata.")
                 add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
-            ml_models_path = GpsBatchJobs.get_job_output_dir('ml_models')
+            ml_models_path = gps_batch_jobs.get_job_output_dir("ml_models")
             if not os.path.exists(ml_models_path):
                 logger.info("Creating directory: {}".format(ml_models_path))
                 os.makedirs(ml_models_path)
@@ -760,7 +763,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return model
         else:
             # Load the model using a batch job id.
-            directory = GpsBatchJobs.get_job_output_dir(model_id)
+            directory = gps_batch_jobs.get_job_output_dir(model_id)
             # TODO: This also needs to support Catboost model
             # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
             model_path = str(Path(directory) / "randomforest.model")
@@ -1120,9 +1123,8 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
-    @staticmethod
-    def get_job_output_dir(job_id: str) -> Path:
-        return GpsBatchJobs._OUTPUT_ROOT_DIR / job_id
+    def get_job_output_dir(self, job_id: str) -> Path:
+        return self._OUTPUT_ROOT_DIR / job_id
 
     @staticmethod
     def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".") -> str:
