@@ -893,7 +893,7 @@ def check_missing_products(
         logger.info(f"Check missing products for {collection_metadata.get('id')} using {check_data}")
         temporal_extent = [dateutil.parser.parse(t) for t in temporal_extent]
 
-        if "crs" in spatial_extent and spatial_extent["crs"] != 4326:
+        if "crs" in spatial_extent and spatial_extent["crs"] != 4326 and spatial_extent["crs"] != "EPSG:4326":
             spatial_extent = reproject_bounding_box(spatial_extent,from_crs=spatial_extent["crs"],to_crs="EPSG:4326")
         # Merge given properties with global layer properties
         properties = {
