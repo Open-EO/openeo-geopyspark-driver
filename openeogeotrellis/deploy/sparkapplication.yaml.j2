@@ -90,6 +90,9 @@ spec:
         path: "/opt/spark_tmp/{{ job_id }}"
         type: "DirectoryOrCreate"
 {%- endif %}
+    - name: "http-credentials-configmap"
+      configMap:
+        name: "http-credentials"
   driver:
     initContainers:
 {%- if mount_tmp %}
@@ -144,6 +147,8 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
+      - name: "http-credentials-configmap"
+        mountPath: "/opt/http_credentials"
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
@@ -203,6 +208,8 @@ spec:
         mountPath: "/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
+      - name: "http-credentials-configmap"
+        mountPath: "/opt/http_credentials"
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
