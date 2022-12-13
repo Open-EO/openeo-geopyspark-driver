@@ -1262,8 +1262,8 @@ class GpsBatchJobs(backend.BatchJobs):
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
             archives = ",".join(job_options.get("udf-dependency-archives", []))
-            use_goofys = job_options.get("goofys", False)
-            mount_tmp = job_options.get("mount_tmp", False)
+            use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
+            mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
@@ -1318,7 +1318,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("128m")
                 python_max = memOverheadBytes - jvmOverheadBytes
 
-                eodata_mount = "/eodata2" if use_goofys != "false" else "/eodata"
+                eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
                 rendered = Template(open(jinja_template).read()).render(
