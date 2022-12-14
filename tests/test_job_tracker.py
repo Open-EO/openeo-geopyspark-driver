@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -106,6 +107,7 @@ class YarnMock:
 
     def __init__(self):
         self.apps: Dict[str, YarnAppInfo] = {}
+        self._corrupt = set()
 
     def submit(self, app_id: Optional[str] = None, **kwargs) -> YarnAppInfo:
         """Create a new (dummy) YARN app"""
@@ -114,17 +116,28 @@ class YarnMock:
         self.apps[app_id] = app = YarnAppInfo(app_id=app_id, **kwargs)
         return app
 
+    def make_corrupt(self, app_id: str):
+        self._corrupt.add(app_id)
+
     def _check_output(self, args: List[str]):
         """Mock for subprocess.check_output(["yarn", ...])"""
         if len(args) == 4 and args[:3] == ["yarn", "application", "-status"]:
             app_id = args[3]
-            if app_id in self.apps:
+            if app_id in self._corrupt:
+                raise subprocess.CalledProcessError(
+                    returncode=255,
+                    cmd=args,
+                    output=f"C0rRup7! {app_id}'".encode("utf-8"),
+                )
+            elif app_id in self.apps:
                 return self.apps[app_id].status_report().encode("utf-8")
             else:
                 raise subprocess.CalledProcessError(
                     returncode=255,
                     cmd=args,
-                    output=f"Application with id '{app_id}' doesn't exist in RM or Timeline Server.",
+                    output=f"Application with id '{app_id}' doesn't exist in RM or Timeline Server.".encode(
+                        "utf-8"
+                    ),
                 )
 
         raise RuntimeError(f"Unsupported check_output({args!r})")
@@ -182,7 +195,7 @@ class TestJobTracker:
         )
         return job_tracker
 
-    def test_basic_yarn_zookeeper(
+    def test_yarn_zookeeper_basic(
         self,
         zk_job_registry,
         zk_client,
@@ -247,3 +260,109 @@ class TestJobTracker:
         elastic_job_registry.set_status.assert_called_with(job_id, "finished")
 
         assert caplog.record_tuples == []
+
+    def test_yarn_zookeeper_lost_yarn_job(
+        self,
+        zk_job_registry,
+        zk_client,
+        yarn,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+    ):
+        """
+        Check that JobTracker.update_statuses() keeps working if there is no YARN app for a given job
+        """
+        for j in [1, 2, 3]:
+            zk_job_registry.register(
+                job_id=f"job-{j}",
+                user_id=f"user{j}",
+                api_version="1.2.3",
+                specification=DUMMY_SPEC_1,
+            )
+            zk_job_registry.set_application_id(
+                job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
+            )
+            # YARN apps 1 and 3 are running but app 2 is lost/missing
+            if j != 2:
+                yarn.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
+
+        # Let job tracker do status updates
+        job_tracker.update_statuses()
+
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
+            {"status": "running"}
+        )
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
+            {"status": "error"}
+        )
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
+            {"status": "running"}
+        )
+
+        # TODO get status from an in-memory registry, instead of mock.assert_any_call
+        elastic_job_registry.set_status.assert_any_call("job-1", "running")
+        elastic_job_registry.set_status.assert_any_call("job-2", "error")
+        elastic_job_registry.set_status.assert_any_call("job-3", "running")
+
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker",
+                logging.WARNING,
+                "Failed status update of job_id='job-2': UnknownYarnApplicationException(\"Application with id 'app-2' doesn't exist in RM or Timeline Server.\")",
+            )
+        ]
+
+    def test_yarn_zookeeper_unexpected_yarn_error(
+        self,
+        zk_job_registry,
+        zk_client,
+        yarn,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+    ):
+        """
+        Check that JobTracker.update_statuses() keeps working if there is unexpected error while checking YARN state.
+        """
+        for j in [1, 2, 3]:
+            zk_job_registry.register(
+                job_id=f"job-{j}",
+                user_id=f"user{j}",
+                api_version="1.2.3",
+                specification=DUMMY_SPEC_1,
+            )
+            zk_job_registry.set_application_id(
+                job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
+            )
+            # YARN apps 1 and 3 are running but app 2 is lost/missing
+            if j != 2:
+                yarn.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
+            else:
+                yarn.make_corrupt(f"app-{j}")
+
+        # Let job tracker do status updates
+        job_tracker.update_statuses()
+
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
+            {"status": "running"}
+        )
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
+            {"status": "error"}
+        )
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
+            {"status": "running"}
+        )
+
+        # TODO get status from an in-memory registry, instead of mock.assert_any_call
+        elastic_job_registry.set_status.assert_any_call("job-1", "running")
+        elastic_job_registry.set_status.assert_any_call("job-2", "error")
+        elastic_job_registry.set_status.assert_any_call("job-3", "running")
+
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker",
+                logging.WARNING,
+                "Failed status update of job_id='job-2': CalledProcessError()",
+            )
+        ]

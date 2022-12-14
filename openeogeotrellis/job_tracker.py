@@ -31,9 +31,11 @@ _log = logging.getLogger(__name__)
 #       Especially because the job registry storage will also get different options: legacy ZooKeeper and ElasticJobRegistry (and maybe even a simple in-memory option)
 
 
+class UnknownYarnApplicationException(ValueError):
+    pass
+
+
 class JobTracker:
-    class _UnknownApplicationIdException(ValueError):
-        pass
 
     _YarnStatus = namedtuple('YarnStatus', ['state', 'final_state', 'start_time', 'finish_time',
                                             'aggregate_resource_allocation'])
@@ -78,6 +80,7 @@ class JobTracker:
                     application_id = job_info["application_id"]
                     current_status = job_info["status"]
 
+                    # TODO: application_id is not used/necessary for Kube
                     if application_id:
                         try:
                             if ConfigParams().is_kube_deploy:
@@ -90,7 +93,7 @@ class JobTracker:
                                                status=new_status,
                                                started=start_time,
                                                finished=finish_time)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker update status {new_status}"):
+                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from K8s"):
                                     # TODO: also set started/finished
                                     self._elastic_job_registry.set_status(
                                         job_id, new_status
@@ -127,7 +130,7 @@ class JobTracker:
                                                finished=JobTracker._to_serializable_datetime(finish_time),
                                                memory_time_megabyte_seconds=memory_time_megabyte_seconds,
                                                cpu_time_seconds=cpu_time_seconds)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker update status from YARN"):
+                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from YARN"):
                                     # TODO: also set started/finished, ...
                                     self._elastic_job_registry.set_status(
                                         job_id, new_status
@@ -167,17 +170,24 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
-                        except JobTracker._UnknownApplicationIdException:
-                            registry.mark_done(job_id, user_id)
-                except Exception:
+                        except UnknownYarnApplicationException:
+                            # TODO eliminate this whole try-except (but not now to keep diff simple)
+                            raise
+                except Exception as e:
                     _log.warning(
-                        f"resuming with remaining jobs after failing to handle batch job {job_id}",
+                        f"Failed status update of {job_id=}: {e!r}",
                         exc_info=True,
                         extra={"job_id": job_id},
                     )
                     if job_id and user_id:
                         registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                         registry.mark_done(job_id, user_id)
+
+                        with ElasticJobRegistry.just_log_errors(f"job_tracker flag error"):
+                            # TODO: also set started/finished, exception/error info ...
+                            self._elastic_job_registry.set_status(
+                                job_id, JOB_STATUS.ERROR
+                            )
 
     def get_kube_usage(self,job_id,user_id):
         usage = None
@@ -273,7 +283,7 @@ class JobTracker:
         except CalledProcessError as e:
             stdout = e.stdout.decode()
             if "doesn't exist in RM or Timeline Server" in stdout:
-                raise JobTracker._UnknownApplicationIdException(stdout)
+                raise UnknownYarnApplicationException(stdout)
             else:
                 raise
 
