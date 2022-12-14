@@ -1,11 +1,16 @@
+import time
+
 import contextlib
 import logging
 import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from unittest import mock
-
+import datetime as dt
 import pytest
+
+from openeo.util import rfc3339
+from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
@@ -13,6 +18,7 @@ from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
+
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
 
@@ -66,10 +72,14 @@ class YarnAppInfo:
         return self.set_state(YARN_STATE.ACCEPTED, YARN_FINAL_STATUS.UNDEFINED)
 
     def set_running(self):
+        if not self.start_time:
+            self.start_time = int(1000 * time.time())
         return self.set_state(YARN_STATE.RUNNING, YARN_FINAL_STATUS.UNDEFINED)
 
     def set_finished(self, final_state: str = YARN_FINAL_STATUS.SUCCEEDED):
         assert final_state in {YARN_FINAL_STATUS.SUCCEEDED, YARN_FINAL_STATUS.FAILED}
+        if not self.finish_time:
+            self.finish_time = int(1000 * time.time())
         # TODO: what is the meaning actually of state=FINISHED + final-state=FAILED?
         return self.set_state(YARN_STATE.FINISHED, final_state)
 
@@ -167,16 +177,72 @@ def yarn() -> YarnMock:
         yield yarn
 
 
+class InMemoryJobRegistry:
+    # TODO: common interface with ElasticJobRegistry
+    # TODO move it to openeo_python_driver
+    def __init__(self):
+        self.db: Dict[str, dict] = {}
+
+    def health_check(self, *args, **kwargs):
+        pass
+
+    def create_job(
+        self,
+        process: dict,
+        user_id: str,
+        job_id: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        api_version: Optional[str] = None,
+        job_options: Optional[dict] = None,
+    ):
+        assert job_id not in self.db
+        created = rfc3339.datetime(dt.datetime.utcnow())
+        self.db[job_id] = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "process": process,
+            "title": title,
+            "description": description,
+            "status": JOB_STATUS.CREATED,
+            "created": created,
+            "updated": created,
+            "api_version": api_version,
+            "job_options": job_options,
+        }
+
+    def set_status(
+        self,
+        job_id: str,
+        status: str,
+        *,
+        updated: Optional[str] = None,
+        started: Optional[str] = None,
+        finished: Optional[str] = None,
+    ):
+        assert job_id in self.db
+        data = {
+            "status": status,
+            "updated": rfc3339.datetime(updated or dt.datetime.utcnow()),
+        }
+        if started:
+            data["started"] = rfc3339.datetime(started)
+        if finished:
+            data["finished"] = rfc3339.datetime(finished)
+
+        self.db[job_id].update(data)
+
+
 @pytest.fixture
-def elastic_job_registry():
-    # TODO use a real in-memory job registry instead of a mock?
-    return mock.Mock()
+def elastic_job_registry() -> InMemoryJobRegistry:
+    # TODO: still call this fixture "elastic_job_registry"?
+    return InMemoryJobRegistry()
 
 
 DUMMY_PG_1 = {
     "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}
 }
-DUMMY_SPEC_1 = {"process_graph": DUMMY_PG_1}
+DUMMY_PROCESS_1 = {"process_graph": DUMMY_PG_1}
 
 
 class TestJobTracker:
@@ -203,7 +269,11 @@ class TestJobTracker:
         job_tracker,
         elastic_job_registry,
         caplog,
+        time_machine,
     ):
+        caplog.set_level(logging.WARNING)
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+
         user_id = "john"
         job_id = "job-123"
         # Register new job in zookeeper and yarn
@@ -212,10 +282,13 @@ class TestJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_SPEC_1,
+            specification=DUMMY_PROCESS_1,
         )
         zk_job_registry.set_application_id(
             job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
         )
 
         def zk_job_info() -> dict:
@@ -226,38 +299,107 @@ class TestJobTracker:
             {
                 "job_id": job_id,
                 "user_id": user_id,
-                "application_id": yarn_app.app_id,
                 "status": "created",
+                "application_id": yarn_app.app_id,
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db == {
+            "job-123": DictSubSet(
+                {
+                    "job_id": "job-123",
+                    "user_id": "john",
+                    "status": "created",
+                    "process": DUMMY_PROCESS_1,
+                    "created": "2022-12-14T12:00:00Z",
+                    "updated": "2022-12-14T12:00:00Z",
+                }
+            )
+        }
+
+        # Set SUBMITTED in Yarn
+        time_machine.coordinates.shift(70)
+        yarn_app.set_submitted()
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "created",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "created",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:01:10Z",
             }
         )
 
-        # Set SUBMITTED in Yarn
-        yarn_app.set_submitted()
-        job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet({"status": "created"})
-        elastic_job_registry.set_status.assert_called_with(job_id, "created")
-
         # Set ACCEPTED in Yarn
+        time_machine.coordinates.shift(70)
         yarn_app.set_accepted()
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet({"status": "queued"})
-        elastic_job_registry.set_status.assert_called_with(job_id, "queued")
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "queued",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "queued",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:02:20Z",
+            }
+        )
 
         # Set RUNNING in Yarn
+        time_machine.coordinates.shift(70)
         yarn_app.set_running()
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet({"status": "running"})
-        elastic_job_registry.set_status.assert_called_with(job_id, "running")
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "running",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:03:30Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "running",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:03:30Z",
+                "started": "2022-12-14T12:03:30Z",
+            }
+        )
 
         # Set FINISHED in Yarn
+        time_machine.coordinates.shift(70)
         yarn_app.set_finished()
         json_write(
             path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
             data={"foo": "bar"},
         )
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet({"status": "finished", "foo": "bar"})
-        elastic_job_registry.set_status.assert_called_with(job_id, "finished")
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "finished",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "finished",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:04:40Z",
+                "started": "2022-12-14T12:03:30Z",
+                "finished": "2022-12-14T12:04:40Z",
+            }
+        )
 
         assert caplog.record_tuples == []
 
@@ -273,15 +415,19 @@ class TestJobTracker:
         """
         Check that JobTracker.update_statuses() keeps working if there is no YARN app for a given job
         """
+        caplog.set_level(logging.WARNING)
         for j in [1, 2, 3]:
             zk_job_registry.register(
                 job_id=f"job-{j}",
                 user_id=f"user{j}",
                 api_version="1.2.3",
-                specification=DUMMY_SPEC_1,
+                specification=DUMMY_PROCESS_1,
             )
             zk_job_registry.set_application_id(
                 job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
+            )
+            elastic_job_registry.create_job(
+                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -300,10 +446,11 @@ class TestJobTracker:
             {"status": "running"}
         )
 
-        # TODO get status from an in-memory registry, instead of mock.assert_any_call
-        elastic_job_registry.set_status.assert_any_call("job-1", "running")
-        elastic_job_registry.set_status.assert_any_call("job-2", "error")
-        elastic_job_registry.set_status.assert_any_call("job-3", "running")
+        assert elastic_job_registry.db == {
+            "job-1": DictSubSet(status="running"),
+            "job-2": DictSubSet(status="error"),
+            "job-3": DictSubSet(status="running"),
+        }
 
         assert caplog.record_tuples == [
             (
@@ -330,10 +477,13 @@ class TestJobTracker:
                 job_id=f"job-{j}",
                 user_id=f"user{j}",
                 api_version="1.2.3",
-                specification=DUMMY_SPEC_1,
+                specification=DUMMY_PROCESS_1,
             )
             zk_job_registry.set_application_id(
                 job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
+            )
+            elastic_job_registry.create_job(
+                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -354,10 +504,11 @@ class TestJobTracker:
             {"status": "running"}
         )
 
-        # TODO get status from an in-memory registry, instead of mock.assert_any_call
-        elastic_job_registry.set_status.assert_any_call("job-1", "running")
-        elastic_job_registry.set_status.assert_any_call("job-2", "error")
-        elastic_job_registry.set_status.assert_any_call("job-3", "running")
+        assert elastic_job_registry.db == {
+            "job-1": DictSubSet(status="running"),
+            "job-2": DictSubSet(status="error"),
+            "job-3": DictSubSet(status="running"),
+        }
 
         assert caplog.record_tuples == [
             (

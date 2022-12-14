@@ -94,9 +94,11 @@ class JobTracker:
                                                started=start_time,
                                                finished=finish_time)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from K8s"):
-                                    # TODO: also set started/finished
                                     self._elastic_job_registry.set_status(
-                                        job_id, new_status
+                                        job_id=job_id,
+                                        status=new_status,
+                                        started=start_time,
+                                        finished=finish_time,
                                     )
 
                                 if current_status != new_status:
@@ -133,7 +135,14 @@ class JobTracker:
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from YARN"):
                                     # TODO: also set started/finished, ...
                                     self._elastic_job_registry.set_status(
-                                        job_id, new_status
+                                        job_id=job_id,
+                                        status=new_status,
+                                        started=JobTracker._to_serializable_datetime(
+                                            start_time
+                                        ),
+                                        finished=JobTracker._to_serializable_datetime(
+                                            finish_time
+                                        ),
                                     )
 
                                 if current_status != new_status:
@@ -186,7 +195,7 @@ class JobTracker:
                         with ElasticJobRegistry.just_log_errors(f"job_tracker flag error"):
                             # TODO: also set started/finished, exception/error info ...
                             self._elastic_job_registry.set_status(
-                                job_id, JOB_STATUS.ERROR
+                                job_id=job_id, status=JOB_STATUS.ERROR
                             )
 
     def get_kube_usage(self,job_id,user_id):
