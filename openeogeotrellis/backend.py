@@ -2009,7 +2009,7 @@ class GpsBatchJobs(backend.BatchJobs):
             return iter(())
 
         try:
-            from_ = int(offset) + 1 if offset is not None else 0
+            from_ = int(offset) + 1 if offset not in [None, ""] else 0
             return elasticsearch_logs(job_id, from_)
         except ValueError:
             raise OpenEOApiException(status_code=400, code="OffsetInvalid",
