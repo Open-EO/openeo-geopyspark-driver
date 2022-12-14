@@ -105,7 +105,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     return context
 
 
-@pytest.fixture(params=["0.4.0", "1.0.0"])
+@pytest.fixture(params=["1.0.0"])
 def api_version(request):
     return request.param
 
