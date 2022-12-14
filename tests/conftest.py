@@ -132,10 +132,25 @@ def udf_noop():
 
 
 @pytest.fixture
-def backend_implementation(request) -> 'GeoPySparkBackendImplementation':
+def batch_job_output_root(tmp_path) -> Path:
+    # TODO: can we avoid using/initializing tmp_path when we won't need it (or is it low overhead anyway?)
+    batch_job_output_root = tmp_path / "jobs"
+    batch_job_output_root.mkdir(parents=True)
+    return batch_job_output_root
+
+
+@pytest.fixture
+def backend_implementation(
+    request, batch_job_output_root
+) -> "GeoPySparkBackendImplementation":
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
-    backend = GeoPySparkBackendImplementation(opensearch_enrich=False)
+    backend = GeoPySparkBackendImplementation(
+        opensearch_enrich=False,
+        batch_job_output_root=batch_job_output_root,
+    )
+
+    # TODO: eliminate this `request.instance` stuff, normal fixture usage should suffice
     if request.instance:
         request.instance.backend_implementation = backend
     return backend

@@ -269,20 +269,25 @@ class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
 
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
-
-    def __init__(self, use_zookeeper=True, opensearch_enrich=True):
-        # TODO: do this with a config instead of hardcoding rules?
+    def __init__(
+        self,
+        use_zookeeper=True,
+        opensearch_enrich=True,
+        batch_job_output_root: Optional[Path] = None,
+    ):
         self._service_registry = (
+            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
             InMemoryServiceRegistry() if not use_zookeeper or ConfigParams().is_ci_context
             else ZooKeeperServiceRegistry()
         )
 
         user_defined_processes = (
-            # choosing between DBs can be done in said config
+            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
             InMemoryUserDefinedProcessRepository() if not use_zookeeper or ConfigParams().is_ci_context
             else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
         )
 
+        # TODO #285 get vault url from config instead of hardcoding
         vault = Vault("https://vault.vgt.vito.be")
 
         catalog = get_layer_catalog(vault, opensearch_enrich=opensearch_enrich)
@@ -295,7 +300,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         super().__init__(
             catalog=catalog,
-            batch_jobs=GpsBatchJobs(catalog, jvm, principal, key_tab, vault),
+            batch_jobs=GpsBatchJobs(
+                catalog=catalog,
+                jvm=jvm,
+                principal=principal,
+                key_tab=key_tab,
+                vault=vault,
+                output_root_dir=batch_job_output_root,
+            ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
             # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
@@ -892,10 +904,16 @@ class GpsProcessing(ConcreteProcessing):
 
 
 class GpsBatchJobs(backend.BatchJobs):
-    # TODO #283 get this from a real config instead of ugly `is_kube_deploy` check
-    _OUTPUT_ROOT_DIR = Path("/batch_jobs") if ConfigParams().is_kube_deploy else Path("/data/projects/OpenEO/")
 
-    def __init__(self, catalog: CollectionCatalog, jvm: JVMView, principal: str, key_tab: str, vault: Vault):
+    def __init__(
+        self,
+        catalog: CollectionCatalog,
+        jvm: JVMView,
+        principal: str,
+        key_tab: str,
+        vault: Vault,
+        output_root_dir: Optional[Union[str, Path]] = None,
+    ):
         super().__init__()
         self._catalog = catalog
         self._jvm = jvm
@@ -905,6 +923,11 @@ class GpsBatchJobs(backend.BatchJobs):
         self._default_sentinel_hub_client_secret = None
         self._get_terrascope_access_token: Optional[Callable[[User, str], str]] = None
         self._vault = vault
+
+        # TODO: Generalize assumption that output_dir == local FS? (e.g. results go to non-local S3)
+        self._output_root_dir = Path(
+            output_root_dir or ConfigParams().batch_job_output_root
+        )
 
         self._elastic_job_registry: Optional[ElasticJobRegistry] = None
         with ElasticJobRegistry.just_log_errors(name="init"):
@@ -1124,7 +1147,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     def get_job_output_dir(self, job_id: str) -> Path:
-        return self._OUTPUT_ROOT_DIR / job_id
+        # TODO: instead of flat dir with potentially a lot of subdirs (which is hard to maintain/clean up):
+        #       add an intermediate level (e.g. based on job_id/user_id prefix or date or ...)?
+        return self._output_root_dir / job_id
 
     @staticmethod
     def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".") -> str:
@@ -1303,7 +1328,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 user_id_truncated = truncate_user_id_k8s(user_id)
                 job_id_truncated = truncate_job_id_k8s(job_id)
 
-                output_dir = str(GpsBatchJobs._OUTPUT_ROOT_DIR) + '/' + job_id
+                output_dir = str(self.get_job_output_dir(job_id))
 
                 job_specification_file = output_dir + '/job_specification.json'
 
@@ -1399,17 +1424,21 @@ class GpsBatchJobs(backend.BatchJobs):
                     submit_script = 'submit_batch_job_spark3.sh'
                 script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
 
-                with tempfile.NamedTemporaryFile(mode="wt",
-                                                 encoding='utf-8',
-                                                 dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
-                                                 prefix="{j}_".format(j=job_id),
-                                                 suffix=".in") as temp_input_file, \
-                        tempfile.NamedTemporaryFile(mode="wt",
-                                                    encoding='utf-8',
-                                                    dir=GpsBatchJobs._OUTPUT_ROOT_DIR,
-                                                    prefix="{j}_".format(j=job_id),
-                                                    suffix=".properties") as temp_properties_file:
-                    temp_input_file.write(job_info['specification'])
+                # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
+                with tempfile.NamedTemporaryFile(
+                    mode="wt",
+                    encoding="utf-8",
+                    dir=self._output_root_dir,
+                    prefix=f"{job_id}_",
+                    suffix=".in",
+                ) as temp_input_file, tempfile.NamedTemporaryFile(
+                    mode="wt",
+                    encoding="utf-8",
+                    dir=self._output_root_dir,
+                    prefix=f"{job_id}_",
+                    suffix=".properties",
+                ) as temp_properties_file:
+                    temp_input_file.write(job_info["specification"])
                     temp_input_file.flush()
 
                     self._write_sensitive_values(temp_properties_file,
@@ -1512,10 +1541,14 @@ class GpsBatchJobs(backend.BatchJobs):
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
         from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
-        env = EvalEnv({
-            "user": User(user_id),
-            "backend_implementation": GeoPySparkBackendImplementation(),
-        })
+        env = EvalEnv(
+            {
+                "user": User(user_id),
+                # TODO #285: use original GeoPySparkBackendImplementation instead of recreating a new one
+                #           or at least set all GeoPySparkBackendImplementation arguments correctly (e.g. through a config)
+                "backend_implementation": GeoPySparkBackendImplementation(),
+            }
+        )
 
         if api_version:
             env = env.push({"version": api_version})
@@ -1888,7 +1921,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
-        Reads the metadata json file from the job directory 
+        Reads the metadata json file from the job directory
         and returns information about the output files.
 
         :param job_id: The id of the job to get the results for.

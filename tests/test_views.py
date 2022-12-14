@@ -452,11 +452,10 @@ class TestBatchJobs:
                 "links": []
             }
 
-    def test_create_and_start_and_download(self, api, tmp_path, monkeypatch):
+    def test_create_and_start_and_download(self, api, tmp_path, monkeypatch, batch_job_output_root):
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
-            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             openeo_flask_dir = tmp_path / "openeo-flask"
             openeo_flask_dir.mkdir()
@@ -471,7 +470,7 @@ class TestBatchJobs:
             job_id = res.headers['OpenEO-Identifier']
             # Start job
             with mock.patch('subprocess.run') as run:
-                os.mkdir(tmp_path / job_id)
+                os.mkdir(batch_job_output_root / job_id)
                 stdout = api.read_file("spark-submit-stdout.txt")
                 run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
                 # Trigger job start
@@ -482,10 +481,10 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_dir = (tmp_path / job_id)
-            job_output = (job_dir / "out")
-            job_log = (job_dir / "log")
-            job_metadata = (job_dir / JOB_METADATA_FILENAME)
+            job_dir = batch_job_output_root / job_id
+            job_output = job_dir / "out"
+            job_log = job_dir / "log"
+            job_metadata = job_dir / JOB_METADATA_FILENAME
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
@@ -571,8 +570,13 @@ class TestBatchJobs:
             #TODO: mock retrieval of logs from ES
             assert res["logs"] == []
 
-    @mock.patch("openeogeotrellis.configparams.ConfigParams.use_object_storage", new_callable=mock.PropertyMock)
-    def test_download_from_object_storage(self, mock_config_use_object_storage, api, tmp_path, mock_s3_bucket):
+    @mock.patch(
+        "openeogeotrellis.configparams.ConfigParams.use_object_storage",
+        new_callable=mock.PropertyMock,
+    )
+    def test_download_from_object_storage(
+        self, mock_config_use_object_storage, api, batch_job_output_root, mock_s3_bucket
+    ):
         """Test the scenario where the result files we want to download are stored on the objects storage,
         but they are not present in the container that receives the download request.
 
@@ -580,8 +584,8 @@ class TestBatchJobs:
         """
 
         mock_config_use_object_storage.return_value = True
-        job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
-        job_dir: pathlib.Path = (tmp_path / job_id)
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+        job_dir: pathlib.Path = batch_job_output_root / job_id
         output_dir_s3_url = to_s3_url(job_dir)
         job_metadata = (job_dir / JOB_METADATA_FILENAME)
 
@@ -625,8 +629,6 @@ class TestBatchJobs:
         assert not job_dir.exists()
 
         with self._mock_kazoo_client() as zk:
-            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
-
             # where to import dict_no_none from
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
@@ -660,8 +662,13 @@ class TestBatchJobs:
                 assert res.status_code == 200
                 assert res.data == TIFF_DUMMY_DATA
 
-    @mock.patch("openeogeotrellis.configparams.ConfigParams.use_object_storage", new_callable=mock.PropertyMock)
-    def test_download_without_object_storage(self, mock_config_use_object_storage, api, tmp_path):
+    @mock.patch(
+        "openeogeotrellis.configparams.ConfigParams.use_object_storage",
+        new_callable=mock.PropertyMock,
+    )
+    def test_download_without_object_storage(
+        self, mock_config_use_object_storage, api, batch_job_output_root
+    ):
         """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
 
         Some changes were introduced be able to download from S3, so we want to be sure the existing
@@ -669,9 +676,9 @@ class TestBatchJobs:
         """
 
         mock_config_use_object_storage.return_value = False
-        job_id = '6d11e901-bb5d-4589-b600-8dfb50524740'
-        job_dir: pathlib.Path = (tmp_path / job_id)
-        job_metadata = (job_dir / JOB_METADATA_FILENAME)
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+        job_dir: pathlib.Path = batch_job_output_root / job_id
+        job_metadata = job_dir / JOB_METADATA_FILENAME
 
         job_metadata_contents = {
             'geometry': {
@@ -720,10 +727,7 @@ class TestBatchJobs:
         with job_metadata.open('w') as f:
             json.dump(job_metadata_contents,f)
 
-
         with self._mock_kazoo_client() as zk:
-            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
-
             # where to import dict_no_none from
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
@@ -766,11 +770,10 @@ class TestBatchJobs:
                     assert res.status_code == 200
                     assert res.data == TIFF_DUMMY_DATA
 
-    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch):
+    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch, batch_job_output_root):
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
-            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
 
             openeo_flask_dir = tmp_path / "openeo-flask"
             openeo_flask_dir.mkdir()
@@ -796,10 +799,10 @@ class TestBatchJobs:
                 batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
-            job_dir = (tmp_path / job_id)
-            job_output = (job_dir / "out")
-            job_log = (job_dir / "log")
-            job_metadata = (job_dir / JOB_METADATA_FILENAME)
+            job_dir = batch_job_output_root / job_id
+            job_output = job_dir / "out"
+            job_log = job_dir / "log"
+            job_metadata = job_dir / JOB_METADATA_FILENAME
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
@@ -815,10 +818,8 @@ class TestBatchJobs:
             assert batch_job_args[22:24] == [TEST_USER, job_id]
             assert batch_job_args[24] == '0.0'
 
-    def test_cancel_job(self, api, tmp_path):
+    def test_cancel_job(self, api):
         with self._mock_kazoo_client() as zk:
-            GpsBatchJobs._OUTPUT_ROOT_DIR = tmp_path
-
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
