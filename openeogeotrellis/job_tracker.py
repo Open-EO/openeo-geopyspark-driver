@@ -1,19 +1,20 @@
-import os
-import kazoo.client
+from pathlib import Path
 import logging
 from decimal import Decimal
 from logging.handlers import RotatingFileHandler
 import subprocess
 import sys
 from subprocess import CalledProcessError
-from typing import Callable, Union
+from typing import Callable, Union, Optional
 import time
 from collections import namedtuple
 from datetime import datetime
+import re
+
+import kazoo.client
 
 import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339
-import re
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
@@ -38,11 +39,29 @@ class JobTracker:
                                             'aggregate_resource_allocation'])
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
 
-    def __init__(self, job_registry: Callable[[], ZkJobRegistry], principal: str, keytab: str):
+    def __init__(
+        self,
+        job_registry: Callable[[], ZkJobRegistry],
+        principal: str,
+        keytab: str,
+        output_root_dir: Optional[Union[str, Path]] = None,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+    ):
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
-        self._batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=principal, key_tab=keytab, vault=None)
+        # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
+        #       Also note that only `get_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actuall be overkill in the first place.
+        self._batch_jobs = GpsBatchJobs(
+            catalog=None,
+            jvm=None,
+            principal=principal,
+            key_tab=keytab,
+            vault=None,
+            output_root_dir=output_root_dir,
+            elastic_job_registry=elastic_job_registry,
+        )
+        self._elastic_job_registry = elastic_job_registry
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
@@ -73,7 +92,9 @@ class JobTracker:
                                                finished=finish_time)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker update status {new_status}"):
                                     # TODO: also set started/finished
-                                    self._batch_jobs._elastic_job_registry.set_status(job_id, new_status)
+                                    self._elastic_job_registry.set_status(
+                                        job_id, new_status
+                                    )
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
@@ -108,7 +129,9 @@ class JobTracker:
                                                cpu_time_seconds=cpu_time_seconds)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker update status from YARN"):
                                     # TODO: also set started/finished, ...
-                                    self._batch_jobs._elastic_job_registry.set_status(job_id, new_status)
+                                    self._elastic_job_registry.set_status(
+                                        job_id, new_status
+                                    )
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %

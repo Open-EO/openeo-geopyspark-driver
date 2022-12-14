@@ -1,15 +1,17 @@
-from unittest import mock
-
 import contextlib
-import pytest
 import subprocess
 from dataclasses import dataclass
-from typing import Tuple, List, Optional, Dict
+from typing import Dict, List, Optional, Tuple
+from unittest import mock
 
+import pytest
+from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
+
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.testing import KazooClientMock
+from openeogeotrellis.utils import json_write
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
 
@@ -152,54 +154,96 @@ def yarn() -> YarnMock:
         yield yarn
 
 
+@pytest.fixture
+def elastic_job_registry():
+    # TODO use a real in-memory job registry instead of a mock?
+    return mock.Mock()
+
+
+DUMMY_PG_1 = {
+    "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}
+}
+DUMMY_SPEC_1 = {"process_graph": DUMMY_PG_1}
+
+
 class TestJobTracker:
     @pytest.fixture
-    def job_tracker(self, zk_job_registry) -> JobTracker:
+    def job_tracker(
+        self, zk_job_registry, elastic_job_registry, batch_job_output_root
+    ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             job_registry=lambda: zk_job_registry,
             principal=principal,
             keytab=keytab,
+            output_root_dir=batch_job_output_root,
+            elastic_job_registry=elastic_job_registry,
         )
         return job_tracker
 
-    def test_basic_yarn_zookeeper(self, zk_job_registry, yarn, job_tracker):
+    def test_basic_yarn_zookeeper(
+        self,
+        zk_job_registry,
+        zk_client,
+        yarn,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+    ):
         user_id = "john"
         job_id = "job-123"
         # Register new job in zookeeper and yarn
         yarn_app = yarn.submit(app_id="app-123")
         zk_job_registry.register(
-            job_id=job_id, user_id=user_id, api_version="1.2.3", specification={}
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=DUMMY_SPEC_1,
         )
         zk_job_registry.set_application_id(
             job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
         )
 
-        def zk_status() -> str:
-            return zk_job_registry.get_status(job_id=job_id, user_id=user_id)
+        def zk_job_info() -> dict:
+            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
 
         # Check initial status in registry
-        assert zk_status() == "created"
+        assert zk_job_info() == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "application_id": yarn_app.app_id,
+                "status": "created",
+            }
+        )
 
         # Set SUBMITTED in Yarn
         yarn_app.set_submitted()
         job_tracker.update_statuses()
-        assert zk_status() == "created"
+        assert zk_job_info() == DictSubSet({"status": "created"})
+        elastic_job_registry.set_status.assert_called_with(job_id, "created")
 
         # Set ACCEPTED in Yarn
         yarn_app.set_accepted()
         job_tracker.update_statuses()
-        assert zk_status() == "queued"
+        assert zk_job_info() == DictSubSet({"status": "queued"})
+        elastic_job_registry.set_status.assert_called_with(job_id, "queued")
 
         # Set RUNNING in Yarn
         yarn_app.set_running()
         job_tracker.update_statuses()
-        assert zk_status() == "running"
+        assert zk_job_info() == DictSubSet({"status": "running"})
+        elastic_job_registry.set_status.assert_called_with(job_id, "running")
 
         # Set FINISHED in Yarn
         yarn_app.set_finished()
+        json_write(
+            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
+            data={"foo": "bar"},
+        )
         job_tracker.update_statuses()
-        assert zk_status() == "finished"
+        assert zk_job_info() == DictSubSet({"status": "finished", "foo": "bar"})
+        elastic_job_registry.set_status.assert_called_with(job_id, "finished")
 
-        # TODO: assert for warnings
+        assert caplog.record_tuples == []

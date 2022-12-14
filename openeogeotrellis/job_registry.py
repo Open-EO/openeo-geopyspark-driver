@@ -132,9 +132,6 @@ class ZkJobRegistry:
         self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
 
-    def get_status(self, job_id: str, user_id: str) -> str:
-        return self.get_job(job_id=job_id, user_id=user_id)["status"]
-
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
         _log.debug("batch job {j} dependency -> {s}".format(j=job_id, s=dependency_status))
