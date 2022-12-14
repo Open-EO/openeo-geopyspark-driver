@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from pprint import pformat
 from typing import Optional
 
@@ -30,6 +31,16 @@ class ConfigParams:
         self.is_kube_deploy = env.get("KUBE", False)
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
+
+        self.batch_job_output_root = Path(
+            env.get("OPENEO_BATCH_JOB_OUTPUT_ROOT")
+            or (
+                # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
+                "/batch_jobs"
+                if self.is_kube_deploy
+                else "/data/projects/OpenEO/"
+            )
+        )
 
         self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
