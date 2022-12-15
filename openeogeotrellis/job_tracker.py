@@ -44,31 +44,6 @@ class JobTracker:
         self._keytab = keytab
         self._batch_jobs = GpsBatchJobs(catalog=None, jvm=None, principal=principal, key_tab=keytab, vault=None)
 
-    def loop_update_statuses(self, interval_s: int = 60):
-        # TODO: this method seems to be unused
-        with self._job_registry() as registry:
-            registry.ensure_paths()
-
-        try:
-            i = 0
-
-            while True:
-                try:
-                    _log.info("tracking statuses...")
-
-                    if i % 60 == 0:
-                        self._refresh_kerberos_tgt()
-
-                    self.update_statuses()
-                except Exception:
-                    _log.warning("scheduling new run after failing to track batch jobs", exc_info=True)
-
-                time.sleep(interval_s)
-
-                i += 1
-        except KeyboardInterrupt:
-            pass
-
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
@@ -326,21 +301,6 @@ class JobTracker:
 
         utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
         return date_to_rfc3339(utc_datetime)
-
-    def _refresh_kerberos_tgt(self):
-        if self._keytab and self._principal:
-            cmd = ["kinit", "-V", "-kt", self._keytab, self._principal]
-
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-            for line in p.stdout:
-                _log.info(line.rstrip().decode())
-
-            p.wait()
-            if p.returncode:
-                _log.warning("{c} returned exit code {r}".format(c=" ".join(cmd), r=p.returncode))
-        else:
-            _log.warning("No Kerberos principal/keytab: will not refresh TGT")
 
 
 if __name__ == '__main__':
