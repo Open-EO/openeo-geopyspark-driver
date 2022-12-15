@@ -3,6 +3,7 @@ import collections.abc
 import contextlib
 import datetime
 import grp
+import json
 import logging
 import math
 import os
@@ -493,3 +494,18 @@ def temp_csv_dir(message: str = "n/a") -> str:
         logger.warning(f"Got permission error while setting up temp dir: {str(temp_dir)}, but will try to continue.")
     logger.info(f"Created temp csv dir {temp_dir!r}: {message}")
     return temp_dir
+
+
+def json_write(
+    path: Union[str, Path],
+    data: dict,
+    indent: Optional[int] = None,
+) -> Path:
+    """Helper to easily JSON-dump a data structure to a JSON file."""
+    # TODO: move this up to openeo-python-driver or even openeo-python-client
+    path = Path(path)
+    if not path.parent.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open(mode="w", encoding="utf-8") as f:
+        json.dump(data, f, indent=indent)
+    return path

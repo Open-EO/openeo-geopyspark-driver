@@ -913,6 +913,7 @@ class GpsBatchJobs(backend.BatchJobs):
         key_tab: str,
         vault: Vault,
         output_root_dir: Optional[Union[str, Path]] = None,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
     ):
         super().__init__()
         self._catalog = catalog
@@ -929,9 +930,10 @@ class GpsBatchJobs(backend.BatchJobs):
             output_root_dir or ConfigParams().batch_job_output_root
         )
 
-        self._elastic_job_registry: Optional[ElasticJobRegistry] = None
+        self._elastic_job_registry: Optional[ElasticJobRegistry] = elastic_job_registry
         with ElasticJobRegistry.just_log_errors(name="init"):
-            self._elastic_job_registry = ElasticJobRegistry.from_environ()
+            if not self._elastic_job_registry:
+                self._elastic_job_registry = ElasticJobRegistry.from_environ()
             self._elastic_job_registry.health_check(log=True)
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
@@ -2011,11 +2013,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return results_dict
 
+    def get_results_metadata_path(self, job_id: str) -> Path:
+        return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
+
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
         """
-        metadata_file = self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
+        metadata_file = self.get_results_metadata_path(job_id=job_id)
 
         if ConfigParams().use_object_storage:
             try:
