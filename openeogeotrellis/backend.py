@@ -2048,12 +2048,7 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
-        try:
-            from_ = int(offset) + 1 if offset not in [None, ""] else 0
-            return elasticsearch_logs(job_id, from_)
-        except ValueError:
-            raise OpenEOApiException(status_code=400, code="OffsetInvalid",
-                                     message=f"The value passed for the query parameter 'offset' is invalid: {offset}")
+        return elasticsearch_logs(job_id, offset)
 
     def cancel_job(self, job_id: str, user_id: str):
         with ZkJobRegistry() as registry:

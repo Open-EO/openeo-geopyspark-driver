@@ -1,14 +1,25 @@
+import json
 from typing import Iterable, Optional
 
 from elasticsearch import Elasticsearch
 from openeo.util import dict_no_none
+from openeo_driver.errors import OpenEOApiException
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
 ES_INDEX_PATTERN = "openeo-*-index-1m*"
 ES_TAGS = ["openeo"]
 
 
-def elasticsearch_logs(job_id: str, from_: int) -> Iterable[dict]:
+def elasticsearch_logs(job_id: str, offset: Optional[str]) -> Iterable[dict]:
+    try:
+        search_after = None if offset in [None, ""] else json.loads(offset)
+        return _elasticsearch_logs(job_id, search_after)
+    except json.decoder.JSONDecodeError:
+        raise OpenEOApiException(status_code=400, code="OffsetInvalid",
+                                 message=f"The value passed for the query parameter 'offset' is invalid: {offset}")
+
+
+def _elasticsearch_logs(job_id: str, search_after: Optional[list]) -> Iterable[dict]:
     page_size = 100
 
     with Elasticsearch(ES_HOSTS) as es:
@@ -28,16 +39,22 @@ def elasticsearch_logs(job_id: str, from_: int) -> Iterable[dict]:
                         }]
                     }
                 },
-                from_=from_,
+                search_after=search_after,
                 size=page_size,
-                sort='@timestamp'
+                sort=[
+                    {'@timestamp': {'order': 'asc'}},
+                    {'log.offset': {'order': 'asc'}},  # tie-breaker
+                    # chances are slim that two processes write on the same line within the same millisecond
+                    # 'log.file.path', 'host.name'
+                ],
+                request_timeout=60
             )
 
             hits = search_result['hits']['hits']
 
             for hit in hits:
-                yield _as_log_entry(log_id=str(from_), hit=hit)
-                from_ += 1
+                search_after = hit['sort']
+                yield _as_log_entry(log_id=json.dumps(search_after), hit=hit)
 
             if len(hits) < page_size:
                 break
@@ -78,13 +95,19 @@ def _openeo_log_level(internal_log_level: Optional[str]) -> Optional[str]:
 def main():
     from itertools import islice
 
-    job_id = 'j-0ec6fb2b02a741cd91139cbf08eb8dff'
-    offset = 8
+    # job_id = 'j-7e274ba1eb2e4a20a0e100d53d44d692'  # short
+    # search_after = [1670939264990, "c2m9C4UBFu4FfsUu8ClI"]
+    job_id = 'j-db27cdaaca7a4d288346eaf01ceeef16'  # long
+    # search_after = [1671009758258, "1vfxD4UBVWXUH_mWk-OT"]
+    search_after = None
 
-    logs = elasticsearch_logs(job_id, offset)
+    logs = elasticsearch_logs(job_id, search_after)
 
-    for log in islice(logs, 20):
-        print(log)
+    output_limit = None
+
+    with open(f"/tmp/{job_id}_logs.json", "w") as f:
+        for log in islice(logs, output_limit):
+            f.write(json.dumps(log) + "\n")
 
 
 if __name__ == '__main__':
