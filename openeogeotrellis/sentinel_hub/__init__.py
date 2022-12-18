@@ -24,8 +24,7 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
             .format(c=sar_backscatter_arguments.coefficient, coll=collection_id, link=link)
         )
 
-    rtc = backscatter_coefficient == "GAMMA0_TERRAIN"
-    orthorectify = rtc or sar_backscatter_arguments.local_incidence_angle
+    orthorectify = sar_backscatter_arguments.elevation_model != None and sar_backscatter_arguments.elevation_model != "off"
 
     if sar_backscatter_arguments.contributing_area:
         raise FeatureUnsupportedException("sar_backscatter: contributing_area is not supported")
