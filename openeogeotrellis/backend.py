@@ -12,6 +12,7 @@ import traceback
 import uuid
 from decimal import Decimal
 from functools import lru_cache, partial, reduce
+from pandas import Timedelta
 from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable, Mapping
@@ -994,6 +995,7 @@ class GpsBatchJobs(backend.BatchJobs):
             collection_id = batch_process_dependency['collection_id']
 
             metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
+            temporal_step = metadata.get("cube:dimensions", "t", "step")
             layer_source_info = metadata.get("_vito", "data_source", default={})
 
             endpoint = layer_source_info['endpoint']
@@ -1028,7 +1030,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 return retry
 
             # TODO: prevent requests for duplicate (recycled) batch request IDs
-            return {request_id: (batch_processing_service.get_batch_process(request_id),
+            return {request_id: (batch_processing_service.get_batch_process(request_id), temporal_step,
                                  retrier(request_id)) for request_id in batch_request_ids if request_id is not None}
 
         dependencies = job_info.get('dependencies') or []
@@ -1036,7 +1038,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                  (batch_request_details(dependency) for dependency in dependencies))
 
         batch_process_statuses = {batch_request_id: details.status()
-                                  for batch_request_id, (details, _) in batch_processes.items()}
+                                  for batch_request_id, (details, _, _) in batch_processes.items()}
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
@@ -1103,8 +1105,21 @@ class GpsBatchJobs(backend.BatchJobs):
                     pass
 
             with ZkJobRegistry() as registry:
-                batch_process_processing_units = sum(details.processing_units_spent() or Decimal("0.0")
-                                                           for details, _ in batch_processes.values())
+                def processing_units_spent(value_estimate: Decimal, temporal_step: Optional[str]) -> Decimal:
+                    seconds_per_day = 24 * 3600
+                    temporal_interval_in_days: Optional[float] = (
+                        None if temporal_step is None else Timedelta(temporal_step).total_seconds() / seconds_per_day)
+
+                    default_temporal_interval = 3
+                    estimate_to_pu_ratio = 3
+                    estimate_secure_factor = 2
+                    temporal_interval = Decimal(temporal_interval_in_days or default_temporal_interval)
+                    return (value_estimate * estimate_secure_factor / estimate_to_pu_ratio * default_temporal_interval
+                            / temporal_interval)
+
+                batch_process_processing_units = sum(processing_units_spent(details.value_estimate() or Decimal("0.0"),
+                                                                            temporal_step)
+                                                     for details, temporal_step, _ in batch_processes.values())
 
                 logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units} PU",
                              extra={'job_id': job_id, 'user_id': user_id})
@@ -1119,7 +1134,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 with ZkJobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
 
-                retries = [retry for details, retry in batch_processes.values() if details.status() == "PARTIAL"]
+                retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
                 for retry in retries:
                     retry()
