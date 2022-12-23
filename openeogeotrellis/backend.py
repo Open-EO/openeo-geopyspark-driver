@@ -1410,24 +1410,24 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
-
+                    spark_app_id = f"job-{job_id_truncated}-{user_id_truncated}"
                     status_response = {}
                     retry=0
                     while('status' not in status_response and retry<10):
                         retry+=1
                         time.sleep(10)
                         try:
-                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", "job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated))
+                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications",
+                                                                                        spark_app_id)
                         except ApiException as e:
                             logger.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
 
                     if('status' not in status_response):
-                        logger.warning("invalid status response: {status}".format(status=str(status_response)), extra={'job_id': job_id})
-                        registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                        logger.warning(f"invalid status response: {status_response}, assuming it is queued.", extra={'job_id': job_id})
+                        registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                     else:
-                        application_id = status_response['status']['sparkApplicationId']
-                        logger.info("mapped job_id {a} to application ID {b}".format(a=job_id, b=application_id), extra={'job_id': job_id})
-                        registry.set_application_id(job_id, user_id, application_id)
+                        logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
+                        registry.set_application_id(job_id, user_id, spark_app_id)
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
