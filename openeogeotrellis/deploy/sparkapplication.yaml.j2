@@ -148,7 +148,8 @@ spec:
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
       - name: "http-credentials-configmap"
-        mountPath: "/opt/http_credentials"
+        mountPath: "/opt/http_credentials/http_credentials.json"
+        subPath: "http_credentials.json"
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
