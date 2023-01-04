@@ -67,14 +67,17 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expe
         "/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.zip",
         str(basePath)
     )
-    (basePath / "S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_0FCC.SAFE").symlink_to(basePath / "S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.SAFE",target_is_directory=True)
+    fast24_variant = (basePath / "S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_0FCC.SAFE")
+    if not fast24_variant.exists():
+        fast24_variant.symlink_to(basePath / "S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.SAFE", target_is_directory=True)
     basePath = Path("/eodata/Sentinel-1/SAR/GRD/2020/07/29")
     extract_product(
         "/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.zip",
         str(basePath)
     )
-    (basePath / "S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E424.SAFE").symlink_to(
-        basePath / "S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.SAFE", target_is_directory=True)
+    fast24_variant = (basePath / "S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E424.SAFE")
+    if not fast24_variant.exists():
+        fast24_variant.symlink_to(basePath / "S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.SAFE", target_is_directory=True)
     from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
     catalog = GeoPySparkLayerCatalog(all_metadata=[{
         "id": "Creodias-S1-Backscatter",
