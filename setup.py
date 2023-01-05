@@ -83,5 +83,9 @@ setup(
     ],
     extras_require={
         "dev": tests_require,
+        "k8s": [
+            # TODO: also add these to "dev" extra?
+            "kubernetes",
+        ],
     },
 )
