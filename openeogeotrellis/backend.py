@@ -1377,6 +1377,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
                 rendered = Template(open(jinja_template).read()).render(
+                    # TODO: use public version of `JobTracker._kube_prefix` instead of adhoc job_name building
                     job_name="job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated),
                     job_specification=job_specification_file,
                     output_dir=output_dir,
@@ -1421,6 +1422,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
+                    # TODO: use public version of `JobTracker._kube_prefix` instead of adhoc job_name building
                     spark_app_id = f"job-{job_id_truncated}-{user_id_truncated}"
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
                     registry.set_application_id(job_id, user_id, spark_app_id)

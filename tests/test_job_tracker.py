@@ -1,19 +1,20 @@
-import time
-
 import contextlib
+import datetime as dt
 import logging
 import subprocess
+import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from unittest import mock
-import datetime as dt
-import pytest
 
-from openeo.util import rfc3339
+import kubernetes
+import pytest
+import requests_mock
+
+from openeo.util import rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
-
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.testing import KazooClientMock
@@ -160,6 +161,114 @@ class YarnMock:
             yield check_output
 
 
+class KUBERNETES_SPARK_APP_STATE:
+    # Job states as returned by spark-on-k8s-operator (sparkoperator.k8s.io)
+    # Based on https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/22cd4a2c6990df90ab1cb6b0ffbd9d8b76646790/pkg/apis/sparkoperator.k8s.io/v1beta2/types.go#L328-L344
+    # TODO: move this to openeogeotrellis.job_tracker?
+    NEW = ""
+    SUBMITTED = "SUBMITTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    # TODO: cover more states?
+
+    # TODO: "PENDING" is used by current `_kube_status_parser` implementation, but is this a valid state?
+    PENDING = "PENDING"
+
+
+@dataclass
+class KubernetesAppInfo:
+    """Dummy Kubernetes app metadata."""
+
+    app_id: str
+    state: str = KUBERNETES_SPARK_APP_STATE.NEW
+    start_time: Union[str, None] = None
+    finish_time: Union[str, None] = None
+
+    def set_submitted(self):
+        if not self.start_time:
+            self.start_time = rfc3339.datetime(dt.datetime.utcnow())
+        self.state = KUBERNETES_SPARK_APP_STATE.SUBMITTED
+
+    def set_running(self):
+        self.state = KUBERNETES_SPARK_APP_STATE.RUNNING
+
+    def set_completed(self):
+        if not self.finish_time:
+            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
+        self.state = KUBERNETES_SPARK_APP_STATE.COMPLETED
+
+    def set_failed(self):
+        if not self.finish_time:
+            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
+        self.state = KUBERNETES_SPARK_APP_STATE.FAILED
+
+
+class KubernetesMock:
+    """Kubernetes cluster mock."""
+
+    def __init__(self):
+        self.apps: Dict[str, KubernetesAppInfo] = {}
+
+    @contextlib.contextmanager
+    def patch(self):
+        def get_namespaced_custom_object(name: str, **kwargs) -> dict:
+            if name not in self.apps:
+                raise kubernetes.client.exceptions.ApiException(
+                    status=404, reason="Not Found"
+                )
+            app = self.apps[name]
+            return {
+                "status": {
+                    "applicationState": {"state": app.state},
+                    "lastSubmissionAttemptTime": app.start_time,
+                    "terminationTime": app.finish_time,
+                }
+            }
+
+        def get_model_allocation(
+            request: requests_mock.request._RequestObjectProxy, context
+        ) -> dict:
+            namespace = request.qs["filternamespaces"][0]
+            return {
+                "code": 200,
+                "data": [
+                    {
+                        namespace: {
+                            "cpuCoreHours": 2.34,
+                            "ramByteHours": 5.678 * 1024 * 1024,
+                        }
+                    }
+                ],
+            }
+
+        with mock.patch(
+            "openeogeotrellis.job_tracker.kube_client"
+        ) as kube_client, requests_mock.Mocker() as requests_mocker:
+            # Mock Kubernetes interaction
+            api_instance = kube_client.return_value
+            api_instance.get_namespaced_custom_object = get_namespaced_custom_object
+
+            # Mock kubernetes usage API
+            requests_mocker.get(
+                url_join(JobTracker._KUBECOST_URL, "/model/allocation"),
+                json=get_model_allocation,
+            )
+
+            yield
+
+    def submit(self, app_id: Optional[str] = None, **kwargs) -> KubernetesAppInfo:
+        """Create a new (dummy) Kubernetes app"""
+        if app_id is None:
+            app_id = generate_unique_id(prefix="app")
+        assert app_id not in self.apps
+        state = kwargs.pop("state", KUBERNETES_SPARK_APP_STATE.SUBMITTED)
+        self.apps[app_id] = app = KubernetesAppInfo(
+            app_id=app_id, state=state, **kwargs
+        )
+        return app
+
+
 @pytest.fixture
 def zk_client() -> KazooClientMock:
     return KazooClientMock()
@@ -175,6 +284,13 @@ def yarn() -> YarnMock:
     yarn = YarnMock()
     with yarn.patch():
         yield yarn
+
+
+@pytest.fixture
+def kubernetes() -> KubernetesMock:
+    kube = KubernetesMock()
+    with kube.patch():
+        yield kube
 
 
 class InMemoryJobRegistry:
@@ -324,14 +440,14 @@ class TestJobTracker:
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
             {
-                "status": "created",
+                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
-                "status": "created",
+                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
                 "created": "2022-12-14T12:00:00Z",
                 "updated": "2022-12-14T12:01:10Z",
             }
@@ -517,3 +633,133 @@ class TestJobTracker:
                 "Failed status update of job_id='job-2': CalledProcessError()",
             )
         ]
+
+    def test_kube_zookeeper_basic(
+        self,
+        zk_job_registry,
+        zk_client,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        kubernetes,
+    ):
+        caplog.set_level(logging.WARNING)
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+        # TODO: avoid setting private property
+        job_tracker._kube_mode = True
+
+        user_id = "john"
+        job_id = "job-123"
+        app_id = JobTracker._kube_prefix(job_id=job_id, user_id=user_id)
+        # Register new job in zookeeper and kube
+        kube_app = kubernetes.submit(app_id=app_id)
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=DUMMY_PROCESS_1,
+        )
+        zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=app_id
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+        )
+
+        def zk_job_info() -> dict:
+            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+        # Check initial status in registry
+        assert zk_job_info() == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": "created",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db == {
+            "job-123": DictSubSet(
+                {
+                    "job_id": "job-123",
+                    "user_id": "john",
+                    "status": "created",
+                    "process": DUMMY_PROCESS_1,
+                    "created": "2022-12-14T12:00:00Z",
+                    "updated": "2022-12-14T12:00:00Z",
+                }
+            )
+        }
+
+        # Set SUBMITTED IN Kubernetes
+        time_machine.coordinates.shift(70)
+        kube_app.set_submitted()
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:01:10Z",
+            }
+        )
+
+        # Set RUNNING IN Kubernetes
+        time_machine.coordinates.shift(70)
+        kube_app.set_running()
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "running",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:03:30Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "running",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:02:20Z",
+                "started": "2022-12-14T12:01:10Z",
+            }
+        )
+
+        # Set COMPLETED IN Kubernetes
+        time_machine.coordinates.shift(70)
+        kube_app.set_completed()
+        json_write(
+            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
+            data={"foo": "bar"},
+        )
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "finished",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
+                "usage": {
+                    "cpu": {"unit": "cpu-hours", "value": 2.34},
+                    "memory": {"unit": "mb-hours", "value": 5.678},
+                },
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "finished",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:03:30Z",
+                "started": "2022-12-14T12:01:10Z",
+                "finished": "2022-12-14T12:03:30Z",
+                # TODO: usage tracking (cpu, memory)
+            }
+        )
+
+        assert caplog.record_tuples == []

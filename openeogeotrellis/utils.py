@@ -293,6 +293,7 @@ def set_max_memory(max_total_memory_in_bytes: int):
     logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
 
 def kube_client():
+    # TODO: move this to kubernetes related utility submodule
     from kubernetes import client, config
     config.load_incluster_config()
     api_instance = client.CustomObjectsApi()
@@ -390,10 +391,12 @@ def nullcontext():
 
 
 def truncate_job_id_k8s(job_id):
+    # TODO: move this to kubernetes related utility submodule
     return job_id.split('-')[1][:10]
 
 
 def truncate_user_id_k8s(user_id):
+    # TODO: move this to kubernetes related utility submodule
     return user_id.split('@')[0][:20]
 
 
