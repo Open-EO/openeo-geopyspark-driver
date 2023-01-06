@@ -1422,6 +1422,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
                     spark_app_id = f"job-{job_id_truncated}-{user_id_truncated}"
+                    logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
+                    registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
                     retry=0
                     while('status' not in status_response and retry<10):
@@ -1436,9 +1438,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     if('status' not in status_response):
                         logger.warning(f"invalid status response: {status_response}, assuming it is queued.", extra={'job_id': job_id})
                         registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-                    else:
-                        logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
-                        registry.set_application_id(job_id, user_id, spark_app_id)
+
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
