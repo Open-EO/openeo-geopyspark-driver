@@ -245,20 +245,6 @@ class JobTracker:
             _log.error(f"error while handling creo usage", exc_info=True, extra={'job_id': job_id})
 
     @staticmethod
-    def yarn_available() -> bool:
-        """Check if YARN tools are available."""
-        # TODO: this methods seems to be unused?
-        try:
-            _log.info("Checking if Hadoop 'yarn' tool is available")
-            output = subprocess.check_output(["yarn", "version"]).decode("ascii")
-            hadoop_yarn_available = "hadoop" in output.lower()
-            _log.info("Hadoop yarn available: {a}".format(a=hadoop_yarn_available))
-            return hadoop_yarn_available
-        except Exception:
-            _log.info("Failed to run 'yarn'", exc_info=True)
-            return False
-
-    @staticmethod
     def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
         api_instance = kube_client()
         status = api_instance.get_namespaced_custom_object(
