@@ -196,7 +196,7 @@ class JobTracker:
                 except Exception as e:
                     # TODO: option for strict mode (fail fast instead of just warnings)?
                     _log.warning(
-                        f"Failed status update of {job_id=}: {e!r}",
+                        f"Failed status update of {job_id=}: {type(e).__name__}: {e}",
                         exc_info=True,
                         extra={"job_id": job_id},
                     )

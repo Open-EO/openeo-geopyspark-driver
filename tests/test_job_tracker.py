@@ -258,10 +258,8 @@ class KubernetesMock:
 
             yield
 
-    def submit(self, app_id: Optional[str] = None, **kwargs) -> KubernetesAppInfo:
+    def submit(self, app_id: str, **kwargs) -> KubernetesAppInfo:
         """Create a new (dummy) Kubernetes app"""
-        if app_id is None:
-            app_id = generate_unique_id(prefix="app")
         assert app_id not in self.apps
         state = kwargs.pop("state", KUBERNETES_SPARK_APP_STATE.SUBMITTED)
         self.apps[app_id] = app = KubernetesAppInfo(
@@ -281,14 +279,14 @@ def zk_job_registry(zk_client) -> ZkJobRegistry:
 
 
 @pytest.fixture
-def yarn() -> YarnMock:
+def yarn_mock() -> YarnMock:
     yarn = YarnMock()
     with yarn.patch():
         yield yarn
 
 
 @pytest.fixture
-def kubernetes() -> KubernetesMock:
+def k8s_mock() -> KubernetesMock:
     kube = KubernetesMock()
     with kube.patch():
         yield kube
@@ -382,7 +380,7 @@ class TestJobTracker:
         self,
         zk_job_registry,
         zk_client,
-        yarn,
+        yarn_mock,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -394,7 +392,7 @@ class TestJobTracker:
         user_id = "john"
         job_id = "job-123"
         # Register new job in zookeeper and yarn
-        yarn_app = yarn.submit(app_id="app-123")
+        yarn_app = yarn_mock.submit(app_id="app-123")
         zk_job_registry.register(
             job_id=job_id,
             user_id=user_id,
@@ -520,11 +518,11 @@ class TestJobTracker:
 
         assert caplog.record_tuples == []
 
-    def test_yarn_zookeeper_lost_yarn_job(
+    def test_yarn_zookeeper_lost_yarn_app(
         self,
         zk_job_registry,
         zk_client,
-        yarn,
+        yarn_mock,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -534,21 +532,24 @@ class TestJobTracker:
         """
         caplog.set_level(logging.WARNING)
         for j in [1, 2, 3]:
+            job_id = f"job-{j}"
+            user_id = f"user{j}"
+            app_id = f"app-{j}"
             zk_job_registry.register(
-                job_id=f"job-{j}",
-                user_id=f"user{j}",
+                job_id=job_id,
+                user_id=user_id,
                 api_version="1.2.3",
                 specification=DUMMY_PROCESS_1,
             )
             zk_job_registry.set_application_id(
-                job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
+                job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
-                yarn.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
+                yarn_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
@@ -573,7 +574,7 @@ class TestJobTracker:
             (
                 "openeogeotrellis.job_tracker",
                 logging.WARNING,
-                "Failed status update of job_id='job-2': UnknownYarnApplicationException(\"Application with id 'app-2' doesn't exist in RM or Timeline Server.\")",
+                "Failed status update of job_id='job-2': UnknownYarnApplicationException: Application with id 'app-2' doesn't exist in RM or Timeline Server.",
             )
         ]
 
@@ -581,7 +582,7 @@ class TestJobTracker:
         self,
         zk_job_registry,
         zk_client,
-        yarn,
+        yarn_mock,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -604,9 +605,9 @@ class TestJobTracker:
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
-                yarn.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
+                yarn_mock.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
             else:
-                yarn.make_corrupt(f"app-{j}")
+                yarn_mock.make_corrupt(f"app-{j}")
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
@@ -631,11 +632,11 @@ class TestJobTracker:
             (
                 "openeogeotrellis.job_tracker",
                 logging.WARNING,
-                "Failed status update of job_id='job-2': CalledProcessError()",
+                "Failed status update of job_id='job-2': CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
             )
         ]
 
-    def test_kube_zookeeper_basic(
+    def test_k8s_zookeeper_basic(
         self,
         zk_job_registry,
         zk_client,
@@ -643,7 +644,7 @@ class TestJobTracker:
         elastic_job_registry,
         caplog,
         time_machine,
-        kubernetes,
+        k8s_mock,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -654,7 +655,7 @@ class TestJobTracker:
         job_id = "job-123"
         app_id = k8s_job_name(job_id=job_id, user_id=user_id)
         # Register new job in zookeeper and kube
-        kube_app = kubernetes.submit(app_id=app_id)
+        kube_app = k8s_mock.submit(app_id=app_id)
         zk_job_registry.register(
             job_id=job_id,
             user_id=user_id,
@@ -764,3 +765,68 @@ class TestJobTracker:
         )
 
         assert caplog.record_tuples == []
+
+    def test_k8s_zookeeper_lost_app(
+        self,
+        zk_job_registry,
+        zk_client,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        k8s_mock,
+    ):
+        """
+        Check that JobTracker.update_statuses() keeps working if there is no K8s app for a given job
+        """
+        caplog.set_level(logging.WARNING)
+        # TODO: avoid setting private property
+        job_tracker._kube_mode = True
+
+        for j in [1, 2, 3]:
+            job_id = f"job-{j}"
+            user_id = f"user{j}"
+            app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+
+            zk_job_registry.register(
+                job_id=job_id,
+                user_id=user_id,
+                api_version="1.2.3",
+                specification=DUMMY_PROCESS_1,
+            )
+            zk_job_registry.set_application_id(
+                job_id=job_id, user_id=user_id, application_id=app_id
+            )
+            elastic_job_registry.create_job(
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            )
+            # K8s apps 1 and 3 are running but app 2 is lost/missing
+            if j != 2:
+                k8s_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
+
+        # Let job tracker do status updates
+        job_tracker.update_statuses()
+
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
+            {"status": "running"}
+        )
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
+            {"status": "error"}
+        )
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
+            {"status": "running"}
+        )
+
+        assert elastic_job_registry.db == {
+            "job-1": DictSubSet(status="running"),
+            "job-2": DictSubSet(status="error"),
+            "job-3": DictSubSet(status="running"),
+        }
+
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker",
+                logging.WARNING,
+                "Failed status update of job_id='job-2': ApiException: (404)\nReason: Not Found\n",
+            )
+        ]
