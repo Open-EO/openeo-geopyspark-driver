@@ -1,3 +1,4 @@
+import abc
 from pathlib import Path
 import logging
 from decimal import Decimal
@@ -5,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 import subprocess
 import sys
 from subprocess import CalledProcessError
-from typing import Callable, Union, Optional
+from typing import Callable, Union, Optional, NamedTuple
 import time
 from collections import namedtuple
 from datetime import datetime
@@ -15,7 +16,7 @@ import requests
 import kazoo.client
 
 import openeogeotrellis.backend
-from openeo.util import date_to_rfc3339, url_join
+from openeo.util import date_to_rfc3339, url_join, rfc3339, deep_get
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
@@ -42,23 +43,169 @@ class UnknownYarnApplicationException(ValueError):
     pass
 
 
+
+
+class _JobMetadata(NamedTuple):
+    # Job status, following the openEO API spec (see `openeo_driver.jobregistry.JOB_STATUS`)
+    status: str
+
+    # RFC-3339 formatted UTC datetime (or None if not started yet)
+    start_time: Optional[str] = None
+
+    # RFC-3339 formatted UTC datetime (or None if not finished yet)
+    finish_time: Optional[str] = None
+
+    # Resource usage stats (if any)
+    usage: Optional[dict] = None
+
+
+class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
+    """
+    Base class/interface to interact with some kind of task/app orchestration/management component
+    like YARN ("yarn applications -status ..."), Kubernetes, ...
+    to get a job's status metadata (state, start/finish times, resource usage stats, ...)
+    """
+
+    @abc.abstractmethod
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+        raise NotImplementedError
+
+
+class YarnStatusGetter(JobMetadataGetterInterface):
+    """YARN app status getter"""
+
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+
+        try:
+            application_report = subprocess.check_output(
+                ["yarn", "application", "-status", app_id]
+            ).decode("utf-8")
+        except CalledProcessError as e:
+            stdout = e.stdout.decode()
+            if "doesn't exist in RM or Timeline Server" in stdout:
+                raise UnknownYarnApplicationException(stdout)
+            else:
+                raise
+        return self.parse_application_report(application_report)
+
+    def parse_application_report(self, report: str) -> _JobMetadata:
+        props = dict(re.findall(r"^\t(.+?) : (.+)$", report, flags=re.MULTILINE))
+
+        job_status = yarn_state_to_openeo_job_status(
+            state=props["State"], final_state=props["Final-State"]
+        )
+
+        def ms_epoch_to_date(epoch_millis: str) -> Union[str, None]:
+            """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
+            if epoch_millis == "0":
+                return None
+            utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
+            return rfc3339.datetime(utc_datetime)
+
+        start_time = ms_epoch_to_date(props["Start-Time"])
+        finish_time = ms_epoch_to_date(props["Finish-Time"])
+
+        allocation = props["Aggregate Resource Allocation"]
+        match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", allocation)
+        if match:
+            usage = {
+                "cpu": {"value": int(match.group(2)), "unit": "cpu-seconds"},
+                "memory": {"value": int(match.group(1)), "unit": "mb-seconds"},
+            }
+        else:
+            usage = None
+
+        return _JobMetadata(
+            status=job_status,
+            start_time=start_time,
+            finish_time=finish_time,
+            usage=usage,
+        )
+
+
+class K8sStatusGetter(JobMetadataGetterInterface):
+    """Kubernetes app status getter"""
+
+    def __init__(self, kubecost_url: Optional[str] = None):
+        self._kubernetes_api = kube_client()
+        # TODO: get this url from config?
+        self._kubecost_url = kubecost_url or "http://kubecost.kube-dev.vgt.vito.be/"
+
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+        job_status = self._get_job_status(job_id=job_id, user_id=user_id)
+        usage = self._get_usage(job_id=job_id, user_id=user_id)
+        return _JobMetadata(
+            status=job_status.status,
+            start_time=job_status.start_time,
+            finish_time=job_status.finish_time,
+            usage=usage,
+        )
+
+    def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
+        metadata = self._kubernetes_api.get_namespaced_custom_object(
+            group="sparkoperator.k8s.io",
+            version="v1beta2",
+            namespace="spark-jobs",
+            plural="sparkapplications",
+            name=k8s_job_name(job_id=job_id, user_id=user_id),
+        )
+
+        app_state = metadata["status"]["applicationState"]["state"]
+        job_status = k8s_state_to_openeo_job_status(app_state)
+        start_time = metadata["status"]["lastSubmissionAttemptTime"]
+        finish_time = metadata["status"]["terminationTime"]
+        return _JobMetadata(
+            status=job_status, start_time=start_time, finish_time=finish_time
+        )
+
+    def _get_usage(self, job_id: str, user_id: str) -> Union[dict, None]:
+        try:
+            url = url_join(self._kubecost_url, "/model/allocation")
+            namespace = "spark-jobs"
+            window = "5d"
+            pod = k8s_job_name(job_id=job_id, user_id=user_id) + "*"
+            params = (
+                ("aggregate", "namespace"),
+                ("filterNamespaces", namespace),
+                ("filterPods", pod),
+                ("window", window),
+                ("accumulate", "true"),
+            )
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            total_cost = response.json()
+            if total_cost["code"] != 200:
+                raise ValueError(total_cost)
+
+            cost = total_cost["data"][0][namespace]
+            # TODO: need to iterate through "data" list?
+            _log.info(f"Successfully retrieved total cost {cost}")
+            usage = {}
+            usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
+            usage["memory"] = {
+                "value": cost["ramByteHours"] / (1024 * 1024),
+                "unit": "mb-hours",
+            }
+            return usage
+        except Exception:
+            _log.error(
+                f"Failed to retrieve usage stats from kubecost",
+                exc_info=True,
+                extra={"job_id": job_id},
+            )
+
+
 class JobTracker:
-
-    _YarnStatus = namedtuple('YarnStatus', ['state', 'final_state', 'start_time', 'finish_time',
-                                            'aggregate_resource_allocation'])
-    _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
-
-    # TODO: get this url from config and make this an instance attribute.
-    _KUBECOST_URL = "http://kubecost.kube-dev.vgt.vito.be/"
-
     def __init__(
         self,
+        app_state_getter: JobMetadataGetterInterface,
         job_registry: Callable[[], ZkJobRegistry],
         principal: str,
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
     ):
+        self._app_state_getter = app_state_getter
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
@@ -77,9 +224,6 @@ class JobTracker:
             elastic_job_registry, ref="JobTracker"
         )
 
-        # TODO: avoid is_kube_deploy anti-pattern
-        self._kube_mode = ConfigParams().is_kube_deploy
-
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
@@ -93,81 +237,58 @@ class JobTracker:
                     job_id = job_info["job_id"]
                     user_id = job_info["user_id"]
                     application_id = job_info["application_id"]
-                    current_status = job_info["status"]
+                    previous_status = job_info["status"]
 
-                    # TODO: application_id is not used/necessary for Kube
                     if application_id:
                         try:
-                            if self._kube_mode:
-                                from openeogeotrellis.utils import s3_client, download_s3_dir
-                                state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
-
-                                new_status = k8s_state_to_openeo_job_status(state)
-
-                                registry.patch(job_id, user_id,
-                                               status=new_status,
-                                               started=start_time,
-                                               finished=finish_time)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from K8s"):
-                                    if self._elastic_job_registry:
-                                        self._elastic_job_registry.set_status(
-                                            job_id=job_id,
-                                            status=new_status,
-                                            started=start_time,
-                                            finished=finish_time,
-                                        )
-
-                                if current_status != new_status:
-                                    _log.info("changed job %s status from %s to %s" %
-                                              (job_id, current_status, new_status), extra={'job_id': job_id})
-
-                                if state == "COMPLETED":
-                                    # TODO: do we support SHub batch processes in this environment? The AWS
-                                    #  credentials conflict.
-
-                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                    usage = self.get_kube_usage(job_id, user_id)
-                                    if usage is not None:
-                                        result_metadata["usage"] = usage
-                                    registry.patch(job_id, user_id, **result_metadata)
-
-                                    registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
-                            else:
-                                state, final_state, start_time, finish_time, aggregate_resource_allocation =\
-                                    JobTracker._yarn_status(application_id)
-
-                                memory_time_megabyte_seconds, cpu_time_seconds =\
-                                    JobTracker._parse_resource_allocation(aggregate_resource_allocation)
-
-                                new_status = yarn_state_to_openeo_job_status(
-                                    state, final_state
+                            # Artificial indentation level for easier diff review
+                            if True:
+                                job_metadata = self._app_state_getter.get_job_metadata(
+                                    job_id=job_id,
+                                    user_id=user_id,
+                                    app_id=application_id,
                                 )
 
-                                registry.patch(job_id, user_id,
-                                               status=new_status,
-                                               started=JobTracker._to_serializable_datetime(start_time),
-                                               finished=JobTracker._to_serializable_datetime(finish_time),
-                                               memory_time_megabyte_seconds=memory_time_megabyte_seconds,
-                                               cpu_time_seconds=cpu_time_seconds)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from YARN"):
+                                if previous_status != job_metadata.status:
+                                    _log.info(
+                                        f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
+                                        extra={"job_id": job_id},
+                                    )
+
+                                extra = {}
+                                if job_metadata.usage:
+                                    # TODO: is this old-style usage reporting still necessary?
+                                    if job_metadata.usage.get("memory", {}).get("unit") == "mb-seconds":
+                                        extra["memory_time_megabyte_seconds"] = job_metadata.usage.get("memory", {}).get("value")
+                                    if job_metadata.usage.get("cpu", {}).get("unit") == "cpu-seconds":
+                                        extra["cpu_time_seconds"] = job_metadata.usage.get("cpu", {}).get("value")
+
+                                registry.patch(
+                                    job_id=job_id,
+                                    user_id=user_id,
+                                    status=job_metadata.status,
+                                    started=job_metadata.start_time,
+                                    finished=job_metadata.finish_time,
+                                    usage=job_metadata.usage,
+                                    **extra,
+                                )
+                                with ElasticJobRegistry.just_log_errors(
+                                    f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
+                                ):
                                     if self._elastic_job_registry:
                                         self._elastic_job_registry.set_status(
                                             job_id=job_id,
-                                            status=new_status,
-                                            started=JobTracker._to_serializable_datetime(
-                                                start_time
-                                            ),
-                                            finished=JobTracker._to_serializable_datetime(
-                                                finish_time
-                                            ),
-                                    )
+                                            status=job_metadata.status,
+                                            started=job_metadata.start_time,
+                                            finished=job_metadata.finish_time,
+                                            # TODO: also record usage data
+                                        )
 
-                                if current_status != new_status:
-                                    _log.info("changed job %s status from %s to %s" %
-                                              (job_id, current_status, new_status), extra={'job_id': job_id})
-
-                                if final_state != "UNDEFINED":
+                                if job_metadata.status in {
+                                    JOB_STATUS.FINISHED,
+                                    JOB_STATUS.ERROR,
+                                    JOB_STATUS.CANCELED,
+                                }:
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                     # TODO: skip patching the job znode and read from this file directly?
                                     registry.patch(job_id, user_id, **result_metadata)
@@ -183,17 +304,18 @@ class JobTracker:
 
                                     registry.mark_done(job_id, user_id)
 
+                                    # TODO: make this usage report handling/logging more generic?
                                     sentinelhub_processing_units = (result_metadata.get("usage", {})
                                                                     .get("sentinelhub", {}).get("value", 0.0))
 
                                     sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
                                                                           or Decimal("0.0"))
 
-                                    _log.info("marked %s as done" % job_id, extra={
+                                    _log.info(f"marked {job_id} as done", extra={
                                         'job_id': job_id,
                                         'area': result_metadata.get('area'),
                                         'unique_process_ids': result_metadata.get('unique_process_ids'),
-                                        'cpu_time_seconds': cpu_time_seconds,
+                                        # 'cpu_time_seconds': cpu_time_seconds,  # TODO: necessary to get this working again?
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
@@ -218,98 +340,6 @@ class JobTracker:
                                     job_id=job_id, status=JOB_STATUS.ERROR
                                 )
 
-    def get_kube_usage(self, job_id, user_id) -> Union[dict, None]:
-        try:
-            url = url_join(self._KUBECOST_URL, "/model/allocation")
-            namespace = "spark-jobs"
-            window = "5d"
-            pod = k8s_job_name(job_id=job_id, user_id=user_id) + "*"
-            params = (
-                ('aggregate', 'namespace'),
-                ('filterNamespaces', namespace),
-                ('filterPods', pod),
-                ('window', window),
-                ('accumulate', 'true'),
-            )
-
-            total_cost = requests.get(url, params=params).json()
-            if total_cost['code'] == 200:
-                cost = total_cost['data'][0][namespace]
-                # TODO: need to iterate through "data" list?
-                _log.info(f"Successfully retrieved total cost {cost}")
-                usage = {}
-                usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
-                usage["memory"] = {
-                    "value": cost["ramByteHours"] / (1024 * 1024),
-                    "unit": "mb-hours",
-                }
-
-                return usage
-            else:
-                # TODO: better error logging?
-                _log.error(f"Unable to retrieve job cost {total_cost}")
-        except Exception:
-            _log.error(f"error while handling creo usage", exc_info=True, extra={'job_id': job_id})
-
-    @staticmethod
-    def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
-        api_instance = kube_client()
-        status = api_instance.get_namespaced_custom_object(
-            group="sparkoperator.k8s.io",
-            version="v1beta2",
-            namespace="spark-jobs",
-            plural="sparkapplications",
-            name=k8s_job_name(job_id=job_id, user_id=user_id),
-        )
-
-        return JobTracker._KubeStatus(
-            status['status']['applicationState']['state'],
-            status['status']['lastSubmissionAttemptTime'],
-            status['status']['terminationTime']
-        )
-
-    @staticmethod
-    def _yarn_status(application_id: str) -> '_YarnStatus':
-        """Returns (State, Final-State) of a job as reported by YARN."""
-
-        try:
-            application_report = subprocess.check_output(
-                ["yarn", "application", "-status", application_id]).decode()
-
-            props = re.findall(r"\t(.+) : (.+)", application_report)
-
-            def prop_value(name: str) -> str:
-                return next(value for key, value in props if key == name)
-
-            return JobTracker._YarnStatus(
-                prop_value("State"),
-                prop_value("Final-State"),
-                prop_value("Start-Time"),
-                prop_value("Finish-Time"),
-                prop_value("Aggregate Resource Allocation")
-            )
-        except CalledProcessError as e:
-            stdout = e.stdout.decode()
-            if "doesn't exist in RM or Timeline Server" in stdout:
-                raise UnknownYarnApplicationException(stdout)
-            else:
-                raise
-
-    @staticmethod
-    def _parse_resource_allocation(aggregate_resource_allocation) -> (int, int):
-        match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", aggregate_resource_allocation)
-
-        return int(match.group(1)), int(match.group(2)) if match else (None, None)
-
-
-    @staticmethod
-    def _to_serializable_datetime(epoch_millis: str) -> Union[str, None]:
-        # TODO: move this parsing to `_yarn_status`
-        if epoch_millis == "0":
-            return None
-
-        utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
-        return date_to_rfc3339(utc_datetime)
 
 
 if __name__ == '__main__':

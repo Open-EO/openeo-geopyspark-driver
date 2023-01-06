@@ -18,7 +18,7 @@ from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn import YARN_STATE, YARN_FINAL_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.job_tracker import JobTracker
+from openeogeotrellis.job_tracker import JobTracker, YarnStatusGetter, K8sStatusGetter
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
 
@@ -170,8 +170,9 @@ class KubernetesAppInfo:
 class KubernetesMock:
     """Kubernetes cluster mock."""
 
-    def __init__(self):
+    def __init__(self, kubecost_url: str = "https://kubecost.test"):
         self.apps: Dict[str, KubernetesAppInfo] = {}
+        self.kubecost_url = kubecost_url
 
     @contextlib.contextmanager
     def patch(self):
@@ -214,7 +215,7 @@ class KubernetesMock:
 
             # Mock kubernetes usage API
             requests_mocker.get(
-                url_join(JobTracker._KUBECOST_URL, "/model/allocation"),
+                url_join(self.kubecost_url, "/model/allocation"),
                 json=get_model_allocation,
             )
 
@@ -247,11 +248,6 @@ def yarn_mock() -> YarnMock:
         yield yarn
 
 
-@pytest.fixture
-def k8s_mock() -> KubernetesMock:
-    kube = KubernetesMock()
-    with kube.patch():
-        yield kube
 
 
 class InMemoryJobRegistry:
@@ -322,7 +318,7 @@ DUMMY_PG_1 = {
 DUMMY_PROCESS_1 = {"process_graph": DUMMY_PG_1}
 
 
-class TestJobTracker:
+class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
         self, zk_job_registry, elastic_job_registry, batch_job_output_root
@@ -330,6 +326,7 @@ class TestJobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
+            app_state_getter=YarnStatusGetter(),
             job_registry=lambda: zk_job_registry,
             principal=principal,
             keytab=keytab,
@@ -601,6 +598,34 @@ class TestJobTracker:
             )
         ]
 
+
+class TestK8sJobTracker:
+    @pytest.fixture
+    def kubecost_url(self):
+        return "https://kubecost.test/"
+
+    @pytest.fixture
+    def k8s_mock(self, kubecost_url) -> KubernetesMock:
+        kube = KubernetesMock(kubecost_url=kubecost_url)
+        with kube.patch():
+            yield kube
+
+    @pytest.fixture
+    def job_tracker(
+        self, zk_job_registry, elastic_job_registry, batch_job_output_root, k8s_mock, kubecost_url
+    ) -> JobTracker:
+        principal = "john@EXAMPLE.TEST"
+        keytab = "test/openeo.keytab"
+        job_tracker = JobTracker(
+            app_state_getter=K8sStatusGetter(kubecost_url=kubecost_url),
+            job_registry=lambda: zk_job_registry,
+            principal=principal,
+            keytab=keytab,
+            output_root_dir=batch_job_output_root,
+            elastic_job_registry=elastic_job_registry,
+        )
+        return job_tracker
+
     def test_k8s_zookeeper_basic(
         self,
         zk_job_registry,
@@ -613,8 +638,6 @@ class TestJobTracker:
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
-        # TODO: avoid setting private property
-        job_tracker._kube_mode = True
 
         user_id = "john"
         job_id = "job-123"
@@ -746,8 +769,6 @@ class TestJobTracker:
         Check that JobTracker.update_statuses() keeps working if there is no K8s app for a given job
         """
         caplog.set_level(logging.WARNING)
-        # TODO: avoid setting private property
-        job_tracker._kube_mode = True
 
         for j in [1, 2, 3]:
             job_id = f"job-{j}"
