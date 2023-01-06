@@ -15,7 +15,8 @@ from openeo.util import rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
-from openeogeotrellis.integrations.kubernetes import k8s_job_name
+from openeogeotrellis.integrations.kubernetes import k8s_job_name, K8S_SPARK_APP_STATE
+from openeogeotrellis.integrations.yarn import YARN_STATE, YARN_FINAL_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.testing import KazooClientMock
@@ -23,30 +24,6 @@ from openeogeotrellis.utils import json_write
 
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
-
-
-class YARN_STATE:
-    # From https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/YarnApplicationState.html
-    # TODO: move this to openeogeotrellis.job_tracker
-    ACCEPTED = "ACCEPTED"
-    FAILED = "FAILED"
-    FINISHED = "FINISHED"
-    KILLED = "KILLED"
-    NEW = "NEW"
-    NEW_SAVING = "NEW_SAVING"
-    RUNNING = "RUNNING"
-    SUBMITTED = "SUBMITTED"
-
-
-class YARN_FINAL_STATUS:
-    # From https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/FinalApplicationStatus.html
-    # TODO: move this to openeogeotrellis.job_tracker
-    ENDED = "ENDED"
-    FAILED = "FAILED"
-    KILLED = "KILLED"
-    SUCCEEDED = "SUCCEEDED"
-    UNDEFINED = "UNDEFINED"
-
 
 @dataclass
 class YarnAppInfo:
@@ -162,47 +139,32 @@ class YarnMock:
             yield check_output
 
 
-class KUBERNETES_SPARK_APP_STATE:
-    # Job states as returned by spark-on-k8s-operator (sparkoperator.k8s.io)
-    # Based on https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/22cd4a2c6990df90ab1cb6b0ffbd9d8b76646790/pkg/apis/sparkoperator.k8s.io/v1beta2/types.go#L328-L344
-    # TODO: move this to openeogeotrellis.job_tracker?
-    NEW = ""
-    SUBMITTED = "SUBMITTED"
-    RUNNING = "RUNNING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    # TODO: cover more states?
-
-    # TODO: "PENDING" is used by current `_kube_status_parser` implementation, but is this a valid state?
-    PENDING = "PENDING"
-
-
 @dataclass
 class KubernetesAppInfo:
     """Dummy Kubernetes app metadata."""
 
     app_id: str
-    state: str = KUBERNETES_SPARK_APP_STATE.NEW
+    state: str = K8S_SPARK_APP_STATE.NEW
     start_time: Union[str, None] = None
     finish_time: Union[str, None] = None
 
     def set_submitted(self):
         if not self.start_time:
             self.start_time = rfc3339.datetime(dt.datetime.utcnow())
-        self.state = KUBERNETES_SPARK_APP_STATE.SUBMITTED
+        self.state = K8S_SPARK_APP_STATE.SUBMITTED
 
     def set_running(self):
-        self.state = KUBERNETES_SPARK_APP_STATE.RUNNING
+        self.state = K8S_SPARK_APP_STATE.RUNNING
 
     def set_completed(self):
         if not self.finish_time:
             self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
-        self.state = KUBERNETES_SPARK_APP_STATE.COMPLETED
+        self.state = K8S_SPARK_APP_STATE.COMPLETED
 
     def set_failed(self):
         if not self.finish_time:
             self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
-        self.state = KUBERNETES_SPARK_APP_STATE.FAILED
+        self.state = K8S_SPARK_APP_STATE.FAILED
 
 
 class KubernetesMock:
@@ -261,7 +223,7 @@ class KubernetesMock:
     def submit(self, app_id: str, **kwargs) -> KubernetesAppInfo:
         """Create a new (dummy) Kubernetes app"""
         assert app_id not in self.apps
-        state = kwargs.pop("state", KUBERNETES_SPARK_APP_STATE.SUBMITTED)
+        state = kwargs.pop("state", K8S_SPARK_APP_STATE.SUBMITTED)
         self.apps[app_id] = app = KubernetesAppInfo(
             app_id=app_id, state=state, **kwargs
         )
@@ -389,18 +351,14 @@ class TestJobTracker:
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
 
+        # Create openeo batch job (not started yet)
         user_id = "john"
         job_id = "job-123"
-        # Register new job in zookeeper and yarn
-        yarn_app = yarn_mock.submit(app_id="app-123")
         zk_job_registry.register(
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
             specification=DUMMY_PROCESS_1,
-        )
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
         )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
@@ -415,7 +373,6 @@ class TestJobTracker:
                 "job_id": job_id,
                 "user_id": user_id,
                 "status": "created",
-                "application_id": yarn_app.app_id,
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
             }
@@ -433,22 +390,30 @@ class TestJobTracker:
             )
         }
 
-        # Set SUBMITTED in Yarn
+        # Start job: submit app to yarn
         time_machine.coordinates.shift(70)
+        yarn_app = yarn_mock.submit(app_id="app-123")
         yarn_app.set_submitted()
+        zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
+        )
+
+        # Trigger `update_statuses`
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
             {
-                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
+                "application_id": yarn_app.app_id,
                 # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
-                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
                 "updated": "2022-12-14T12:01:10Z",
+                # "application_id": yarn_app.app_id,  # TODO: get this working?
             }
         )
 
@@ -653,17 +618,11 @@ class TestJobTracker:
 
         user_id = "john"
         job_id = "job-123"
-        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
-        # Register new job in zookeeper and kube
-        kube_app = k8s_mock.submit(app_id=app_id)
         zk_job_registry.register(
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
             specification=DUMMY_PROCESS_1,
-        )
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=app_id
         )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
@@ -695,20 +654,27 @@ class TestJobTracker:
             )
         }
 
-        # Set SUBMITTED IN Kubernetes
+        # Submit Kubernetes app
         time_machine.coordinates.shift(70)
+        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+        kube_app = k8s_mock.submit(app_id=app_id)
         kube_app.set_submitted()
+        zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=app_id
+        )
+
+        # Trigger `update_statuses`
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
             {
-                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
-                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
                 "updated": "2022-12-14T12:01:10Z",
             }
