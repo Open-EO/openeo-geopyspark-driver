@@ -220,8 +220,10 @@ class JobTracker:
                 _log.info(f"Successfully retrieved total cost {cost}")
                 usage = {}
                 usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
-                usage["memory"] = {"value": cost["ramByteHours"] / (1024 * 1024),
-                                   "unit": "mb-seconds"}
+                usage["memory"] = {
+                    "value": cost["ramByteHours"] / (1024 * 1024),
+                    "unit": "mb-hours",
+                }
 
                 return usage
             else:
