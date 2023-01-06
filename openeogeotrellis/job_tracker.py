@@ -21,6 +21,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
@@ -135,7 +136,9 @@ class JobTracker:
                                 memory_time_megabyte_seconds, cpu_time_seconds =\
                                     JobTracker._parse_resource_allocation(aggregate_resource_allocation)
 
-                                new_status = JobTracker._to_openeo_status(state, final_state)
+                                new_status = yarn_state_to_openeo_job_status(
+                                    state, final_state
+                                )
 
                                 registry.patch(job_id, user_id,
                                                status=new_status,
@@ -293,28 +296,6 @@ class JobTracker:
         match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", aggregate_resource_allocation)
 
         return int(match.group(1)), int(match.group(2)) if match else (None, None)
-
-    @staticmethod
-    def _to_openeo_status(state: str, final_state: str) -> str:
-        # TODO: encapsulate status
-        # TODO: status "created" should not be returned here anymore?
-        #       Status "created" is reserved for the phase before the job is started (POST /jobs/{jid}/results).
-        #       Once the job is in YARN, it should be labeled at least "queued".
-        if state == 'ACCEPTED':
-            new_status = JOB_STATUS.QUEUED
-        elif state == 'RUNNING':
-            new_status = JOB_STATUS.RUNNING
-        else:
-            new_status = JOB_STATUS.CREATED
-
-        if final_state == 'KILLED':
-            new_status = JOB_STATUS.CANCELED
-        elif final_state == 'SUCCEEDED':
-            new_status = JOB_STATUS.FINISHED
-        elif final_state == 'FAILED':
-            new_status = JOB_STATUS.ERROR
-
-        return new_status
 
     @staticmethod
     def _kube_status_parser(state: str) -> str:

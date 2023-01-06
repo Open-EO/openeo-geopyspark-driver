@@ -16,6 +16,7 @@ from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.integrations.kubernetes import k8s_job_name
+from openeogeotrellis.integrations.yarn import YARN_STATE, YARN_FINAL_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.testing import KazooClientMock
@@ -23,30 +24,6 @@ from openeogeotrellis.utils import json_write
 
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
-
-
-class YARN_STATE:
-    # From https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/YarnApplicationState.html
-    # TODO: move this to openeogeotrellis.job_tracker
-    ACCEPTED = "ACCEPTED"
-    FAILED = "FAILED"
-    FINISHED = "FINISHED"
-    KILLED = "KILLED"
-    NEW = "NEW"
-    NEW_SAVING = "NEW_SAVING"
-    RUNNING = "RUNNING"
-    SUBMITTED = "SUBMITTED"
-
-
-class YARN_FINAL_STATUS:
-    # From https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/FinalApplicationStatus.html
-    # TODO: move this to openeogeotrellis.job_tracker
-    ENDED = "ENDED"
-    FAILED = "FAILED"
-    KILLED = "KILLED"
-    SUCCEEDED = "SUCCEEDED"
-    UNDEFINED = "UNDEFINED"
-
 
 @dataclass
 class YarnAppInfo:
@@ -389,18 +366,14 @@ class TestJobTracker:
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
 
+        # Create openeo batch job (not started yet)
         user_id = "john"
         job_id = "job-123"
-        # Register new job in zookeeper and yarn
-        yarn_app = yarn_mock.submit(app_id="app-123")
         zk_job_registry.register(
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
             specification=DUMMY_PROCESS_1,
-        )
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
         )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
@@ -415,7 +388,6 @@ class TestJobTracker:
                 "job_id": job_id,
                 "user_id": user_id,
                 "status": "created",
-                "application_id": yarn_app.app_id,
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
             }
@@ -433,22 +405,30 @@ class TestJobTracker:
             )
         }
 
-        # Set SUBMITTED in Yarn
+        # Start job: submit app to yarn
         time_machine.coordinates.shift(70)
+        yarn_app = yarn_mock.submit(app_id="app-123")
         yarn_app.set_submitted()
+        zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
+        )
+
+        # Trigger `update_statuses`
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
             {
-                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
+                "application_id": yarn_app.app_id,
                 # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
-                "status": "created",  # TODO: once job is submitted to YARN/k8s, status should be at least "queued"
+                "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
                 "updated": "2022-12-14T12:01:10Z",
+                # "application_id": yarn_app.app_id,  # TODO: get this working?
             }
         )
 
