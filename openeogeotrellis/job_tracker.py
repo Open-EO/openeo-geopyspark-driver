@@ -21,7 +21,7 @@ from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import async_task
 
@@ -63,7 +63,9 @@ class JobTracker:
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
-        self._elastic_job_registry = elastic_job_registry
+        self._elastic_job_registry = get_or_build_elastic_job_registry(
+            elastic_job_registry, ref="JobTracker"
+        )
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
@@ -94,12 +96,13 @@ class JobTracker:
                                                started=start_time,
                                                finished=finish_time)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from K8s"):
-                                    self._elastic_job_registry.set_status(
-                                        job_id=job_id,
-                                        status=new_status,
-                                        started=start_time,
-                                        finished=finish_time,
-                                    )
+                                    if self._elastic_job_registry:
+                                        self._elastic_job_registry.set_status(
+                                            job_id=job_id,
+                                            status=new_status,
+                                            started=start_time,
+                                            finished=finish_time,
+                                        )
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
@@ -133,16 +136,16 @@ class JobTracker:
                                                memory_time_megabyte_seconds=memory_time_megabyte_seconds,
                                                cpu_time_seconds=cpu_time_seconds)
                                 with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from YARN"):
-                                    # TODO: also set started/finished, ...
-                                    self._elastic_job_registry.set_status(
-                                        job_id=job_id,
-                                        status=new_status,
-                                        started=JobTracker._to_serializable_datetime(
-                                            start_time
-                                        ),
-                                        finished=JobTracker._to_serializable_datetime(
-                                            finish_time
-                                        ),
+                                    if self._elastic_job_registry:
+                                        self._elastic_job_registry.set_status(
+                                            job_id=job_id,
+                                            status=new_status,
+                                            started=JobTracker._to_serializable_datetime(
+                                                start_time
+                                            ),
+                                            finished=JobTracker._to_serializable_datetime(
+                                                finish_time
+                                            ),
                                     )
 
                                 if current_status != new_status:
@@ -193,10 +196,11 @@ class JobTracker:
                         registry.mark_done(job_id, user_id)
 
                         with ElasticJobRegistry.just_log_errors(f"job_tracker flag error"):
-                            # TODO: also set started/finished, exception/error info ...
-                            self._elastic_job_registry.set_status(
-                                job_id=job_id, status=JOB_STATUS.ERROR
-                            )
+                            if self._elastic_job_registry:
+                                # TODO: also set started/finished, exception/error info ...
+                                self._elastic_job_registry.set_status(
+                                    job_id=job_id, status=JOB_STATUS.ERROR
+                                )
 
     def get_kube_usage(self,job_id,user_id):
         usage = None

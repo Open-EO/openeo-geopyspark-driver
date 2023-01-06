@@ -904,6 +904,19 @@ class GpsProcessing(ConcreteProcessing):
                             }
 
 
+def get_or_build_elastic_job_registry(
+    job_registry: Optional[ElasticJobRegistry], ref: str = "n/a"
+) -> Optional[ElasticJobRegistry]:
+    """Helper to get or build (when not given) an ElasticJobRegistry"""
+    # TODO: this is a temporary helper, that should be replaced with a better config or dependency injection system
+    #       Ideally this function should not be necessary (just create a ElasticJobRegistry in one place and reuse it)
+    with ElasticJobRegistry.just_log_errors(name=f"init {ref}"):
+        if not job_registry:
+            job_registry = ElasticJobRegistry.from_environ()
+            job_registry.health_check(log=True)
+    return job_registry
+
+
 class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
@@ -931,11 +944,9 @@ class GpsBatchJobs(backend.BatchJobs):
             output_root_dir or ConfigParams().batch_job_output_root
         )
 
-        self._elastic_job_registry: Optional[ElasticJobRegistry] = elastic_job_registry
-        with ElasticJobRegistry.just_log_errors(name="init"):
-            if not self._elastic_job_registry:
-                self._elastic_job_registry = ElasticJobRegistry.from_environ()
-            self._elastic_job_registry.health_check(log=True)
+        self._elastic_job_registry = get_or_build_elastic_job_registry(
+            elastic_job_registry, ref="GpsBatchJobs"
+        )
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
