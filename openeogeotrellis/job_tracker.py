@@ -10,11 +10,12 @@ import time
 from collections import namedtuple
 from datetime import datetime
 import re
+import requests
 
 import kazoo.client
 
 import openeogeotrellis.backend
-from openeo.util import date_to_rfc3339
+from openeo.util import date_to_rfc3339, url_join
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
@@ -24,6 +25,7 @@ from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import async_task
+from openeogeotrellis.integrations.kubernetes import kube_client, k8s_job_name
 
 _log = logging.getLogger(__name__)
 
@@ -40,6 +42,9 @@ class JobTracker:
     _YarnStatus = namedtuple('YarnStatus', ['state', 'final_state', 'start_time', 'finish_time',
                                             'aggregate_resource_allocation'])
     _KubeStatus = namedtuple('KubeStatus', ['state', 'start_time', 'finish_time'])
+
+    # TODO: get this url from config and make this an instance attribute.
+    _KUBECOST_URL = "http://kubecost.kube-dev.vgt.vito.be/"
 
     def __init__(
         self,
@@ -67,6 +72,9 @@ class JobTracker:
             elastic_job_registry, ref="JobTracker"
         )
 
+        # TODO: avoid is_kube_deploy anti-pattern
+        self._kube_mode = ConfigParams().is_kube_deploy
+
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
@@ -85,7 +93,7 @@ class JobTracker:
                     # TODO: application_id is not used/necessary for Kube
                     if application_id:
                         try:
-                            if ConfigParams().is_kube_deploy:
+                            if self._kube_mode:
                                 from openeogeotrellis.utils import s3_client, download_s3_dir
                                 state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
 
@@ -186,6 +194,7 @@ class JobTracker:
                             # TODO eliminate this whole try-except (but not now to keep diff simple)
                             raise
                 except Exception as e:
+                    # TODO: option for strict mode (fail fast instead of just warnings)?
                     _log.warning(
                         f"Failed status update of {job_id=}: {e!r}",
                         exc_info=True,
@@ -202,14 +211,12 @@ class JobTracker:
                                     job_id=job_id, status=JOB_STATUS.ERROR
                                 )
 
-    def get_kube_usage(self,job_id,user_id):
-        usage = None
+    def get_kube_usage(self, job_id, user_id) -> Union[dict, None]:
         try:
-            import requests
-            url = "http://kubecost.kube-dev.vgt.vito.be/model/allocation"
+            url = url_join(self._KUBECOST_URL, "/model/allocation")
             namespace = "spark-jobs"
             window = "5d"
-            pod = f"{JobTracker._kube_prefix(job_id,user_id)}*"
+            pod = k8s_job_name(job_id=job_id, user_id=user_id) + "*"
             params = (
                 ('aggregate', 'namespace'),
                 ('filterNamespaces', namespace),
@@ -221,6 +228,7 @@ class JobTracker:
             total_cost = requests.get(url, params=params).json()
             if total_cost['code'] == 200:
                 cost = total_cost['data'][0][namespace]
+                # TODO: need to iterate through "data" list?
                 _log.info(f"Successfully retrieved total cost {cost}")
                 usage = {}
                 usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
@@ -231,10 +239,10 @@ class JobTracker:
 
                 return usage
             else:
+                # TODO: better error logging?
                 _log.error(f"Unable to retrieve job cost {total_cost}")
         except Exception:
             _log.error(f"error while handling creo usage", exc_info=True, extra={'job_id': job_id})
-        return usage
 
     @staticmethod
     def yarn_available() -> bool:
@@ -251,23 +259,15 @@ class JobTracker:
             return False
 
     @staticmethod
-    def _kube_prefix(job_id: str, user_id: str):
-        from openeogeotrellis.utils import truncate_user_id_k8s, truncate_job_id_k8s
-        user_id_truncated = truncate_user_id_k8s(user_id)
-        job_id_truncated = truncate_job_id_k8s(job_id)
-        return "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated)
-
-    @staticmethod
     def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
-        from openeogeotrellis.utils import kube_client
-
         api_instance = kube_client()
         status = api_instance.get_namespaced_custom_object(
-                "sparkoperator.k8s.io",
-                "v1beta2",
-                "spark-jobs",
-                "sparkapplications",
-                JobTracker._kube_prefix(job_id,user_id))
+            group="sparkoperator.k8s.io",
+            version="v1beta2",
+            namespace="spark-jobs",
+            plural="sparkapplications",
+            name=k8s_job_name(job_id=job_id, user_id=user_id),
+        )
 
         return JobTracker._KubeStatus(
             status['status']['applicationState']['state'],
@@ -311,6 +311,9 @@ class JobTracker:
     @staticmethod
     def _to_openeo_status(state: str, final_state: str) -> str:
         # TODO: encapsulate status
+        # TODO: status "created" should not be returned here anymore?
+        #       Status "created" is reserved for the phase before the job is started (POST /jobs/{jid}/results).
+        #       Once the job is in YARN, it should be labeled at least "queued".
         if state == 'ACCEPTED':
             new_status = JOB_STATUS.QUEUED
         elif state == 'RUNNING':
@@ -330,6 +333,8 @@ class JobTracker:
     @staticmethod
     def _kube_status_parser(state: str) -> str:
         if state == 'PENDING':
+            # TODO: is "PENDING" a valid state in k8s? it's not defined at https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/22cd4a2c6990df90ab1cb6b0ffbd9d8b76646790/pkg/apis/sparkoperator.k8s.io/v1beta2/types.go#L328-L344
+            # TODO: related: state "created" is also returned below, but at least status "queued" should be returned (also see YARN implementation)
             new_status = JOB_STATUS.QUEUED
         elif state == 'RUNNING':
             new_status = JOB_STATUS.RUNNING
@@ -337,6 +342,7 @@ class JobTracker:
             new_status = JOB_STATUS.FINISHED
         elif state == 'FAILED':
             new_status = JOB_STATUS.ERROR
+        # TODO: cover more states (see https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/22cd4a2c6990df90ab1cb6b0ffbd9d8b76646790/pkg/apis/sparkoperator.k8s.io/v1beta2/types.go#L328-L344)
         else:
             new_status = JOB_STATUS.CREATED
 
@@ -344,6 +350,7 @@ class JobTracker:
 
     @staticmethod
     def _to_serializable_datetime(epoch_millis: str) -> Union[str, None]:
+        # TODO: move this parsing to `_yarn_status`
         if epoch_millis == "0":
             return None
 

@@ -24,6 +24,7 @@ tests_require = [
     'requests-mock>=1.8.0',
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0",
+    "kubernetes",
 ]
 
 setup(
@@ -83,5 +84,8 @@ setup(
     ],
     extras_require={
         "dev": tests_require,
+        "k8s": [
+            "kubernetes",
+        ],
     },
 )

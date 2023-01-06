@@ -87,7 +87,7 @@ spec:
 {%- if mount_tmp %}
     - name: "spark-local-dir-1"
       hostPath:
-        path: "/opt/spark_tmp/{{ job_id }}"
+        path: "/opt/spark_tmp/{{ job_id_short }}"
         type: "DirectoryOrCreate"
 {%- endif %}
     - name: "http-credentials-configmap"
@@ -105,7 +105,7 @@ spec:
     lifecycle:
       preStop:
         exec:
-          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
+          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id_short }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
 {%- endif %}
     podSecurityContext:
       fsGroup: 18585
@@ -140,7 +140,7 @@ spec:
     memory: "{{ driver_memory }}"
     labels:
       version: 3.2.0
-      name: {{ job_id }}-driver
+      name: {{ job_id_short }}-driver
     serviceAccount: openeo
     volumeMounts:
       - name: "eodata"

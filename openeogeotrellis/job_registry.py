@@ -279,7 +279,7 @@ class ZkJobRegistry:
         user_id = job_info['user_id']
 
         path = self._done(user_id, job_id) if done else self._ongoing(user_id, job_id)
-        data = json.dumps(job_info).encode()
+        data = json.dumps(job_info).encode("utf-8")
 
         self._zk.create(path, data, makepath=True)
 
@@ -311,7 +311,7 @@ class ZkJobRegistry:
         user_id = job_info['user_id']
 
         path = self._ongoing(user_id, job_id)
-        data = json.dumps(job_info).encode()
+        data = json.dumps(job_info).encode("utf-8")
 
         self._zk.set(path, data, version)
 
