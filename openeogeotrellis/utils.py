@@ -292,14 +292,9 @@ def set_max_memory(max_total_memory_in_bytes: int):
 
     logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
 
-def kube_client():
-    # TODO: move this to kubernetes related utility submodule
-    from kubernetes import client, config
-    config.load_incluster_config()
-    api_instance = client.CustomObjectsApi()
-    return api_instance
 
 def s3_client():
+    # TODO: move this to openeogeotrellis.integrations.s3?
     import boto3
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -311,7 +306,9 @@ def s3_client():
         endpoint_url=swift_url)
     return s3_client
 
+
 def download_s3_dir(bucketName, directory):
+    # TODO: move this to openeogeotrellis.integrations.s3?
     import boto3
 
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
@@ -336,6 +333,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 
         The bucket is set in ConfigParams().s3_bucket_name
     """
+    # TODO: move this to openeogeotrellis.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
         Bucket=ConfigParams().s3_bucket_name, Key=str(filename).strip("/")
@@ -347,6 +345,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: Does this function belong in the openeo-python-driver?
+    # TODO: move this to openeogeotrellis.integrations.s3?
     bucketname = bucketname or ConfigParams().s3_bucket_name
     return f"s3://{bucketname}{file_or_dir_name}"
 
@@ -388,16 +387,6 @@ def nullcontext():
     Backport of Python 3.7 `contextlib.nullcontext`
     """
     yield
-
-
-def truncate_job_id_k8s(job_id):
-    # TODO: move this to kubernetes related utility submodule
-    return job_id.split('-')[1][:10]
-
-
-def truncate_user_id_k8s(user_id):
-    # TODO: move this to kubernetes related utility submodule
-    return user_id.split('@')[0][:20]
 
 
 def single_value(xs):

@@ -57,8 +57,18 @@ from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geom
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.geopysparkdatacube import (
+    GeopysparkDataCube,
+    GeopysparkCubeMetadata,
+)
+from openeogeotrellis.geotrellis_tile_processgraph_visitor import (
+    GeotrellisTileProcessGraphVisitor,
+)
+from openeogeotrellis.integrations.kubernetes import (
+    truncate_job_id_k8s,
+    k8s_job_name,
+    kube_client,
+)
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
 from openeogeotrellis.logs import elasticsearch_logs
@@ -66,11 +76,24 @@ from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationMo
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
                                                AbstractServiceRegistry, SecondaryService, ServiceEntity)
 from openeogeotrellis.traefik import Traefik
-from openeogeotrellis.user_defined_process_repository import ZooKeeperUserDefinedProcessRepository, \
-    InMemoryUserDefinedProcessRepository
-from openeogeotrellis.utils import kerberos, zk_client, to_projected_polygons, normalize_temporal_extent, \
-    truncate_job_id_k8s, dict_merge_recursive, single_value, add_permissions, get_jvm, mdc_include, mdc_remove, \
-    get_s3_file_contents
+from openeogeotrellis.user_defined_process_repository import (
+    ZooKeeperUserDefinedProcessRepository,
+    InMemoryUserDefinedProcessRepository,
+)
+from openeogeotrellis.utils import (
+    kerberos,
+    zk_client,
+    to_projected_polygons,
+    normalize_temporal_extent,
+    dict_merge_recursive,
+    single_value,
+    add_permissions,
+    get_jvm,
+    mdc_include,
+    mdc_remove,
+    get_s3_file_contents,
+    s3_client,
+)
 from openeogeotrellis.vault import Vault
 
 JOB_METADATA_FILENAME = "job_metadata.json"
@@ -1346,15 +1369,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 from jinja2 import Template
                 from kubernetes.client.rest import ApiException
-                from openeogeotrellis.utils import kube_client, s3_client, truncate_user_id_k8s
 
                 bucket = ConfigParams().s3_bucket_name
                 s3_instance = s3_client()
 
                 s3_instance.create_bucket(Bucket=bucket)
-
-                user_id_truncated = truncate_user_id_k8s(user_id)
-                job_id_truncated = truncate_job_id_k8s(job_id)
 
                 output_dir = str(self.get_job_output_dir(job_id))
 
@@ -1377,14 +1396,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
                 rendered = Template(open(jinja_template).read()).render(
-                    # TODO: use public version of `JobTracker._kube_prefix` instead of adhoc job_name building
-                    job_name="job-{j}-{u}".format(j=job_id_truncated, u=user_id_truncated),
+                    job_name=k8s_job_name(job_id=job_id, user_id=user_id),
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
                     log_file="stdout",
                     metadata_file=JOB_METADATA_FILENAME,
-                    job_id=job_id_truncated,
+                    job_id_short=truncate_job_id_k8s(job_id),
                     job_id_full=job_id,
                     driver_cores=driver_cores,
                     driver_memory=driver_memory,
@@ -1422,8 +1440,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
-                    # TODO: use public version of `JobTracker._kube_prefix` instead of adhoc job_name building
-                    spark_app_id = f"job-{job_id_truncated}-{user_id_truncated}"
+                    spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
                     registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
@@ -2095,14 +2112,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
-                from openeogeotrellis.utils import kube_client
-                from openeogeotrellis.job_tracker import JobTracker
                 api_instance = kube_client()
                 group = "sparkoperator.k8s.io"
                 version = "v1beta2"
                 namespace = "spark-jobs"
                 plural = "sparkapplications"
-                name = JobTracker._kube_prefix(job_id, user_id)
+                name = k8s_job_name(job_id=job_id, user_id=user_id)
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
                 delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(

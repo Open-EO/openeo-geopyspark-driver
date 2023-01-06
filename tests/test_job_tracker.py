@@ -15,6 +15,7 @@ from openeo.util import rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
+from openeogeotrellis.integrations.kubernetes import k8s_job_name
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import JobTracker
 from openeogeotrellis.testing import KazooClientMock
@@ -651,7 +652,7 @@ class TestJobTracker:
 
         user_id = "john"
         job_id = "job-123"
-        app_id = JobTracker._kube_prefix(job_id=job_id, user_id=user_id)
+        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
         # Register new job in zookeeper and kube
         kube_app = kubernetes.submit(app_id=app_id)
         zk_job_registry.register(

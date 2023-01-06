@@ -25,8 +25,7 @@ from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import async_task
-from openeogeotrellis.utils import kube_client
-from openeogeotrellis.utils import truncate_user_id_k8s, truncate_job_id_k8s
+from openeogeotrellis.integrations.kubernetes import kube_client, k8s_job_name
 
 _log = logging.getLogger(__name__)
 
@@ -217,7 +216,7 @@ class JobTracker:
             url = url_join(self._KUBECOST_URL, "/model/allocation")
             namespace = "spark-jobs"
             window = "5d"
-            pod = f"{JobTracker._kube_prefix(job_id,user_id)}*"
+            pod = k8s_job_name(job_id=job_id, user_id=user_id) + "*"
             params = (
                 ('aggregate', 'namespace'),
                 ('filterNamespaces', namespace),
@@ -260,13 +259,6 @@ class JobTracker:
             return False
 
     @staticmethod
-    def _kube_prefix(job_id: str, user_id: str):
-        # TODO: this function is also used publicly
-        user_id_truncated = truncate_user_id_k8s(user_id)
-        job_id_truncated = truncate_job_id_k8s(job_id)
-        return "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated)
-
-    @staticmethod
     def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
         api_instance = kube_client()
         status = api_instance.get_namespaced_custom_object(
@@ -274,7 +266,7 @@ class JobTracker:
             version="v1beta2",
             namespace="spark-jobs",
             plural="sparkapplications",
-            name=JobTracker._kube_prefix(job_id, user_id),
+            name=k8s_job_name(job_id=job_id, user_id=user_id),
         )
 
         return JobTracker._KubeStatus(
