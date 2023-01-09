@@ -102,7 +102,7 @@ class YarnMock:
 
     def __init__(self):
         self.apps: Dict[str, YarnAppInfo] = {}
-        self._corrupt = set()
+        self.corrupt_app_ids = set()
 
     def submit(self, app_id: Optional[str] = None, **kwargs) -> YarnAppInfo:
         """Create a new (dummy) YARN app"""
@@ -111,14 +111,11 @@ class YarnMock:
         self.apps[app_id] = app = YarnAppInfo(app_id=app_id, **kwargs)
         return app
 
-    def make_corrupt(self, app_id: str):
-        self._corrupt.add(app_id)
-
     def _check_output(self, args: List[str]):
         """Mock for subprocess.check_output(["yarn", ...])"""
         if len(args) == 4 and args[:3] == ["yarn", "application", "-status"]:
             app_id = args[3]
-            if app_id in self._corrupt:
+            if app_id in self.corrupt_app_ids:
                 raise subprocess.CalledProcessError(
                     returncode=255,
                     cmd=args,
@@ -179,10 +176,15 @@ class KubernetesMock:
     def __init__(self, kubecost_url: str = "https://kubecost.test"):
         self.apps: Dict[str, KubernetesAppInfo] = {}
         self.kubecost_url = kubecost_url
+        self.corrupt_app_ids = set()
 
     @contextlib.contextmanager
     def patch(self):
         def get_namespaced_custom_object(name: str, **kwargs) -> dict:
+            if name in self.corrupt_app_ids:
+                raise kubernetes.client.exceptions.ApiException(
+                    status=500, reason="Internal Server Error"
+                )
             if name not in self.apps:
                 raise kubernetes.client.exceptions.ApiException(
                     status=404, reason="Not Found"
@@ -546,7 +548,7 @@ class TestYarnJobTracker:
             (
                 "openeogeotrellis.job_tracker",
                 logging.WARNING,
-                "Failed status update of job_id='job-2': UnknownYarnApplicationException: Application with id 'app-2' doesn't exist in RM or Timeline Server.",
+                "App not found for job_id='job-2'",
             )
         ]
 
@@ -579,7 +581,7 @@ class TestYarnJobTracker:
             if j != 2:
                 yarn_mock.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
             else:
-                yarn_mock.make_corrupt(f"app-{j}")
+                yarn_mock.corrupt_app_ids.add(f"app-{j}")
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
@@ -587,8 +589,9 @@ class TestYarnJobTracker:
         assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
             {"status": "running"}
         )
+        # job-2 is currently stuck in state "created"
         assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
-            {"status": "error"}
+            {"status": "created"}
         )
         assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
             {"status": "running"}
@@ -596,15 +599,16 @@ class TestYarnJobTracker:
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
-            "job-2": DictSubSet(status="error"),
+            # job-2 is currently stuck in state "created"
+            "job-2": DictSubSet(status="created"),
             "job-3": DictSubSet(status="running"),
         }
 
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker",
-                logging.WARNING,
-                "Failed status update of job_id='job-2': CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
+                logging.ERROR,
+                "Failed status update of job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
             )
         ]
 
@@ -945,6 +949,73 @@ class TestK8sJobTracker:
             (
                 "openeogeotrellis.job_tracker",
                 logging.WARNING,
-                "Failed status update of job_id='job-2': ApiException: (404)\nReason: Not Found\n",
+                "App not found for job_id='job-2'",
+            )
+        ]
+
+    def test_k8s_zookeeper_unexpected_k8s_error(
+        self,
+        zk_job_registry,
+        zk_client,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        k8s_mock,
+    ):
+        """
+        Check that JobTracker.update_statuses() keeps working if there is no K8s app for a given job
+        """
+        caplog.set_level(logging.WARNING)
+
+        for j in [1, 2, 3]:
+            job_id = f"job-{j}"
+            user_id = f"user{j}"
+            app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+
+            zk_job_registry.register(
+                job_id=job_id,
+                user_id=user_id,
+                api_version="1.2.3",
+                specification=DUMMY_PROCESS_1,
+            )
+            zk_job_registry.set_application_id(
+                job_id=job_id, user_id=user_id, application_id=app_id
+            )
+            elastic_job_registry.create_job(
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            )
+            # K8s apps 1 and 3 are running but app 2 is lost/missing
+            if j != 2:
+                k8s_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
+            else:
+                k8s_mock.corrupt_app_ids.add(app_id)
+
+        # Let job tracker do status updates
+        job_tracker.update_statuses()
+
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
+            {"status": "running"}
+        )
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
+            # job-2 is currently stuck in state "created"
+            {"status": "created"}
+        )
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
+            {"status": "running"}
+        )
+
+        assert elastic_job_registry.db == {
+            "job-1": DictSubSet(status="running"),
+            # job-2 is currently stuck in state "created"
+            "job-2": DictSubSet(status="created"),
+            "job-3": DictSubSet(status="running"),
+        }
+
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker",
+                40,
+                "Failed status update of job_id='job-2': unexpected ApiException: (500)\nReason: Internal Server Error\n",
             )
         ]

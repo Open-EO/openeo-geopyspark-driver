@@ -11,8 +11,9 @@ import time
 from collections import namedtuple
 from datetime import datetime
 import re
-import requests
 
+import kubernetes.client.exceptions
+import requests
 import kazoo.client
 
 import openeogeotrellis.backend
@@ -68,12 +69,14 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-class UnknownYarnApplicationException(ValueError):
+class AppNotFound(Exception):
+    """Exception to throw when app can not be found in YARN, Kubernetes, ..."""
     pass
 
 
 class YarnAppReportParseException(Exception):
     pass
+
 
 class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
@@ -87,7 +90,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         except CalledProcessError as e:
             stdout = e.stdout.decode()
             if "doesn't exist in RM or Timeline Server" in stdout:
-                raise UnknownYarnApplicationException(stdout)
+                raise AppNotFound(stdout) from None
             else:
                 raise
         return self.parse_application_report(application_report)
@@ -149,13 +152,19 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         )
 
     def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
-        metadata = self._kubernetes_api.get_namespaced_custom_object(
-            group="sparkoperator.k8s.io",
-            version="v1beta2",
-            namespace="spark-jobs",
-            plural="sparkapplications",
-            name=k8s_job_name(job_id=job_id, user_id=user_id),
-        )
+        try:
+            metadata = self._kubernetes_api.get_namespaced_custom_object(
+                group="sparkoperator.k8s.io",
+                version="v1beta2",
+                namespace="spark-jobs",
+                plural="sparkapplications",
+                name=k8s_job_name(job_id=job_id, user_id=user_id),
+            )
+        except kubernetes.client.exceptions.ApiException as e:
+            if e.status == 404:
+                # TODO: more precise checking that it was indeed the app that was not found (instead of k8s api itself).
+                raise AppNotFound() from e
+            raise
 
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
@@ -332,10 +341,27 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
+                except AppNotFound:
+                    _log.warning(
+                        f"App not found for {job_id=}",
+                        exc_info=True,
+                        extra={"job_id": job_id},
+                    )
+                    if job_id and user_id:
+                        registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                        registry.mark_done(job_id, user_id)
+                    with ElasticJobRegistry.just_log_errors(
+                        f"job_tracker app not found"
+                    ):
+                        if self._elastic_job_registry:
+                            # TODO: also set started/finished, exception/error info ...
+                            self._elastic_job_registry.set_status(
+                                job_id=job_id, status=JOB_STATUS.ERROR
+                            )
                 except Exception as e:
                     # TODO: option for strict mode (fail fast instead of just warnings)?
-                    _log.warning(
-                        f"Failed status update of {job_id=}: {type(e).__name__}: {e}",
+                    _log.exception(
+                        f"Failed status update of {job_id=}: unexpected {type(e).__name__}: {e}",
                         exc_info=True,
                         extra={"job_id": job_id},
                     )
