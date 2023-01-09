@@ -336,16 +336,13 @@ class JobTracker:
                         exc_info=True,
                         extra={"job_id": job_id},
                     )
-                    if job_id and user_id:
-                        registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                        registry.mark_done(job_id, user_id)
+                    # TODO: this looks risky: an unexpected issue in JobTracker logic
+                    #  will cause a job (or possibly all running jobs) to be marked as "done" with status "error"?
+                    #       Temporarily disabling this for now. To be reconsidered later?
+                    # if job_id and user_id:
+                    #     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                    #     registry.mark_done(job_id, user_id)
 
-                        with ElasticJobRegistry.just_log_errors(f"job_tracker flag error"):
-                            if self._elastic_job_registry:
-                                # TODO: also set started/finished, exception/error info ...
-                                self._elastic_job_registry.set_status(
-                                    job_id=job_id, status=JOB_STATUS.ERROR
-                                )
 
 
 if __name__ == "__main__":
