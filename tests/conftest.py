@@ -8,6 +8,7 @@ from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.testing import ApiTester
+from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 from openeogeotrellis.vault import Vault
 
@@ -24,7 +25,8 @@ def pytest_configure(config):
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
-    _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
+    if smart_bool(os.environ.get("OPENEO_TESTING_SETUP_SPARK", "yes")):
+        _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
 
 
 def _ensure_geopyspark(out: TerminalReporter):
