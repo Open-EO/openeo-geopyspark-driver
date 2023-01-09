@@ -31,7 +31,8 @@ from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory
+from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
+    ensure_executor_logging
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +399,7 @@ class S1BackscatterOrfeo:
 
         sar_calibration_lut = S1BackscatterOrfeo._get_sar_calibration_lut(sar_backscatter_arguments.coefficient)
 
-        @epsel.ensure_info_logging
+        @ensure_executor_logging
         @TimingLogger( title="process_feature", logger=logger)
         def process_feature( product: Tuple[str, List[dict]]):
             import faulthandler
@@ -726,7 +727,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         # TODO: still split if full layout extent is too large for processing as a whole?
 
         # Apply Orfeo processing over product files as whole and splice up in tiles after that
-        @epsel.ensure_info_logging
+        @ensure_executor_logging
         @TimingLogger(title="process_product", logger=logger)
         def process_product(product: Tuple[str, List[dict]]):
             import faulthandler;
