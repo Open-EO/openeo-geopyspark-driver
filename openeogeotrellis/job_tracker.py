@@ -268,7 +268,7 @@ class JobTracker:
                 status['status']['terminationTime']
             )
         else:
-            return JobTracker._KubeStatus(K8S_SPARK_APP_STATE.NEW,"","")
+            return JobTracker._KubeStatus(K8S_SPARK_APP_STATE.NEW, None, None)
 
     @staticmethod
     def _yarn_status(application_id: str) -> '_YarnStatus':
