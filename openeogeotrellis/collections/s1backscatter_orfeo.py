@@ -304,7 +304,7 @@ class S1BackscatterOrfeo:
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
 
             arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
-            error_counter = multiprocessing.Value('i', 0)
+            error_counter = multiprocessing.Value('i', 0,lock=False)
 
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -322,8 +322,7 @@ class S1BackscatterOrfeo:
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
                     np.copyto(np.frombuffer(arr).reshape((extent_height_px,extent_width_px)),localdata)
                 except RuntimeError as e:
-                    with error_counter.get_lock():
-                        error_counter.value += 1
+                    error_counter.value += 1
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
 
             p = Process(target=run, args=())
@@ -333,7 +332,8 @@ class S1BackscatterOrfeo:
                 if tracker is not None:
                     tracker.add("orfeo_backscatter_soft_errors",1)
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
-            tracker.add("orfeo_backscatter_soft_errors", error_counter.value)
+            if tracker is not None:
+                tracker.add("orfeo_backscatter_soft_errors", error_counter.value)
 
             data =  np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
 
