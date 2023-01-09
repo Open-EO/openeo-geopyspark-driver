@@ -105,6 +105,8 @@ class S1BackscatterOrfeo:
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
+        self._tracker = self.jvm.org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker("")
+        self._tracker.registerCounter("orfeo_backscatter_soft_errors")
 
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
@@ -286,7 +288,8 @@ class S1BackscatterOrfeo:
             elev_geoid: str,
             elev_default: float = None,
             log_prefix: str = "",
-            orfeo_memory:int = 512
+            orfeo_memory:int = 512,
+            tracker=None
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
 
@@ -301,6 +304,7 @@ class S1BackscatterOrfeo:
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
 
             arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
+            error_counter = multiprocessing.Value('i', 0)
 
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -318,13 +322,18 @@ class S1BackscatterOrfeo:
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
                     np.copyto(np.frombuffer(arr).reshape((extent_height_px,extent_width_px)),localdata)
                 except RuntimeError as e:
+                    with error_counter.get_lock():
+                        error_counter.value += 1
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
 
             p = Process(target=run, args=())
             p.start()
             p.join()
             if(p.exitcode == -signal.SIGSEGV):
+                if tracker is not None:
+                    tracker.add("orfeo_backscatter_soft_errors",1)
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
+            tracker.add("orfeo_backscatter_soft_errors", error_counter.value)
 
             data =  np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
 
@@ -724,6 +733,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
+        error_tracker = self._tracker
+
         # TODO: still split if full layout extent is too large for processing as a whole?
 
         # Apply Orfeo processing over product files as whole and splice up in tiles after that
@@ -796,7 +807,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         noise_removal=noise_removal,
                         elev_geoid=elev_geoid, elev_default=elev_default,
                         log_prefix=f"{log_prefix}-{band}",
-                        orfeo_memory=orfeo_memory
+                        orfeo_memory=orfeo_memory,
+                        tracker = error_tracker
                     )
                     #orfeo_bands = y,x
                     orfeo_bands[b] = data
