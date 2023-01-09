@@ -26,6 +26,7 @@ from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_job_name,
     k8s_state_to_openeo_job_status,
+    K8S_SPARK_APP_STATE,
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
@@ -150,10 +151,16 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             name=k8s_job_name(job_id=job_id, user_id=user_id),
         )
 
-        app_state = metadata["status"]["applicationState"]["state"]
+        if "status" in metadata:
+            app_state = metadata["status"]["applicationState"]["state"]
+            start_time = metadata["status"]["lastSubmissionAttemptTime"]
+            finish_time = metadata["status"]["terminationTime"]
+        else:
+            _log.warning("No K8s app status found, assuming new app")
+            app_state = K8S_SPARK_APP_STATE.NEW
+            start_time = finish_time = None
+
         job_status = k8s_state_to_openeo_job_status(app_state)
-        start_time = metadata["status"]["lastSubmissionAttemptTime"]
-        finish_time = metadata["status"]["terminationTime"]
         return _JobMetadata(
             status=job_status, start_time=start_time, finish_time=finish_time
         )
@@ -341,8 +348,7 @@ class JobTracker:
                                 )
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
     # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging

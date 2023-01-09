@@ -182,6 +182,9 @@ class KubernetesMock:
                     status=404, reason="Not Found"
                 )
             app = self.apps[name]
+            if app.state == K8S_SPARK_APP_STATE.NEW:
+                # TODO: is this the actual behavior for "new" apps: no "status" in response?
+                return {}
             return {
                 "status": {
                     "applicationState": {"state": app.state},
@@ -221,10 +224,11 @@ class KubernetesMock:
 
             yield
 
-    def submit(self, app_id: str, **kwargs) -> KubernetesAppInfo:
+    def submit(
+        self, app_id: str, state: str = K8S_SPARK_APP_STATE.SUBMITTED, **kwargs
+    ) -> KubernetesAppInfo:
         """Create a new (dummy) Kubernetes app"""
         assert app_id not in self.apps
-        state = kwargs.pop("state", K8S_SPARK_APP_STATE.SUBMITTED)
         self.apps[app_id] = app = KubernetesAppInfo(
             app_id=app_id, state=state, **kwargs
         )
@@ -754,6 +758,68 @@ class TestK8sJobTracker:
         )
 
         assert caplog.record_tuples == []
+
+    def test_k8s_zookeeper_new_app(
+        self,
+        zk_job_registry,
+        zk_client,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        k8s_mock,
+    ):
+        caplog.set_level(logging.WARNING)
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+        # TODO: avoid setting private property
+        job_tracker._kube_mode = True
+
+        user_id = "john"
+        job_id = "job-123"
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=DUMMY_PROCESS_1,
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+        )
+
+        def zk_job_info() -> dict:
+            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+        # Submit Kubernetes app
+        time_machine.coordinates.shift(70)
+        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+        kube_app = k8s_mock.submit(app_id=app_id, state=K8S_SPARK_APP_STATE.NEW)
+        zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=app_id
+        )
+
+        # Trigger `update_statuses`
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "queued",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "queued",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:01:10Z",
+            }
+        )
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker",
+                logging.WARNING,
+                "No K8s app status found, assuming new app",
+            )
+        ]
 
     def test_k8s_zookeeper_lost_app(
         self,
