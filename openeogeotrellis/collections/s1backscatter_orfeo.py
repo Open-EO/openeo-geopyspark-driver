@@ -105,8 +105,8 @@ class S1BackscatterOrfeo:
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
-        self._tracker = self.jvm.org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker("")
-        self._tracker.registerCounter("orfeo_backscatter_soft_errors")
+        _tracker = self.jvm.org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker("")
+        _tracker.registerCounter("orfeo_backscatter_soft_errors")
 
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
@@ -330,10 +330,10 @@ class S1BackscatterOrfeo:
             p.join()
             if(p.exitcode == -signal.SIGSEGV):
                 if tracker is not None:
-                    tracker.add("orfeo_backscatter_soft_errors",1)
+                    tracker.add(1)
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
             if tracker is not None:
-                tracker.add("orfeo_backscatter_soft_errors", error_counter.value)
+                tracker.add( error_counter.value)
 
             data =  np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
 
@@ -733,7 +733,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
-        error_tracker = self._tracker
+        error_acc = feature_pyrdd.context.accumulator(0)
 
         # TODO: still split if full layout extent is too large for processing as a whole?
 
@@ -808,7 +808,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         elev_geoid=elev_geoid, elev_default=elev_default,
                         log_prefix=f"{log_prefix}-{band}",
                         orfeo_memory=orfeo_memory,
-                        tracker = error_tracker
+                        tracker = error_acc
                     )
                     #orfeo_bands = y,x
                     orfeo_bands[b] = data
