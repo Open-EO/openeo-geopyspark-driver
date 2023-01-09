@@ -1,22 +1,21 @@
 import json
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Callable, Union, Optional
-import logging
+from typing import Callable, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 from deprecated import deprecated
 from kazoo.client import KazooClient
-from kazoo.exceptions import NoNodeError, NodeExistsError
-
+from kazoo.exceptions import NodeExistsError, NoNodeError
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
-from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis import sentinel_hub
-from openeogeotrellis.testing import KazooClientMock
 
+from openeogeotrellis import sentinel_hub
+from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.testing import KazooClientMock
 
 _log = logging.getLogger(__name__)
 

@@ -1,39 +1,36 @@
 import abc
-from pathlib import Path
 import logging
-from decimal import Decimal
-from logging.handlers import RotatingFileHandler
+import re
 import subprocess
 import sys
-from subprocess import CalledProcessError
-from typing import Callable, Union, Optional, NamedTuple
-import time
-from collections import namedtuple
 from datetime import datetime
-import re
+from decimal import Decimal
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from subprocess import CalledProcessError
+from typing import Callable, NamedTuple, Optional, Union
 
+import kazoo.client
 import kubernetes.client.exceptions
 import requests
-import kazoo.client
-
-import openeogeotrellis.backend
-from openeo.util import date_to_rfc3339, url_join, rfc3339, deep_get
-from pythonjsonlogger.jsonlogger import JsonFormatter
-
+from openeo.util import rfc3339, url_join
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+from pythonjsonlogger.jsonlogger import JsonFormatter
+
+import openeogeotrellis.backend
+from openeogeotrellis import async_task
+from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import (
-    kube_client,
+    K8S_SPARK_APP_STATE,
     k8s_job_name,
     k8s_state_to_openeo_job_status,
-    K8S_SPARK_APP_STATE,
+    kube_client,
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
-from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis import async_task
 
 _log = logging.getLogger(__name__)
 
