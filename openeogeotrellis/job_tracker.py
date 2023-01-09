@@ -24,7 +24,7 @@ from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_job_name,
-    k8s_state_to_openeo_job_status,
+    k8s_state_to_openeo_job_status, K8S_SPARK_APP_STATE,
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
@@ -261,12 +261,14 @@ class JobTracker:
             plural="sparkapplications",
             name=k8s_job_name(job_id=job_id, user_id=user_id),
         )
-
-        return JobTracker._KubeStatus(
-            status['status']['applicationState']['state'],
-            status['status']['lastSubmissionAttemptTime'],
-            status['status']['terminationTime']
-        )
+        if 'status' in status:
+            return JobTracker._KubeStatus(
+                status['status']['applicationState']['state'],
+                status['status']['lastSubmissionAttemptTime'],
+                status['status']['terminationTime']
+            )
+        else:
+            return JobTracker._KubeStatus(K8S_SPARK_APP_STATE.NEW,"","")
 
     @staticmethod
     def _yarn_status(application_id: str) -> '_YarnStatus':
