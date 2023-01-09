@@ -370,8 +370,8 @@ class JobTracker:
                     #     registry.mark_done(job_id, user_id)
 
 
+def main():
 
-if __name__ == "__main__":
     import argparse
 
     # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
@@ -419,3 +419,7 @@ if __name__ == "__main__":
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e
+
+
+if __name__ == "__main__":
+    main()
