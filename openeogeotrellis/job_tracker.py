@@ -402,8 +402,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        JobTracker(ZkJobRegistry, args.principal, args.keytab).update_statuses()
+        if ConfigParams().is_kube_deploy:
+            app_state_getter = K8sStatusGetter()
+        else:
+            app_state_getter = YarnStatusGetter()
+        job_tracker = JobTracker(
+            app_state_getter=app_state_getter,
+            job_registry=ZkJobRegistry,
+            principal=args.principal,
+            keytab=args.keytab,
+        )
+        job_tracker.update_statuses()
     except JobNotFoundException as e:
+        # TODO: is this necessary? From where would this exception be thrown?
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:
         _log.error(e, exc_info=True)
