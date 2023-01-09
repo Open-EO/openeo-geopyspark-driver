@@ -2,6 +2,7 @@ import contextlib
 import datetime as dt
 import logging
 import subprocess
+import textwrap
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
@@ -18,7 +19,12 @@ from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn import YARN_STATE, YARN_FINAL_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.job_tracker import JobTracker, YarnStatusGetter, K8sStatusGetter
+from openeogeotrellis.job_tracker import (
+    JobTracker,
+    YarnStatusGetter,
+    K8sStatusGetter,
+    YarnAppReportParseException,
+)
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
 
@@ -601,6 +607,65 @@ class TestYarnJobTracker:
                 "Failed status update of job_id='job-2': CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
             )
         ]
+
+
+class TestYarnStatusGetter:
+    def test_parse_application_report_basic(self):
+        report = textwrap.dedent(
+            """
+            Application Report :
+            \tApplication-Id : application_1671092799310_26739
+            \tApplication-Name : openEO batch_test_random_forest_train_and_load_from_jobid-user jenkins
+            \tApplication-Type : SPARK
+            \tUser : jenkins
+            \tQueue : default
+            \tApplication Priority : 0
+            \tStart-Time : 1673021672793
+            \tFinish-Time : 1673021943245
+            \tProgress : 100%
+            \tState : FINISHED
+            \tFinal-State : SUCCEEDED
+            \tAM Host : epod0123.test
+            \tAggregate Resource Allocation : 5116996 MB-seconds, 2265 vcore-seconds
+            \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
+            \tTimeoutType : LIFETIME	ExpiryTime : UNLIMITED	RemainingTime : -1seconds
+        """
+        )
+        job_metadata = YarnStatusGetter().parse_application_report(report=report)
+        assert job_metadata.status == "finished"
+        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
+        assert job_metadata.usage == {
+            "cpu": {"unit": "cpu-seconds", "value": 2265},
+            "memory": {"unit": "mb-seconds", "value": 5116996},
+        }
+
+    def test_parse_application_report_running(self):
+        report = textwrap.dedent(
+            """
+            Application Report :
+            \tApplication-Id : application_1671092799310_26739
+            \tStart-Time : 1673021672793
+            \tFinish-Time : 0
+            \tState : RUNNING
+            \tFinal-State : UNDEFINED
+            \tAM Host : epod0123.test
+            \tAggregate Resource Allocation : 96183879 MB-seconds, 46964 vcore-seconds
+            \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
+        """
+        )
+        job_metadata = YarnStatusGetter().parse_application_report(report=report)
+        assert job_metadata.status == "running"
+        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.finish_time is None
+        assert job_metadata.usage == {
+            "cpu": {"unit": "cpu-seconds", "value": 46964},
+            "memory": {"unit": "mb-seconds", "value": 96183879},
+        }
+
+    def test_parse_application_report_empty(self):
+        with pytest.raises(YarnAppReportParseException):
+            _ = YarnStatusGetter().parse_application_report(report="")
 
 
 class TestK8sJobTracker:

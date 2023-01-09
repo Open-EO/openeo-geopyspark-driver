@@ -40,13 +40,8 @@ _log = logging.getLogger(__name__)
 #       Especially because the job registry storage will also get different options: legacy ZooKeeper and ElasticJobRegistry (and maybe even a simple in-memory option)
 
 
-class UnknownYarnApplicationException(ValueError):
-    pass
-
-
-
-
 class _JobMetadata(NamedTuple):
+    """Simple container for openEO batch job oriented metadata"""
     # Job status, following the openEO API spec (see `openeo_driver.jobregistry.JOB_STATUS`)
     status: str
 
@@ -62,15 +57,23 @@ class _JobMetadata(NamedTuple):
 
 class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     """
-    Base class/interface to interact with some kind of task/app orchestration/management component
-    like YARN ("yarn applications -status ..."), Kubernetes, ...
+    Interface for implementations that interact with some kind of
+    task/app orchestration/management component
     to get a job's status metadata (state, start/finish times, resource usage stats, ...)
+    For example: YARN ("yarn applications -status ..."), Kubernetes, ...
     """
 
     @abc.abstractmethod
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         raise NotImplementedError
 
+
+class UnknownYarnApplicationException(ValueError):
+    pass
+
+
+class YarnAppReportParseException(Exception):
+    pass
 
 class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
@@ -90,38 +93,41 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         return self.parse_application_report(application_report)
 
     def parse_application_report(self, report: str) -> _JobMetadata:
-        props = dict(re.findall(r"^\t(.+?) : (.+)$", report, flags=re.MULTILINE))
+        try:
+            props = dict(re.findall(r"^\t(.+?) : (.+)$", report, flags=re.MULTILINE))
 
-        job_status = yarn_state_to_openeo_job_status(
-            state=props["State"], final_state=props["Final-State"]
-        )
+            job_status = yarn_state_to_openeo_job_status(
+                state=props["State"], final_state=props["Final-State"]
+            )
 
-        def ms_epoch_to_date(epoch_millis: str) -> Union[str, None]:
-            """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
-            if epoch_millis == "0":
-                return None
-            utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
-            return rfc3339.datetime(utc_datetime)
+            def ms_epoch_to_date(epoch_millis: str) -> Union[str, None]:
+                """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
+                if epoch_millis == "0":
+                    return None
+                utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
+                return rfc3339.datetime(utc_datetime)
 
-        start_time = ms_epoch_to_date(props["Start-Time"])
-        finish_time = ms_epoch_to_date(props["Finish-Time"])
+            start_time = ms_epoch_to_date(props["Start-Time"])
+            finish_time = ms_epoch_to_date(props["Finish-Time"])
 
-        allocation = props["Aggregate Resource Allocation"]
-        match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", allocation)
-        if match:
-            usage = {
-                "cpu": {"value": int(match.group(2)), "unit": "cpu-seconds"},
-                "memory": {"value": int(match.group(1)), "unit": "mb-seconds"},
-            }
-        else:
-            usage = None
+            allocation = props["Aggregate Resource Allocation"]
+            match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", allocation)
+            if match:
+                usage = {
+                    "cpu": {"value": int(match.group(2)), "unit": "cpu-seconds"},
+                    "memory": {"value": int(match.group(1)), "unit": "mb-seconds"},
+                }
+            else:
+                usage = None
 
-        return _JobMetadata(
-            status=job_status,
-            start_time=start_time,
-            finish_time=finish_time,
-            usage=usage,
-        )
+            return _JobMetadata(
+                status=job_status,
+                start_time=start_time,
+                finish_time=finish_time,
+                usage=usage,
+            )
+        except Exception as e:
+            raise YarnAppReportParseException() from e
 
 
 class K8sStatusGetter(JobMetadataGetterInterface):
@@ -247,8 +253,8 @@ class JobTracker:
                     previous_status = job_info["status"]
 
                     if application_id:
-                        try:
-                            # Artificial indentation level for easier diff review
+                        # Artificial indentation levels for easier diff review
+                        if True:
                             if True:
                                 job_metadata = self._app_state_getter.get_job_metadata(
                                     job_id=job_id,
@@ -326,9 +332,6 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
-                        except UnknownYarnApplicationException:
-                            # TODO eliminate this whole try-except (but not now to keep diff simple)
-                            raise
                 except Exception as e:
                     # TODO: option for strict mode (fail fast instead of just warnings)?
                     _log.warning(
