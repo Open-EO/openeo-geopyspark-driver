@@ -67,6 +67,7 @@ setup(
         'pytz',
         'affine',
         'xarray~=0.16.2',
+        "netcdf4",
         'Shapely<2.0',
         'epsel~=1.0.0',
         'numbagg==0.1',
