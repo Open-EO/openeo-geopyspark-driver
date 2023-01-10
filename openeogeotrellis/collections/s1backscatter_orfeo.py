@@ -31,7 +31,8 @@ from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory
+from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
+    ensure_executor_logging
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,8 @@ class S1BackscatterOrfeo:
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
+        _tracker = self.jvm.org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker("")
+        _tracker.registerCounter("orfeo_backscatter_soft_errors")
 
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
@@ -263,6 +266,13 @@ class S1BackscatterOrfeo:
                 dem_tile_size=512,
                 dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
             )
+        elif elevation_model in ["copernicus_30"]:
+            import contextlib
+
+            copernicus_dem_dir = os.environ.get(
+                "OPENEO_S1BACKSCATTER_DEM_DIR", "/s1backscatter_copernicus_30/"
+            )
+            dem_dir_context = contextlib.nullcontext(copernicus_dem_dir)
         elif elevation_model in ["off"]:
             # Context that returns None when entering
             dem_dir_context = nullcontext()
@@ -285,7 +295,8 @@ class S1BackscatterOrfeo:
             elev_geoid: str,
             elev_default: float = None,
             log_prefix: str = "",
-            orfeo_memory:int = 512
+            orfeo_memory:int = 512,
+            tracker=None
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
 
@@ -300,6 +311,7 @@ class S1BackscatterOrfeo:
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
 
             arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
+            error_counter = multiprocessing.Value('i', 0,lock=False)
 
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -317,13 +329,18 @@ class S1BackscatterOrfeo:
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
                     np.copyto(np.frombuffer(arr).reshape((extent_height_px,extent_width_px)),localdata)
                 except RuntimeError as e:
+                    error_counter.value += 1
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
 
             p = Process(target=run, args=())
             p.start()
             p.join()
             if(p.exitcode == -signal.SIGSEGV):
+                if tracker is not None:
+                    tracker.add(1)
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
+            if tracker is not None:
+                tracker.add( error_counter.value)
 
             data =  np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
 
@@ -398,7 +415,7 @@ class S1BackscatterOrfeo:
 
         sar_calibration_lut = S1BackscatterOrfeo._get_sar_calibration_lut(sar_backscatter_arguments.coefficient)
 
-        @epsel.ensure_info_logging
+        @ensure_executor_logging
         @TimingLogger( title="process_feature", logger=logger)
         def process_feature( product: Tuple[str, List[dict]]):
             import faulthandler
@@ -723,10 +740,12 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
+        error_acc = feature_pyrdd.context.accumulator(0)
+
         # TODO: still split if full layout extent is too large for processing as a whole?
 
         # Apply Orfeo processing over product files as whole and splice up in tiles after that
-        @epsel.ensure_info_logging
+        @ensure_executor_logging
         @TimingLogger(title="process_product", logger=logger)
         def process_product(product: Tuple[str, List[dict]]):
             import faulthandler;
@@ -795,7 +814,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         noise_removal=noise_removal,
                         elev_geoid=elev_geoid, elev_default=elev_default,
                         log_prefix=f"{log_prefix}-{band}",
-                        orfeo_memory=orfeo_memory
+                        orfeo_memory=orfeo_memory,
+                        tracker = error_acc
                     )
                     #orfeo_bands = y,x
                     orfeo_bands[b] = data

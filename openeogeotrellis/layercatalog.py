@@ -87,7 +87,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
         logger.debug(f"Using load_params.data_mask {load_params.data_mask!r}")
         if isinstance(load_params.data_mask, GeopysparkDataCube):
-            datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd().cache())
+            datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
         globalbounds = feature_flags.get("global_bounds", True)

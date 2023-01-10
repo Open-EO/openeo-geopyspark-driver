@@ -437,7 +437,7 @@ def ensure_executor_logging(f) -> Callable:
             BatchJobLoggingFilter.set("req_id", request_id)
 
         setup_logging(get_logging_config(
-            root_handlers=["file_json"],
+            root_handlers=["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
             loggers={
                 "openeo": {"level": "DEBUG"},
                 "openeo_driver": {"level": "DEBUG"},
