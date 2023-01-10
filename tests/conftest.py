@@ -51,6 +51,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable
+    # Set other environment variables required by tests.
+    os.environ["OPENEO_S1BACKSCATTER_DEM_DIR"] = str(TEST_DATA_ROOT / "orfeo_dem")
 
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext

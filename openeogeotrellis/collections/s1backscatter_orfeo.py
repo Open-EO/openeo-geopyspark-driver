@@ -266,6 +266,13 @@ class S1BackscatterOrfeo:
                 dem_tile_size=512,
                 dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
             )
+        elif elevation_model in ["copernicus_30"]:
+            import contextlib
+
+            copernicus_dem_dir = os.environ.get(
+                "OPENEO_S1BACKSCATTER_DEM_DIR", "/s1backscatter_copernicus_30/"
+            )
+            dem_dir_context = contextlib.nullcontext(copernicus_dem_dir)
         elif elevation_model in ["off"]:
             # Context that returns None when entering
             dem_dir_context = nullcontext()

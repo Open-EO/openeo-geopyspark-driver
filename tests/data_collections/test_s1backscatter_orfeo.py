@@ -1,55 +1,107 @@
-import contextlib
 import datetime
-import json
 import os
 import subprocess
 import sys
 import textwrap
 import zipfile
-from multiprocessing import Process
 from pathlib import Path
 from unittest import skip
 
 import pytest
 import rasterio
-import threading
-from numpy.testing import assert_array_almost_equal, assert_allclose
-
-import signal
-from shapely.geometry import GeometryCollection, shape
+from numpy.testing import assert_allclose
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo, _import_orfeo_toolbox, \
-    _instant_ms_to_day, S1BackscatterOrfeoV2
+from openeogeotrellis.collections.s1backscatter_orfeo import (
+    S1BackscatterOrfeo,
+    _instant_ms_to_day,
+    S1BackscatterOrfeoV2,
+)
 
 
-
-@pytest.mark.parametrize(["spatial_extent", "temporal_extent", "expected_shape","implementation_version","ref_path"], [
-    (
-            dict(west=3.1, south=51.27, east=3.3, north=51.37),  # Zeebrugge
+@pytest.mark.parametrize(
+    [
+        "spatial_extent",
+        "temporal_extent",
+        "expected_shape",
+        "implementation_version",
+        "ref_path",
+        "elevation_model",
+    ],
+    [
+        (
+            dict(
+                west=3.1, south=51.27, east=3.3, north=51.37
+            ),  # Zeebrugge
             ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
             (2, 1117, 1397),
             "2",
-            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge.tiff"
-    ),
-    (
-            dict(west=3.1, south=51.27, east=3.3, north=51.37),  # Zeebrugge
+            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge.tiff",
+            "off",
+        ),
+        (
+            dict(
+                west=3.1, south=51.27, east=3.3, north=51.37
+            ),  # Zeebrugge
             ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
             (2, 1117, 1397),
             "1",
-            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge.tiff"
-    ),
-    (
-            dict(west=5.5, south=50.13, east=5.65, north=50.23),  # La Roche-en-Ardenne
+            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge.tiff",
+            "off",
+        ),
+        (
+            dict(
+                west=5.5, south=50.13, east=5.65, north=50.23
+            ),  # La Roche-en-Ardenne
             ("2020-07-29T00:00:00", "2020-07-29T23:59:59"),
             (2, 1150, 1110),
             "2",
-            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_laroche.tiff"
-    ),
-])
-def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expected_shape,implementation_version,ref_path):
+            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_laroche.tiff",
+            "off",
+        ),
+        (
+            dict(
+                west=3.1, south=51.27, east=3.3, north=51.37
+            ),  # Zeebrugge with elevation V2
+            ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
+            (2, 1117, 1397),
+            "2",
+            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge_elevation.tiff",
+            "COPERNICUS_30",
+        ),
+        (
+            dict(
+                west=3.1, south=51.27, east=3.3, north=51.37
+            ),  # Zeebrugge with elevation V1
+            ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
+            (2, 1117, 1397),
+            "1",
+            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge_elevation.tiff",
+            "COPERNICUS_30",
+        ),
+        (
+            dict(
+                west=5.5, south=50.13, east=5.65, north=50.23
+            ),  # La Roche-en-Ardenne with elevation V2
+            ("2020-07-29T00:00:00", "2020-07-29T23:59:59"),
+            (2, 1150, 1110),
+            "2",
+            "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_laroche_elevation.tiff",
+            "COPERNICUS_30",
+        ),
+    ],
+)
+def test_creodias_s1_backscatter(
+    tmp_path,
+    spatial_extent,
+    temporal_extent,
+    expected_shape,
+    implementation_version,
+    ref_path,
+    elevation_model,
+):
     """
     Depends on:
      /eodata/Sentinel-1/SAR/GRD/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.SAFE
@@ -94,7 +146,7 @@ def test_creodias_s1_backscatter(tmp_path, spatial_extent, temporal_extent, expe
         temporal_extent=temporal_extent, spatial_extent=spatial_extent,
         sar_backscatter=SarBackscatterArgs(
             coefficient="sigma0-ellipsoid",
-            elevation_model="off",
+            elevation_model=elevation_model,
             options={"dem_zoom_level": 6,"implementation_version":implementation_version,"debug":True}
         )
     )
