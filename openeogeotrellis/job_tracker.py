@@ -403,14 +403,26 @@ def main():
         default=False,
         help="Stop immediately on unexpected errors while tracking a certain job, instead of skipping to next job.",
     )
+    parser.add_argument(
+        "--app-cluster",
+        choices=["yarn", "k8s", "auto"],
+        default="auto",
+        help="Application cluster to get job/app status from.",
+    )
 
     args = parser.parse_args()
 
     try:
-        if ConfigParams().is_kube_deploy:
+        app_cluster = args.app_cluster
+        if app_cluster == "auto":
+            # TODO: eliminate (need for) auto-detection.
+            app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
+        if app_cluster == "yarn":
+            app_state_getter = YarnStatusGetter()
+        elif app_cluster == "k8s":
             app_state_getter = K8sStatusGetter()
         else:
-            app_state_getter = YarnStatusGetter()
+            raise ValueError(app_cluster)
         job_tracker = JobTracker(
             app_state_getter=app_state_getter,
             job_registry=ZkJobRegistry,
