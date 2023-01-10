@@ -243,7 +243,7 @@ class JobTracker:
             elastic_job_registry, ref="JobTracker"
         )
 
-    def update_statuses(self) -> None:
+    def update_statuses(self, fail_fast: bool = False) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
 
@@ -356,7 +356,6 @@ class JobTracker:
                                 job_id=job_id, status=JOB_STATUS.ERROR
                             )
                 except Exception as e:
-                    # TODO: option for strict mode (fail fast instead of just warnings)?
                     _log.exception(
                         f"Failed status update of {job_id=}: unexpected {type(e).__name__}: {e}",
                         exc_info=True,
@@ -368,6 +367,9 @@ class JobTracker:
                     # if job_id and user_id:
                     #     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                     #     registry.mark_done(job_id, user_id)
+
+                    if fail_fast:
+                        raise
 
 
 def main():
@@ -399,6 +401,14 @@ def main():
     parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
     parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
                         help="The full path to the file that contains the keytab for the principal")
+
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        default=False,
+        help="Stop immediately on unexpected errors while tracking a certain job, instead of skipping to next job.",
+    )
+
     args = parser.parse_args()
 
     try:
@@ -412,7 +422,7 @@ def main():
             principal=args.principal,
             keytab=args.keytab,
         )
-        job_tracker.update_statuses()
+        job_tracker.update_statuses(fail_fast=args.fail_fast)
     except JobNotFoundException as e:
         # TODO: is this necessary? From where would this exception be thrown?
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
