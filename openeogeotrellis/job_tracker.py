@@ -276,14 +276,6 @@ class JobTracker:
                                         extra={"job_id": job_id},
                                     )
 
-                                extra = {}
-                                if job_metadata.usage:
-                                    # TODO: is this old-style usage reporting still necessary?
-                                    if job_metadata.usage.get("memory", {}).get("unit") == "mb-seconds":
-                                        extra["memory_time_megabyte_seconds"] = job_metadata.usage.get("memory", {}).get("value")
-                                    if job_metadata.usage.get("cpu", {}).get("unit") == "cpu-seconds":
-                                        extra["cpu_time_seconds"] = job_metadata.usage.get("cpu", {}).get("value")
-
                                 registry.patch(
                                     job_id=job_id,
                                     user_id=user_id,
@@ -291,7 +283,6 @@ class JobTracker:
                                     started=job_metadata.start_time,
                                     finished=job_metadata.finish_time,
                                     usage=job_metadata.usage,
-                                    **extra,
                                 )
                                 with ElasticJobRegistry.just_log_errors(
                                     f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
