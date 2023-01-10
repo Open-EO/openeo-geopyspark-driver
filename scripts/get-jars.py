@@ -11,6 +11,7 @@ To be used instead of `geopyspark install-jar`
 # to be widely usable without need for pre-existing virtual envs
 import argparse
 import logging
+import os
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -68,8 +69,9 @@ def main():
         download_jar(jar_dir, url=url, force=force_download)
 
     logger.info(f"Listing of {jar_dir}:")
-    # TODO: Avoid `ls` subprocess and make this work on Windows too?
-    subprocess.call(["ls", "-al", str(jar_dir)])
+    for f in os.listdir(jar_dir):
+        target = jar_dir / Path(str(f))
+        logger.info(f"{f} ({target.stat().st_size} bytes).")
 
 
 if __name__ == '__main__':
