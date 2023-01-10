@@ -69,9 +69,8 @@ def main():
         download_jar(jar_dir, url=url, force=force_download)
 
     logger.info(f"Listing of {jar_dir}:")
-    for f in os.listdir(jar_dir):
-        target = jar_dir / Path(str(f))
-        logger.info(f"{f} ({target.stat().st_size} bytes).")
+    for f in jar_dir.iterdir():
+        logger.info(f"{f.stat().st_size:16d} {f}")
 
 
 if __name__ == '__main__':
