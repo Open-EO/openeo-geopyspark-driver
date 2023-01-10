@@ -13,7 +13,7 @@ from typing import Callable, NamedTuple, Optional, Union
 import kazoo.client
 import kubernetes.client.exceptions
 import requests
-from openeo.util import rfc3339, url_join
+from openeo.util import rfc3339, url_join, ensure_dir, TimingLogger
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
@@ -247,7 +247,9 @@ class JobTracker:
         with self._job_registry() as registry:
             registry.ensure_paths()
 
-            jobs_to_track = registry.get_running_jobs()
+            with TimingLogger(title="Fetching jobs to track", logger=_log.info):
+                jobs_to_track = registry.get_running_jobs()
+            _log.info(f"Collected {len(jobs_to_track)} jobs to track")
 
             for job_info in jobs_to_track:
                 job_id = None
@@ -377,9 +379,11 @@ def main():
     import argparse
 
     # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
+    # TODO: doing both `basicConfig` and manual logging setup causes duplicated logs.
     logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
+    _log.setLevel(logging.DEBUG)
 
     root_logger = logging.getLogger()
     json_formatter = JsonFormatter(JSON_LOGGER_DEFAULT_FORMAT)  # Note: The Java logging is also supposed to match.
@@ -389,7 +393,7 @@ def main():
 
     root_logger.addHandler(stdout_handler)
 
-    if not ConfigParams().is_kube_deploy:
+    if not ConfigParams().is_kube_deploy and Path("logs").is_dir():
         rolling_file_handler = RotatingFileHandler("logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024,
                                                    backupCount=1)
         rolling_file_handler.formatter = json_formatter
