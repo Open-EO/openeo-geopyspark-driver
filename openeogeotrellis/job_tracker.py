@@ -371,7 +371,6 @@ def main():
 
     # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
     # TODO: doing both `basicConfig` and manual logging setup causes duplicated logs.
-    logging.basicConfig(level=logging.INFO)
     openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
     kazoo.client.log.setLevel(logging.WARNING)
     _log.setLevel(logging.DEBUG)
