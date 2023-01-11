@@ -371,6 +371,8 @@ class JobTracker:
                     #     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                     #     registry.mark_done(job_id, user_id)
 
+                    if fail_fast:
+                        raise
 
 
 def main():
