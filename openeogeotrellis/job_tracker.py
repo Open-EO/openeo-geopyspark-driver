@@ -13,7 +13,7 @@ from typing import Callable, NamedTuple, Optional, Union
 import kazoo.client
 import kubernetes.client.exceptions
 import requests
-from openeo.util import rfc3339, url_join, ensure_dir, TimingLogger
+from openeo.util import rfc3339, url_join, ensure_dir, TimingLogger, repr_truncate
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
@@ -130,6 +130,10 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             raise YarnAppReportParseException() from e
 
 
+class K8sException(Exception):
+    pass
+
+
 class K8sStatusGetter(JobMetadataGetterInterface):
     """Kubernetes app status getter"""
 
@@ -193,8 +197,14 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             response = requests.get(url, params=params)
             response.raise_for_status()
             total_cost = response.json()
-            if total_cost["code"] != 200:
-                raise ValueError(total_cost)
+            if not (
+                total_cost["code"] == 200
+                and len(total_cost["data"]) > 0
+                and namespace in total_cost["data"][0]
+            ):
+                raise K8sException(
+                    f"Unexpected response {repr_truncate(total_cost, width=200)}"
+                )
 
             cost = total_cost["data"][0][namespace]
             # TODO: need to iterate through "data" list?
@@ -361,8 +371,6 @@ class JobTracker:
                     #     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
                     #     registry.mark_done(job_id, user_id)
 
-                    if fail_fast:
-                        raise
 
 
 def main():
