@@ -1,4 +1,6 @@
 import logging
+import os
+import subprocess
 from typing import NamedTuple
 
 import hvac
@@ -36,6 +38,25 @@ class Vault:
         client = self._client()
         client.auth.jwt.jwt_login(role=None, jwt=access_token)
         return client.token
+
+    def login_kerberos(self) -> str:
+        # hvac has no Kerberos support, use CLI instead
+        vault_kerberos_login = [
+            "vault",
+            "login",
+            "-token-only",
+            "-method=kerberos",
+            "username=openeo",
+            "service=vault-prod",
+            "realm=VGT.VITO.BE",
+            "keytab_path=/opt/openeo.keytab",
+            "krb5conf_path=/etc/krb5.conf"
+        ]
+
+        env = {**os.environ, **{"VAULT_ADDR": self._url}}
+        vault_token = subprocess.check_output(vault_kerberos_login, env=env, text=True)
+
+        return vault_token
 
     def _client(self):
         return hvac.Client(self._url)
