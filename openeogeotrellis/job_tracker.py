@@ -234,17 +234,20 @@ class JobTracker:
 
             total_cost = requests.get(url, params=params).json()
             if total_cost['code'] == 200:
-                cost = total_cost['data'][0][namespace]
-                # TODO: need to iterate through "data" list?
-                _log.info(f"Successfully retrieved total cost {cost}")
-                usage = {}
-                usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
-                usage["memory"] = {
-                    "value": cost["ramByteHours"] / (1024 * 1024),
-                    "unit": "mb-hours",
-                }
+                if namespace in total_cost['data'][0]:
+                    cost = total_cost['data'][0][namespace]
+                    # TODO: need to iterate through "data" list?
+                    _log.info(f"Successfully retrieved total cost {cost}")
+                    usage = {}
+                    usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
+                    usage["memory"] = {
+                        "value": cost["ramByteHours"] / (1024 * 1024),
+                        "unit": "mb-hours",
+                    }
 
-                return usage
+                    return usage
+                else:
+                    _log.error(f"Unable to retrieve job cost {total_cost}")
             else:
                 # TODO: better error logging?
                 _log.error(f"Unable to retrieve job cost {total_cost}")
