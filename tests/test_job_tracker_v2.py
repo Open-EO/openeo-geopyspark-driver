@@ -2,6 +2,7 @@ import contextlib
 import datetime as dt
 import logging
 import subprocess
+import textwrap
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
@@ -18,12 +19,18 @@ from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn import YARN_STATE, YARN_FINAL_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.job_tracker import JobTracker
+from openeogeotrellis.job_tracker_v2 import (
+    JobTracker,
+    YarnStatusGetter,
+    K8sStatusGetter,
+    YarnAppReportParseException,
+)
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
 
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
+
 
 @dataclass
 class YarnAppInfo:
@@ -96,7 +103,7 @@ class YarnMock:
 
     def __init__(self):
         self.apps: Dict[str, YarnAppInfo] = {}
-        self._corrupt = set()
+        self.corrupt_app_ids = set()
 
     def submit(self, app_id: Optional[str] = None, **kwargs) -> YarnAppInfo:
         """Create a new (dummy) YARN app"""
@@ -105,14 +112,11 @@ class YarnMock:
         self.apps[app_id] = app = YarnAppInfo(app_id=app_id, **kwargs)
         return app
 
-    def make_corrupt(self, app_id: str):
-        self._corrupt.add(app_id)
-
     def _check_output(self, args: List[str]):
         """Mock for subprocess.check_output(["yarn", ...])"""
         if len(args) == 4 and args[:3] == ["yarn", "application", "-status"]:
             app_id = args[3]
-            if app_id in self._corrupt:
+            if app_id in self.corrupt_app_ids:
                 raise subprocess.CalledProcessError(
                     returncode=255,
                     cmd=args,
@@ -170,12 +174,18 @@ class KubernetesAppInfo:
 class KubernetesMock:
     """Kubernetes cluster mock."""
 
-    def __init__(self):
+    def __init__(self, kubecost_url: str = "https://kubecost.test"):
         self.apps: Dict[str, KubernetesAppInfo] = {}
+        self.kubecost_url = kubecost_url
+        self.corrupt_app_ids = set()
 
     @contextlib.contextmanager
     def patch(self):
         def get_namespaced_custom_object(name: str, **kwargs) -> dict:
+            if name in self.corrupt_app_ids:
+                raise kubernetes.client.exceptions.ApiException(
+                    status=500, reason="Internal Server Error"
+                )
             if name not in self.apps:
                 raise kubernetes.client.exceptions.ApiException(
                     status=404, reason="Not Found"
@@ -209,7 +219,7 @@ class KubernetesMock:
             }
 
         with mock.patch(
-            "openeogeotrellis.job_tracker.kube_client"
+            "openeogeotrellis.job_tracker_v2.kube_client"
         ) as kube_client, requests_mock.Mocker() as requests_mocker:
             # Mock Kubernetes interaction
             api_instance = kube_client.return_value
@@ -217,7 +227,7 @@ class KubernetesMock:
 
             # Mock kubernetes usage API
             requests_mocker.get(
-                url_join(JobTracker._KUBECOST_URL, "/model/allocation"),
+                url_join(self.kubecost_url, "/model/allocation"),
                 json=get_model_allocation,
             )
 
@@ -249,13 +259,6 @@ def yarn_mock() -> YarnMock:
     yarn = YarnMock()
     with yarn.patch():
         yield yarn
-
-
-@pytest.fixture
-def k8s_mock() -> KubernetesMock:
-    kube = KubernetesMock()
-    with kube.patch():
-        yield kube
 
 
 class InMemoryJobRegistry:
@@ -326,7 +329,7 @@ DUMMY_PG_1 = {
 DUMMY_PROCESS_1 = {"process_graph": DUMMY_PG_1}
 
 
-class TestJobTracker:
+class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
         self, zk_job_registry, elastic_job_registry, batch_job_output_root
@@ -334,6 +337,7 @@ class TestJobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
+            app_state_getter=YarnStatusGetter(),
             job_registry=lambda: zk_job_registry,
             principal=principal,
             keytab=keytab,
@@ -541,9 +545,9 @@ class TestJobTracker:
 
         assert caplog.record_tuples == [
             (
-                "openeogeotrellis.job_tracker",
+                "openeogeotrellis.job_tracker_v2",
                 logging.WARNING,
-                "Failed status update of job_id='job-2': UnknownYarnApplicationException: Application with id 'app-2' doesn't exist in RM or Timeline Server.",
+                "App not found for job_id='job-2'",
             )
         ]
 
@@ -576,7 +580,7 @@ class TestJobTracker:
             if j != 2:
                 yarn_mock.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
             else:
-                yarn_mock.make_corrupt(f"app-{j}")
+                yarn_mock.corrupt_app_ids.add(f"app-{j}")
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
@@ -584,8 +588,9 @@ class TestJobTracker:
         assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
             {"status": "running"}
         )
+        # job-2 is currently stuck in state "created"
         assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
-            {"status": "error"}
+            {"status": "created"}
         )
         assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
             {"status": "running"}
@@ -593,17 +598,110 @@ class TestJobTracker:
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
-            "job-2": DictSubSet(status="error"),
+            # job-2 is currently stuck in state "created"
+            "job-2": DictSubSet(status="created"),
             "job-3": DictSubSet(status="running"),
         }
 
         assert caplog.record_tuples == [
             (
-                "openeogeotrellis.job_tracker",
-                logging.WARNING,
-                "Failed status update of job_id='job-2': CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
+                "openeogeotrellis.job_tracker_v2",
+                logging.ERROR,
+                "Failed status update of job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
             )
         ]
+
+
+class TestYarnStatusGetter:
+    def test_parse_application_report_basic(self):
+        report = textwrap.dedent(
+            """
+            Application Report :
+            \tApplication-Id : application_1671092799310_26739
+            \tApplication-Name : openEO batch_test_random_forest_train_and_load_from_jobid-user jenkins
+            \tApplication-Type : SPARK
+            \tUser : jenkins
+            \tQueue : default
+            \tApplication Priority : 0
+            \tStart-Time : 1673021672793
+            \tFinish-Time : 1673021943245
+            \tProgress : 100%
+            \tState : FINISHED
+            \tFinal-State : SUCCEEDED
+            \tAM Host : epod0123.test
+            \tAggregate Resource Allocation : 5116996 MB-seconds, 2265 vcore-seconds
+            \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
+            \tTimeoutType : LIFETIME	ExpiryTime : UNLIMITED	RemainingTime : -1seconds
+        """
+        )
+        job_metadata = YarnStatusGetter().parse_application_report(report=report)
+        assert job_metadata.status == "finished"
+        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
+        assert job_metadata.usage == {
+            "cpu": {"unit": "cpu-seconds", "value": 2265},
+            "memory": {"unit": "mb-seconds", "value": 5116996},
+        }
+
+    def test_parse_application_report_running(self):
+        report = textwrap.dedent(
+            """
+            Application Report :
+            \tApplication-Id : application_1671092799310_26739
+            \tStart-Time : 1673021672793
+            \tFinish-Time : 0
+            \tState : RUNNING
+            \tFinal-State : UNDEFINED
+            \tAM Host : epod0123.test
+            \tAggregate Resource Allocation : 96183879 MB-seconds, 46964 vcore-seconds
+            \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
+        """
+        )
+        job_metadata = YarnStatusGetter().parse_application_report(report=report)
+        assert job_metadata.status == "running"
+        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.finish_time is None
+        assert job_metadata.usage == {
+            "cpu": {"unit": "cpu-seconds", "value": 46964},
+            "memory": {"unit": "mb-seconds", "value": 96183879},
+        }
+
+    def test_parse_application_report_empty(self):
+        with pytest.raises(YarnAppReportParseException):
+            _ = YarnStatusGetter().parse_application_report(report="")
+
+
+class TestK8sJobTracker:
+    @pytest.fixture
+    def kubecost_url(self):
+        return "https://kubecost.test/"
+
+    @pytest.fixture
+    def k8s_mock(self, kubecost_url) -> KubernetesMock:
+        kube = KubernetesMock(kubecost_url=kubecost_url)
+        with kube.patch():
+            yield kube
+
+    @pytest.fixture
+    def job_tracker(
+        self,
+        zk_job_registry,
+        elastic_job_registry,
+        batch_job_output_root,
+        k8s_mock,
+        kubecost_url,
+    ) -> JobTracker:
+        principal = "john@EXAMPLE.TEST"
+        keytab = "test/openeo.keytab"
+        job_tracker = JobTracker(
+            app_state_getter=K8sStatusGetter(kubecost_url=kubecost_url),
+            job_registry=lambda: zk_job_registry,
+            principal=principal,
+            keytab=keytab,
+            output_root_dir=batch_job_output_root,
+            elastic_job_registry=elastic_job_registry,
+        )
+        return job_tracker
 
     def test_k8s_zookeeper_basic(
         self,
@@ -617,8 +715,6 @@ class TestJobTracker:
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
-        # TODO: avoid setting private property
-        job_tracker._kube_mode = True
 
         user_id = "john"
         job_id = "job-123"
@@ -790,7 +886,13 @@ class TestJobTracker:
                 "updated": "2022-12-14T12:01:10Z",
             }
         )
-        assert caplog.record_tuples == []
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker_v2",
+                logging.WARNING,
+                "No K8s app status found, assuming new app",
+            )
+        ]
 
     def test_k8s_zookeeper_lost_app(
         self,
@@ -806,8 +908,6 @@ class TestJobTracker:
         Check that JobTracker.update_statuses() keeps working if there is no K8s app for a given job
         """
         caplog.set_level(logging.WARNING)
-        # TODO: avoid setting private property
-        job_tracker._kube_mode = True
 
         for j in [1, 2, 3]:
             job_id = f"job-{j}"
@@ -851,8 +951,75 @@ class TestJobTracker:
 
         assert caplog.record_tuples == [
             (
-                "openeogeotrellis.job_tracker",
+                "openeogeotrellis.job_tracker_v2",
                 logging.WARNING,
-                "Failed status update of job_id='job-2': ApiException: (404)\nReason: Not Found\n",
+                "App not found for job_id='job-2'",
+            )
+        ]
+
+    def test_k8s_zookeeper_unexpected_k8s_error(
+        self,
+        zk_job_registry,
+        zk_client,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        k8s_mock,
+    ):
+        """
+        Check that JobTracker.update_statuses() keeps working if there is no K8s app for a given job
+        """
+        caplog.set_level(logging.WARNING)
+
+        for j in [1, 2, 3]:
+            job_id = f"job-{j}"
+            user_id = f"user{j}"
+            app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+
+            zk_job_registry.register(
+                job_id=job_id,
+                user_id=user_id,
+                api_version="1.2.3",
+                specification=DUMMY_PROCESS_1,
+            )
+            zk_job_registry.set_application_id(
+                job_id=job_id, user_id=user_id, application_id=app_id
+            )
+            elastic_job_registry.create_job(
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            )
+            # K8s apps 1 and 3 are running but app 2 is lost/missing
+            if j != 2:
+                k8s_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
+            else:
+                k8s_mock.corrupt_app_ids.add(app_id)
+
+        # Let job tracker do status updates
+        job_tracker.update_statuses()
+
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
+            {"status": "running"}
+        )
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
+            # job-2 is currently stuck in state "created"
+            {"status": "created"}
+        )
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
+            {"status": "running"}
+        )
+
+        assert elastic_job_registry.db == {
+            "job-1": DictSubSet(status="running"),
+            # job-2 is currently stuck in state "created"
+            "job-2": DictSubSet(status="created"),
+            "job-3": DictSubSet(status="running"),
+        }
+
+        assert caplog.record_tuples == [
+            (
+                "openeogeotrellis.job_tracker_v2",
+                40,
+                "Failed status update of job_id='job-2': unexpected ApiException: (500)\nReason: Internal Server Error\n",
             )
         ]
