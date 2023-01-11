@@ -547,7 +547,7 @@ class TestYarnJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 logging.WARNING,
-                "App not found for job_id='job-2'",
+                "App not found: job_id='job-2' application_id='app-2'",
             )
         ]
 
@@ -607,7 +607,7 @@ class TestYarnJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 logging.ERROR,
-                "Failed status update of job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
+                "Failed status sync for job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
             )
         ]
 
@@ -953,7 +953,7 @@ class TestK8sJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 logging.WARNING,
-                "App not found for job_id='job-2'",
+                "App not found: job_id='job-2' application_id='job-job-2-user2'",
             )
         ]
 
@@ -1020,6 +1020,6 @@ class TestK8sJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 40,
-                "Failed status update of job_id='job-2': unexpected ApiException: (500)\nReason: Internal Server Error\n",
+                "Failed status sync for job_id='job-2': unexpected ApiException: (500)\nReason: Internal Server Error\n",
             )
         ]

@@ -36,6 +36,7 @@ class ZkJobRegistry:
         self._zk = zk_client
 
     def ensure_paths(self):
+        # TODO: just do this automatically in __init__?
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 

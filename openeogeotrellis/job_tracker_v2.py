@@ -69,7 +69,11 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-class AppNotFound(Exception):
+class JobTrackerException(Exception):
+    pass
+
+
+class AppNotFound(JobTrackerException):
     """Exception to throw when app can not be found in YARN, Kubernetes, ..."""
     pass
 
@@ -256,6 +260,7 @@ class JobTracker:
         )
 
     def update_statuses(self, fail_fast: bool = False) -> None:
+        """Iterate through all known (ongoing) jobs and update their status"""
         with self._job_registry() as registry:
             registry.ensure_paths()
 
@@ -264,140 +269,141 @@ class JobTracker:
             _log.info(f"Collected {len(jobs_to_track)} jobs to track")
 
             for job_info in jobs_to_track:
-                job_id = None
-                user_id = None
-                try:
-                    job_id = job_info["job_id"]
-                    user_id = job_info["user_id"]
-                    application_id = job_info["application_id"]
-                    previous_status = job_info["status"]
-
-                    if application_id:
-                        # Artificial indentation levels for easier diff review
-                        if True:
-                            if True:
-                                job_metadata = self._app_state_getter.get_job_metadata(
-                                    job_id=job_id,
-                                    user_id=user_id,
-                                    app_id=application_id,
-                                )
-
-                                if previous_status != job_metadata.status:
-                                    _log.info(
-                                        f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
-                                        extra={"job_id": job_id},
-                                    )
-
-                                registry.patch(
-                                    job_id=job_id,
-                                    user_id=user_id,
-                                    status=job_metadata.status,
-                                    started=job_metadata.start_time,
-                                    finished=job_metadata.finish_time,
-                                    usage=job_metadata.usage,
-                                )
-                                with ElasticJobRegistry.just_log_errors(
-                                    f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
-                                ):
-                                    if self._elastic_job_registry:
-                                        self._elastic_job_registry.set_status(
-                                            job_id=job_id,
-                                            status=job_metadata.status,
-                                            started=job_metadata.start_time,
-                                            finished=job_metadata.finish_time,
-                                            # TODO: also record usage data
-                                        )
-
-                                if job_metadata.status in {
-                                    JOB_STATUS.FINISHED,
-                                    JOB_STATUS.ERROR,
-                                    JOB_STATUS.CANCELED,
-                                }:
-                                    result_metadata = (
-                                        self._batch_jobs.get_results_metadata(
-                                            job_id, user_id
-                                        )
-                                    )
-                                    # TODO: skip patching the job znode and read from this file directly?
-                                    registry.patch(job_id, user_id, **result_metadata)
-
-                                    registry.remove_dependencies(job_id, user_id)
-
-                                    # there can be duplicates if batch processes are recycled
-                                    dependency_sources = list(
-                                        set(
-                                            ZkJobRegistry.get_dependency_sources(
-                                                job_info
-                                            )
-                                        )
-                                    )
-
-                                    if dependency_sources:
-                                        async_task.schedule_delete_batch_process_dependency_sources(
-                                            job_id, user_id, dependency_sources
-                                        )
-
-                                    registry.mark_done(job_id, user_id)
-
-                                    # TODO: make this usage report handling/logging more generic?
-                                    sentinelhub_processing_units = (
-                                        result_metadata.get("usage", {})
-                                        .get("sentinelhub", {})
-                                        .get("value", 0.0)
-                                    )
-
-                                    sentinelhub_batch_processing_units = (
-                                        ZkJobRegistry.get_dependency_usage(job_info)
-                                        or Decimal("0.0")
-                                    )
-
-                                    _log.info(
-                                        f"marked {job_id} as done",
-                                        extra={
-                                            "job_id": job_id,
-                                            "area": result_metadata.get("area"),
-                                            "unique_process_ids": result_metadata.get(
-                                                "unique_process_ids"
-                                            ),
-                                            # 'cpu_time_seconds': cpu_time_seconds,  # TODO: necessary to get this working again?
-                                            "sentinelhub": float(
-                                                Decimal(sentinelhub_processing_units)
-                                                + sentinelhub_batch_processing_units
-                                            ),
-                                        },
-                                    )
-                except AppNotFound:
-                    _log.warning(
-                        f"App not found for {job_id=}",
-                        exc_info=True,
-                        extra={"job_id": job_id},
+                if not (
+                    isinstance(job_info, dict)
+                    and job_info.get("job_id")
+                    and job_info.get("user_id")
+                ):
+                    _log.error(
+                        f"Invalid job info: {repr_truncate(job_info, width=200)}"
                     )
-                    if job_id and user_id:
-                        registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                        registry.mark_done(job_id, user_id)
-                    with ElasticJobRegistry.just_log_errors(
-                        f"job_tracker app not found"
-                    ):
-                        if self._elastic_job_registry:
-                            # TODO: also set started/finished, exception/error info ...
-                            self._elastic_job_registry.set_status(
-                                job_id=job_id, status=JOB_STATUS.ERROR
-                            )
+                    continue
+
+                job_id = job_info["job_id"]
+                user_id = job_info["user_id"]
+                try:
+                    self._sync_job_status(
+                        job_id=job_id,
+                        user_id=user_id,
+                        job_info=job_info,
+                        registry=registry,
+                    )
                 except Exception as e:
                     _log.exception(
-                        f"Failed status update of {job_id=}: unexpected {type(e).__name__}: {e}",
-                        exc_info=True,
-                        extra={"job_id": job_id},
+                        f"Failed status sync for {job_id=}: unexpected {type(e).__name__}: {e}",
+                        extra={"job_id": job_id, "user_id": user_id},
                     )
-                    # TODO: this looks risky: an unexpected issue in JobTracker logic
-                    #  will cause a job (or possibly all running jobs) to be marked as "done" with status "error"?
-                    #       Temporarily disabling this for now. To be reconsidered later?
-                    # if job_id and user_id:
-                    #     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                    #     registry.mark_done(job_id, user_id)
-
                     if fail_fast:
                         raise
+
+    def _sync_job_status(
+        self, job_id: str, user_id: str, job_info: dict, registry: ZkJobRegistry
+    ):
+        """Sync job status for a single job"""
+        # Local logger with default `extra`
+        log = logging.LoggerAdapter(_log, extra={"job_id": job_id, "user_id": user_id})
+
+        application_id = job_info.get("application_id")
+        if not application_id:
+            raise JobTrackerException(
+                f"Missing application_id for job {job_id}: {repr_truncate(job_id, width=200)}"
+            )
+
+        previous_status = job_info.get("status")
+        log.debug(
+            f"About to sync status for {job_id=} {user_id=} {application_id} {previous_status=}"
+        )
+
+        try:
+            job_metadata: _JobMetadata = self._app_state_getter.get_job_metadata(
+                job_id=job_id, user_id=user_id, app_id=application_id
+            )
+        except AppNotFound:
+            log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
+            # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
+            registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+            registry.mark_done(job_id, user_id)
+            with ElasticJobRegistry.just_log_errors("job_tracker app not found"):
+                if self._elastic_job_registry:
+                    # TODO: also set started/finished, exception/error info ...
+                    self._elastic_job_registry.set_status(
+                        job_id=job_id, status=JOB_STATUS.ERROR
+                    )
+            return
+
+        if previous_status != job_metadata.status:
+            log.info(
+                f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
+            )
+
+        registry.patch(
+            job_id=job_id,
+            user_id=user_id,
+            status=job_metadata.status,
+            started=job_metadata.start_time,
+            finished=job_metadata.finish_time,
+            usage=job_metadata.usage,
+        )
+        with ElasticJobRegistry.just_log_errors(
+            f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
+        ):
+            if self._elastic_job_registry:
+                self._elastic_job_registry.set_status(
+                    job_id=job_id,
+                    status=job_metadata.status,
+                    started=job_metadata.start_time,
+                    finished=job_metadata.finish_time,
+                    # TODO: also record usage data
+                )
+
+        if job_metadata.status in {
+            JOB_STATUS.FINISHED,
+            JOB_STATUS.ERROR,
+            JOB_STATUS.CANCELED,
+        }:
+            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+            # TODO: skip patching the job znode and read from this file directly?
+            registry.patch(job_id, user_id, **result_metadata)
+
+            registry.remove_dependencies(job_id, user_id)
+
+            # there can be duplicates if batch processes are recycled
+            dependency_sources = list(
+                set(ZkJobRegistry.get_dependency_sources(job_info))
+            )
+
+            if dependency_sources:
+                async_task.schedule_delete_batch_process_dependency_sources(
+                    job_id, user_id, dependency_sources
+                )
+
+            registry.mark_done(job_id, user_id)
+
+            # TODO: make this usage report handling/logging more generic?
+            sentinelhub_processing_units = (
+                result_metadata.get("usage", {})
+                .get("sentinelhub", {})
+                .get("value", 0.0)
+            )
+
+            sentinelhub_batch_processing_units = ZkJobRegistry.get_dependency_usage(
+                job_info
+            ) or Decimal("0.0")
+
+            _log.info(
+                f"marked {job_id} as done",
+                extra={
+                    "job_id": job_id,
+                    "user_id": user_id,
+                    "area": result_metadata.get("area"),
+                    "unique_process_ids": result_metadata.get("unique_process_ids"),
+                    # 'cpu_time_seconds': cpu_time_seconds,  # TODO: necessary to get this working again?
+                    "sentinelhub": float(
+                        Decimal(sentinelhub_processing_units)
+                        + sentinelhub_batch_processing_units
+                    ),
+                },
+            )
 
 
 def main():
@@ -477,9 +483,6 @@ def main():
             keytab=args.keytab,
         )
         job_tracker.update_statuses(fail_fast=args.fail_fast)
-    except JobNotFoundException as e:
-        # TODO: is this necessary? From where would this exception be thrown?
-        _log.error(e, exc_info=True, extra={"job_id": e.job_id})
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e
