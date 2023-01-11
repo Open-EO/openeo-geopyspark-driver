@@ -4,27 +4,22 @@ V2 implementation of JobTracker
 # TODO: when stable enough: eliminate original implementation and get rid of "v2"?
 
 import abc
+import argparse
 import logging
 import re
 import subprocess
-import sys
 from datetime import datetime
 from decimal import Decimal
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, NamedTuple, Optional, Union
+from typing import Callable, List, NamedTuple, Optional, Union
 
-import kazoo.client
 import kubernetes.client.exceptions
 import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
-from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
-from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
-from pythonjsonlogger.jsonlogger import JsonFormatter
+from openeo_driver.util.logging import get_logging_config, setup_logging
 
-import openeogeotrellis.backend
 from openeogeotrellis import async_task
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
@@ -306,7 +301,7 @@ class JobTracker:
         application_id = job_info.get("application_id")
         if not application_id:
             raise JobTrackerException(
-                f"Missing application_id for job {job_id}: {repr_truncate(job_id, width=200)}"
+                f"Missing application_id for job {job_id}: {repr_truncate(job_info, width=200)}"
             )
 
         previous_status = job_info.get("status")
@@ -406,87 +401,109 @@ class JobTracker:
             )
 
 
-def main():
+class CliApp:
+    def main(self, *, args: Optional[List[str]] = None):
 
-    import argparse
+        args = self.parse_cli_args(args=args)
 
-    # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
-    # TODO: doing both `basicConfig` and manual logging setup causes duplicated logs.
-    openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
-    kazoo.client.log.setLevel(logging.WARNING)
-    _log.setLevel(logging.DEBUG)
-
-    root_logger = logging.getLogger()
-    json_formatter = JsonFormatter(
-        JSON_LOGGER_DEFAULT_FORMAT
-    )  # Note: The Java logging is also supposed to match.
-
-    stdout_handler = logging.StreamHandler(stream=sys.stdout)
-    stdout_handler.formatter = json_formatter
-
-    root_logger.addHandler(stdout_handler)
-
-    if not ConfigParams().is_kube_deploy and Path("logs").is_dir():
-        rolling_file_handler = RotatingFileHandler(
-            "logs/job_tracker_python.log", maxBytes=10 * 1024 * 1024, backupCount=1
+        self.setup_logging(
+            basic_logging=args.basic_logging,
+            rotating_file=(
+                "logs/job_tracker_python.log"
+                if not ConfigParams().is_kube_deploy and Path("logs").is_dir()
+                else None
+            ),
         )
-        rolling_file_handler.formatter = json_formatter
-        root_logger.addHandler(rolling_file_handler)
 
-    _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
+        _log.info(f"{ConfigParams()=!s}")
 
-    parser = argparse.ArgumentParser(
-        usage="OpenEO JobTracker",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument(
-        "--principal",
-        default="openeo@VGT.VITO.BE",
-        help="Principal to be used to login to KDC",
-    )
-    parser.add_argument(
-        "--keytab",
-        default="openeo-deploy/mep/openeo.keytab",
-        help="The full path to the file that contains the keytab for the principal",
-    )
+        try:
+            app_cluster = args.app_cluster
+            if app_cluster == "auto":
+                # TODO: eliminate (need for) auto-detection.
+                app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
+            if app_cluster == "yarn":
+                app_state_getter = YarnStatusGetter()
+            elif app_cluster == "k8s":
+                app_state_getter = K8sStatusGetter()
+            else:
+                raise ValueError(app_cluster)
+            job_tracker = JobTracker(
+                app_state_getter=app_state_getter,
+                job_registry=ZkJobRegistry,
+                principal=args.principal,
+                keytab=args.keytab,
+            )
+            job_tracker.update_statuses(fail_fast=args.fail_fast)
+        except Exception as e:
+            _log.error(e, exc_info=True)
+            raise e
 
-    parser.add_argument(
-        "--fail-fast",
-        action="store_true",
-        default=False,
-        help="Stop immediately on unexpected errors while tracking a certain job, instead of skipping to next job.",
-    )
-    parser.add_argument(
-        "--app-cluster",
-        choices=["yarn", "k8s", "auto"],
-        default="auto",
-        help="Application cluster to get job/app status from.",
-    )
-
-    args = parser.parse_args()
-
-    try:
-        app_cluster = args.app_cluster
-        if app_cluster == "auto":
-            # TODO: eliminate (need for) auto-detection.
-            app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
-        if app_cluster == "yarn":
-            app_state_getter = YarnStatusGetter()
-        elif app_cluster == "k8s":
-            app_state_getter = K8sStatusGetter()
-        else:
-            raise ValueError(app_cluster)
-        job_tracker = JobTracker(
-            app_state_getter=app_state_getter,
-            job_registry=ZkJobRegistry,
-            principal=args.principal,
-            keytab=args.keytab,
+    def parse_cli_args(self, args: Optional[List[str]] = None) -> argparse.Namespace:
+        parser = argparse.ArgumentParser(
+            description="JobTracker from openeo-geopyspark-driver.",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
-        job_tracker.update_statuses(fail_fast=args.fail_fast)
-    except Exception as e:
-        _log.error(e, exc_info=True)
-        raise e
+        parser.add_argument(
+            "--principal",
+            default="openeo@VGT.VITO.BE",
+            help="Principal to be used to login to KDC",
+        )
+        parser.add_argument(
+            "--keytab",
+            default="openeo-deploy/mep/openeo.keytab",
+            help="The full path to the file that contains the keytab for the principal",
+        )
+
+        parser.add_argument(
+            "--fail-fast",
+            action="store_true",
+            default=False,
+            help="Stop immediately on unexpected errors while tracking a certain job, instead of skipping to next job.",
+        )
+        parser.add_argument(
+            "--app-cluster",
+            choices=["yarn", "k8s", "auto"],
+            default="auto",
+            help="Application cluster to get job/app status from.",
+        )
+        parser.add_argument(
+            "--basic-logging",
+            action="store_true",
+            help="Use basic logging on stderr instead of JSON formatted logs.",
+        )
+
+        return parser.parse_args(args=args)
+
+    def setup_logging(
+        self,
+        *,
+        basic_logging: bool = False,
+        rotating_file: Optional[Union[str, Path]] = None,
+    ):
+        logging_config = get_logging_config(
+            # TODO: better handler than "wsgi"?
+            root_handlers=["wsgi"] if basic_logging else ["stderr_json"],
+            loggers={
+                "openeo": {"level": "DEBUG"},
+                "openeo_driver": {"level": "DEBUG"},
+                "openeogeotrellis": {"level": "DEBUG"},
+                _log.name: {"level": "DEBUG"},
+            },
+        )
+
+        if rotating_file:
+            logging_config["handlers"]["rotating_file"] = {
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": str(rotating_file),
+                "maxBytes": 10 * 1024 * 1024,
+                "backupCount": 1,
+                "formatter": "json",
+            }
+            logging_config["root"]["handlers"].append("rotating_file")
+
+        setup_logging(logging_config, force=True)
 
 
 if __name__ == "__main__":
-    main()
+    CliApp().main()

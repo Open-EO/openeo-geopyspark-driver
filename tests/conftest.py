@@ -19,6 +19,10 @@ from .data import get_test_data_file, TEST_DATA_ROOT
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
 
 
+pytest_plugins = "pytester"
+
+
+
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config):
     """Pytest configuration hook"""

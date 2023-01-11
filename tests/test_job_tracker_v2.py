@@ -2,6 +2,7 @@ import contextlib
 import datetime as dt
 import logging
 import subprocess
+import sys
 import textwrap
 import time
 from dataclasses import dataclass
@@ -11,23 +12,23 @@ from unittest import mock
 import kubernetes
 import pytest
 import requests_mock
-
 from openeo.util import rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
-from openeogeotrellis.integrations.kubernetes import k8s_job_name, K8S_SPARK_APP_STATE
-from openeogeotrellis.integrations.yarn import YARN_STATE, YARN_FINAL_STATUS
+
+import openeogeotrellis.job_tracker_v2
+from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
+from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
     JobTracker,
-    YarnStatusGetter,
     K8sStatusGetter,
     YarnAppReportParseException,
+    YarnStatusGetter,
 )
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
-
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
 
@@ -1023,3 +1024,20 @@ class TestK8sJobTracker:
                 "Failed status sync for job_id='job-2': unexpected ApiException: (500)\nReason: Internal Server Error\n",
             )
         ]
+
+
+class TestCliApp:
+    def test_run_basic_help(self, pytester):
+        command = [sys.executable, "-m", "openeogeotrellis.job_tracker_v2", "-h"]
+        run_result = pytester.run(*command)
+        assert run_result.ret == 0
+        assert "JobTracker" in run_result.stdout.str()
+        assert "--app-cluster" in run_result.stdout.str()
+        assert run_result.errlines == []
+
+    def test_run_basic_fail(self, pytester):
+        command = [sys.executable, "-m", "openeogeotrellis.job_tracker_v2", "--foobar"]
+        run_result = pytester.run(*command)
+        assert run_result.ret == pytest.ExitCode.INTERRUPTED
+        assert run_result.outlines == []
+        assert "unrecognized arguments: --foobar" in run_result.stderr.str()
