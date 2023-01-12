@@ -102,10 +102,6 @@ def _redact(task: dict) -> dict:
     return redact(None, task)
 
 
-def _get_sentinel_hub_credentials_from_environment() -> (str, str):
-    return os.environ['SENTINEL_HUB_CLIENT_ID_DEFAULT'], os.environ['SENTINEL_HUB_CLIENT_SECRET_DEFAULT']
-
-
 def launch_client_server(jarpath, redirect_stdout, redirect_stderr, classpath, javaopts) -> ClientServer:
     # mimics py4j.java_gateway.JavaGateway.launch_gateway
     daemonize_redirect = True
@@ -194,7 +190,14 @@ def main():
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
 
                 batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
-                batch_jobs.set_default_sentinel_hub_credentials(*_get_sentinel_hub_credentials_from_environment())
+
+                default_sentinel_hub_credentials = vault.get_sentinel_hub_credentials(
+                    sentinel_hub_client_alias='default',
+                    vault_token=vault.login_kerberos())
+
+                batch_jobs.set_default_sentinel_hub_credentials(
+                    client_id=default_sentinel_hub_credentials.client_id,
+                    client_secret=default_sentinel_hub_credentials.client_secret)
 
                 return batch_jobs
 
