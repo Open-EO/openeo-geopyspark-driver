@@ -38,9 +38,7 @@ def jvm_mock():
 
 @pytest.fixture
 def catalog(vault):
-    catalog = get_layer_catalog(vault)
-    catalog.set_default_sentinel_hub_credentials(client_id="???", client_secret="!!!")
-    return catalog
+    return get_layer_catalog(vault)
 
 
 def test_load_collection_bands_missing_required_extent(catalog):

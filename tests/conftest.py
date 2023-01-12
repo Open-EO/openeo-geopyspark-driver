@@ -10,7 +10,7 @@ from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProces
 from openeo_driver.testing import ApiTester
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
-from openeogeotrellis.vault import Vault
+from openeogeotrellis.vault import Vault, SentinelHubCredentials
 
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
@@ -193,4 +193,14 @@ def api100(client) -> ApiTester:
 
 @pytest.fixture
 def vault() -> Vault:
-    return Vault("http://example.org")
+    class VaultMock(Vault):
+        def __init__(self):
+            super().__init__(url="http://example.org")
+
+        def login_kerberos(self) -> str:
+            return "hvs.ABC123"
+
+        def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> SentinelHubCredentials:
+            return SentinelHubCredentials(client_id="???", client_secret="!!!")
+
+    return VaultMock()
