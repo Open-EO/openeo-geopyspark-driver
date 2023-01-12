@@ -16,7 +16,7 @@ from openeo_driver.jobregistry import JOB_STATUS
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.testing import KazooClientMock
-
+from openeogeotrellis.utils import StatsReporter
 
 _log = logging.getLogger(__name__)
 
@@ -194,11 +194,18 @@ class ZkJobRegistry:
 
         jobs = []
 
-        user_ids = self._zk.get_children(self._ongoing())
+        with StatsReporter(name="get_running_jobs", report=_log) as stats:
+            user_ids = self._zk.get_children(self._ongoing())
 
-        for user_id in user_ids:
-            job_ids = self._zk.get_children(self._ongoing(user_id))
-            jobs.extend([self.get_job(job_id, user_id) for job_id in job_ids])
+            for user_id in user_ids:
+                job_ids = self._zk.get_children(self._ongoing(user_id))
+                stats["user_id"] += 1
+                if job_ids:
+                    jobs.extend([self.get_job(job_id, user_id) for job_id in job_ids])
+                    stats["user_id with jobs"] += 1
+                    stats["job_ids"] += len(job_ids)
+                else:
+                    stats["user_id without jobs"] += 1
 
         return jobs
 
