@@ -354,6 +354,7 @@ def main(argv: List[str]) -> None:
                 run_driver()
 
     except Exception as e:
+        message = None
         if isinstance(e,Py4JJavaError):
             java_exception = e.java_exception
             if "SparkException" in java_exception.getClass().getName():
@@ -362,14 +363,17 @@ def main(argv: List[str]) -> None:
                     message = f"Your openEO batch job failed during Spark execution: {repr_truncate(str(java_exception.getCause().getMessage()), width=200)}"
             else:
                 message = f"Your openEO batch job failed: {repr_truncate(str(java_exception.getMessage()), width=200)}"
-            user_facing_logger.exception(message)
-            logger.exception(message)
         else:
-            user_facing_logger.exception(f"Your openEO batch job failed: {repr_truncate(e, width=200)}")
-            logger.exception(f"Your openEO batch job failed: {repr_truncate(e, width=200)}")
+            message = f"Your openEO batch job failed: {repr_truncate(e, width=200)}"
+
         if "Container killed on request. Exit code is 143" in str(e):
-            user_facing_logger.error("Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate.")
-        raise e
+            message = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+
+        if message is not None:
+            user_facing_logger.exception(message)
+            raise SystemExit()
+        else:
+            raise e
 
 
 @log_memory
