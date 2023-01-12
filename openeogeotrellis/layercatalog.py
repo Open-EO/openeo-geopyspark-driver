@@ -61,13 +61,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def __init__(self, all_metadata: List[dict], vault: Vault):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
-        self._default_sentinel_hub_client_id = None
-        self._default_sentinel_hub_client_secret = None
         self._vault = vault
-
-    def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
-        self._default_sentinel_hub_client_id = client_id
-        self._default_sentinel_hub_client_secret = client_secret
 
     def create_datacube_parameters(self, load_params, env):
         jvm = get_jvm()
@@ -499,16 +493,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
 
-                sentinel_hub_client_alias = env.get('%s' % HUB_CLIENT_ALIAS, 'default')
+                sentinel_hub_client_alias = env.get(HUB_CLIENT_ALIAS, 'default')
                 logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
-                if sentinel_hub_client_alias == 'default':
-                    sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                    sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
-                else:
-                    vault_token = env[VAULT_TOKEN]
-                    sentinel_hub_client_id, sentinel_hub_client_secret = (
-                        self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
+                vault_token = env.get(VAULT_TOKEN)
+                if vault_token is None:
+                    assert sentinel_hub_client_alias == 'default'
+                    vault_token = self._vault.login_kerberos()
+
+                sentinel_hub_client_id, sentinel_hub_client_secret = (
+                    self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
                 zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
                 zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"

@@ -49,7 +49,7 @@ def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id:
 
 
 def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str, sentinel_hub_client_alias: str,
-                                              vault_token: Optional[str]):
+                                              vault_token: str):
     _schedule_task(task_id=TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
                    arguments={
                        ARG_BATCH_JOB_ID: batch_job_id,
@@ -191,14 +191,6 @@ def main():
 
                 batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
 
-                default_sentinel_hub_credentials = vault.get_sentinel_hub_credentials(
-                    sentinel_hub_client_alias='default',
-                    vault_token=vault.login_kerberos())
-
-                batch_jobs.set_default_sentinel_hub_credentials(
-                    client_id=default_sentinel_hub_credentials.client_id,
-                    client_secret=default_sentinel_hub_credentials.client_secret)
-
                 return batch_jobs
 
             if task_id == TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES:
@@ -219,8 +211,8 @@ def main():
             elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
                 batch_job_id = arguments[ARG_BATCH_JOB_ID]
                 user_id = arguments[ARG_USER_ID]
-                sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
-                vault_token = arguments.get('vault_token')
+                sentinel_hub_client_alias = arguments['sentinel_hub_client_alias']
+                vault_token = arguments['vault_token']
 
                 batch_jobs = get_batch_jobs(batch_job_id, user_id)
 

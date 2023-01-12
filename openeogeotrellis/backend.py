@@ -881,10 +881,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         for mdc_key in [jvm.org.openeo.logging.JsonLayout.RequestId(), jvm.org.openeo.logging.JsonLayout.UserId()]:
             mdc_remove(sc, jvm, mdc_key)
 
-    def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
-        self.batch_jobs.set_default_sentinel_hub_credentials(client_id, client_secret)
-        self.catalog.set_default_sentinel_hub_credentials(client_id, client_secret)
-
     def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self.batch_jobs.set_terrascope_access_token_getter(get_terrascope_access_token)
 
@@ -957,8 +953,6 @@ class GpsBatchJobs(backend.BatchJobs):
         self._jvm = jvm
         self._principal = principal
         self._key_tab = key_tab
-        self._default_sentinel_hub_client_id = None
-        self._default_sentinel_hub_client_secret = None
         self._get_terrascope_access_token: Optional[Callable[[User, str], str]] = None
         self._vault = vault
 
@@ -970,10 +964,6 @@ class GpsBatchJobs(backend.BatchJobs):
         self._elastic_job_registry = get_or_build_elastic_job_registry(
             elastic_job_registry, ref="GpsBatchJobs"
         )
-
-    def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
-        self._default_sentinel_hub_client_id = client_id
-        self._default_sentinel_hub_client_secret = client_secret
 
     def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self._get_terrascope_access_token = get_terrascope_access_token
@@ -1020,7 +1010,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return ZkJobRegistry.job_info_to_metadata(job_info)
 
     def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str,
-                                         vault_token: Optional[str]):
+                                         vault_token: str):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
@@ -1038,12 +1028,8 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id,
                                                                                            'user_id': user_id})
 
-            if sentinel_hub_client_alias == 'default':
-                sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
-            else:
-                sentinel_hub_client_id, sentinel_hub_client_secret = (
-                    self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
+            sentinel_hub_client_id, sentinel_hub_client_secret = (
+                self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
             batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                 endpoint, bucket_name, sentinel_hub_client_id, sentinel_hub_client_secret,
@@ -1231,9 +1217,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 # TODO: add dedicated method
                 registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
 
-        # only fetch it when necessary (SHub collection with non-default credentials) and only once
+        # only fetch it when necessary (it's a SHub collection) and only once
         @lru_cache(maxsize=None)
         def _get_vault_token(sentinel_hub_client_alias: str) -> str:
+            if sentinel_hub_client_alias == 'default':  # TODO: create a constant
+                return self._vault.login_kerberos()
+
             terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
             return self._vault.login_jwt(terrascope_access_token)
 
@@ -1271,9 +1260,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                                                     user_id, job_id, job_options,
                                                                     sentinel_hub_client_alias, get_vault_token)):
                 async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id, sentinel_hub_client_alias,
-                                                                     vault_token=None
-                                                                     if sentinel_hub_client_alias == 'default'
-                                                                     else get_vault_token(sentinel_hub_client_alias))
+                                                                     get_vault_token(sentinel_hub_client_alias))
                 registry.set_dependency_status(job_id, user_id, 'awaiting')
                 registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                 with ElasticJobRegistry.just_log_errors(name="Queue job"):
@@ -1562,10 +1549,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
-    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
-        output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
-        output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
-
+    @staticmethod
+    def _write_sensitive_values(output_file, vault_token: Optional[str]):
         if vault_token is not None:
             output_file.write(f"spark.openeo.vault.token={vault_token}\n")
 
@@ -1736,13 +1721,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id})
 
-                    if sentinel_hub_client_alias == 'default':
-                        sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                        sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
-                    else:
-                        sentinel_hub_client_id, sentinel_hub_client_secret = (
-                            self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias,
-                                                                     get_vault_token(sentinel_hub_client_alias)))
+                    sentinel_hub_client_id, sentinel_hub_client_secret = (
+                        self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias,
+                                                                 get_vault_token(sentinel_hub_client_alias)))
 
                     batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
                         endpoint,
