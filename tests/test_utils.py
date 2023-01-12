@@ -194,7 +194,7 @@ class TestStatsReporter:
                 stats["banana"] += 5
             stats["coconut"] = 8
 
-        assert caplog.messages == ["stats: {'apple': 1, 'banana': 17, 'coconut': 8}"]
+        assert caplog.messages == ['stats: {"apple": 1, "banana": 17, "coconut": 8}']
 
     def test_exception(self, caplog):
         caplog.set_level(logging.INFO)
@@ -208,4 +208,4 @@ class TestStatsReporter:
                     stats["banana"] += 5
                 stats["coconut"] = 8
 
-        assert caplog.messages == ["stats: {'apple': 1, 'banana': 12}"]
+        assert caplog.messages == ['stats: {"apple": 1, "banana": 12}']
