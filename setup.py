@@ -25,6 +25,7 @@ tests_require = [
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0",
     "kubernetes",
+    "re-assert",
 ]
 
 setup(

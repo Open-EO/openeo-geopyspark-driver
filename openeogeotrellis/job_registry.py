@@ -36,6 +36,7 @@ class ZkJobRegistry:
         self._zk = zk_client
 
     def ensure_paths(self):
+        # TODO: just do this automatically in __init__?
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 
@@ -159,6 +160,7 @@ class ZkJobRegistry:
 
     def mark_done(self, job_id: str, user_id: str) -> None:
         """Marks a job as done (not to be tracked anymore)."""
+        # TODO: do this automatically from `set_status` with "terminal" status ("finished", "error", ...)
 
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id)

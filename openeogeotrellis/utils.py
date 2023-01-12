@@ -501,3 +501,34 @@ def json_write(
     with path.open(mode="w", encoding="utf-8") as f:
         json.dump(data, f, indent=indent)
     return path
+
+
+class StatsReporter:
+    """
+    Context manager to collect stats using `collections.Counter`
+    and report automatically these on exit.
+
+    Usage example:
+
+        with StatsReporter(report=print) as stats:
+            stats["apple"] += 1
+    """
+
+    # TODO: move this to openeo_driver or even openeo client lib?
+    def __init__(
+        self,
+        name: str = "stats",
+        report: Union[Callable[[str], None], logging.Logger] = logger,
+    ):
+        self.name = name
+        if isinstance(report, logging.Logger):
+            report = report.info
+        self.report = report
+        self.stats = None
+
+    def __enter__(self) -> collections.Counter:
+        self.stats = collections.Counter()
+        return self.stats
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.report(f"{self.name}: {dict(self.stats)!r}")
