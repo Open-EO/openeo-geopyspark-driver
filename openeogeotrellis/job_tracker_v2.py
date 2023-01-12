@@ -5,6 +5,7 @@ V2 implementation of JobTracker
 
 import abc
 import argparse
+import collections
 import datetime as dt
 import logging
 import re
@@ -31,6 +32,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.utils import StatsReporter
 
 _log = logging.getLogger(__name__)
 
@@ -256,13 +258,15 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        # TODO collect stats
-        with self._job_registry() as registry:
+        with self._job_registry() as registry, StatsReporter(
+            name="JobTracker.update_statuses stats", report=_log.info
+        ) as stats:
             registry.ensure_paths()
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
                 jobs_to_track = registry.get_running_jobs()
             _log.info(f"Collected {len(jobs_to_track)} jobs to track")
+            stats["collected jobs"] = len(jobs_to_track)
 
             for job_info in jobs_to_track:
                 if not (
@@ -273,6 +277,7 @@ class JobTracker:
                     _log.error(
                         f"Invalid job info: {repr_truncate(job_info, width=200)}"
                     )
+                    stats["invalid job_info"] += 1
                     continue
 
                 job_id = job_info["job_id"]
@@ -283,17 +288,24 @@ class JobTracker:
                         user_id=user_id,
                         job_info=job_info,
                         registry=registry,
+                        stats=stats,
                     )
                 except Exception as e:
                     _log.exception(
                         f"Failed status sync for {job_id=}: unexpected {type(e).__name__}: {e}",
                         extra={"job_id": job_id, "user_id": user_id},
                     )
+                    stats["failed _sync_job_status"] += 1
                     if fail_fast:
                         raise
 
     def _sync_job_status(
-        self, job_id: str, user_id: str, job_info: dict, registry: ZkJobRegistry
+        self,
+        job_id: str,
+        user_id: str,
+        job_info: dict,
+        registry: ZkJobRegistry,
+        stats: collections.Counter,
     ):
         """Sync job status for a single job"""
         # Local logger with default `extra`
@@ -304,6 +316,7 @@ class JobTracker:
         log.debug(
             f"About to sync status for {job_id=} {user_id=} {application_id=} {previous_status=}"
         )
+        stats[f"job with {previous_status=}"] += 1
 
         if not application_id:
             # Job hasn't been started yet.
@@ -313,12 +326,14 @@ class JobTracker:
             log.info(
                 f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {previous_status=}"
             )
+            stats["skipped due to no application_id"] += 1
             return
 
         try:
             job_metadata: _JobMetadata = self._app_state_getter.get_job_metadata(
                 job_id=job_id, user_id=user_id, app_id=application_id
             )
+            stats["new metadata"] += 1
         except AppNotFound:
             log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
             # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
@@ -330,12 +345,14 @@ class JobTracker:
                     self._elastic_job_registry.set_status(
                         job_id=job_id, status=JOB_STATUS.ERROR
                     )
+            stats["app not found"] += 1
             return
 
         if previous_status != job_metadata.status:
             log.info(
                 f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
             )
+            stats["status change"] += 1
 
         registry.patch(
             job_id=job_id,
@@ -362,6 +379,7 @@ class JobTracker:
             JOB_STATUS.ERROR,
             JOB_STATUS.CANCELED,
         }:
+            stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
             # TODO: skip patching the job znode and read from this file directly?
             registry.patch(job_id, user_id, **result_metadata)

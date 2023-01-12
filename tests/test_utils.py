@@ -1,12 +1,21 @@
 import collections
 import datetime
 import getpass
+import logging
 from pathlib import Path
 
 import pytest
 
-from openeogeotrellis.utils import dict_merge_recursive, describe_path, lonlat_to_mercator_tile_indices, nullcontext, \
-    utcnow, UtcNowClock, single_value
+from openeogeotrellis.utils import (
+    dict_merge_recursive,
+    describe_path,
+    lonlat_to_mercator_tile_indices,
+    nullcontext,
+    utcnow,
+    UtcNowClock,
+    single_value,
+    StatsReporter,
+)
 
 
 @pytest.mark.parametrize(["a", "b", "expected"], [
@@ -173,3 +182,30 @@ def test_single_value():
         pass
 
     assert single_value({'a': ['VH'], 'b': ['VH']}.values()) == ['VH']
+
+
+class TestStatsReporter:
+    def test_basic(self, caplog):
+        caplog.set_level(logging.INFO)
+        with StatsReporter() as stats:
+            stats["apple"] += 1
+            stats["banana"] += 2
+            for i in range(3):
+                stats["banana"] += 5
+            stats["coconut"] = 8
+
+        assert caplog.messages == ["stats: {'apple': 1, 'banana': 17, 'coconut': 8}"]
+
+    def test_exception(self, caplog):
+        caplog.set_level(logging.INFO)
+        with pytest.raises(ValueError):
+            with StatsReporter() as stats:
+                stats["apple"] += 1
+                stats["banana"] += 2
+                for i in range(3):
+                    if i > 1:
+                        raise ValueError
+                    stats["banana"] += 5
+                stats["coconut"] = 8
+
+        assert caplog.messages == ["stats: {'apple': 1, 'banana': 12}"]

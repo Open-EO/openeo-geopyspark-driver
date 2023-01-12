@@ -1,5 +1,7 @@
+import ast
 import contextlib
 import datetime as dt
+import json
 import logging
 import re
 import subprocess
@@ -660,6 +662,66 @@ class TestYarnJobTracker:
             flags=re.DOTALL,
         )
 
+    def test_yarn_zookeeper_stats(
+        self,
+        zk_job_registry,
+        yarn_mock,
+        job_tracker,
+        caplog,
+    ):
+        """
+        Check stats reporting functionality
+        """
+        caplog.set_level(logging.INFO)
+        for j in [1, 2, 3]:
+            job_id = f"job-{j}"
+            user_id = f"user{j}"
+            app_id = f"app-{j}"
+            zk_job_registry.register(
+                job_id=job_id,
+                user_id=user_id,
+                api_version="1.2.3",
+                specification=DUMMY_PROCESS_1,
+            )
+            zk_job_registry.set_application_id(
+                job_id=job_id, user_id=user_id, application_id=app_id
+            )
+            # YARN apps 1 and 3 are running but app 2 is lost/missing
+            if j != 2:
+                yarn_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
+
+        # Let job tracker do status updates
+        job_tracker.update_statuses()
+        (stats_log,) = [
+            m
+            for m in caplog.messages
+            if m.startswith("JobTracker.update_statuses stats:")
+        ]
+        stats = stats_log.split(":", 1)[1].strip()
+        stats = ast.literal_eval(stats)
+        assert stats == {
+            "collected jobs": 3,
+            "job with previous_status='created'": 3,
+            "app not found": 1,
+            "new metadata": 2,
+            "status change": 2,
+        }
+
+        # Do it again
+        caplog.clear()
+        job_tracker.update_statuses()
+        (stats_log,) = [
+            m
+            for m in caplog.messages
+            if m.startswith("JobTracker.update_statuses stats:")
+        ]
+        stats = stats_log.split(":", 1)[1].strip()
+        stats = ast.literal_eval(stats)
+        assert stats == {
+            "collected jobs": 2,
+            "job with previous_status='running'": 2,
+            "new metadata": 2,
+        }
 
 
 class TestYarnStatusGetter:
