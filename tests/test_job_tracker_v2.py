@@ -1,6 +1,7 @@
 import contextlib
 import datetime as dt
 import logging
+import re
 import subprocess
 import sys
 import textwrap
@@ -11,13 +12,13 @@ from unittest import mock
 
 import kubernetes
 import pytest
+import re_assert
 import requests_mock
 from openeo.util import rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
-import openeogeotrellis.job_tracker_v2
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_registry import ZkJobRegistry
@@ -350,7 +351,6 @@ class TestYarnJobTracker:
     def test_yarn_zookeeper_basic(
         self,
         zk_job_registry,
-        zk_client,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -495,7 +495,6 @@ class TestYarnJobTracker:
     def test_yarn_zookeeper_lost_yarn_app(
         self,
         zk_job_registry,
-        zk_client,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -555,7 +554,6 @@ class TestYarnJobTracker:
     def test_yarn_zookeeper_unexpected_yarn_error(
         self,
         zk_job_registry,
-        zk_client,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -611,6 +609,57 @@ class TestYarnJobTracker:
                 "Failed status sync for job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
             )
         ]
+
+    def test_yarn_zookeeper_no_app_id(
+        self,
+        zk_job_registry,
+        yarn_mock,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+    ):
+        caplog.set_level(logging.INFO)
+
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+        user_id = "john"
+        job_id = "job-123"
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=DUMMY_PROCESS_1,
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+        )
+
+        def zk_job_info() -> dict:
+            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+        # Trigger `update_statuses` a bit later
+        time_machine.move_to("2022-12-14T12:30:00Z", tick=False)
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "created",
+                "created": "2022-12-14T12:00:00Z",
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "created",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:00:00Z",
+            }
+        )
+
+        assert "ERROR" not in caplog.text
+        assert caplog.text == re_assert.Matches(
+            ".*Skipping job without application_id: job_id='job-123'.*age.*seconds=1800.*status='created'",
+            flags=re.DOTALL,
+        )
+
 
 
 class TestYarnStatusGetter:
@@ -707,7 +756,6 @@ class TestK8sJobTracker:
     def test_k8s_zookeeper_basic(
         self,
         zk_job_registry,
-        zk_client,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -836,7 +884,6 @@ class TestK8sJobTracker:
     def test_k8s_zookeeper_new_app(
         self,
         zk_job_registry,
-        zk_client,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -898,7 +945,6 @@ class TestK8sJobTracker:
     def test_k8s_zookeeper_lost_app(
         self,
         zk_job_registry,
-        zk_client,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -961,7 +1007,6 @@ class TestK8sJobTracker:
     def test_k8s_zookeeper_unexpected_k8s_error(
         self,
         zk_job_registry,
-        zk_client,
         job_tracker,
         elastic_job_registry,
         caplog,

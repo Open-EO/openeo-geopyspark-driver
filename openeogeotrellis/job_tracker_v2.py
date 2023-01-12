@@ -5,10 +5,10 @@ V2 implementation of JobTracker
 
 import abc
 import argparse
+import datetime as dt
 import logging
 import re
 import subprocess
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from subprocess import CalledProcessError
@@ -105,7 +105,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
                 """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
                 if epoch_millis == "0":
                     return None
-                utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
+                utc_datetime = dt.datetime.utcfromtimestamp(int(epoch_millis) / 1000)
                 return rfc3339.datetime(utc_datetime)
 
             start_time = ms_epoch_to_date(props["Start-Time"])
@@ -256,6 +256,7 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
+        # TODO collect stats
         with self._job_registry() as registry:
             registry.ensure_paths()
 
@@ -299,15 +300,20 @@ class JobTracker:
         log = logging.LoggerAdapter(_log, extra={"job_id": job_id, "user_id": user_id})
 
         application_id = job_info.get("application_id")
-        if not application_id:
-            raise JobTrackerException(
-                f"Missing application_id for job {job_id}: {repr_truncate(job_info, width=200)}"
-            )
-
         previous_status = job_info.get("status")
         log.debug(
-            f"About to sync status for {job_id=} {user_id=} {application_id} {previous_status=}"
+            f"About to sync status for {job_id=} {user_id=} {application_id=} {previous_status=}"
         )
+
+        if not application_id:
+            # Job hasn't been started yet.
+            created = job_info["created"]
+            age = dt.datetime.utcnow() - rfc3339.parse_datetime(created)
+            # TODO: handle very old, non-started jobs? E.g. mark as error?
+            log.info(
+                f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {previous_status=}"
+            )
+            return
 
         try:
             job_metadata: _JobMetadata = self._app_state_getter.get_job_metadata(
