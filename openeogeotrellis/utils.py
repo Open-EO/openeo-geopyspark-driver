@@ -531,4 +531,4 @@ class StatsReporter:
         return self.stats
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.report(f"{self.name}: {dict(self.stats)!r}")
+        self.report(f"{self.name}: {json.dumps(self.stats)}")

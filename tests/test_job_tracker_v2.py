@@ -697,8 +697,7 @@ class TestYarnJobTracker:
             for m in caplog.messages
             if m.startswith("JobTracker.update_statuses stats:")
         ]
-        stats = stats_log.split(":", 1)[1].strip()
-        stats = ast.literal_eval(stats)
+        stats = json.loads(stats_log.split(":", 1)[1])
         assert stats == {
             "collected jobs": 3,
             "job with previous_status='created'": 3,
