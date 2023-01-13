@@ -1324,17 +1324,18 @@ class GpsBatchJobs(backend.BatchJobs):
                                                  f'supported values include "debug", "info", "warning" and "error"',
                                          status_code=400)
 
-            driver_memory = job_options.get("driver-memory", "8G")
-            driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G")
+            isKube = ConfigParams().is_kube_deploy
+            driver_memory = job_options.get("driver-memory", "2G" if isKube else "8G" )
+            driver_memory_overhead = job_options.get("driver-memoryOverhead", "1G" if isKube else "2G")
             executor_memory = job_options.get("executor-memory", "2G")
-            executor_memory_overhead = job_options.get("executor-memoryOverhead", "3G")
-            driver_cores = str(job_options.get("driver-cores", 5))
-            executor_cores = str(job_options.get("executor-cores", 2))
+            executor_memory_overhead = job_options.get("executor-memoryOverhead", "1800m" if isKube else "3G")
+            driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
+            executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
             executor_corerequest = job_options.get("executor-request-cores", "NONE")
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-            max_executors = str(job_options.get("max-executors", 100))
-            executor_threads_jvm = str(job_options.get("executor-threads-jvm", 10))
+            max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
+            executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
             queue = job_options.get("queue", "default")
             profile = as_boolean_arg("profile", default_value="false")
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
@@ -1359,10 +1360,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 return json.dumps([as_arg_element(dependency) for dependency in dependencies])
 
-            if not ConfigParams().is_kube_deploy:
+
+            if not isKube:
                 kerberos(self._principal, self._key_tab, self._jvm)
 
-            if ConfigParams().is_kube_deploy:
+            if isKube:
                 import yaml
                 import time
                 import io
