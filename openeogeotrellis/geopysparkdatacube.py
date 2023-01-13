@@ -1768,20 +1768,20 @@ class GeopysparkDataCube(DriverDataCube):
                 message="Format {f!r} is not supported".format(f=format),
                 code="FormatUnsupported", status_code=400
             )
-        return {str(pathlib.Path(filename).name):{"href":filename}}
+        return {str(os.path.basename(filename)):{"href":filename}}
 
     def return_netcdf_assets(self, asset_paths, bands, nodata):
-        asset_paths = [asset_paths.get(i) for i in range(len(asset_paths))]
         assets = {}
         for p in asset_paths:
-            assets[p.name] = {
+            name = os.path.basename(p)
+            assets[name] = {
                 "href": str(p),
                 "type": "application/x-netcdf",
                 "roles": ["data"],
                 "nodata": nodata,
             }
             if bands is not None:
-                assets[p.name]["bands"] = bands
+                assets[name]["bands"] = bands
         return assets
 
     def get_labels(self, geometries):
