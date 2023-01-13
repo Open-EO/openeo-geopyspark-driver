@@ -1771,7 +1771,7 @@ class GeopysparkDataCube(DriverDataCube):
         return {str(pathlib.Path(filename).name):{"href":filename}}
 
     def return_netcdf_assets(self, asset_paths, bands, nodata):
-        asset_paths = [pathlib.Path(asset_paths.get(i)) for i in range(len(asset_paths))]
+        asset_paths = [asset_paths.get(i) for i in range(len(asset_paths))]
         assets = {}
         for p in asset_paths:
             assets[p.name] = {
