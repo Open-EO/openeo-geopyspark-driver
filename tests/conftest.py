@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import flask
 import pytest
@@ -193,14 +194,7 @@ def api100(client) -> ApiTester:
 
 @pytest.fixture
 def vault() -> Vault:
-    class VaultMock(Vault):
-        def __init__(self):
-            super().__init__(url="http://example.org")
-
-        def login_kerberos(self) -> str:
-            return "hvs.ABC123"
-
-        def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> SentinelHubCredentials:
-            return SentinelHubCredentials(client_id="???", client_secret="!!!")
-
-    return VaultMock()
+    vault = Vault("http://example.org")
+    vault.login_kerberos = Mock(return_value="hvs.ABC123")
+    vault.get_sentinel_hub_credentials = Mock(return_value=SentinelHubCredentials(client_id="???", client_secret="!!!"))
+    return vault
