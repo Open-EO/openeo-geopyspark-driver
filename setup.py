@@ -72,7 +72,7 @@ setup(
         'Shapely<2.0',
         'epsel~=1.0.0',
         'numbagg==0.1',
-        'Bottleneck==1.3.2',
+        "Bottleneck~=1.3.2",
         'python-json-logger',
         'rlguard-lib>=0.0.6',  # TODO this currently depends on custom packaging, see https://github.com/sentinel-hub/rate-limiting-guard/issues/5 and https://jira.vito.be/browse/EP-4001
         'jep==3.9.1',
