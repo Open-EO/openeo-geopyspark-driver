@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
 
-    def __init__(self, all_metadata: List[dict], vault: Vault):
+    def __init__(self, all_metadata: List[dict], vault: Vault = None):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
         self._default_sentinel_hub_client_id = None
@@ -726,7 +726,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
-def get_layer_catalog(vault: Vault, opensearch_enrich=False) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(vault: Vault=None, opensearch_enrich=False) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
