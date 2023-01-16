@@ -282,10 +282,29 @@ class JobTracker:
 
                 job_id = job_info["job_id"]
                 user_id = job_info["user_id"]
+
                 try:
+                    application_id = job_info.get("application_id")
+                    status = job_info.get("status")
+
+                    if not application_id:
+                        # No application_id typically means that job hasn't been started yet.
+                        created = job_info.get("created")
+                        if created:
+                            age = dt.datetime.utcnow() - rfc3339.parse_datetime(created)
+                        else:
+                            age = "unknown"
+                        # TODO: handle very old, non-started jobs? E.g. mark as error?
+                        _log.info(
+                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}"
+                        )
+                        stats[f"skip due to no application_id ({status=})"] += 1
+                        continue
+
                     self._sync_job_status(
                         job_id=job_id,
                         user_id=user_id,
+                        application_id=application_id,
                         job_info=job_info,
                         registry=registry,
                         stats=stats,
@@ -295,7 +314,7 @@ class JobTracker:
                         f"Failed status sync for {job_id=}: unexpected {type(e).__name__}: {e}",
                         extra={"job_id": job_id, "user_id": user_id},
                     )
-                    stats["failed _sync_job_status"] += 1
+                    stats["failed sync"] += 1
                     if fail_fast:
                         raise
 
@@ -303,6 +322,7 @@ class JobTracker:
         self,
         job_id: str,
         user_id: str,
+        application_id: str,
         job_info: dict,
         registry: ZkJobRegistry,
         stats: collections.Counter,
@@ -311,24 +331,12 @@ class JobTracker:
         # Local logger with default `extra`
         log = logging.LoggerAdapter(_log, extra={"job_id": job_id, "user_id": user_id})
 
-        application_id = job_info.get("application_id")
+        assert application_id == job_info.get("application_id")
         previous_status = job_info.get("status")
         log.debug(
             f"About to sync status for {job_id=} {user_id=} {application_id=} {previous_status=}"
         )
         stats[f"job with {previous_status=}"] += 1
-
-        if not application_id:
-            # Job hasn't been started yet.
-            # TODO: move this to update_statuses, as part of the logic that determines "which job do we need to sync?"
-            created = job_info["created"]
-            age = dt.datetime.utcnow() - rfc3339.parse_datetime(created)
-            # TODO: handle very old, non-started jobs? E.g. mark as error?
-            log.info(
-                f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {previous_status=}"
-            )
-            stats["skipped due to no application_id"] += 1
-            return
 
         try:
             stats["get metadata attempt"] += 1

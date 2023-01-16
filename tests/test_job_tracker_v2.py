@@ -1,4 +1,3 @@
-import ast
 import contextlib
 import datetime as dt
 import json
@@ -333,6 +332,14 @@ DUMMY_PG_1 = {
 DUMMY_PROCESS_1 = {"process_graph": DUMMY_PG_1}
 
 
+def _extract_update_statuses_stats(caplog) -> List[dict]:
+    return [
+        json.loads(msg.split(":", 1)[1])
+        for msg in caplog.messages
+        if msg.startswith("JobTracker.update_statuses stats:")
+    ]
+
+
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
@@ -624,6 +631,8 @@ class TestYarnJobTracker:
         caplog.set_level(logging.INFO)
 
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+
+        # Job without app id (not started yet)
         user_id = "john"
         job_id = "job-123"
         zk_job_registry.register(
@@ -634,6 +643,21 @@ class TestYarnJobTracker:
         )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+        )
+
+        # Another job that has an app id (already running)
+        zk_job_registry.register(
+            job_id=job_id + "-other",
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=DUMMY_PROCESS_1,
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id + "-other", user_id=user_id, process=DUMMY_PROCESS_1
+        )
+        app_other = yarn_mock.submit(app_id="app-123-other").set_running()
+        zk_job_registry.set_application_id(
+            job_id=job_id + "-other", user_id=user_id, application_id=app_other.app_id
         )
 
         def zk_job_info() -> dict:
@@ -661,6 +685,17 @@ class TestYarnJobTracker:
             ".*Skipping job without application_id: job_id='job-123'.*age.*seconds=1800.*status='created'",
             flags=re.DOTALL,
         )
+
+        [stats] = _extract_update_statuses_stats(caplog)
+        assert stats == {
+            "collected jobs": 2,
+            "skip due to no application_id (status='created')": 1,
+            "get metadata attempt": 1,
+            "job with previous_status='created'": 1,
+            "new metadata": 1,
+            "status change": 1,
+            "status change 'created' -> 'running'": 1,
+        }
 
     def test_yarn_zookeeper_stats(
         self,
@@ -692,12 +727,7 @@ class TestYarnJobTracker:
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
-        (stats_log,) = [
-            m
-            for m in caplog.messages
-            if m.startswith("JobTracker.update_statuses stats:")
-        ]
-        stats = json.loads(stats_log.split(":", 1)[1])
+        [stats] = _extract_update_statuses_stats(caplog)
         assert stats == {
             "collected jobs": 3,
             "job with previous_status='created'": 3,
@@ -711,13 +741,7 @@ class TestYarnJobTracker:
         # Do it again
         caplog.clear()
         job_tracker.update_statuses()
-        (stats_log,) = [
-            m
-            for m in caplog.messages
-            if m.startswith("JobTracker.update_statuses stats:")
-        ]
-        stats = stats_log.split(":", 1)[1].strip()
-        stats = ast.literal_eval(stats)
+        [stats] = _extract_update_statuses_stats(caplog)
         assert stats == {
             "collected jobs": 2,
             "job with previous_status='running'": 2,
