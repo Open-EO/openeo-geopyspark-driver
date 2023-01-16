@@ -84,9 +84,9 @@ class YarnStatusGetter(JobMetadataGetterInterface):
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         try:
-            application_report = subprocess.check_output(
-                ["yarn", "application", "-status", app_id]
-            ).decode("utf-8")
+            command = ["yarn", "application", "-status", app_id]
+            with TimingLogger(f"Running {command}", logger=_log.debug):
+                application_report = subprocess.check_output(command).decode("utf-8")
         except CalledProcessError as e:
             stdout = e.stdout.decode()
             if "doesn't exist in RM or Timeline Server" in stdout:
@@ -260,7 +260,7 @@ class JobTracker:
         """Iterate through all known (ongoing) jobs and update their status"""
         with self._job_registry() as registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
-        ) as stats:
+        ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
             registry.ensure_paths()
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
@@ -320,6 +320,7 @@ class JobTracker:
 
         if not application_id:
             # Job hasn't been started yet.
+            # TODO: move this to update_statuses, as part of the logic that determines "which job do we need to sync?"
             created = job_info["created"]
             age = dt.datetime.utcnow() - rfc3339.parse_datetime(created)
             # TODO: handle very old, non-started jobs? E.g. mark as error?
@@ -330,6 +331,7 @@ class JobTracker:
             return
 
         try:
+            stats["get metadata attempt"] += 1
             job_metadata: _JobMetadata = self._app_state_getter.get_job_metadata(
                 job_id=job_id, user_id=user_id, app_id=application_id
             )
@@ -353,6 +355,11 @@ class JobTracker:
                 f"job {job_id}: status change from {previous_status} to {job_metadata.status}",
             )
             stats["status change"] += 1
+            stats[f"status change {previous_status!r} -> {job_metadata.status!r}"] += 1
+        else:
+            stats["status same"] += 1
+            stats[f"status same {job_metadata.status!r}"] += 1
+
 
         registry.patch(
             job_id=job_id,

@@ -702,8 +702,10 @@ class TestYarnJobTracker:
             "collected jobs": 3,
             "job with previous_status='created'": 3,
             "app not found": 1,
+            "get metadata attempt": 3,
             "new metadata": 2,
             "status change": 2,
+            "status change 'created' -> 'running'": 2,
         }
 
         # Do it again
@@ -719,7 +721,10 @@ class TestYarnJobTracker:
         assert stats == {
             "collected jobs": 2,
             "job with previous_status='running'": 2,
+            "get metadata attempt": 2,
             "new metadata": 2,
+            "status same": 2,
+            "status same 'running'": 2,
         }
 
 
