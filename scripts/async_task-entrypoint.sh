@@ -17,16 +17,6 @@ if [ -z "${HADOOP_CONF_DIR}" ]; then
     exit 1
 fi
 
-if [ -z "${SENTINEL_HUB_CLIENT_ID_DEFAULT}" ]; then
-    >&2 echo "Environment variable SENTINEL_HUB_CLIENT_ID_DEFAULT is not set"
-    exit 1
-fi
-
-if [ -z "${SENTINEL_HUB_CLIENT_SECRET_DEFAULT}" ]; then
-    >&2 echo "Environment variable SENTINEL_HUB_CLIENT_SECRET_DEFAULT is not set"
-    exit 1
-fi
-
 task_json=$1
 batch_jobs_zookeeper_root_path=$2
 hadoop_classpath=$3
