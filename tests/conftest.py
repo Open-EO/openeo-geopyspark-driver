@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import flask
 import pytest
@@ -10,7 +11,7 @@ from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProces
 from openeo_driver.testing import ApiTester
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
-from openeogeotrellis.vault import Vault
+from openeogeotrellis.vault import Vault, SentinelHubCredentials
 
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
@@ -197,4 +198,7 @@ def api100(client) -> ApiTester:
 
 @pytest.fixture
 def vault() -> Vault:
-    return Vault("http://example.org")
+    vault = Vault("http://example.org")
+    vault.login_kerberos = Mock(return_value="hvs.ABC123")
+    vault.get_sentinel_hub_credentials = Mock(return_value=SentinelHubCredentials(client_id="???", client_secret="!!!"))
+    return vault
