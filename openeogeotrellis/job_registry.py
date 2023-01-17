@@ -133,6 +133,10 @@ class ZkJobRegistry:
         self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
 
+        # TODO: move this "mark_done from status" logic to `patch` method?
+        if status in {JOB_STATUS.FINISHED, JOB_STATUS.ERROR, JOB_STATUS.CANCELED}:
+            self._mark_done(job_id=job_id, user_id=user_id)
+
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
         _log.debug("batch job {j} dependency -> {s}".format(j=job_id, s=dependency_status))
@@ -158,9 +162,8 @@ class ZkJobRegistry:
 
         self._update({**job_info, **kwargs}, version)
 
-    def mark_done(self, job_id: str, user_id: str) -> None:
+    def _mark_done(self, job_id: str, user_id: str) -> None:
         """Marks a job as done (not to be tracked anymore)."""
-        # TODO: do this automatically from `set_status` with "terminal" status ("finished", "error", ...)
 
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id)
@@ -173,6 +176,10 @@ class ZkJobRegistry:
             pass
 
         self._zk.delete(source, version)
+
+        _log.debug(
+            f"marked {job_id=} as done", extra={"job_id": job_id, "user_id": user_id}
+        )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         """Marks as job as ongoing (to be tracked)."""

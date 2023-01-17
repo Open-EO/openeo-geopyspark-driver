@@ -131,8 +131,8 @@ class JobTracker:
                                         result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
 
-                                    registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
+                                    # TODO: this `set_status` is just here to trigger the "mark_done from status" logic. Can this be automated further?
+                                    registry.set_status(job_id, user_id, new_status)
                             else:
                                 state, final_state, start_time, finish_time, aggregate_resource_allocation =\
                                     JobTracker._yarn_status(application_id)
@@ -181,7 +181,8 @@ class JobTracker:
                                         async_task.schedule_delete_batch_process_dependency_sources(
                                             job_id, user_id, dependency_sources)
 
-                                    registry.mark_done(job_id, user_id)
+                                    # TODO: this `set_status` is just here to trigger the "mark_done from status" logic. Can this be automated further?
+                                    registry.set_status(job_id, user_id, new_status)
 
                                     sentinelhub_processing_units = (result_metadata.get("usage", {})
                                                                     .get("sentinelhub", {}).get("value", 0.0))
@@ -211,7 +212,6 @@ class JobTracker:
                     #  will cause a job (or possibly all running jobs) to be marked as "done" with status "error"?
                     if job_id and user_id:
                         registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                        registry.mark_done(job_id, user_id)
 
                         with ElasticJobRegistry.just_log_errors(f"job_tracker flag error"):
                             if self._elastic_job_registry:

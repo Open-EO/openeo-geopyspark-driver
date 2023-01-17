@@ -234,7 +234,6 @@ def main():
 
                             with ZkJobRegistry() as registry:
                                 registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
-                                registry.mark_done(batch_job_id, user_id)
 
                             raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
             else:
