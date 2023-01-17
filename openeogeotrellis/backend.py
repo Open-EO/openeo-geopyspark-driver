@@ -2166,7 +2166,15 @@ class GpsBatchJobs(backend.BatchJobs):
             dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
 
         if dependency_sources:
+            # Only for SentinelHub batch processes.
             self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
+
+        config_params = ConfigParams()
+        if config_params.is_kube_deploy:
+            # On Creodias batch jobs are stored using s3 object storage.
+            self._jvm.org.openeo.geotrellis.creo.CreoS3Utils.deleteCreoSubFolder(
+                config_params.s3_bucket_name, job_id
+            )
 
         with ZkJobRegistry() as registry:
             registry.delete(job_id, user_id)
