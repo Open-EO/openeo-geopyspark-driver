@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+from subprocess import CalledProcessError, PIPE
 from typing import NamedTuple
 
 import hvac
@@ -54,9 +55,13 @@ class Vault:
         ]
 
         env = {**os.environ, **{"VAULT_ADDR": self._url}}
-        vault_token = subprocess.check_output(vault_kerberos_login, env=env, text=True)
 
-        return vault_token
+        try:
+            vault_token = subprocess.check_output(vault_kerberos_login, env=env, text=True, stderr=PIPE)
+            return vault_token
+        except CalledProcessError as e:
+            _log.error(msg=f"{e} stderr: {e.stderr.strip()}", exc_info=True)
+            raise
 
     def _client(self):
         return hvac.Client(self._url)
