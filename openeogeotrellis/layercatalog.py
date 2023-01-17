@@ -540,6 +540,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                         datetime.strptime(to_date[:10], "%Y-%m-%d"),
                                                         ulx=west, uly=north,
                                                         brx=east, bry=south)
+            # TODO: geotrelliss3.CreoPyramidFactory no longer exists.
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
 
