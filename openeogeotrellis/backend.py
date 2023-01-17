@@ -1081,7 +1081,6 @@ class GpsBatchJobs(backend.BatchJobs):
             with ZkJobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                registry.mark_done(job_id, user_id)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
         elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: resume batch job with available data
@@ -1183,7 +1182,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 with ZkJobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'error')
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                    registry.mark_done(job_id, user_id)
 
                 job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
         else:  # still some in progress and none FAILED yet: continue polling
@@ -2148,7 +2146,6 @@ class GpsBatchJobs(backend.BatchJobs):
             with ZkJobRegistry() as registry:
                 registry.remove_dependencies(job_id, user_id)
                 registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
-                registry.mark_done(job_id, user_id)
 
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)

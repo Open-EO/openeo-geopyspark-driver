@@ -348,7 +348,6 @@ class JobTracker:
             log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
             # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
             registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-            registry.mark_done(job_id, user_id)
             with ElasticJobRegistry.just_log_errors("job_tracker app not found"):
                 if self._elastic_job_registry:
                     # TODO: also set started/finished, exception/error info ...
@@ -411,7 +410,11 @@ class JobTracker:
                     job_id, user_id, dependency_sources
                 )
 
-            registry.mark_done(job_id, user_id)
+            # Note: setting the status is already done with a `patch` higher,
+            #       but we do it here again with `set_status` for the "auto_mark_done" feature
+            registry.set_status(
+                job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
+            )
 
             # TODO: make this usage report handling/logging more generic?
             sentinelhub_processing_units = (
