@@ -347,8 +347,7 @@ def main(argv: List[str]) -> None:
                 run_driver()
 
     except Exception as e:
-        message = None
-        if isinstance(e,Py4JJavaError):
+        if isinstance(e, Py4JJavaError):
             java_exception = e.java_exception
             if "SparkException" in java_exception.getClass().getName():
                 message = f"Your openEO batch job failed during Spark execution: {repr_truncate(str(java_exception.getMessage()), width=200)}"
@@ -364,9 +363,8 @@ def main(argv: List[str]) -> None:
 
         if message is not None:
             user_facing_logger.exception(message)
-            raise SystemExit()
-        else:
-            raise e
+
+        raise
 
 
 @log_memory
