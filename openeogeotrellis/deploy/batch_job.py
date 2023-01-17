@@ -241,6 +241,11 @@ def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
 
+def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> (str, str):
+    return (conf.get('spark.openeo.sentinelhub.client.id.default'),
+            conf.get('spark.openeo.sentinelhub.client.secret.default'))
+
+
 def _get_vault_token(conf: SparkConf) -> Optional[str]:
     return conf.get('spark.openeo.vault.token')
 
@@ -311,6 +316,7 @@ def main(argv: List[str]) -> None:
             principal = sc.getConf().get("spark.yarn.principal")
             key_tab = sc.getConf().get("spark.yarn.keytab")
 
+            default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
             vault_token = _get_vault_token(sc.getConf())
 
             kerberos(principal, key_tab)
@@ -319,8 +325,9 @@ def main(argv: List[str]) -> None:
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio, sentinel_hub_client_alias=sentinel_hub_client_alias,
-                    vault_token=vault_token
+                    max_soft_errors_ratio=max_soft_errors_ratio,
+                    default_sentinel_hub_credentials=default_sentinel_hub_credentials,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
                 )
             
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -369,13 +376,16 @@ def main(argv: List[str]) -> None:
 
 @log_memory
 def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, max_soft_errors_ratio: float = 0.0, sentinel_hub_client_alias='default',
-            vault_token: str = None):
+            user_id: str = None, max_soft_errors_ratio: float = 0.0, default_sentinel_hub_credentials=None,
+            sentinel_hub_client_alias='default', vault_token: str = None):
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
 
     backend_implementation = GeoPySparkBackendImplementation()
+
+    if default_sentinel_hub_credentials is not None:
+        backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
     logger.info(f"Using backend implementation {backend_implementation}")
     correlation_id = generate_unique_id(prefix="c")
