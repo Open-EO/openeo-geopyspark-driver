@@ -50,7 +50,7 @@ class Vault:
             "username=openeo",
             "service=vault-prod",
             "realm=VGT.VITO.BE",
-            "keytab_path=/opt/openeo.keytab",
+            "keytab_path=openeo.keytab",
             "krb5conf_path=/etc/krb5.conf"
         ]
 
