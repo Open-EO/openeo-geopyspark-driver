@@ -86,7 +86,9 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         try:
             command = ["yarn", "application", "-status", app_id]
             with TimingLogger(f"Running {command}", logger=_log.debug):
-                application_report = subprocess.check_output(command).decode("utf-8")
+                application_report = subprocess.check_output(
+                    command, stderr=subprocess.PIPE
+                ).decode("utf-8")
         except CalledProcessError as e:
             stdout = e.stdout.decode()
             if "doesn't exist in RM or Timeline Server" in stdout:
