@@ -41,14 +41,9 @@ def main():
     log.info("starting spark context")
     SparkContext(conf=conf)
 
-    def setup_batch_jobs() -> None:
-        with ZkJobRegistry() as job_registry:
-            job_registry.ensure_paths()
-
     def on_started() -> None:
         app.logger.setLevel('DEBUG')
         load_custom_processes()
-        setup_batch_jobs()
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
     app = build_app(backend_implementation=GeoPySparkBackendImplementation())

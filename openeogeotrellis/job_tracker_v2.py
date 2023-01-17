@@ -261,7 +261,6 @@ class JobTracker:
         with self._job_registry() as registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats:
-            registry.ensure_paths()
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
                 jobs_to_track = registry.get_running_jobs()

@@ -82,8 +82,6 @@ class JobTracker:
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
-            registry.ensure_paths()
-
             jobs_to_track = registry.get_running_jobs()
 
             for job_info in jobs_to_track:

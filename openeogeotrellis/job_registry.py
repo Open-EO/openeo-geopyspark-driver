@@ -34,9 +34,10 @@ class ZkJobRegistry:
         elif isinstance(zk_client, str):
             zk_client = KazooClient(hosts=zk_client)
         self._zk = zk_client
+        with self:
+            self._ensure_paths()
 
-    def ensure_paths(self):
-        # TODO: just do this automatically in __init__?
+    def _ensure_paths(self):
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 
