@@ -233,7 +233,7 @@ class JobTracker:
     def __init__(
         self,
         app_state_getter: JobMetadataGetterInterface,
-        job_registry: Callable[[], ZkJobRegistry],
+        job_registry: ZkJobRegistry,
         principal: str,
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
@@ -260,10 +260,9 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        with self._job_registry() as registry, StatsReporter(
+        with self._job_registry as registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
-            registry.ensure_paths()
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
                 jobs_to_track = registry.get_running_jobs()
@@ -462,6 +461,10 @@ class CliApp:
         _log.info(f"{ConfigParams()=!s}")
 
         try:
+            zk_root_path = args.zk_job_registry_root_path
+            _log.info(f"Using {zk_root_path=}")
+            zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+
             app_cluster = args.app_cluster
             if app_cluster == "auto":
                 # TODO: eliminate (need for) auto-detection.
@@ -474,7 +477,7 @@ class CliApp:
                 raise ValueError(app_cluster)
             job_tracker = JobTracker(
                 app_state_getter=app_state_getter,
-                job_registry=ZkJobRegistry,
+                job_registry=zk_job_registry,
                 principal=args.principal,
                 keytab=args.keytab,
             )
@@ -516,6 +519,12 @@ class CliApp:
             action="store_true",
             help="Use basic logging on stderr instead of JSON formatted logs.",
         )
+        parser.add_argument(
+            "--zk-job-registry-root-path",
+            default=ConfigParams().batch_jobs_zookeeper_root_path,
+            help="ZooKeeper root path for the job registry",
+        )
+        # TODO: also allow setting zk_root_path through "env" setting (prod,dev, integrationtests, ...)?
 
         return parser.parse_args(args=args)
 
