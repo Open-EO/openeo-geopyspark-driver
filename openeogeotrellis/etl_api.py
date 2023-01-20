@@ -1,6 +1,10 @@
 import requests
 import sys
 
+
+SOURCE_ID = "TerraScope/MEP"
+ORCHESTRATOR = "openeo"
+
 KEYCLOAK = "https://sso-int.terrascope.be"
 ETL_API = "https://etl-dev.terrascope.be"
 
@@ -38,14 +42,16 @@ def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, st
                            'jobId': batch_job_id,
                            'executionId': application_id,
                            'userId': user_id,
-                           'sourceId': "TerraScope/MEP",
-                           'orchestrator': "openeo",
+                           'sourceId': SOURCE_ID,
+                           'orchestrator': ORCHESTRATOR,
                            'state': state,
                            'status': status,
                            'metrics': {
                                'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
                                'processing': {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
+                               # TODO: add memory and time?
                            }
+                           # TODO: add optional fields?
                        }) as resp:
         print(resp.text)
         resp.raise_for_status()
@@ -71,10 +77,11 @@ def _log_added_value(batch_job_id: str, application_id: str, user_id: str, proce
                            'jobId': batch_job_id,
                            'executionId': application_id,
                            'userId': user_id,
-                           'sourceId': "TerraScope/MEP",
-                           'orchestrator': "openeo",
+                           'sourceId': SOURCE_ID,
+                           'orchestrator': ORCHESTRATOR,
                            'service': process_id,
                            'area': {'value': square_meters, 'unit': 'square_meter'}
+                           # TODO: add optional fields?
                        }) as resp:
         print(resp.text)
         resp.raise_for_status()
@@ -101,10 +108,14 @@ def main(argv):
     process_id = 'sar_backscatter'
     square_meters = 359818999.0591266
 
-    _log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds,
-                        sentinel_hub_processing_units, access_token)
+    resources_cost = _log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds,
+                                         sentinel_hub_processing_units, access_token)
 
-    _log_added_value(batch_job_id, application_id, user_id, process_id, square_meters, access_token)
+    print(f"{resources_cost=}")
+
+    added_value_cost = _log_added_value(batch_job_id, application_id, user_id, process_id, square_meters, access_token)
+
+    print(f"{added_value_cost=}")
 
 
 if __name__ == '__main__':
