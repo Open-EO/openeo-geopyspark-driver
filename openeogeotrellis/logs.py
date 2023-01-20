@@ -1,9 +1,11 @@
 import json
 from typing import Iterable, Optional
 
-from elasticsearch import Elasticsearch
+
+from elasticsearch import Elasticsearch, ConnectionTimeout
 from openeo.util import dict_no_none
 from openeo_driver.errors import OpenEOApiException
+
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
 ES_INDEX_PATTERN = "openeo-*-index-1m*"
@@ -24,40 +26,44 @@ def _elasticsearch_logs(job_id: str, search_after: Optional[list]) -> Iterable[d
 
     with Elasticsearch(ES_HOSTS) as es:
         while True:
-            search_result = es.search(
-                index=ES_INDEX_PATTERN,
-                query={
-                    'bool': {
-                        'filter': [{
-                            'term': {
-                                'job_id': job_id
-                            }
-                        }, {
-                            'terms': {
-                                'tags': ES_TAGS
-                            }
-                        }]
-                    }
-                },
-                search_after=search_after,
-                size=page_size,
-                sort=[
-                    {'@timestamp': {'order': 'asc'}},
-                    {'log.offset': {'order': 'asc'}},  # tie-breaker
-                    # chances are slim that two processes write on the same line within the same millisecond
-                    # 'log.file.path', 'host.name'
-                ],
-                request_timeout=60
-            )
+            try:
+                search_result = es.search(
+                    index=ES_INDEX_PATTERN,
+                    query={
+                        "bool": {
+                            "filter": [
+                                {"term": {"job_id": job_id}},
+                                {"terms": {"tags": ES_TAGS}},
+                            ],
+                        }
+                    },
+                    search_after=search_after,
+                    size=page_size,
+                    sort=[
+                        {"@timestamp": {"order": "asc"}},
+                        {"log.offset": {"order": "asc"}},  # tie-breaker
+                        # chances are slim that two processes write on the same line within the same millisecond
+                        # 'log.file.path', 'host.name'
+                    ],
+                    request_timeout=120,
+                )
 
-            hits = search_result['hits']['hits']
+            except ConnectionTimeout as exc:
+                message = (
+                    "Temporary failure while retrieving logs (ConnectionTimeout). "
+                    + "Please try again and report this error if it persists."
+                )
+                raise OpenEOApiException(status_code=504, message=message)
 
-            for hit in hits:
-                search_after = hit['sort']
-                yield _as_log_entry(log_id=json.dumps(search_after), hit=hit)
+            else:
+                hits = search_result["hits"]["hits"]
 
-            if len(hits) < page_size:
-                break
+                for hit in hits:
+                    search_after = hit["sort"]
+                    yield _as_log_entry(log_id=json.dumps(search_after), hit=hit)
+
+                if len(hits) < page_size:
+                    break
 
 
 def _as_log_entry(log_id: str, hit: dict) -> dict:
@@ -97,9 +103,11 @@ def main():
 
     # job_id = 'j-7e274ba1eb2e4a20a0e100d53d44d692'  # short
     # search_after = [1670939264990, "c2m9C4UBFu4FfsUu8ClI"]
-    job_id = 'j-db27cdaaca7a4d288346eaf01ceeef16'  # long
+    # job_id = 'j-db27cdaaca7a4d288346eaf01ceeef16'  # long  But seems to be gone now
     # search_after = [1671009758258, "1vfxD4UBVWXUH_mWk-OT"]
-    search_after = None
+    # search_after = None
+    job_id = "j-65b73756031c4955aadb3d42753de2e9"  # also long
+    search_after = "[1673351608383, 102790]"
 
     logs = elasticsearch_logs(job_id, search_after)
 
