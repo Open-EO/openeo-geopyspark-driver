@@ -10,6 +10,12 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## Unreleased
+
+### Changed
+
+- Getting a job's logs now leaves out log lines that have no loglevel or a level that is not supported. [openeo-python-driver/#160](https://github.com/Open-EO/openeo-python-driver/issues/160)
+
 ## 2022-11-28 (0.6.3a1)
 - Added an experimental job option 'udf-dependency-archives' to pass on archives of UDF dependencies
 

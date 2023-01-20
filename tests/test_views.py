@@ -865,7 +865,7 @@ class TestBatchJobs:
                 ]
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-    def test_get_log_entries(self, mock_search, api):
+    def test_get_job_logs(self, mock_search, api):
         search_hits = [
             {
                 "_source": {
