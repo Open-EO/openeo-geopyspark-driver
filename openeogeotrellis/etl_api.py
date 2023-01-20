@@ -36,6 +36,14 @@ def _can_execute_request(access_token: str) -> bool:
 
 def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, state: str, status: str,
                         cpu_seconds: float, sentinel_hub_processing_units: float, access_token: str) -> float:
+    metrics = {
+        'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
+        # TODO: add memory and time?
+    }
+
+    if sentinel_hub_processing_units >= 0:
+        metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
+
     with requests.post(f"{ETL_API}/resources",
                        headers={'Authorization': f"Bearer {access_token}"},
                        json={
@@ -46,11 +54,7 @@ def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, st
                            'orchestrator': ORCHESTRATOR,
                            'state': state,
                            'status': status,
-                           'metrics': {
-                               'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
-                               'processing': {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
-                               # TODO: add memory and time?
-                           }
+                           'metrics': metrics
                            # TODO: add optional fields?
                        }) as resp:
         print(resp.text)
