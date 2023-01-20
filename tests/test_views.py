@@ -863,3 +863,66 @@ class TestBatchJobs:
                     '{"state": "KILLED"}',
                     'https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state'
                 ]
+
+    @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+    def test_get_log_entries(self, mock_search, api):
+        search_hits = [
+            {
+                "_source": {
+                    "levelname": "ERROR",
+                    "message": "A message with the loglevel filled in",
+                },
+                "sort": 1,
+            },
+            {
+                "_source": {
+                    "levelname": None,
+                    "message": "A message with an empty loglevel",
+                },
+                "sort": 2,
+            },
+        ]
+        expected_log_entries = [
+            {
+                "id": "1",
+                "level": "error",
+                "message": "A message with the loglevel filled in",
+            }
+        ]
+
+        mock_search.return_value = {
+            "hits": {"hits": search_hits},
+        }
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+
+        with self._mock_kazoo_client() as zk:
+            # where to import dict_no_none from
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            job_options = {}
+
+            with ZkJobRegistry() as registry:
+                registry.register(
+                    job_id=job_id,
+                    user_id=TEST_USER,
+                    api_version="1.0.0",
+                    specification=dict(
+                        process_graph=data,
+                        job_options=job_options,
+                    ),
+                    title="Fake Test Job",
+                    description="Fake job for the purpose of testing",
+                )
+                registry.set_status(
+                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
+                )
+
+            # Get logs
+            res = (
+                api.get(
+                    "/jobs/{j}/logs".format(j=job_id), headers=TEST_USER_AUTH_HEADER
+                )
+                .assert_status_code(200)
+                .json
+            )
+
+            assert res["logs"] == expected_log_entries

@@ -54,7 +54,11 @@ def _elasticsearch_logs(job_id: str, search_after: Optional[list]) -> Iterable[d
 
             for hit in hits:
                 search_after = hit['sort']
-                yield _as_log_entry(log_id=json.dumps(search_after), hit=hit)
+
+                # Skip the log line if the log level is empty
+                entry = _as_log_entry(log_id=json.dumps(search_after), hit=hit)
+                if "level" in entry:
+                    yield entry
 
             if len(hits) < page_size:
                 break
