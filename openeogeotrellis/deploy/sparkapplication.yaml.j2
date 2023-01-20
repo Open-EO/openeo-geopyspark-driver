@@ -115,8 +115,8 @@ spec:
     serviceAccount: openeo
 {% endblock %}
     initContainers:
-{% block driver_initContainers %}
 {%- if mount_tmp %}
+{% block driver_initContainers %}
       - name: init-tmp-dir
         image: busybox:1.28
         command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
