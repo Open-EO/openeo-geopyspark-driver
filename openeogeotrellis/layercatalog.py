@@ -74,11 +74,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         feature_flags = load_params.get("featureflags", {})
         tilesize = feature_flags.get("tilesize", 256)
         default_temporal_resolution = "ByDay"
-        default_indexReduction = 8
-        if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
+        default_indexReduction = 6
+        #if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
             # for pure timeseries processing, adjust partitioning strategy
-            default_temporal_resolution = "None"
-            default_indexReduction = 0
+            #default_temporal_resolution = "None"
+            #default_indexReduction = 0
         indexReduction = feature_flags.get("indexreduction", default_indexReduction)
         temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
         datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
