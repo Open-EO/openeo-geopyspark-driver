@@ -127,11 +127,20 @@ class ZkJobRegistry:
 
         self.patch(job_id, user_id, application_id=application_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str) -> None:
+    def set_status(
+        self, job_id: str, user_id: str, status: str, auto_mark_done: bool = True
+    ) -> None:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
 
         self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
+
+        if auto_mark_done and status in {
+            JOB_STATUS.FINISHED,
+            JOB_STATUS.ERROR,
+            JOB_STATUS.CANCELED,
+        }:
+            self.mark_done(job_id=job_id, user_id=user_id)
 
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
@@ -160,7 +169,7 @@ class ZkJobRegistry:
 
     def mark_done(self, job_id: str, user_id: str) -> None:
         """Marks a job as done (not to be tracked anymore)."""
-        # TODO: do this automatically from `set_status` with "terminal" status ("finished", "error", ...)
+        # TODO: possible to make this a private method (as implementation detail)?
 
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id)

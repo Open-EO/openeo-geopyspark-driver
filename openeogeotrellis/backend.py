@@ -1081,7 +1081,6 @@ class GpsBatchJobs(backend.BatchJobs):
             with ZkJobRegistry() as registry:
                 registry.set_dependency_status(job_id, user_id, 'error')
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                registry.mark_done(job_id, user_id)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
         elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: resume batch job with available data
@@ -1183,7 +1182,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 with ZkJobRegistry() as registry:
                     registry.set_dependency_status(job_id, user_id, 'error')
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                    registry.mark_done(job_id, user_id)
 
                 job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
         else:  # still some in progress and none FAILED yet: continue polling
@@ -1369,7 +1367,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 import time
                 import io
 
-                from jinja2 import Template
+                from jinja2 import Environment, FileSystemLoader
                 from kubernetes.client.rest import ApiException
 
                 bucket = ConfigParams().s3_bucket_name
@@ -1396,8 +1394,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
-                jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
-                rendered = Template(open(jinja_template).read()).render(
+                jinja_path = pkg_resources.resource_filename(
+                    "openeogeotrellis.deploy", "sparkapplication.yaml.j2"
+                )
+                jinja_dir = os.path.dirname(jinja_path)
+                jinja_template = Environment(
+                    loader=FileSystemLoader(jinja_dir)
+                ).from_string(open(jinja_path).read())
+                rendered = jinja_template.render(
                     job_name=k8s_job_name(job_id=job_id, user_id=user_id),
                     job_specification=job_specification_file,
                     output_dir=output_dir,
@@ -2148,7 +2152,6 @@ class GpsBatchJobs(backend.BatchJobs):
             with ZkJobRegistry() as registry:
                 registry.remove_dependencies(job_id, user_id)
                 registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
-                registry.mark_done(job_id, user_id)
 
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)

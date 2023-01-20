@@ -211,7 +211,6 @@ class JobTracker:
                     #  will cause a job (or possibly all running jobs) to be marked as "done" with status "error"?
                     if job_id and user_id:
                         registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-                        registry.mark_done(job_id, user_id)
 
                         with ElasticJobRegistry.just_log_errors(f"job_tracker flag error"):
                             if self._elastic_job_registry:
