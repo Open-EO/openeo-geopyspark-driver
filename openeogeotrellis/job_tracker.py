@@ -6,7 +6,6 @@ import subprocess
 import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union, Optional
-import time
 from collections import namedtuple
 from datetime import datetime
 import re
@@ -30,7 +29,8 @@ from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis import async_task
+from openeogeotrellis.vault import Vault
+from openeogeotrellis import async_task, etl_api
 
 _log = logging.getLogger(__name__)
 
@@ -58,7 +58,14 @@ class JobTracker:
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        vault: Optional[Vault] = None
     ):
+        # TODO: avoid is_kube_deploy anti-pattern
+        self._kube_mode = ConfigParams().is_kube_deploy
+
+        if not self._kube_mode and vault is None:
+            raise ValueError(vault)
+
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
@@ -69,20 +76,19 @@ class JobTracker:
             jvm=None,
             principal=principal,
             key_tab=keytab,
-            vault=None,
+            vault=vault,
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
         self._elastic_job_registry = get_or_build_elastic_job_registry(
             elastic_job_registry, ref="JobTracker"
         )
-
-        # TODO: avoid is_kube_deploy anti-pattern
-        self._kube_mode = ConfigParams().is_kube_deploy
+        self._vault = vault
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
+            vault_token = self._vault.login_kerberos(self._principal, self._keytab)
 
             jobs_to_track = registry.get_running_jobs()
 
@@ -197,6 +203,31 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
+
+                                    etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
+                                    etl_api_access_token = etl_api._authenticate_oidc(etl_api_credentials.client_id,
+                                                                                      etl_api_credentials.client_secret)
+
+                                    # TODO: fix API
+                                    etl_api._log_resource_usage(batch_job_id=job_id,
+                                                                application_id=application_id,
+                                                                user_id=user_id,
+                                                                state=final_state,
+                                                                status=new_status,
+                                                                cpu_seconds=cpu_time_seconds,
+                                                                sentinel_hub_processing_units=float(
+                                                                    Decimal(sentinelhub_processing_units) +
+                                                                    sentinelhub_batch_processing_units),
+                                                                access_token=etl_api_access_token)
+
+                                    for process_id in result_metadata.get('unique_process_ids', []):
+                                        # TODO: fix API
+                                        etl_api._log_added_value(batch_job_id=job_id,
+                                                                 application_id=application_id,
+                                                                 user_id=user_id,
+                                                                 process_id=process_id,
+                                                                 square_meters=result_metadata.get('area', 0),
+                                                                 access_token=etl_api_access_token)
                         except UnknownYarnApplicationException:
                             # TODO eliminate this whole try-except (but not now to keep diff simple)
                             raise
@@ -345,12 +376,13 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
-    parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
+    parser.add_argument("--keytab", default="openeo.keytab",
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
     try:
-        JobTracker(ZkJobRegistry, args.principal, args.keytab).update_statuses()
+        vault = Vault("https://vault.vgt.vito.be")
+        JobTracker(ZkJobRegistry, args.principal, args.keytab, vault=vault).update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:

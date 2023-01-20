@@ -38,7 +38,7 @@ def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, st
                         cpu_seconds: float, sentinel_hub_processing_units: float, access_token: str) -> float:
     metrics = {
         'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
-        # TODO: add memory and time?
+        # FIXME: add memory and time
     }
 
     if sentinel_hub_processing_units >= 0:

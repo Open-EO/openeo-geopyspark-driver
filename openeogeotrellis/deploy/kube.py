@@ -12,7 +12,6 @@ from openeogeotrellis import deploy
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import flask_config, get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.job_tracker import JobTracker
 
 log = logging.getLogger(__name__)
 
