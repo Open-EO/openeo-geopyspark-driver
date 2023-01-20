@@ -1367,7 +1367,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 import time
                 import io
 
-                from jinja2 import Template
+                from jinja2 import Environment, FileSystemLoader
                 from kubernetes.client.rest import ApiException
 
                 bucket = ConfigParams().s3_bucket_name
@@ -1394,8 +1394,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
-                jinja_template = pkg_resources.resource_filename('openeogeotrellis.deploy', 'sparkapplication.yaml.j2')
-                rendered = Template(open(jinja_template).read()).render(
+                jinja_path = pkg_resources.resource_filename(
+                    "openeogeotrellis.deploy", "sparkapplication.yaml.j2"
+                )
+                jinja_dir = os.path.dirname(jinja_path)
+                jinja_template = Environment(
+                    loader=FileSystemLoader(jinja_dir)
+                ).from_string(open(jinja_path).read())
+                rendered = jinja_template.render(
                     job_name=k8s_job_name(job_id=job_id, user_id=user_id),
                     job_specification=job_specification_file,
                     output_dir=output_dir,
