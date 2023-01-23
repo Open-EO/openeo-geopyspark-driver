@@ -40,17 +40,24 @@ class Vault:
         client.auth.jwt.jwt_login(role=None, jwt=access_token)
         return client.token
 
-    def login_kerberos(self) -> str:
+    def login_kerberos(
+        self,
+        # TODO: eliminate hardcoded defaults?
+        principal: str = "openeo@VGT.VITO.BE",
+        keytab: str = "/opt/openeo.keytab",
+    ) -> str:
         # hvac has no Kerberos support, use CLI instead
+        username, realm = principal.split("@")
+
         vault_kerberos_login = [
             "vault",
             "login",
             "-token-only",
             "-method=kerberos",
-            "username=openeo",
-            "service=vault-prod",
-            "realm=VGT.VITO.BE",
-            "keytab_path=/opt/openeo.keytab",
+            f"username={username}",
+            "service=vault-prod",  # TODO: parameterize this too?
+            f"realm={realm}",
+            f"keytab_path={keytab}",
             "krb5conf_path=/etc/krb5.conf"
         ]
 
