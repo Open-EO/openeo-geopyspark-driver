@@ -2195,9 +2195,9 @@ class GpsBatchJobs(backend.BatchJobs):
         if config_params.is_kube_deploy:
             # Kubernetes batch jobs are stored using s3 object storage.
             logger.info(f"Kube_deploy: Deleting directory from s3 object storage.")
-            logger.info(f"bucket: {config_params.s3_bucket_name}, directory: {job_id}")
+            prefix = self.get_job_output_dir(job_id)
             self._jvm.org.openeo.geotrellis.creo.CreoS3Utils.deleteCreoSubFolder(
-                config_params.s3_bucket_name, job_id
+                config_params.s3_bucket_name, prefix
             )
 
         with ZkJobRegistry() as registry:
