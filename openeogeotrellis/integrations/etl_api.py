@@ -34,7 +34,6 @@ def log_resource_usage(batch_job_id: str, application_id: str, user_id: str, sta
     if sentinel_hub_processing_units >= 0:
         metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
 
-    url = f"{ETL_API}/resources"
     data = {
         'jobId': batch_job_id,
         'executionId': application_id,
@@ -47,12 +46,13 @@ def log_resource_usage(batch_job_id: str, application_id: str, user_id: str, sta
         # TODO: add optional fields?
     }
 
-    with requests.post(url, headers={'Authorization': f"Bearer {access_token}"}, json=data) as resp:
+    with requests.post(f"{ETL_API}/resources", headers={'Authorization': f"Bearer {access_token}"}, json=data) as resp:
         if not resp.ok:
-            _log.error(f"POST {url} {data} returned {resp.status_code}: {resp.text}", extra={
-                'user_id': user_id,
-                'job_id': batch_job_id
-            })
+            _log.error(f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
+                       extra={
+                           'user_id': user_id,
+                           'job_id': batch_job_id
+                       })
 
         resp.raise_for_status()
 
@@ -71,7 +71,6 @@ def log_added_value(batch_job_id: str, application_id: str, user_id: str, proces
     if not billable:
         return 0.0
 
-    url = f"{ETL_API}/addedvalue"
     data = {
         'jobId': batch_job_id,
         'executionId': application_id,
@@ -83,12 +82,13 @@ def log_added_value(batch_job_id: str, application_id: str, user_id: str, proces
         # TODO: add optional fields?
     }
 
-    with requests.post(url, headers={'Authorization': f"Bearer {access_token}"}, json=data) as resp:
+    with requests.post(f"{ETL_API}/addedvalue", headers={'Authorization': f"Bearer {access_token}"}, json=data) as resp:
         if not resp.ok:
-            _log.error(f"POST {url} {data} returned {resp.status_code}: {resp.text}", extra={
-                'user_id': user_id,
-                'job_id': batch_job_id
-            })
+            _log.error(f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
+                       extra={
+                           'user_id': user_id,
+                           'job_id': batch_job_id
+                       })
 
         resp.raise_for_status()
 
