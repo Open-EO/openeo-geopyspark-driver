@@ -1,4 +1,5 @@
 import json
+import datetime as dt
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Callable, Union, Optional
@@ -358,3 +359,59 @@ class ZkJobRegistry:
 # Legacy alias
 # TODO: remove this legacy alias
 JobRegistry = ZkJobRegistry
+
+
+class InMemoryJobRegistry:
+    # TODO: common interface with ElasticJobRegistry
+    # TODO move it to openeo_python_driver
+    def __init__(self):
+        self.db: Dict[str, dict] = {}
+
+    def health_check(self, *args, **kwargs):
+        pass
+
+    def create_job(
+        self,
+        process: dict,
+        user_id: str,
+        job_id: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        api_version: Optional[str] = None,
+        job_options: Optional[dict] = None,
+    ):
+        assert job_id not in self.db
+        created = rfc3339.datetime(dt.datetime.utcnow())
+        self.db[job_id] = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "process": process,
+            "title": title,
+            "description": description,
+            "status": JOB_STATUS.CREATED,
+            "created": created,
+            "updated": created,
+            "api_version": api_version,
+            "job_options": job_options,
+        }
+
+    def set_status(
+        self,
+        job_id: str,
+        status: str,
+        *,
+        updated: Optional[str] = None,
+        started: Optional[str] = None,
+        finished: Optional[str] = None,
+    ):
+        assert job_id in self.db
+        data = {
+            "status": status,
+            "updated": rfc3339.datetime(updated or dt.datetime.utcnow()),
+        }
+        if started:
+            data["started"] = rfc3339.datetime(started)
+        if finished:
+            data["finished"] = rfc3339.datetime(finished)
+
+        self.db[job_id].update(data)

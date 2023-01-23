@@ -22,7 +22,7 @@ from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
     JobTracker,
     K8sStatusGetter,
@@ -264,65 +264,10 @@ def yarn_mock() -> YarnMock:
         yield yarn
 
 
-class InMemoryJobRegistry:
-    # TODO: common interface with ElasticJobRegistry
-    # TODO move it to openeo_python_driver
-    def __init__(self):
-        self.db: Dict[str, dict] = {}
-
-    def health_check(self, *args, **kwargs):
-        pass
-
-    def create_job(
-        self,
-        process: dict,
-        user_id: str,
-        job_id: Optional[str] = None,
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        api_version: Optional[str] = None,
-        job_options: Optional[dict] = None,
-    ):
-        assert job_id not in self.db
-        created = rfc3339.datetime(dt.datetime.utcnow())
-        self.db[job_id] = {
-            "job_id": job_id,
-            "user_id": user_id,
-            "process": process,
-            "title": title,
-            "description": description,
-            "status": JOB_STATUS.CREATED,
-            "created": created,
-            "updated": created,
-            "api_version": api_version,
-            "job_options": job_options,
-        }
-
-    def set_status(
-        self,
-        job_id: str,
-        status: str,
-        *,
-        updated: Optional[str] = None,
-        started: Optional[str] = None,
-        finished: Optional[str] = None,
-    ):
-        assert job_id in self.db
-        data = {
-            "status": status,
-            "updated": rfc3339.datetime(updated or dt.datetime.utcnow()),
-        }
-        if started:
-            data["started"] = rfc3339.datetime(started)
-        if finished:
-            data["finished"] = rfc3339.datetime(finished)
-
-        self.db[job_id].update(data)
-
 
 @pytest.fixture
 def elastic_job_registry() -> InMemoryJobRegistry:
-    # TODO: still call this fixture "elastic_job_registry"?
+    # TODO: stop calling this fixture *elastic* job registry?
     return InMemoryJobRegistry()
 
 

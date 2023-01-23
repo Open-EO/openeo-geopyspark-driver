@@ -22,7 +22,7 @@ from openeo_driver.util.logging import get_logging_config, setup_logging
 import openeo_driver.utils
 
 from openeogeotrellis import async_task
-from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
+from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import (
     K8S_SPARK_APP_STATE,
@@ -160,6 +160,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         )
 
     def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
+        # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
             metadata = self._kubernetes_api.get_namespaced_custom_object(
@@ -257,9 +258,7 @@ class JobTracker:
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
-        self._elastic_job_registry = get_or_build_elastic_job_registry(
-            elastic_job_registry, ref="JobTracker"
-        )
+        self._elastic_job_registry = elastic_job_registry
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
@@ -470,10 +469,15 @@ class CliApp:
 
         with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
             try:
+                # ZooKeeper Job Registry
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
+                # Elastic Job Registry (EJR)
+                elastic_job_registry = get_elastic_job_registry()
+
+                # YARN or Kubernetes?
                 app_cluster = args.app_cluster
                 if app_cluster == "auto":
                     # TODO: eliminate (need for) auto-detection.
@@ -489,6 +493,7 @@ class CliApp:
                     job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
+                    elastic_job_registry=elastic_job_registry,
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
@@ -555,6 +560,7 @@ class CliApp:
         )
 
         if rotating_file:
+            # TODO: support this appending directly in get_logging_config
             logging_config["handlers"]["rotating_file"] = {
                 "class": "logging.handlers.RotatingFileHandler",
                 "filename": str(rotating_file),

@@ -298,6 +298,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         use_zookeeper=True,
         opensearch_enrich=True,
         batch_job_output_root: Optional[Path] = None,
+        use_job_registry: bool = True,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -321,6 +323,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         principal = conf.get("spark.yarn.principal", conf.get("spark.kerberos.principal"))
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
 
+        if use_job_registry and not elastic_job_registry:
+            # TODO #236 avoid this fallback and just make sure it is always set when necessary
+            logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
+            elastic_job_registry = get_elastic_job_registry()
+
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
@@ -330,6 +337,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 key_tab=key_tab,
                 vault=vault,
                 output_root_dir=batch_job_output_root,
+                elastic_job_registry=elastic_job_registry,
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
@@ -931,17 +939,19 @@ class GpsProcessing(ConcreteProcessing):
                             }
 
 
-def get_or_build_elastic_job_registry(
-    job_registry: Optional[ElasticJobRegistry], ref: str = "n/a"
-) -> Optional[ElasticJobRegistry]:
-    """Helper to get or build (when not given) an ElasticJobRegistry"""
-    # TODO: this is a temporary helper, that should be replaced with a better config or dependency injection system
-    #       Ideally this function should not be necessary (just create a ElasticJobRegistry in one place and reuse it)
-    with ElasticJobRegistry.just_log_errors(name=f"init {ref}"):
-        if not job_registry:
-            job_registry = ElasticJobRegistry.from_environ()
-            job_registry.health_check(log=True)
-    return job_registry
+def get_elastic_job_registry() -> Optional[ElasticJobRegistry]:
+    """Build ElasticJobRegistry instance from config and vault"""
+    with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
+        config = ConfigParams()
+        job_registry = ElasticJobRegistry(
+            backend_id=config.ejr_backend_id,
+            api_url=config.ejr_api,
+        )
+        vault = Vault(config.vault_addr)
+        ejr_creds = vault.get_elastic_job_registry_credentials()
+        job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
+        job_registry.health_check(log=True)
+        return job_registry
 
 
 class GpsBatchJobs(backend.BatchJobs):
@@ -971,9 +981,7 @@ class GpsBatchJobs(backend.BatchJobs):
             output_root_dir or ConfigParams().batch_job_output_root
         )
 
-        self._elastic_job_registry = get_or_build_elastic_job_registry(
-            elastic_job_registry, ref="GpsBatchJobs"
-        )
+        self._elastic_job_registry = elastic_job_registry
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -1603,7 +1611,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 "user": User(user_id),
                 # TODO #285: use original GeoPySparkBackendImplementation instead of recreating a new one
                 #           or at least set all GeoPySparkBackendImplementation arguments correctly (e.g. through a config)
-                "backend_implementation": GeoPySparkBackendImplementation(),
+                "backend_implementation": GeoPySparkBackendImplementation(
+                    use_job_registry=False
+                ),
             }
         )
 
