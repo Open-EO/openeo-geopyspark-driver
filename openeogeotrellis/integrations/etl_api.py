@@ -5,24 +5,8 @@ import sys
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
 
-# TODO: point these to prod
-KEYCLOAK = "https://sso-int.terrascope.be"
+# TODO: point this to prod
 ETL_API = "https://etl-dev.terrascope.be"
-
-
-def _authenticate_oidc(client_id: str, client_secret: str) -> str:  # access token
-    with requests.post(f"{KEYCLOAK}/auth/realms/terrascope/protocol/openid-connect/token",
-                       headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                       data={
-                           'grant_type': 'client_credentials',
-                           'client_id': client_id,
-                           'client_secret': client_secret
-                       }) as resp:
-        if not resp.ok:
-            print(resp.text)
-
-        resp.raise_for_status()
-        return resp.json()["access_token"]
 
 
 def _can_execute_request(access_token: str) -> bool:
@@ -35,9 +19,9 @@ def _can_execute_request(access_token: str) -> bool:
         return resp.json()["execution"]
 
 
-def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, state: str, status: str,
-                        cpu_seconds: float, mb_seconds: float, duration_ms: float,
-                        sentinel_hub_processing_units: float, access_token: str) -> float:
+def log_resource_usage(batch_job_id: str, application_id: str, user_id: str, state: str, status: str,
+                       cpu_seconds: float, mb_seconds: float, duration_ms: float,
+                       sentinel_hub_processing_units: float, access_token: str) -> float:
     metrics = {
         'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
         'memory': {'value': mb_seconds, 'unit': 'mb-seconds'},
@@ -67,8 +51,8 @@ def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, st
         return total_credits
 
 
-def _log_added_value(batch_job_id: str, application_id: str, user_id: str, process_id: str, square_meters: float,
-                     access_token: str) -> float:
+def log_added_value(batch_job_id: str, application_id: str, user_id: str, process_id: str, square_meters: float,
+                    access_token: str) -> float:
     billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox", "mean",
                                   "aggregate_spatial", "discard_result", "filter_temporal", "load_collection",
                                   "reduce_dimension", "apply_dimension", "not", "max", "or", "and", "run_udf",
@@ -98,9 +82,11 @@ def _log_added_value(batch_job_id: str, application_id: str, user_id: str, proce
 
 
 def main(argv):
+    from openeogeotrellis.integrations import keycloak
+
     client_id, client_secret = argv[1:3]
 
-    access_token = _authenticate_oidc(client_id, client_secret)
+    access_token = keycloak.authenticate_oidc(client_id, client_secret)
     print(access_token)
 
     assert _can_execute_request(access_token)
@@ -117,12 +103,12 @@ def main(argv):
     process_id = 'sar_backscatter'
     square_meters = 359818999.0591266
 
-    resources_cost = _log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds, mb_seconds,
-                                         duration_ms, sentinel_hub_processing_units, access_token)
+    resources_cost = log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds, mb_seconds,
+                                        duration_ms, sentinel_hub_processing_units, access_token)
 
     print(f"{resources_cost=}")
 
-    added_value_cost = _log_added_value(batch_job_id, application_id, user_id, process_id, square_meters, access_token)
+    added_value_cost = log_added_value(batch_job_id, application_id, user_id, process_id, square_meters, access_token)
 
     print(f"{added_value_cost=}")
 

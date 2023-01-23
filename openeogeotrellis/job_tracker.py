@@ -20,6 +20,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+from openeogeotrellis.integrations import etl_api, keycloak
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_job_name,
@@ -30,7 +31,7 @@ from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.vault import Vault
-from openeogeotrellis import async_task, etl_api
+from openeogeotrellis import async_task
 
 _log = logging.getLogger(__name__)
 
@@ -205,31 +206,29 @@ class JobTracker:
                                     })
 
                                     etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
-                                    etl_api_access_token = etl_api._authenticate_oidc(etl_api_credentials.client_id,
+                                    etl_api_access_token = keycloak.authenticate_oidc(etl_api_credentials.client_id,
                                                                                       etl_api_credentials.client_secret)
 
-                                    # TODO: fix API
-                                    etl_api._log_resource_usage(batch_job_id=job_id,
-                                                                application_id=application_id,
-                                                                user_id=user_id,
-                                                                state=final_state,
-                                                                status=new_status,
-                                                                cpu_seconds=cpu_time_seconds,
-                                                                mb_seconds=memory_time_megabyte_seconds,
-                                                                duration_ms=finish_time - start_time,
-                                                                sentinel_hub_processing_units=float(
-                                                                    Decimal(sentinelhub_processing_units) +
-                                                                    sentinelhub_batch_processing_units),
-                                                                access_token=etl_api_access_token)
+                                    etl_api.log_resource_usage(batch_job_id=job_id,
+                                                               application_id=application_id,
+                                                               user_id=user_id,
+                                                               state=final_state,
+                                                               status=new_status,
+                                                               cpu_seconds=cpu_time_seconds,
+                                                               mb_seconds=memory_time_megabyte_seconds,
+                                                               duration_ms=finish_time - start_time,
+                                                               sentinel_hub_processing_units=float(
+                                                                   Decimal(sentinelhub_processing_units) +
+                                                                   sentinelhub_batch_processing_units),
+                                                               access_token=etl_api_access_token)
 
                                     for process_id in result_metadata.get('unique_process_ids', []):
-                                        # TODO: fix API
-                                        etl_api._log_added_value(batch_job_id=job_id,
-                                                                 application_id=application_id,
-                                                                 user_id=user_id,
-                                                                 process_id=process_id,
-                                                                 square_meters=result_metadata.get('area', 0),
-                                                                 access_token=etl_api_access_token)
+                                        etl_api.log_added_value(batch_job_id=job_id,
+                                                                application_id=application_id,
+                                                                user_id=user_id,
+                                                                process_id=process_id,
+                                                                square_meters=result_metadata.get('area', 0),
+                                                                access_token=etl_api_access_token)
                         except UnknownYarnApplicationException:
                             # TODO eliminate this whole try-except (but not now to keep diff simple)
                             raise
