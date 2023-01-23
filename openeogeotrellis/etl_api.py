@@ -5,6 +5,7 @@ import sys
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
 
+# TODO: point these to prod
 KEYCLOAK = "https://sso-int.terrascope.be"
 ETL_API = "https://etl-dev.terrascope.be"
 
@@ -35,10 +36,12 @@ def _can_execute_request(access_token: str) -> bool:
 
 
 def _log_resource_usage(batch_job_id: str, application_id: str, user_id: str, state: str, status: str,
-                        cpu_seconds: float, sentinel_hub_processing_units: float, access_token: str) -> float:
+                        cpu_seconds: float, mb_seconds: float, duration_ms: float,
+                        sentinel_hub_processing_units: float, access_token: str) -> float:
     metrics = {
         'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
-        # FIXME: add memory and time
+        'memory': {'value': mb_seconds, 'unit': 'mb-seconds'},
+        'time': {'value': duration_ms, 'unit': 'milliseconds'},
     }
 
     if sentinel_hub_processing_units >= 0:
@@ -108,12 +111,14 @@ def main(argv):
     state = 'FINISHED'
     status = 'SUCCEEDED'
     cpu_seconds = 5971
+    mb_seconds = 5971000
+    duration_ms = 123000
     sentinel_hub_processing_units = 127.15657552083333
     process_id = 'sar_backscatter'
     square_meters = 359818999.0591266
 
-    resources_cost = _log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds,
-                                         sentinel_hub_processing_units, access_token)
+    resources_cost = _log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds, mb_seconds,
+                                         duration_ms, sentinel_hub_processing_units, access_token)
 
     print(f"{resources_cost=}")
 

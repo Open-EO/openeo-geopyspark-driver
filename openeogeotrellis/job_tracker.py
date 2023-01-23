@@ -215,6 +215,8 @@ class JobTracker:
                                                                 state=final_state,
                                                                 status=new_status,
                                                                 cpu_seconds=cpu_time_seconds,
+                                                                mb_seconds=memory_time_megabyte_seconds,
+                                                                duration_ms=finish_time - start_time,
                                                                 sentinel_hub_processing_units=float(
                                                                     Decimal(sentinelhub_processing_units) +
                                                                     sentinelhub_batch_processing_units),
