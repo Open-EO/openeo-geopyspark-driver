@@ -97,7 +97,8 @@ class ZkJobRegistry:
             instruments=job_info.get("instruments", []),
             epsg=job_info.get("epsg"),
             links=job_info.get("links", []),
-            usage = job_info.get("usage", {})
+            usage=job_info.get("usage", {}),
+            costs=job_info.get("costs")
         )
 
     @staticmethod

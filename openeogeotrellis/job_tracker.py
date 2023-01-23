@@ -177,7 +177,46 @@ class JobTracker:
                                 if final_state != "UNDEFINED":
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                     # TODO: skip patching the job znode and read from this file directly?
-                                    registry.patch(job_id, user_id, **result_metadata)
+
+                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
+                                                                    .get("sentinelhub", {}).get("value", 0.0))
+
+                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
+                                                                          or Decimal("0.0"))
+
+                                    etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
+                                    etl_api_access_token = keycloak.authenticate_oidc(etl_api_credentials.client_id,
+                                                                                      etl_api_credentials.client_secret,
+                                                                                      logging_context={
+                                                                                          'job_id': job_id,
+                                                                                          'user_id': user_id
+                                                                                      })
+
+                                    resource_costs_in_credits = etl_api.log_resource_usage(
+                                        batch_job_id=job_id,
+                                        application_id=application_id,
+                                        user_id=user_id,
+                                        state=final_state,
+                                        status=new_status,
+                                        cpu_seconds=cpu_time_seconds,
+                                        mb_seconds=memory_time_megabyte_seconds,
+                                        duration_ms=finish_time - start_time,
+                                        sentinel_hub_processing_units=float(
+                                            Decimal(sentinelhub_processing_units) + sentinelhub_batch_processing_units),
+                                        access_token=etl_api_access_token)
+
+                                    added_value_costs_in_credits = sum(etl_api.log_added_value(
+                                        batch_job_id=job_id,
+                                        application_id=application_id,
+                                        user_id=user_id,
+                                        process_id=process_id,
+                                        square_meters=result_metadata.get('area', 0),
+                                        access_token=etl_api_access_token) for process_id in
+                                                                       result_metadata.get('unique_process_ids', []))
+
+                                    registry.patch(job_id, user_id, **dict(
+                                        result_metadata,
+                                        costs=resource_costs_in_credits + added_value_costs_in_credits))
 
                                     registry.remove_dependencies(job_id, user_id)
 
@@ -190,12 +229,6 @@ class JobTracker:
 
                                     registry.mark_done(job_id, user_id)
 
-                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
-                                                                    .get("sentinelhub", {}).get("value", 0.0))
-
-                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
-                                                                          or Decimal("0.0"))
-
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
                                         'area': result_metadata.get('area'),
@@ -204,35 +237,6 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
-
-                                    etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
-                                    etl_api_access_token = keycloak.authenticate_oidc(etl_api_credentials.client_id,
-                                                                                      etl_api_credentials.client_secret,
-                                                                                      logging_context={
-                                                                                          'job_id': job_id,
-                                                                                          'user_id': user_id
-                                                                                      })
-
-                                    etl_api.log_resource_usage(batch_job_id=job_id,
-                                                               application_id=application_id,
-                                                               user_id=user_id,
-                                                               state=final_state,
-                                                               status=new_status,
-                                                               cpu_seconds=cpu_time_seconds,
-                                                               mb_seconds=memory_time_megabyte_seconds,
-                                                               duration_ms=finish_time - start_time,
-                                                               sentinel_hub_processing_units=float(
-                                                                   Decimal(sentinelhub_processing_units) +
-                                                                   sentinelhub_batch_processing_units),
-                                                               access_token=etl_api_access_token)
-
-                                    for process_id in result_metadata.get('unique_process_ids', []):
-                                        etl_api.log_added_value(batch_job_id=job_id,
-                                                                application_id=application_id,
-                                                                user_id=user_id,
-                                                                process_id=process_id,
-                                                                square_meters=result_metadata.get('area', 0),
-                                                                access_token=etl_api_access_token)
                         except UnknownYarnApplicationException:
                             # TODO eliminate this whole try-except (but not now to keep diff simple)
                             raise
