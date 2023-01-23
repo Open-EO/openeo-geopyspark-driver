@@ -12,15 +12,14 @@ def authenticate_oidc(client_id: str, client_secret: str, logging_context=None) 
     if logging_context is None:
         logging_context = {}
 
-    url = f"{KEYCLOAK}/auth/realms/terrascope/protocol/openid-connect/token"
-
-    with requests.post(url, headers={'Content-Type': 'application/x-www-form-urlencoded'}, data={
+    with requests.post(f"{KEYCLOAK}/auth/realms/terrascope/protocol/openid-connect/token", data={
         'grant_type': 'client_credentials',
         'client_id': client_id,
         'client_secret': client_secret
     }) as resp:
         if not resp.ok:
-            _log.error(f"POST {url} returned {resp.status_code}: {resp.text}", extra=logging_context)
+            _log.error(f"{resp.request.method} {resp.request.url} returned {resp.status_code}: {resp.text}",
+                       extra=logging_context)
 
         resp.raise_for_status()
         return resp.json()["access_token"]
