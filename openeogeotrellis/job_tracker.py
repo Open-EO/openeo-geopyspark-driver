@@ -207,7 +207,11 @@ class JobTracker:
 
                                     etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
                                     etl_api_access_token = keycloak.authenticate_oidc(etl_api_credentials.client_id,
-                                                                                      etl_api_credentials.client_secret)
+                                                                                      etl_api_credentials.client_secret,
+                                                                                      logging_context={
+                                                                                          'job_id': job_id,
+                                                                                          'user_id': user_id
+                                                                                      })
 
                                     etl_api.log_resource_usage(batch_job_id=job_id,
                                                                application_id=application_id,

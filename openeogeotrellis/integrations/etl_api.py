@@ -1,12 +1,15 @@
+import logging
+
 import requests
 import sys
-
 
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
 
 # TODO: point this to prod
 ETL_API = "https://etl-dev.terrascope.be"
+
+_log = logging.getLogger(__name__)
 
 
 def _can_execute_request(access_token: str) -> bool:
@@ -31,20 +34,26 @@ def log_resource_usage(batch_job_id: str, application_id: str, user_id: str, sta
     if sentinel_hub_processing_units >= 0:
         metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
 
-    with requests.post(f"{ETL_API}/resources",
-                       headers={'Authorization': f"Bearer {access_token}"},
-                       json={
-                           'jobId': batch_job_id,
-                           'executionId': application_id,
-                           'userId': user_id,
-                           'sourceId': SOURCE_ID,
-                           'orchestrator': ORCHESTRATOR,
-                           'state': state,
-                           'status': status,
-                           'metrics': metrics
-                           # TODO: add optional fields?
-                       }) as resp:
-        print(resp.text)
+    url = f"{ETL_API}/resources"
+    data = {
+        'jobId': batch_job_id,
+        'executionId': application_id,
+        'userId': user_id,
+        'sourceId': SOURCE_ID,
+        'orchestrator': ORCHESTRATOR,
+        'state': state,
+        'status': status,
+        'metrics': metrics
+        # TODO: add optional fields?
+    }
+
+    with requests.post(url, headers={'Authorization': f"Bearer {access_token}"}, json=data) as resp:
+        if not resp.ok:
+            _log.error(f"POST {url} {data} returned {resp.status_code}: {resp.text}", extra={
+                'user_id': user_id,
+                'job_id': batch_job_id
+            })
+
         resp.raise_for_status()
 
         total_credits = sum(resource['cost'] for resource in resp.json())
@@ -62,19 +71,25 @@ def log_added_value(batch_job_id: str, application_id: str, user_id: str, proces
     if not billable:
         return 0.0
 
-    with requests.post(f"{ETL_API}/addedvalue",
-                       headers={'Authorization': f"Bearer {access_token}"},
-                       json={
-                           'jobId': batch_job_id,
-                           'executionId': application_id,
-                           'userId': user_id,
-                           'sourceId': SOURCE_ID,
-                           'orchestrator': ORCHESTRATOR,
-                           'service': process_id,
-                           'area': {'value': square_meters, 'unit': 'square_meter'}
-                           # TODO: add optional fields?
-                       }) as resp:
-        print(resp.text)
+    url = f"{ETL_API}/addedvalue"
+    data = {
+        'jobId': batch_job_id,
+        'executionId': application_id,
+        'userId': user_id,
+        'sourceId': SOURCE_ID,
+        'orchestrator': ORCHESTRATOR,
+        'service': process_id,
+        'area': {'value': square_meters, 'unit': 'square_meter'}
+        # TODO: add optional fields?
+    }
+
+    with requests.post(url, headers={'Authorization': f"Bearer {access_token}"}, json=data) as resp:
+        if not resp.ok:
+            _log.error(f"POST {url} {data} returned {resp.status_code}: {resp.text}", extra={
+                'user_id': user_id,
+                'job_id': batch_job_id
+            })
+
         resp.raise_for_status()
 
         total_credits = sum(resource['cost'] for resource in resp.json())
@@ -83,6 +98,8 @@ def log_added_value(batch_job_id: str, application_id: str, user_id: str, proces
 
 def main(argv):
     from openeogeotrellis.integrations import keycloak
+
+    logging.basicConfig()
 
     client_id, client_secret = argv[1:3]
 
