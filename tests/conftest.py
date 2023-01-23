@@ -1,4 +1,6 @@
 import os
+from typing import Union
+
 import sys
 from pathlib import Path
 
@@ -7,9 +9,11 @@ import pytest
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
+from openeo_driver.jobregistry import ElasticJobRegistry
 from openeo_driver.testing import ApiTester
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.vault import Vault
 
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
@@ -27,6 +31,10 @@ pytest_plugins = "pytester"
 def pytest_configure(config):
     """Pytest configuration hook"""
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
+
+    # TODO #285 we need a better config system, e.g. to avoid monkeypatching `os.environ` here
+    os.environ["VAULT_ADDR"] = "https://vault.test"
+
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
     if smart_bool(os.environ.get("OPENEO_TESTING_SETUP_SPARK", "yes")):
@@ -148,14 +156,26 @@ def batch_job_output_root(tmp_path) -> Path:
 
 
 @pytest.fixture
+def job_registry() -> (
+    Union[
+        # TODO: #236 use common parent as return type hint
+        ElasticJobRegistry,
+        InMemoryJobRegistry,
+    ]
+):
+    return InMemoryJobRegistry()
+
+
+@pytest.fixture
 def backend_implementation(
-    request, batch_job_output_root
+    request, batch_job_output_root, job_registry
 ) -> "GeoPySparkBackendImplementation":
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     backend = GeoPySparkBackendImplementation(
         opensearch_enrich=False,
         batch_job_output_root=batch_job_output_root,
+        elastic_job_registry=job_registry,
     )
 
     # TODO: eliminate this `request.instance` stuff, normal fixture usage should suffice

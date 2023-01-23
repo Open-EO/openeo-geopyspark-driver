@@ -1,12 +1,12 @@
 import logging
-import os
 import subprocess
 from subprocess import CalledProcessError, PIPE
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 import hvac
 
 from openeogeotrellis.configparams import ConfigParams
+from openeo_driver.jobregistry import ElasticJobRegistryCredentials
 
 _log = logging.getLogger(__name__)
 
@@ -60,9 +60,10 @@ class Vault:
         # hvac has no Kerberos support, use CLI instead
         username, realm = principal.split("@")
 
-        vault_kerberos_login = [
+        cmd = [
             "vault",
             "login",
+            f"-address={self._url}",
             "-token-only",
             "-method=kerberos",
             f"username={username}",
@@ -72,17 +73,32 @@ class Vault:
             "krb5conf_path=/etc/krb5.conf"
         ]
 
-        env = {**os.environ, **{"VAULT_ADDR": self._url}}
-
         try:
-            vault_token = subprocess.check_output(vault_kerberos_login, env=env, text=True, stderr=PIPE)
+            vault_token = subprocess.check_output(cmd, text=True, stderr=PIPE)
             return vault_token
         except CalledProcessError as e:
             _log.error(msg=f"{e} stderr: {e.stderr.strip()}", exc_info=True)
             raise
 
-    def _client(self):
-        return hvac.Client(self._url)
+    def _client(self, token: Optional[str] = None):
+        return hvac.Client(self._url, token=token)
 
     def __str__(self):
         return self._url
+
+    def get_elastic_job_registry_credentials(
+        self, vault_token: Optional[str] = None
+    ) -> ElasticJobRegistryCredentials:
+        client = self._client(token=vault_token or self.login_kerberos())
+
+        secret = client.secrets.kv.v2.read_secret_version(
+            f"TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
+            mount_point="kv",
+        )
+
+        data = secret["data"]["data"]
+        return ElasticJobRegistryCredentials(
+            oidc_issuer=data["oidc_issuer"],
+            client_id=data["client_id"],
+            client_secret=data["client_secret"],
+        )
