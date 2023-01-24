@@ -15,7 +15,6 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, List, NamedTuple, Optional, Union
 
-import kubernetes.client.exceptions
 import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
@@ -158,6 +157,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         )
 
     def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
+        import kubernetes.client.exceptions
         try:
             metadata = self._kubernetes_api.get_namespaced_custom_object(
                 group="sparkoperator.k8s.io",
