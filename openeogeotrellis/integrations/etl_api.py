@@ -27,16 +27,6 @@ class EtlApi:
     def close(self):
         self._session.close()
 
-    def _can_execute_request(self, access_token: str) -> bool:
-        with self._session.get(f"{self._endpoint}/user/permissions",
-                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
-            if not resp.ok:
-                print(resp.text)
-
-            resp.raise_for_status()
-
-            return resp.json()["execution"]
-
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], application_id: str, user_id: str,
                            started_ms: float, finished_ms: float, state: str, status: str, cpu_seconds: float,
                            mb_seconds: float, duration_ms: float, sentinel_hub_processing_units: float,
@@ -152,8 +142,6 @@ def main(argv):
     print(access_token)
 
     with EtlApi() as etl_api:
-        assert etl_api._can_execute_request(access_token)
-
         batch_job_id = 'j-c9df97f8fea046e0ba08705e0fbd9b3b'
         title = 'job j-c9df97f8fea046e0ba08705e0fbd9b3b'
         application_id = 'application_1671092799310_78188'
