@@ -20,7 +20,8 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
-from openeogeotrellis.integrations import etl_api, keycloak
+from openeogeotrellis.integrations import keycloak
+from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_job_name,
@@ -192,27 +193,29 @@ class JobTracker:
                                                                                           'user_id': user_id
                                                                                       })
 
-                                    resource_costs_in_credits = etl_api.log_resource_usage(
-                                        batch_job_id=job_id,
-                                        application_id=application_id,
-                                        user_id=user_id,
-                                        state=final_state,
-                                        status=new_status,
-                                        cpu_seconds=cpu_time_seconds,
-                                        mb_seconds=memory_time_megabyte_seconds,
-                                        duration_ms=finish_time - start_time,
-                                        sentinel_hub_processing_units=float(
-                                            Decimal(sentinelhub_processing_units) + sentinelhub_batch_processing_units),
-                                        access_token=etl_api_access_token)
+                                    with EtlApi() as etl_api:
+                                        resource_costs_in_credits = etl_api.log_resource_usage(
+                                            batch_job_id=job_id,
+                                            application_id=application_id,
+                                            user_id=user_id,
+                                            state=final_state,
+                                            status=new_status,
+                                            cpu_seconds=cpu_time_seconds,
+                                            mb_seconds=memory_time_megabyte_seconds,
+                                            duration_ms=finish_time - start_time,
+                                            sentinel_hub_processing_units=float(Decimal(sentinelhub_processing_units) +
+                                                                                sentinelhub_batch_processing_units),
+                                            access_token=etl_api_access_token)
 
-                                    added_value_costs_in_credits = sum(etl_api.log_added_value(
-                                        batch_job_id=job_id,
-                                        application_id=application_id,
-                                        user_id=user_id,
-                                        process_id=process_id,
-                                        square_meters=result_metadata.get('area', 0),
-                                        access_token=etl_api_access_token) for process_id in
-                                                                       result_metadata.get('unique_process_ids', []))
+                                        added_value_costs_in_credits = sum(etl_api.log_added_value(
+                                            batch_job_id=job_id,
+                                            application_id=application_id,
+                                            user_id=user_id,
+                                            process_id=process_id,
+                                            square_meters=result_metadata.get('area', 0),
+                                            access_token=etl_api_access_token) for process_id in
+                                                                           result_metadata.get('unique_process_ids',
+                                                                                               []))
 
                                     registry.patch(job_id, user_id, **dict(
                                         result_metadata,
