@@ -74,11 +74,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         feature_flags = load_params.get("featureflags", {})
         tilesize = feature_flags.get("tilesize", 256)
         default_temporal_resolution = "ByDay"
-        default_indexReduction = 8
-        if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
+        default_indexReduction = 6
+        #if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
             # for pure timeseries processing, adjust partitioning strategy
-            default_temporal_resolution = "None"
-            default_indexReduction = 0
+            #default_temporal_resolution = "None"
+            #default_indexReduction = 0
         indexReduction = feature_flags.get("indexreduction", default_indexReduction)
         temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
         datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
@@ -309,17 +309,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                                                        experimental
                                                                                        ))
 
-        def file_oscars_pyramid():
-            return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
-                                jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
-                                                                                       opensearch_collection_id,
-                                                                                       opensearch_link_titles,
-                                                                                       root_path,
-                                                                                       jvm.geotrellis.raster.CellSize(
-                                                                                           cell_width,
-                                                                                           cell_height),
-                                                                                       experimental
-                                                                                       ))
 
         def file_s5p_pyramid():
             return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel5PPyramidFactory)
@@ -612,7 +601,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
         elif layer_source_type == 'file-oscars':
-            pyramid = file_oscars_pyramid()
+            pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(

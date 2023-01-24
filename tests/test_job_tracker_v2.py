@@ -115,14 +115,14 @@ class YarnMock:
         self.apps[app_id] = app = YarnAppInfo(app_id=app_id, **kwargs)
         return app
 
-    def _check_output(self, args: List[str]):
+    def _check_output(self, popenargs: List[str], **kwargs):
         """Mock for subprocess.check_output(["yarn", ...])"""
-        if len(args) == 4 and args[:3] == ["yarn", "application", "-status"]:
-            app_id = args[3]
+        if len(popenargs) == 4 and popenargs[:3] == ["yarn", "application", "-status"]:
+            app_id = popenargs[3]
             if app_id in self.corrupt_app_ids:
                 raise subprocess.CalledProcessError(
                     returncode=255,
-                    cmd=args,
+                    cmd=popenargs,
                     output=f"C0rRup7! {app_id}'".encode("utf-8"),
                 )
             elif app_id in self.apps:
@@ -130,13 +130,13 @@ class YarnMock:
             else:
                 raise subprocess.CalledProcessError(
                     returncode=255,
-                    cmd=args,
+                    cmd=popenargs,
                     output=f"Application with id '{app_id}' doesn't exist in RM or Timeline Server.".encode(
                         "utf-8"
                     ),
                 )
 
-        raise RuntimeError(f"Unsupported check_output({args!r})")
+        raise RuntimeError(f"Unsupported check_output({popenargs!r})")
 
     @contextlib.contextmanager
     def patch(self):
@@ -349,7 +349,7 @@ class TestYarnJobTracker:
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=YarnStatusGetter(),
-            job_registry=lambda: zk_job_registry,
+            job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
             output_root_dir=batch_job_output_root,
@@ -835,7 +835,7 @@ class TestK8sJobTracker:
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(kubecost_url=kubecost_url),
-            job_registry=lambda: zk_job_registry,
+            job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
             output_root_dir=batch_job_output_root,

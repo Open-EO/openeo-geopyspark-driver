@@ -15,7 +15,6 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Callable, List, NamedTuple, Optional, Union
 
-import kubernetes.client.exceptions
 import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
@@ -86,7 +85,9 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         try:
             command = ["yarn", "application", "-status", app_id]
             with TimingLogger(f"Running {command}", logger=_log.debug):
-                application_report = subprocess.check_output(command).decode("utf-8")
+                application_report = subprocess.check_output(
+                    command, stderr=subprocess.PIPE
+                ).decode("utf-8")
         except CalledProcessError as e:
             stdout = e.stdout.decode()
             if "doesn't exist in RM or Timeline Server" in stdout:
@@ -156,6 +157,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         )
 
     def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
+        import kubernetes.client.exceptions
         try:
             metadata = self._kubernetes_api.get_namespaced_custom_object(
                 group="sparkoperator.k8s.io",
@@ -231,7 +233,7 @@ class JobTracker:
     def __init__(
         self,
         app_state_getter: JobMetadataGetterInterface,
-        job_registry: Callable[[], ZkJobRegistry],
+        job_registry: ZkJobRegistry,
         principal: str,
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
@@ -258,10 +260,9 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        with self._job_registry() as registry, StatsReporter(
+        with self._job_registry as registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
-            registry.ensure_paths()
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
                 jobs_to_track = registry.get_running_jobs()
@@ -348,7 +349,6 @@ class JobTracker:
             log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
             # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
             registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-            registry.mark_done(job_id, user_id)
             with ElasticJobRegistry.just_log_errors("job_tracker app not found"):
                 if self._elastic_job_registry:
                     # TODO: also set started/finished, exception/error info ...
@@ -411,7 +411,11 @@ class JobTracker:
                     job_id, user_id, dependency_sources
                 )
 
-            registry.mark_done(job_id, user_id)
+            # Note: setting the status is already done with a `patch` higher,
+            #       but we do it here again with `set_status` for the "auto_mark_done" feature
+            registry.set_status(
+                job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
+            )
 
             # TODO: make this usage report handling/logging more generic?
             sentinelhub_processing_units = (
@@ -457,6 +461,10 @@ class CliApp:
         _log.info(f"{ConfigParams()=!s}")
 
         try:
+            zk_root_path = args.zk_job_registry_root_path
+            _log.info(f"Using {zk_root_path=}")
+            zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+
             app_cluster = args.app_cluster
             if app_cluster == "auto":
                 # TODO: eliminate (need for) auto-detection.
@@ -469,7 +477,7 @@ class CliApp:
                 raise ValueError(app_cluster)
             job_tracker = JobTracker(
                 app_state_getter=app_state_getter,
-                job_registry=ZkJobRegistry,
+                job_registry=zk_job_registry,
                 principal=args.principal,
                 keytab=args.keytab,
             )
@@ -511,6 +519,12 @@ class CliApp:
             action="store_true",
             help="Use basic logging on stderr instead of JSON formatted logs.",
         )
+        parser.add_argument(
+            "--zk-job-registry-root-path",
+            default=ConfigParams().batch_jobs_zookeeper_root_path,
+            help="ZooKeeper root path for the job registry",
+        )
+        # TODO: also allow setting zk_root_path through "env" setting (prod,dev, integrationtests, ...)?
 
         return parser.parse_args(args=args)
 
