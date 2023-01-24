@@ -16,6 +16,27 @@ ES_TAGS = ["openeo"]
 def elasticsearch_logs(
     job_id: str, create_time: dt.datetime, offset: Optional[str]
 ) -> Iterable[dict]:
+    """Retrieve Job's logs from Elasticsearch.
+
+    :param job_id:
+        ID of the Job
+
+    :param create_time:
+        Time the job was created, only log records starting from that time will be retrieved
+
+    :param offset:
+        Search only after this offset.
+        This offset is a combination of the timestamp and log.offset
+        where timestamp is the Unix Epoch (int) and log.offset an integer from Kibana.
+
+        For example: [1673351608383, 102790]
+
+    :raises OpenEOApiException:
+        - Either when the offset is not valid JSON
+        - or when Elasticsearch had a connection timeout
+
+    :return: an generator that yields a dict for each log record.
+    """
     try:
         search_after = None if offset in [None, ""] else json.loads(offset)
         return _elasticsearch_logs(job_id, create_time, search_after)
