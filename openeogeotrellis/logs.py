@@ -1,9 +1,10 @@
+import datetime as dt
 import json
 from typing import Iterable, Optional
 
 
 from elasticsearch import Elasticsearch, ConnectionTimeout
-from openeo.util import dict_no_none
+from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
 
 
@@ -12,18 +13,21 @@ ES_INDEX_PATTERN = "openeo-*-index-1m*"
 ES_TAGS = ["openeo"]
 
 
-def elasticsearch_logs(job_id: str, offset: Optional[str]) -> Iterable[dict]:
+def elasticsearch_logs(
+    job_id: str, create_time: dt.datetime, offset: Optional[str]
+) -> Iterable[dict]:
     try:
         search_after = None if offset in [None, ""] else json.loads(offset)
-        return _elasticsearch_logs(job_id, search_after)
+        return _elasticsearch_logs(job_id, create_time, search_after)
     except json.decoder.JSONDecodeError:
         raise OpenEOApiException(status_code=400, code="OffsetInvalid",
                                  message=f"The value passed for the query parameter 'offset' is invalid: {offset}")
 
 
-def _elasticsearch_logs(job_id: str, search_after: Optional[list]) -> Iterable[dict]:
+def _elasticsearch_logs(
+    job_id: str, create_time: dt.datetime, search_after: Optional[list]
+) -> Iterable[dict]:
     page_size = 100
-
     with Elasticsearch(ES_HOSTS) as es:
         while True:
             try:
@@ -34,6 +38,15 @@ def _elasticsearch_logs(job_id: str, search_after: Optional[list]) -> Iterable[d
                             "filter": [
                                 {"term": {"job_id": job_id}},
                                 {"terms": {"tags": ES_TAGS}},
+                                {
+                                    "range": {
+                                        "@timestamp": {
+                                            "format": "strict_date_optional_time",
+                                            "gte": rfc3339.datetime(create_time),
+                                            "lte": "now",
+                                        }
+                                    }
+                                },
                             ],
                         }
                     },
@@ -103,13 +116,17 @@ def main():
 
     # job_id = 'j-7e274ba1eb2e4a20a0e100d53d44d692'  # short
     # search_after = [1670939264990, "c2m9C4UBFu4FfsUu8ClI"]
+
     # job_id = 'j-db27cdaaca7a4d288346eaf01ceeef16'  # long  But seems to be gone now
     # search_after = [1671009758258, "1vfxD4UBVWXUH_mWk-OT"]
     # search_after = None
-    job_id = "j-65b73756031c4955aadb3d42753de2e9"  # also long
-    search_after = "[1673351608383, 102790]"
 
-    logs = elasticsearch_logs(job_id, search_after)
+    job_id = "j-65b73756031c4955aadb3d42753de2e9"  # also long
+    # search_after = "[1673351608383, 102790]"
+    search_after = None
+
+    create_time = rfc3339.parse_datetime("2023-01-10T11:53:28Z")
+    logs = elasticsearch_logs(job_id, create_time, search_after)
 
     output_limit = None
 
