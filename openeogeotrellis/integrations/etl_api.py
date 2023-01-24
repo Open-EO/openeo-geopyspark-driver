@@ -5,6 +5,7 @@ import sys
 
 from requests.exceptions import RequestException
 from time import sleep
+from typing import Optional
 
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
@@ -36,9 +37,10 @@ class EtlApi:
 
             return resp.json()["execution"]
 
-    def log_resource_usage(self, batch_job_id: str, application_id: str, user_id: str, state: str, status: str,
-                           cpu_seconds: float, mb_seconds: float, duration_ms: float,
-                           sentinel_hub_processing_units: float, access_token: str) -> float:
+    def log_resource_usage(self, batch_job_id: str, title: Optional[str], application_id: str, user_id: str,
+                           started_ms: float, finished_ms: float, state: str, status: str, cpu_seconds: float,
+                           mb_seconds: float, duration_ms: float, sentinel_hub_processing_units: float,
+                           access_token: str) -> float:
         metrics = {
             'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
             'memory': {'value': mb_seconds, 'unit': 'mb-seconds'},
@@ -50,14 +52,16 @@ class EtlApi:
 
         data = {
             'jobId': batch_job_id,
+            'jobName': title,
             'executionId': application_id,
             'userId': user_id,
             'sourceId': SOURCE_ID,
             'orchestrator': ORCHESTRATOR,
+            'jobStart': started_ms,
+            'jobFinish': finished_ms,
             'state': state,
             'status': status,
             'metrics': metrics
-            # TODO: add optional fields?
         }
 
         def send_request():
@@ -78,8 +82,9 @@ class EtlApi:
 
         return self._retry(send_request)
 
-    def log_added_value(self, batch_job_id: str, application_id: str, user_id: str, process_id: str,
-                        square_meters: float, access_token: str) -> float:
+    def log_added_value(self, batch_job_id: str, title: Optional[str], application_id: str, user_id: str,
+                        started_ms: float, finished_ms: float, process_id: str, square_meters: float,
+                        access_token: str) -> float:
         billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
                                       "mean", "aggregate_spatial", "discard_result", "filter_temporal",
                                       "load_collection", "reduce_dimension", "apply_dimension", "not", "max", "or",
@@ -92,13 +97,15 @@ class EtlApi:
 
         data = {
             'jobId': batch_job_id,
+            'jobName': title,
             'executionId': application_id,
             'userId': user_id,
             'sourceId': SOURCE_ID,
             'orchestrator': ORCHESTRATOR,
+            'jobStart': started_ms,
+            'jobFinish': finished_ms,
             'service': process_id,
             'area': {'value': square_meters, 'unit': 'square_meter'}
-            # TODO: add optional fields?
         }
 
         def send_request():
@@ -148,8 +155,11 @@ def main(argv):
         assert etl_api._can_execute_request(access_token)
 
         batch_job_id = 'j-c9df97f8fea046e0ba08705e0fbd9b3b'
+        title = 'job j-c9df97f8fea046e0ba08705e0fbd9b3b'
         application_id = 'application_1671092799310_78188'
         user_id = 'jenkins'
+        started_ms = 1674565473000
+        finished_ms = 1674565596000
         state = 'FINISHED'
         status = 'SUCCEEDED'
         cpu_seconds = 5971
@@ -159,14 +169,14 @@ def main(argv):
         process_id = 'sar_backscatter'
         square_meters = 359818999.0591266
 
-        resources_cost = etl_api.log_resource_usage(batch_job_id, application_id, user_id, state, status, cpu_seconds,
-                                                    mb_seconds, duration_ms, sentinel_hub_processing_units,
-                                                    access_token)
+        resources_cost = etl_api.log_resource_usage(batch_job_id, title, application_id, user_id, started_ms,
+                                                    finished_ms, state, status, cpu_seconds, mb_seconds, duration_ms,
+                                                    sentinel_hub_processing_units, access_token)
 
         print(f"{resources_cost=}")
 
-        added_value_cost = etl_api.log_added_value(batch_job_id, application_id, user_id, process_id, square_meters,
-                                                   access_token)
+        added_value_cost = etl_api.log_added_value(batch_job_id, title, application_id, user_id, started_ms,
+                                                   finished_ms, process_id, square_meters, access_token)
 
         print(f"{added_value_cost=}")
 

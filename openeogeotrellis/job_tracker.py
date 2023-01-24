@@ -193,11 +193,16 @@ class JobTracker:
                                                                                           'user_id': user_id
                                                                                       })
 
+                                    job_title = result_metadata.get("title")
+
                                     with EtlApi() as etl_api:
                                         resource_costs_in_credits = etl_api.log_resource_usage(
                                             batch_job_id=job_id,
+                                            title=job_title,
                                             application_id=application_id,
                                             user_id=user_id,
+                                            started_ms=start_time,
+                                            finished_ms=finish_time,
                                             state=final_state,
                                             status=new_status,
                                             cpu_seconds=cpu_time_seconds,
@@ -209,8 +214,11 @@ class JobTracker:
 
                                         added_value_costs_in_credits = sum(etl_api.log_added_value(
                                             batch_job_id=job_id,
+                                            title=job_title,
                                             application_id=application_id,
                                             user_id=user_id,
+                                            started_ms=start_time,
+                                            finished_ms=finish_time,
                                             process_id=process_id,
                                             square_meters=result_metadata.get('area', 0),
                                             access_token=etl_api_access_token) for process_id in
