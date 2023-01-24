@@ -29,6 +29,7 @@ class ZkJobRegistry:
         zk_client: Union[str, KazooClient, KazooClientMock, None] = None,
     ):
         self._root = root_path or ConfigParams().batch_jobs_zookeeper_root_path
+        _log.debug(f"Using batch job zk root path {self._root}")
         if zk_client is None:
             zk_client = KazooClient(hosts=",".join(ConfigParams().zookeepernodes))
         elif isinstance(zk_client, str):
@@ -37,6 +38,9 @@ class ZkJobRegistry:
 
     def ensure_paths(self):
         # TODO: just do this automatically in __init__?
+        #       Only worthwhile if we first can eliminate ad-hoc ZkJobRegistry() instantiation
+        #       and reuse/pass around a single instance. See #313.
+        #       Or do this only automatically before first write operation from an instance?
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 
