@@ -6,7 +6,6 @@ import subprocess
 import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union, Optional
-import time
 from collections import namedtuple
 from datetime import datetime
 import re
@@ -16,11 +15,13 @@ import kazoo.client
 
 import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339, url_join
+from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_job_name,
@@ -30,6 +31,7 @@ from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.vault import Vault
 from openeogeotrellis import async_task
 
 _log = logging.getLogger(__name__)
@@ -58,7 +60,14 @@ class JobTracker:
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        vault: Optional[Vault] = None
     ):
+        # TODO: avoid is_kube_deploy anti-pattern
+        self._kube_mode = ConfigParams().is_kube_deploy
+
+        if not self._kube_mode and vault is None:
+            raise ValueError(vault)
+
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
@@ -69,20 +78,19 @@ class JobTracker:
             jvm=None,
             principal=principal,
             key_tab=keytab,
-            vault=None,
+            vault=vault,
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
         self._elastic_job_registry = get_or_build_elastic_job_registry(
             elastic_job_registry, ref="JobTracker"
         )
-
-        # TODO: avoid is_kube_deploy anti-pattern
-        self._kube_mode = ConfigParams().is_kube_deploy
+        self._vault = vault
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
+            etl_api_access_token = self._etl_api_access_token()
 
             jobs_to_track = registry.get_running_jobs()
 
@@ -170,7 +178,48 @@ class JobTracker:
                                 if final_state != "UNDEFINED":
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                     # TODO: skip patching the job znode and read from this file directly?
-                                    registry.patch(job_id, user_id, **result_metadata)
+
+                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
+                                                                    .get("sentinelhub", {}).get("value", 0.0))
+
+                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
+                                                                          or Decimal("0.0"))
+
+                                    job_title = result_metadata.get("title")
+
+                                    with EtlApi(ConfigParams().etl_api) as etl_api:
+                                        resource_costs_in_credits = etl_api.log_resource_usage(
+                                            batch_job_id=job_id,
+                                            title=job_title,
+                                            application_id=application_id,
+                                            user_id=user_id,
+                                            started_ms=start_time,
+                                            finished_ms=finish_time,
+                                            state=final_state,
+                                            status=new_status,
+                                            cpu_seconds=cpu_time_seconds,
+                                            mb_seconds=memory_time_megabyte_seconds,
+                                            duration_ms=finish_time - start_time,
+                                            sentinel_hub_processing_units=float(Decimal(sentinelhub_processing_units) +
+                                                                                sentinelhub_batch_processing_units),
+                                            access_token=etl_api_access_token)
+
+                                        added_value_costs_in_credits = sum(etl_api.log_added_value(
+                                            batch_job_id=job_id,
+                                            title=job_title,
+                                            application_id=application_id,
+                                            user_id=user_id,
+                                            started_ms=start_time,
+                                            finished_ms=finish_time,
+                                            process_id=process_id,
+                                            square_meters=result_metadata.get('area', 0),
+                                            access_token=etl_api_access_token) for process_id in
+                                                                           result_metadata.get('unique_process_ids',
+                                                                                               []))
+
+                                    registry.patch(job_id, user_id, **dict(
+                                        result_metadata,
+                                        costs=resource_costs_in_credits + added_value_costs_in_credits))
 
                                     registry.remove_dependencies(job_id, user_id)
 
@@ -182,12 +231,6 @@ class JobTracker:
                                             job_id, user_id, dependency_sources)
 
                                     registry.mark_done(job_id, user_id)
-
-                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
-                                                                    .get("sentinelhub", {}).get("value", 0.0))
-
-                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
-                                                                          or Decimal("0.0"))
 
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
@@ -317,6 +360,21 @@ class JobTracker:
         utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
         return date_to_rfc3339(utc_datetime)
 
+    def _etl_api_access_token(self):
+        vault_token = self._vault.login_kerberos(self._principal, self._keytab)
+
+        etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
+        oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
+
+        client_info = OidcClientInfo(
+            provider=oidc_provider,
+            client_id=etl_api_credentials.client_id,
+            client_secret=etl_api_credentials.client_secret,
+        )
+
+        authenticator = OidcClientCredentialsAuthenticator(client_info)
+        return authenticator.get_tokens().access_token
+
 
 if __name__ == '__main__':
     import argparse
@@ -344,12 +402,13 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
-    parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
+    parser.add_argument("--keytab", default="openeo.keytab",
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
     try:
-        JobTracker(ZkJobRegistry, args.principal, args.keytab).update_statuses()
+        vault = Vault("https://vault.vgt.vito.be")
+        JobTracker(ZkJobRegistry, args.principal, args.keytab, vault=vault).update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:
