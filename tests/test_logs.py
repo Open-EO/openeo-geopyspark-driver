@@ -18,10 +18,9 @@ def test_elasticsearch_logs_skips_entry_with_empty_loglevel_simple_case(mock_sea
     mock_search.return_value = {
         "hits": {"hits": [search_hit]},
     }
-    dummy_create_time = dt.datetime(2023, 1, 1)
 
     actual_log_entries = list(
-        elasticsearch_logs("job-foo", dummy_create_time, offset=None)
+        elasticsearch_logs("job-foo", create_time=None, offset=None)
     )
     assert actual_log_entries == []
 
@@ -38,10 +37,9 @@ def test_elasticsearch_logs_keeps_entry_when_loglevel_filled_in(mock_search):
     mock_search.return_value = {
         "hits": {"hits": [search_hit]},
     }
-    dummy_create_time = dt.datetime(2023, 1, 1)
 
     actual_log_entries = list(
-        elasticsearch_logs("job-foo", dummy_create_time, offset=None)
+        elasticsearch_logs("job-foo", create_time=None, offset=None)
     )
 
     expected_log_entries = [
@@ -86,10 +84,9 @@ def test_elasticsearch_logs_skips_entries_with_empty_loglevel(mock_search):
     mock_search.return_value = {
         "hits": {"hits": search_hits},
     }
-    dummy_create_time = dt.datetime(2023, 1, 1)
 
     actual_log_entries = list(
-        elasticsearch_logs("job-foo", dummy_create_time, offset=None)
+        elasticsearch_logs("job-foo", create_time=None, offset=None)
     )
 
     expected_log_entries = [
@@ -110,10 +107,9 @@ def test_elasticsearch_logs_skips_entries_with_empty_loglevel(mock_search):
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
 def test_connection_timeout_raises_openeoapiexception(mock_search):
     mock_search.side_effect = ConnectionTimeout(500, "Simulating connection timeout")
-    dummy_create_time = dt.datetime(2023, 1, 1)
 
     with pytest.raises(OpenEOApiException) as exc:
-        list(elasticsearch_logs("job-foo", create_time=dummy_create_time, offset=None))
+        list(elasticsearch_logs("job-foo", create_time=None, offset=None))
 
     assert exc.value.message == (
         "Temporary failure while retrieving logs (ConnectionTimeout). "

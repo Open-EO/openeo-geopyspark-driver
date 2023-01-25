@@ -14,9 +14,9 @@ ES_TAGS = ["openeo"]
 
 
 def elasticsearch_logs(
-    job_id: str, create_time: dt.datetime, offset: Optional[str]
+    job_id: str, create_time: Optional[dt.datetime] = None, offset: Optional[str] = None
 ) -> Iterable[dict]:
-    """Retrieve Job's logs from Elasticsearch.
+    """Retrieve a job's logs from Elasticsearch.
 
     :param job_id:
         ID of the Job
@@ -26,10 +26,12 @@ def elasticsearch_logs(
 
     :param offset:
         Search only after this offset.
-        This offset is a combination of the timestamp and log.offset
-        where timestamp is the Unix Epoch (int) and log.offset an integer from Kibana.
+        If used, then this offset expects a combination of the timestamp and log.offset
+        encoded as a JSON string that contains a list of the form [timestamp, log_offset]
+        where timestamp is the Unix Epoch (int) and log_offset is an integer refering to
+        log.offset in Elasticsearch.
 
-        For example: [1673351608383, 102790]
+        For example: "[1673351608383, 102790]"
 
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON
@@ -46,31 +48,58 @@ def elasticsearch_logs(
 
 
 def _elasticsearch_logs(
-    job_id: str, create_time: dt.datetime, search_after: Optional[list]
+    job_id: str,
+    create_time: Optional[dt.datetime] = None,
+    search_after: Optional[list] = None,
 ) -> Iterable[dict]:
+    """Internal helper function to retrieve a job's logs from Elasticsearch.
+
+    :param job_id:
+        ID of the Job
+
+    :param create_time:
+        Time the job was created, only log records starting from that time will be retrieved
+
+    :param search_after:
+        Search only after this offset.
+        This offset is a list which takes two elements: the timestamp and log.offset
+        where timestamp is the Unix Epoch (int) and log.offset (int) in Elasticsearch.
+
+        For example: [1673351608383, 102790]
+
+    :raises OpenEOApiException:
+        - Either when the offset is not valid JSON
+        - or when Elasticsearch had a connection timeout
+
+    :return: an generator that yields a dict for each log record.
+    """
+
     page_size = 100
+    query = {
+        "bool": {
+            "filter": [
+                {"term": {"job_id": job_id}},
+                {"terms": {"tags": ES_TAGS}},
+            ],
+        }
+    }
+    if create_time:
+        query["bool"]["filter"].append(
+            {
+                "range": {
+                    "@timestamp": {
+                        "format": "strict_date_optional_time",
+                        "gte": rfc3339.datetime(create_time),
+                    }
+                }
+            }
+        )
     with Elasticsearch(ES_HOSTS) as es:
         while True:
             try:
                 search_result = es.search(
                     index=ES_INDEX_PATTERN,
-                    query={
-                        "bool": {
-                            "filter": [
-                                {"term": {"job_id": job_id}},
-                                {"terms": {"tags": ES_TAGS}},
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "format": "strict_date_optional_time",
-                                            "gte": rfc3339.datetime(create_time),
-                                            "lte": "now",
-                                        }
-                                    }
-                                },
-                            ],
-                        }
-                    },
+                    query=query,
                     search_after=search_after,
                     size=page_size,
                     sort=[
