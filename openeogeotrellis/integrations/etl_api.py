@@ -1,12 +1,9 @@
 import logging
-
-import requests
-import sys
-
-from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
-from requests.exceptions import RequestException
 from time import sleep
 from typing import Optional
+
+import requests
+from requests.exceptions import RequestException
 
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
@@ -130,53 +127,3 @@ class EtlApi:
 
                 attempt += 1
                 sleep(10)
-
-
-def main(argv):
-    logging.basicConfig()
-
-    client_id, client_secret = argv[1:3]
-
-    oidc_provider = OidcProviderInfo(
-        issuer="https://sso-int.terrascope.be/auth/realms/terrascope")
-
-    client_info = OidcClientInfo(
-        provider=oidc_provider,
-        client_id=client_id,
-        client_secret=client_secret,
-    )
-
-    authenticator = OidcClientCredentialsAuthenticator(client_info)
-    access_token = authenticator.get_tokens().access_token
-    print(access_token)
-
-    with EtlApi("https://etl-dev.terrascope.be") as etl_api:
-        batch_job_id = 'j-284a19e1d7c14c5480b51a31a645c660'
-        title = 'SentinelhubSarBackscatterBatch'
-        application_id = 'application_1674538064532_2295'
-        user_id = 'jenkins'
-        started_ms = 1674565473000
-        finished_ms = 1674565596000
-        state = 'FINISHED'
-        status = 'SUCCEEDED'
-        cpu_seconds = 4358
-        mb_seconds = 10105049
-        duration_ms = 123000
-        sentinel_hub_processing_units = 127.15657552083333
-        process_id = 'sar_backscatter'
-        square_meters = 359818999.0591266
-
-        resources_cost = etl_api.log_resource_usage(batch_job_id, title, application_id, user_id, started_ms,
-                                                    finished_ms, state, status, cpu_seconds, mb_seconds, duration_ms,
-                                                    sentinel_hub_processing_units, access_token)
-
-        print(f"{resources_cost=}")
-
-        added_value_cost = etl_api.log_added_value(batch_job_id, title, application_id, user_id, started_ms,
-                                                   finished_ms, process_id, square_meters, access_token)
-
-        print(f"{added_value_cost=}")
-
-
-if __name__ == '__main__':
-    main(sys.argv)
