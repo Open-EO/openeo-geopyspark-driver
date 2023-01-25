@@ -15,12 +15,12 @@ import kazoo.client
 
 import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339, url_join
+from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
-from openeogeotrellis.integrations import keycloak
 from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
@@ -90,7 +90,7 @@ class JobTracker:
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
-            vault_token = self._vault.login_kerberos(self._principal, self._keytab)
+            etl_api_access_token = self._etl_api_access_token()
 
             jobs_to_track = registry.get_running_jobs()
 
@@ -185,17 +185,9 @@ class JobTracker:
                                     sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
                                                                           or Decimal("0.0"))
 
-                                    etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
-                                    etl_api_access_token = keycloak.authenticate_oidc(etl_api_credentials.client_id,
-                                                                                      etl_api_credentials.client_secret,
-                                                                                      logging_context={
-                                                                                          'job_id': job_id,
-                                                                                          'user_id': user_id
-                                                                                      })
-
                                     job_title = result_metadata.get("title")
 
-                                    with EtlApi() as etl_api:
+                                    with EtlApi(ConfigParams().etl_api) as etl_api:
                                         resource_costs_in_credits = etl_api.log_resource_usage(
                                             batch_job_id=job_id,
                                             title=job_title,
@@ -367,6 +359,21 @@ class JobTracker:
 
         utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
         return date_to_rfc3339(utc_datetime)
+
+    def _etl_api_access_token(self):
+        vault_token = self._vault.login_kerberos(self._principal, self._keytab)
+
+        etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
+        oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
+
+        client_info = OidcClientInfo(
+            provider=oidc_provider,
+            client_id=etl_api_credentials.client_id,
+            client_secret=etl_api_credentials.client_secret,
+        )
+
+        authenticator = OidcClientCredentialsAuthenticator(client_info)
+        return authenticator.get_tokens().access_token
 
 
 if __name__ == '__main__':

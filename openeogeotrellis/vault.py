@@ -29,7 +29,7 @@ class Vault:
         return client_credentials
 
     def get_etl_api_credentials(self, vault_token: str) -> OAuthCredentials:
-        return self._get_kv_credentials("TAP/big_data_services/openeo/etl-api-oauth", vault_token)
+        return self._get_kv_credentials("TAP/big_data_services/openeo/etl-api-oauth-dev", vault_token)
 
     def _get_kv_credentials(self, vault_secret_path, vault_token: str) -> OAuthCredentials:
         client = self._client()

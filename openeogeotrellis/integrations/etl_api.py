@@ -3,6 +3,7 @@ import logging
 import requests
 import sys
 
+from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 from requests.exceptions import RequestException
 from time import sleep
 from typing import Optional
@@ -14,7 +15,7 @@ _log = logging.getLogger(__name__)
 
 
 class EtlApi:
-    def __init__(self, endpoint: str = "https://etl-dev.terrascope.be"):  # TODO: point this to prod
+    def __init__(self, endpoint: str):
         self._endpoint = endpoint
         self._session = requests.session()
 
@@ -132,26 +133,34 @@ class EtlApi:
 
 
 def main(argv):
-    from openeogeotrellis.integrations import keycloak
-
     logging.basicConfig()
 
     client_id, client_secret = argv[1:3]
 
-    access_token = keycloak.authenticate_oidc(client_id, client_secret)
+    oidc_provider = OidcProviderInfo(
+        issuer="https://sso-int.terrascope.be/auth/realms/terrascope")
+
+    client_info = OidcClientInfo(
+        provider=oidc_provider,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+    authenticator = OidcClientCredentialsAuthenticator(client_info)
+    access_token = authenticator.get_tokens().access_token
     print(access_token)
 
-    with EtlApi() as etl_api:
-        batch_job_id = 'j-c9df97f8fea046e0ba08705e0fbd9b3b'
-        title = 'job j-c9df97f8fea046e0ba08705e0fbd9b3b'
-        application_id = 'application_1671092799310_78188'
+    with EtlApi("https://etl-dev.terrascope.be") as etl_api:
+        batch_job_id = 'j-284a19e1d7c14c5480b51a31a645c660'
+        title = 'SentinelhubSarBackscatterBatch'
+        application_id = 'application_1674538064532_2295'
         user_id = 'jenkins'
         started_ms = 1674565473000
         finished_ms = 1674565596000
         state = 'FINISHED'
         status = 'SUCCEEDED'
-        cpu_seconds = 5971
-        mb_seconds = 5971000
+        cpu_seconds = 4358
+        mb_seconds = 10105049
         duration_ms = 123000
         sentinel_hub_processing_units = 127.15657552083333
         process_id = 'sar_backscatter'

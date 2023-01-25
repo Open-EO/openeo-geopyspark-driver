@@ -44,6 +44,9 @@ class ConfigParams:
 
         self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
+        self.etl_api = "https://etl-dev.terrascope.be"
+        self.etl_api_oidc_issuer = "https://sso-int.terrascope.be/auth/realms/terrascope"
+
     def __str__(self) -> str:
         return pformat(vars(self))
 
