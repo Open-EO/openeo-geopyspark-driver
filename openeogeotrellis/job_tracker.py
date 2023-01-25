@@ -14,7 +14,7 @@ import requests
 import kazoo.client
 
 import openeogeotrellis.backend
-from openeo.util import date_to_rfc3339, url_join
+from openeo.util import date_to_rfc3339, deep_get, url_join
 from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
@@ -193,26 +193,28 @@ class JobTracker:
                                             title=job_title,
                                             application_id=application_id,
                                             user_id=user_id,
-                                            started_ms=start_time,
-                                            finished_ms=finish_time,
+                                            started_ms=float(start_time),
+                                            finished_ms=float(finish_time),
                                             state=final_state,
                                             status=new_status,
                                             cpu_seconds=cpu_time_seconds,
                                             mb_seconds=memory_time_megabyte_seconds,
-                                            duration_ms=finish_time - start_time,
+                                            duration_ms=float(finish_time) - float(start_time),
                                             sentinel_hub_processing_units=float(Decimal(sentinelhub_processing_units) +
                                                                                 sentinelhub_batch_processing_units),
                                             access_token=etl_api_access_token)
+
+                                        area = deep_get(result_metadata, 'area', 'value', None)
 
                                         added_value_costs_in_credits = sum(etl_api.log_added_value(
                                             batch_job_id=job_id,
                                             title=job_title,
                                             application_id=application_id,
                                             user_id=user_id,
-                                            started_ms=start_time,
-                                            finished_ms=finish_time,
+                                            started_ms=float(start_time),
+                                            finished_ms=float(finish_time),
                                             process_id=process_id,
-                                            square_meters=result_metadata.get('area', 0),
+                                            square_meters=float(area) if area is not None else 0.0,
                                             access_token=etl_api_access_token) for process_id in
                                                                            result_metadata.get('unique_process_ids',
                                                                                                []))
