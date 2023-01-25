@@ -340,6 +340,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         self._principal = principal
         self._key_tab = key_tab
 
+    def capabilities_billing(self) -> dict:
+        return {
+            "currency": "credits",
+        }
+
     def health_check(self, options: Optional[dict] = None) -> dict:
         mode = (options or {}).get("mode", "spark")
         if mode == "spark":
