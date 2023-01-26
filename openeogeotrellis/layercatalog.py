@@ -569,10 +569,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
+            band_names = metadata.band_names
 
-            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory2(
-                data_glob, date_regex, metadata.band_names,
-                jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient(
+                data_glob, False, date_regex, band_names, "cgls"
+            )
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
             )
             return create_pyramid(factory)
 
