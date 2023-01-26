@@ -204,7 +204,7 @@ class JobTracker:
                                                                                 sentinelhub_batch_processing_units),
                                             access_token=etl_api_access_token)
 
-                                        area = deep_get(result_metadata, 'area', 'value', None)
+                                        area = deep_get(result_metadata, 'area', 'value', default=None)
 
                                         added_value_costs_in_credits = sum(etl_api.log_added_value(
                                             batch_job_id=job_id,
