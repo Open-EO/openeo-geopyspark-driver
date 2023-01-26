@@ -185,7 +185,7 @@ class JobTracker:
                                     sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
                                                                           or Decimal("0.0"))
 
-                                    job_title = result_metadata.get("title")
+                                    job_title = job_info.get("title")
 
                                     with EtlApi(ConfigParams().etl_api) as etl_api:
                                         resource_costs_in_credits = etl_api.log_resource_usage(
@@ -195,8 +195,8 @@ class JobTracker:
                                             user_id=user_id,
                                             started_ms=float(start_time),
                                             finished_ms=float(finish_time),
-                                            state=final_state,
-                                            status=new_status,
+                                            state=state,
+                                            status=final_state,
                                             cpu_seconds=cpu_time_seconds,
                                             mb_seconds=memory_time_megabyte_seconds,
                                             duration_ms=float(finish_time) - float(start_time),
