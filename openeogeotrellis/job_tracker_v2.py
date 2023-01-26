@@ -19,6 +19,7 @@ import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import get_logging_config, setup_logging
+import openeo_driver.utils
 
 from openeogeotrellis import async_task
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
@@ -459,10 +460,15 @@ class CliApp:
                 else None
             ),
         )
-        with TimingLogger(logger=_log.info, title=f"job_tracker_v2 main with {args=}"):
 
-            _log.info(f"{ConfigParams()=!s}")
+        _log.info(f"job_tracker_v2 cli {args=}")
+        _log.info(f"job_tracker_v2 cli {ConfigParams()=!s}")
+        package_versions = openeo_driver.utils.get_package_versions(
+            ["openeo", "openeo_driver", "openeo-geopyspark", "kubernetes"]
+        )
+        _log.info(f"job_tracker_v2 cli {package_versions=}")
 
+        with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
             try:
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
