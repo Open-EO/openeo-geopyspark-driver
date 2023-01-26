@@ -35,7 +35,7 @@ class EtlApi:
             'time': {'value': duration_ms, 'unit': 'milliseconds'},
         }
 
-        if sentinel_hub_processing_units >= 0:
+        if sentinel_hub_processing_units > 0:
             metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
 
         data = {
