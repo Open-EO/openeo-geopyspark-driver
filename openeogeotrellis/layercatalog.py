@@ -586,8 +586,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def file_agera5_pyramid():
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
-            factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory2(
-                data_glob, metadata.band_names, date_regex, jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            band_names = metadata.band_names
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient(
+                data_glob, False, date_regex, band_names, "agera5"
+            )
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
             )
             return create_pyramid(factory)
 
