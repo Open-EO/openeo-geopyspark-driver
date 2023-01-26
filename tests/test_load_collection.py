@@ -114,8 +114,8 @@ def test_load_file_oscars_resample(jvm_mock, catalog):
     env = EvalEnv()
     env = env.push({"pyramid_levels": "single"})
 
-    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient(
-        "https://services.terrascope.be/catalogue", False
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
+        "https://services.terrascope.be/catalogue", False, "", [], ""
     )
     factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
@@ -215,8 +215,8 @@ def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
     assert len(collection.metadata.bands) == 1
     assert collection.metadata.bands[0].name == 'TOC-B03_10M'
 
-    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient(
-        "https://services.terrascope.be/catalogue", False
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
+        "https://services.terrascope.be/catalogue", False, "", [], ""
     )
     factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
@@ -278,7 +278,7 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     dataglob = "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif"
     band_names = ["temperature-mean"]
     date_regex = ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif"
-    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient(
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
         dataglob, False, date_regex, band_names, "agera5"
     )
     factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory

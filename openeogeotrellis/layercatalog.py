@@ -306,8 +306,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 is_utm = (cell_width == cell_height == 10) and (
                     "COHERENCE" not in opensearch_collection_id
                 )
-                opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient(
-                    opensearch_endpoint, is_utm
+                opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                    opensearch_endpoint, is_utm, "", [], ""
                 )
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
@@ -571,7 +571,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
 
-            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient(
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
                 data_glob, False, date_regex, band_names, "cgls"
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -587,7 +587,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
-            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient(
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
                 data_glob, False, date_regex, band_names, "agera5"
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
