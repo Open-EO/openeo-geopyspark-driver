@@ -60,13 +60,17 @@ class JobTracker:
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
-        vault: Optional[Vault] = None
+        etl_api: Optional[EtlApi] = None,
+        etl_api_access_token: Optional[str] = None
     ):
         # TODO: avoid is_kube_deploy anti-pattern
         self._kube_mode = ConfigParams().is_kube_deploy
 
-        if not self._kube_mode and vault is None:
-            raise ValueError(vault)
+        if not self._kube_mode and etl_api is None:
+            raise ValueError(etl_api)
+
+        if etl_api is not None and etl_api_access_token is None:
+            raise ValueError(etl_api_access_token)
 
         self._job_registry = job_registry
         self._principal = principal
@@ -78,19 +82,19 @@ class JobTracker:
             jvm=None,
             principal=principal,
             key_tab=keytab,
-            vault=vault,
+            vault=None,
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
         self._elastic_job_registry = get_or_build_elastic_job_registry(
             elastic_job_registry, ref="JobTracker"
         )
-        self._vault = vault
+        self._etl_api = etl_api
+        self._etl_api_access_token = etl_api_access_token
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
             registry.ensure_paths()
-            etl_api_access_token = self._etl_api_access_token()
 
             jobs_to_track = registry.get_running_jobs()
 
@@ -187,37 +191,36 @@ class JobTracker:
 
                                     job_title = job_info.get("title")
 
-                                    with EtlApi(ConfigParams().etl_api) as etl_api:
-                                        resource_costs_in_credits = etl_api.log_resource_usage(
-                                            batch_job_id=job_id,
-                                            title=job_title,
-                                            application_id=application_id,
-                                            user_id=user_id,
-                                            started_ms=float(start_time),
-                                            finished_ms=float(finish_time),
-                                            state=state,
-                                            status=final_state,
-                                            cpu_seconds=cpu_time_seconds,
-                                            mb_seconds=memory_time_megabyte_seconds,
-                                            duration_ms=float(finish_time) - float(start_time),
-                                            sentinel_hub_processing_units=float(Decimal(sentinelhub_processing_units) +
-                                                                                sentinelhub_batch_processing_units),
-                                            access_token=etl_api_access_token)
+                                    resource_costs_in_credits = self._etl_api.log_resource_usage(
+                                        batch_job_id=job_id,
+                                        title=job_title,
+                                        application_id=application_id,
+                                        user_id=user_id,
+                                        started_ms=float(start_time),
+                                        finished_ms=float(finish_time),
+                                        state=state,
+                                        status=final_state,
+                                        cpu_seconds=cpu_time_seconds,
+                                        mb_seconds=memory_time_megabyte_seconds,
+                                        duration_ms=float(finish_time) - float(start_time),
+                                        sentinel_hub_processing_units=float(Decimal(sentinelhub_processing_units) +
+                                                                            sentinelhub_batch_processing_units),
+                                        access_token=self._etl_api_access_token)
 
-                                        area = deep_get(result_metadata, 'area', 'value', default=None)
+                                    area = deep_get(result_metadata, 'area', 'value', default=None)
 
-                                        added_value_costs_in_credits = sum(etl_api.log_added_value(
-                                            batch_job_id=job_id,
-                                            title=job_title,
-                                            application_id=application_id,
-                                            user_id=user_id,
-                                            started_ms=float(start_time),
-                                            finished_ms=float(finish_time),
-                                            process_id=process_id,
-                                            square_meters=float(area) if area is not None else 0.0,
-                                            access_token=etl_api_access_token) for process_id in
-                                                                           result_metadata.get('unique_process_ids',
-                                                                                               []))
+                                    added_value_costs_in_credits = sum(self._etl_api.log_added_value(
+                                        batch_job_id=job_id,
+                                        title=job_title,
+                                        application_id=application_id,
+                                        user_id=user_id,
+                                        started_ms=float(start_time),
+                                        finished_ms=float(finish_time),
+                                        process_id=process_id,
+                                        square_meters=float(area) if area is not None else 0.0,
+                                        access_token=self._etl_api_access_token) for process_id in
+                                                                       result_metadata.get('unique_process_ids',
+                                                                                           []))
 
                                     registry.patch(job_id, user_id, **dict(
                                         result_metadata,
@@ -362,23 +365,25 @@ class JobTracker:
         utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
         return date_to_rfc3339(utc_datetime)
 
-    def _etl_api_access_token(self):
-        vault_token = self._vault.login_kerberos(self._principal, self._keytab)
 
-        etl_api_credentials = self._vault.get_etl_api_credentials(vault_token)
-        oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
+def get_etl_api_access_token(principal: str, keytab: str):
+    vault = Vault("https://vault.vgt.vito.be")
+    vault_token = vault.login_kerberos(principal, keytab)
 
-        client_info = OidcClientInfo(
-            provider=oidc_provider,
-            client_id=etl_api_credentials.client_id,
-            client_secret=etl_api_credentials.client_secret,
-        )
+    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+    oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
 
-        authenticator = OidcClientCredentialsAuthenticator(client_info)
-        return authenticator.get_tokens().access_token
+    client_info = OidcClientInfo(
+        provider=oidc_provider,
+        client_id=etl_api_credentials.client_id,
+        client_secret=etl_api_credentials.client_secret,
+    )
+
+    authenticator = OidcClientCredentialsAuthenticator(client_info)
+    return authenticator.get_tokens().access_token
 
 
-if __name__ == '__main__':
+def main():
     import argparse
 
     # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
@@ -408,11 +413,21 @@ if __name__ == '__main__':
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
+    # the assumption here is that a token lifetime of 5 minutes is long enough for a JobTracker run
+    etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
+                                                                                               args.keytab)
+
     try:
-        vault = Vault("https://vault.vgt.vito.be")
-        JobTracker(ZkJobRegistry, args.principal, args.keytab, vault=vault).update_statuses()
+        with EtlApi(ConfigParams().etl_api) as etl_api:
+            job_tracker = JobTracker(ZkJobRegistry, args.principal, args.keytab,
+                                     etl_api=etl_api, etl_api_access_token=etl_api_access_token)
+            job_tracker.update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e
+
+
+if __name__ == '__main__':
+    main()
