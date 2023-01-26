@@ -33,7 +33,9 @@ from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.utils import StatsReporter
 
-_log = logging.getLogger(__name__)
+
+# Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
+_log = logging.getLogger("openeogeotrellis.job_tracker_v2")
 
 
 class _JobMetadata(NamedTuple):

@@ -34,7 +34,10 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.vault import Vault
 from openeogeotrellis import async_task
 
-_log = logging.getLogger(__name__)
+
+# Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
+_log = logging.getLogger("openeogeotrellis.job_tracker")
+
 
 # TODO: current implementation mixes YARN and Kubernetes logic. Instead use composition/inheritance for better separation of concerns?
 #       Especially because the job registry storage will also get different options: legacy ZooKeeper and ElasticJobRegistry (and maybe even a simple in-memory option)
