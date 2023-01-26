@@ -296,22 +296,29 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-
         def file_s2_pyramid():
-            return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
-                                jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
-                                                                                       opensearch_collection_id,
-                                                                                       opensearch_link_titles,
-                                                                                       root_path,
-                                                                                       jvm.geotrellis.raster.CellSize(
-                                                                                           cell_width,
-                                                                                           cell_height),
-                                                                                       experimental
-                                                                                       ))
+            def pyramid_factory(
+                opensearch_endpoint,
+                opensearch_collection_id,
+                opensearch_link_titles,
+                root_path,
+            ):
+                is_utm = (cell_width == cell_height == 10) and (
+                    "COHERENCE" not in opensearch_collection_id
+                )
+                opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient(
+                    opensearch_endpoint, is_utm
+                )
+                return jvm.org.openeo.geotrellis.file.PyramidFactory(
+                    opensearch_client,
+                    opensearch_collection_id,
+                    opensearch_link_titles,
+                    root_path,
+                    jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                    experimental,
+                )
 
-
-        def file_s5p_pyramid():
-            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel5PPyramidFactory)
+            return file_pyramid(pyramid_factory)
 
         def file_probav_pyramid():
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
