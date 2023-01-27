@@ -19,6 +19,7 @@ import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import get_logging_config, setup_logging
+import openeo_driver.utils
 
 from openeogeotrellis import async_task
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
@@ -33,7 +34,9 @@ from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.utils import StatsReporter
 
-_log = logging.getLogger(__name__)
+
+# Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
+_log = logging.getLogger("openeogeotrellis.job_tracker_v2")
 
 
 class _JobMetadata(NamedTuple):
@@ -458,33 +461,39 @@ class CliApp:
             ),
         )
 
-        _log.info(f"{ConfigParams()=!s}")
+        _log.info(f"job_tracker_v2 cli {args=}")
+        _log.info(f"job_tracker_v2 cli {ConfigParams()=!s}")
+        package_versions = openeo_driver.utils.get_package_versions(
+            ["openeo", "openeo_driver", "openeo-geopyspark", "kubernetes"]
+        )
+        _log.info(f"job_tracker_v2 cli {package_versions=}")
 
-        try:
-            zk_root_path = args.zk_job_registry_root_path
-            _log.info(f"Using {zk_root_path=}")
-            zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+        with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
+            try:
+                zk_root_path = args.zk_job_registry_root_path
+                _log.info(f"Using {zk_root_path=}")
+                zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
-            app_cluster = args.app_cluster
-            if app_cluster == "auto":
-                # TODO: eliminate (need for) auto-detection.
-                app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
-            if app_cluster == "yarn":
-                app_state_getter = YarnStatusGetter()
-            elif app_cluster == "k8s":
-                app_state_getter = K8sStatusGetter()
-            else:
-                raise ValueError(app_cluster)
-            job_tracker = JobTracker(
-                app_state_getter=app_state_getter,
-                job_registry=zk_job_registry,
-                principal=args.principal,
-                keytab=args.keytab,
-            )
-            job_tracker.update_statuses(fail_fast=args.fail_fast)
-        except Exception as e:
-            _log.error(e, exc_info=True)
-            raise e
+                app_cluster = args.app_cluster
+                if app_cluster == "auto":
+                    # TODO: eliminate (need for) auto-detection.
+                    app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
+                if app_cluster == "yarn":
+                    app_state_getter = YarnStatusGetter()
+                elif app_cluster == "k8s":
+                    app_state_getter = K8sStatusGetter()
+                else:
+                    raise ValueError(app_cluster)
+                job_tracker = JobTracker(
+                    app_state_getter=app_state_getter,
+                    job_registry=zk_job_registry,
+                    principal=args.principal,
+                    keytab=args.keytab,
+                )
+                job_tracker.update_statuses(fail_fast=args.fail_fast)
+            except Exception as e:
+                _log.error(e, exc_info=True)
+                raise e
 
     def parse_cli_args(self, args: Optional[List[str]] = None) -> argparse.Namespace:
         parser = argparse.ArgumentParser(

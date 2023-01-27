@@ -23,6 +23,11 @@ from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import to_s3_url
 
 
+def test_capabilities(api100):
+    capabilities = api100.get('/').assert_status_code(200).json
+    assert deep_get(capabilities, "billing", "currency") == "credits"
+
+
 def test_file_formats(api100):
     formats = api100.get('/file_formats').assert_status_code(200).json
     assert "GeoJSON" in formats["input"]

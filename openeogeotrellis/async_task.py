@@ -182,7 +182,7 @@ def main():
 
         try:
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-                vault = Vault("https://vault.vgt.vito.be")
+                vault = Vault(ConfigParams().vault_addr)
                 catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
 
                 jvm = java_gateway.jvm
@@ -193,7 +193,7 @@ def main():
 
                 default_sentinel_hub_credentials = vault.get_sentinel_hub_credentials(
                     sentinel_hub_client_alias='default',
-                    vault_token=vault.login_kerberos())
+                    vault_token=vault.login_kerberos(args.principal, args.keytab))
 
                 batch_jobs.set_default_sentinel_hub_credentials(
                     client_id=default_sentinel_hub_credentials.client_id,

@@ -6,7 +6,6 @@ import subprocess
 import sys
 from subprocess import CalledProcessError
 from typing import Callable, Union, Optional
-import time
 from collections import namedtuple
 from datetime import datetime
 import re
@@ -15,12 +14,14 @@ import requests
 import kazoo.client
 
 import openeogeotrellis.backend
-from openeo.util import date_to_rfc3339, url_join
+from openeo.util import date_to_rfc3339, deep_get, url_join
+from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_job_name,
@@ -30,9 +31,13 @@ from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.vault import Vault
 from openeogeotrellis import async_task
 
-_log = logging.getLogger(__name__)
+
+# Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
+_log = logging.getLogger("openeogeotrellis.job_tracker")
+
 
 # TODO: current implementation mixes YARN and Kubernetes logic. Instead use composition/inheritance for better separation of concerns?
 #       Especially because the job registry storage will also get different options: legacy ZooKeeper and ElasticJobRegistry (and maybe even a simple in-memory option)
@@ -58,7 +63,18 @@ class JobTracker:
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        etl_api: Optional[EtlApi] = None,
+        etl_api_access_token: Optional[str] = None
     ):
+        # TODO: avoid is_kube_deploy anti-pattern
+        self._kube_mode = ConfigParams().is_kube_deploy
+
+        if not self._kube_mode and etl_api is None:
+            raise ValueError(etl_api)
+
+        if etl_api is not None and etl_api_access_token is None:
+            raise ValueError(etl_api_access_token)
+
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
@@ -76,9 +92,8 @@ class JobTracker:
         self._elastic_job_registry = get_or_build_elastic_job_registry(
             elastic_job_registry, ref="JobTracker"
         )
-
-        # TODO: avoid is_kube_deploy anti-pattern
-        self._kube_mode = ConfigParams().is_kube_deploy
+        self._etl_api = etl_api
+        self._etl_api_access_token = etl_api_access_token
 
     def update_statuses(self) -> None:
         with self._job_registry() as registry:
@@ -170,7 +185,49 @@ class JobTracker:
                                 if final_state != "UNDEFINED":
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
                                     # TODO: skip patching the job znode and read from this file directly?
-                                    registry.patch(job_id, user_id, **result_metadata)
+
+                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
+                                                                    .get("sentinelhub", {}).get("value", 0.0))
+
+                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
+                                                                          or Decimal("0.0"))
+
+                                    job_title = job_info.get("title")
+
+                                    resource_costs_in_credits = self._etl_api.log_resource_usage(
+                                        batch_job_id=job_id,
+                                        title=job_title,
+                                        application_id=application_id,
+                                        user_id=user_id,
+                                        started_ms=float(start_time),
+                                        finished_ms=float(finish_time),
+                                        state=state,
+                                        status=final_state,
+                                        cpu_seconds=cpu_time_seconds,
+                                        mb_seconds=memory_time_megabyte_seconds,
+                                        duration_ms=float(finish_time) - float(start_time),
+                                        sentinel_hub_processing_units=float(Decimal(sentinelhub_processing_units) +
+                                                                            sentinelhub_batch_processing_units),
+                                        access_token=self._etl_api_access_token)
+
+                                    area = deep_get(result_metadata, 'area', 'value', default=None)
+
+                                    added_value_costs_in_credits = sum(self._etl_api.log_added_value(
+                                        batch_job_id=job_id,
+                                        title=job_title,
+                                        application_id=application_id,
+                                        user_id=user_id,
+                                        started_ms=float(start_time),
+                                        finished_ms=float(finish_time),
+                                        process_id=process_id,
+                                        square_meters=float(area) if area is not None else 0.0,
+                                        access_token=self._etl_api_access_token) for process_id in
+                                                                       result_metadata.get('unique_process_ids',
+                                                                                           []))
+
+                                    registry.patch(job_id, user_id, **dict(
+                                        result_metadata,
+                                        costs=resource_costs_in_credits + added_value_costs_in_credits))
 
                                     registry.remove_dependencies(job_id, user_id)
 
@@ -182,12 +239,6 @@ class JobTracker:
                                             job_id, user_id, dependency_sources)
 
                                     registry.mark_done(job_id, user_id)
-
-                                    sentinelhub_processing_units = (result_metadata.get("usage", {})
-                                                                    .get("sentinelhub", {}).get("value", 0.0))
-
-                                    sentinelhub_batch_processing_units = (ZkJobRegistry.get_dependency_usage(job_info)
-                                                                          or Decimal("0.0"))
 
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
@@ -318,7 +369,24 @@ class JobTracker:
         return date_to_rfc3339(utc_datetime)
 
 
-if __name__ == '__main__':
+def get_etl_api_access_token(principal: str, keytab: str):
+    vault = Vault(ConfigParams().vault_addr)
+    vault_token = vault.login_kerberos(principal, keytab)
+
+    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+    oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
+
+    client_info = OidcClientInfo(
+        provider=oidc_provider,
+        client_id=etl_api_credentials.client_id,
+        client_secret=etl_api_credentials.client_secret,
+    )
+
+    authenticator = OidcClientCredentialsAuthenticator(client_info)
+    return authenticator.get_tokens().access_token
+
+
+def main():
     import argparse
 
     # TODO: (re)use central logging setup helpers from `openeo_driver.util.logging
@@ -344,14 +412,25 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(usage="OpenEO JobTracker", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
-    parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
+    parser.add_argument("--keytab", default="openeo.keytab",
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
+    # the assumption here is that a token lifetime of 5 minutes is long enough for a JobTracker run
+    etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
+                                                                                               args.keytab)
+
     try:
-        JobTracker(ZkJobRegistry, args.principal, args.keytab).update_statuses()
+        with EtlApi(ConfigParams().etl_api) as etl_api:
+            job_tracker = JobTracker(ZkJobRegistry, args.principal, args.keytab,
+                                     etl_api=etl_api, etl_api_access_token=etl_api_access_token)
+            job_tracker.update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:
         _log.error(e, exc_info=True)
         raise e
+
+
+if __name__ == '__main__':
+    main()

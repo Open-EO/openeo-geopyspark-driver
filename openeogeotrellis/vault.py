@@ -6,11 +6,12 @@ from typing import NamedTuple
 
 import hvac
 
+from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
 
 
-class SentinelHubCredentials(NamedTuple):
+class OAuthCredentials(NamedTuple):
     client_id: str
     client_secret: str
 
@@ -19,21 +20,31 @@ class Vault:
     def __init__(self, url: str):
         self._url = url
 
-    def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> SentinelHubCredentials:
+    def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> OAuthCredentials:
+        client_credentials = self._get_kv_credentials(
+            f"TAP/big_data_services/openeo/sentinelhub-oauth-{sentinel_hub_client_alias}", vault_token)
+
+        _log.debug(f'{self._url}: Sentinel Hub client ID for "{sentinel_hub_client_alias}" is '
+                   f'{client_credentials.client_id}')
+
+        return client_credentials
+
+    def get_etl_api_credentials(self, vault_token: str) -> OAuthCredentials:
+        # TODO: the dev account is just a temporary situation so this dumb thing will disappear eventually
+        secret_leaf = "etl-api-oauth" if "etl.terrascope.be" in ConfigParams().etl_api else "etl-api-oauth-dev"
+        return self._get_kv_credentials(f"TAP/big_data_services/openeo/{secret_leaf}", vault_token)
+
+    def _get_kv_credentials(self, vault_secret_path, vault_token: str) -> OAuthCredentials:
         client = self._client()
         client.token = vault_token
 
-        secret = client.secrets.kv.v2.read_secret_version(
-            f"TAP/big_data_services/openeo/sentinelhub-oauth-{sentinel_hub_client_alias}",
-            mount_point="kv")
+        secret = client.secrets.kv.v2.read_secret_version(vault_secret_path, mount_point="kv")
 
         credentials = secret['data']['data']
         client_id = credentials['client_id']
         client_secret = credentials['client_secret']
 
-        _log.debug(f'{self._url}: Sentinel Hub client ID for "{sentinel_hub_client_alias}" is {client_id}')
-
-        return SentinelHubCredentials(client_id, client_secret)
+        return OAuthCredentials(client_id, client_secret)
 
     def login_jwt(self, access_token: str) -> str:
         client = self._client()

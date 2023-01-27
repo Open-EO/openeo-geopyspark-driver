@@ -1562,7 +1562,7 @@ class GeopysparkDataCube(DriverDataCube):
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
                         for index, band_name in enumerate(self.metadata.band_dimension.band_names):
-                            gtiff_options.addBandTag(index, "DESCRIPTION", band_name)
+                            gtiff_options.addBandTag(index, "DESCRIPTION", str(band_name))
 
                     bands = []
                     if self.metadata.has_band_dimension():
