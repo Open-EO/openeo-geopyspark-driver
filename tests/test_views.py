@@ -937,17 +937,20 @@ class TestBatchJobs:
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_get_job_logs_with_connection_timeout(self, mock_search, api, caplog):
         caplog.set_level(logging.ERROR)
+
+        sensitive_info = "our server"
+
         mock_search.side_effect = ConnectionTimeout(
-            502,
-            "'TIMEOUT', \"HTTPSConnectionPool(host='our server', port=443): Read timed out",
-        )
+            'TIMEOUT',
+            f"HTTPSConnectionPool(host='{sensitive_info}', port=443): Read timed out. (read timeout=60)",
+            Exception(f"HTTPSConnectionPool(host='{sensitive_info}', port=443): Read timed out. (read timeout=60)"))
         job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
 
         expected_message = (
             "Log collection failed: OpenEOApiException(status_code=504, "
-            + "code='Internal', message=\"Temporary failure while retrieving "
-            + "logs for request with ID 'no-request' (ConnectionTimeout). "
-            + 'Please try again and report this error if it persists.", '
+            + "code='Internal', message='Temporary failure while retrieving "
+            + "logs for request: ConnectionTimeout. "
+            + "Please try again and report this error if it persists. (ref: no-request)', "
             + "id='no-request')"
         )
         expected_log_entries = [
@@ -998,7 +1001,8 @@ class TestBatchJobs:
             # "Log collection failed: ConnectionTimeout('TIMEOUT', \"HTTPSConnectionPool(host='our server', port=443):
             # Read timed out. (read timeout=60)\", ReadTimeoutError(\"HTTPSConnectionPool(host='our server', port=443):
             # Read timed out. (read timeout=60)\"))"
-            assert "HTTPSConnectionPool(host=" not in res["logs"][0]["message"]
+            assert len(res["logs"]) == 1
+            assert sensitive_info not in res["logs"][0]["message"]
 
             # Verify the expected log entry in full
             assert res["logs"] == expected_log_entries
@@ -1008,4 +1012,4 @@ class TestBatchJobs:
             # The ConnectionTimeout info should be in the traceback.
             # To view these logs in caplog.text, run pytest with the '-s' option.
             print(caplog.text)
-            assert "ConnectionTimeout" in caplog.text
+            assert sensitive_info in caplog.text
