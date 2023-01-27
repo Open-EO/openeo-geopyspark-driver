@@ -13,7 +13,7 @@ from kazoo.exceptions import NoNodeError, NodeExistsError
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
-from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.jobregistry import JOB_STATUS, JobRegistryInterface
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.testing import KazooClientMock
@@ -351,14 +351,10 @@ class ZkJobRegistry:
 JobRegistry = ZkJobRegistry
 
 
-class InMemoryJobRegistry:
-    # TODO: common interface with ElasticJobRegistry
-    # TODO move it to openeo_python_driver
+class InMemoryJobRegistry(JobRegistryInterface):
+    # TODO move this implementation to openeo_python_driver
     def __init__(self):
         self.db: Dict[str, dict] = {}
-
-    def health_check(self, *args, **kwargs):
-        pass
 
     def create_job(
         self,
@@ -367,6 +363,7 @@ class InMemoryJobRegistry:
         job_id: Optional[str] = None,
         title: Optional[str] = None,
         description: Optional[str] = None,
+        parent_id: Optional[str] = None,
         api_version: Optional[str] = None,
         job_options: Optional[dict] = None,
     ):
@@ -378,6 +375,7 @@ class InMemoryJobRegistry:
             "process": process,
             "title": title,
             "description": description,
+            "parent_id": parent_id,
             "status": JOB_STATUS.CREATED,
             "created": created,
             "updated": created,

@@ -9,7 +9,7 @@ import pytest
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
-from openeo_driver.jobregistry import ElasticJobRegistry
+from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
 from openeo_driver.testing import ApiTester
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
@@ -156,13 +156,7 @@ def batch_job_output_root(tmp_path) -> Path:
 
 
 @pytest.fixture
-def job_registry() -> (
-    Union[
-        # TODO: #236 use common parent as return type hint
-        ElasticJobRegistry,
-        InMemoryJobRegistry,
-    ]
-):
+def job_registry() -> JobRegistryInterface:
     return InMemoryJobRegistry()
 
 
