@@ -6,6 +6,11 @@ from typing import Iterable, Optional
 from elasticsearch import Elasticsearch, ConnectionTimeout
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
+
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 ES_HOSTS = "https://es-infra.vgt.vito.be"
@@ -74,6 +79,8 @@ def _elasticsearch_logs(
     :return: an generator that yields a dict for each log record.
     """
 
+    req_id = FlaskRequestCorrelationIdLogging.get_request_id()
+
     page_size = 100
     query = {
         "bool": {
@@ -88,7 +95,7 @@ def _elasticsearch_logs(
             {
                 "range": {
                     "@timestamp": {
-                        "format": "strict_date_optional_time",
+                        "format": "strict_date_time",
                         "gte": rfc3339.datetime(create_time),
                     }
                 }
@@ -112,11 +119,12 @@ def _elasticsearch_logs(
                 )
 
             except ConnectionTimeout as exc:
+                # TODO: add a test that verifies: doesn't leak sensitive info + it does log the ConnectionTimeout
                 message = (
-                    "Temporary failure while retrieving logs (ConnectionTimeout). "
+                    f"Temporary failure while retrieving logs for request with ID '{req_id}' (ConnectionTimeout). "
                     + "Please try again and report this error if it persists."
                 )
-                raise OpenEOApiException(status_code=504, message=message)
+                raise OpenEOApiException(status_code=504, message=message) from exc
 
             else:
                 hits = search_result["hits"]["hits"]

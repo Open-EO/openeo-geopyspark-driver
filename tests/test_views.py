@@ -3,6 +3,7 @@ import boto3
 
 import contextlib
 import datetime
+import logging
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import pathlib
 import subprocess
 from unittest import mock
 import pytest
+from elasticsearch.exceptions import ConnectionTimeout
 
 import openeogeotrellis.job_registry
 from openeo_driver.jobregistry import JOB_STATUS
@@ -865,7 +867,7 @@ class TestBatchJobs:
                 ]
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-    def test_get_job_logs(self, mock_search, api):
+    def test_get_job_logs_skips_lines_with_empty_loglevel(self, mock_search, api):
         search_hits = [
             {
                 "_source": {
@@ -926,3 +928,79 @@ class TestBatchJobs:
             )
 
             assert res["logs"] == expected_log_entries
+
+    @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+    def test_get_job_logs_with_connection_timeout(self, mock_search, api, caplog):
+        caplog.set_level(logging.ERROR)
+        mock_search.side_effect = ConnectionTimeout(
+            502,
+            "'TIMEOUT', \"HTTPSConnectionPool(host='our server', port=443): Read timed out",
+        )
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+
+        expected_message = (
+            "Log collection failed: OpenEOApiException(status_code=504, "
+            + "code='Internal', message=\"Temporary failure while retrieving "
+            + "logs for request with ID 'no-request' (ConnectionTimeout). "
+            + 'Please try again and report this error if it persists.", '
+            + "id='no-request')"
+        )
+        expected_log_entries = [
+            {
+                "id": "-1",
+                "code": "Internal",
+                "level": "error",
+                "message": expected_message,
+            }
+        ]
+
+        with self._mock_kazoo_client() as zk:
+            # where to import dict_no_none from
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            job_options = {}
+
+            with ZkJobRegistry() as registry:
+                registry.register(
+                    job_id=job_id,
+                    user_id=TEST_USER,
+                    api_version="1.0.0",
+                    specification=dict(
+                        process_graph=data,
+                        job_options=job_options,
+                    ),
+                    title="Fake Test Job",
+                    description="Fake job for the purpose of testing",
+                )
+                registry.set_status(
+                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
+                )
+
+            # Get logs
+            res = (
+                api.get(
+                    "/jobs/{j}/logs".format(j=job_id), headers=TEST_USER_AUTH_HEADER
+                )
+                .assert_status_code(200)
+                .json
+            )
+
+            #
+            # Also explicitly verify that the security sensitive info from the old message is no longer present.
+            # In particular, we don't want "host=" to leak the URL to our server.
+            # This is an extra precaution, though normally the assert below would also fail.
+            #
+            # Example of the old message:
+            # "Log collection failed: ConnectionTimeout('TIMEOUT', \"HTTPSConnectionPool(host='our server', port=443):
+            # Read timed out. (read timeout=60)\", ReadTimeoutError(\"HTTPSConnectionPool(host='our server', port=443):
+            # Read timed out. (read timeout=60)\"))"
+            assert "HTTPSConnectionPool(host=" not in res["logs"][0]["message"]
+
+            # Verify the expected log entry in full
+            assert res["logs"] == expected_log_entries
+
+            # The original ConnectionTimeout should be sent to the current (general) logs
+            # which are different from the job-specific logs we just retrieved.
+            # The ConnectionTimeout info should be in the traceback.
+            # To view these logs in caplog.text, run pytest with the '-s' option.
+            print(caplog.text)
+            assert "ConnectionTimeout" in caplog.text

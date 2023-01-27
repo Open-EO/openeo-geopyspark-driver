@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 import mock
 
 import pytest
@@ -108,10 +109,11 @@ def test_elasticsearch_logs_skips_entries_with_empty_loglevel(mock_search):
 def test_connection_timeout_raises_openeoapiexception(mock_search):
     mock_search.side_effect = ConnectionTimeout(500, "Simulating connection timeout")
 
-    with pytest.raises(OpenEOApiException) as exc:
+    with pytest.raises(OpenEOApiException) as raise_context:
         list(elasticsearch_logs("job-foo", create_time=None, offset=None))
 
-    assert exc.value.message == (
-        "Temporary failure while retrieving logs (ConnectionTimeout). "
+    expected_message = (
+        "Temporary failure while retrieving logs for request with ID 'no-request' (ConnectionTimeout). "
         + "Please try again and report this error if it persists."
     )
+    assert raise_context.value.message == expected_message
