@@ -121,7 +121,7 @@ def _elasticsearch_logs(
             except ConnectionTimeout as exc:
                 # TODO: add a test that verifies: doesn't leak sensitive info + it does log the ConnectionTimeout
                 message = (
-                    f"Temporary failure while retrieving logs for request: ConnectionTimeout. "
+                    f"Temporary failure while retrieving logs: ConnectionTimeout. "
                     + f"Please try again and report this error if it persists. (ref: {req_id})"
                 )
                 raise OpenEOApiException(status_code=504, message=message) from exc

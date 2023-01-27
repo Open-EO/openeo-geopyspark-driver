@@ -111,7 +111,7 @@ def test_connection_timeout_raises_openeoapiexception(mock_search):
         list(elasticsearch_logs("job-foo", create_time=None, offset=None))
 
     expected_message = (
-        "Temporary failure while retrieving logs for request with ID 'no-request' (ConnectionTimeout). "
-        + "Please try again and report this error if it persists."
+        "Temporary failure while retrieving logs: ConnectionTimeout. "
+        + "Please try again and report this error if it persists. (ref: no-request)"
     )
     assert raise_context.value.message == expected_message

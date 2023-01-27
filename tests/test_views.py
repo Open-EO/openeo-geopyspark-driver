@@ -948,8 +948,7 @@ class TestBatchJobs:
 
         expected_message = (
             "Log collection failed: OpenEOApiException(status_code=504, "
-            + "code='Internal', message='Temporary failure while retrieving "
-            + "logs for request: ConnectionTimeout. "
+            + "code='Internal', message='Temporary failure while retrieving logs: ConnectionTimeout. "
             + "Please try again and report this error if it persists. (ref: no-request)', "
             + "id='no-request')"
         )
