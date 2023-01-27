@@ -182,7 +182,7 @@ def main():
 
         try:
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-                vault = Vault("https://vault.vgt.vito.be")
+                vault = Vault(ConfigParams().vault_addr)
                 catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
 
                 jvm = java_gateway.jvm

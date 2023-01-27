@@ -311,8 +311,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
         )
 
-        # TODO #285 get vault url from config instead of hardcoding
-        vault = Vault("https://vault.vgt.vito.be")
+        vault = Vault(ConfigParams().vault_addr)
 
         catalog = get_layer_catalog(vault, opensearch_enrich=opensearch_enrich)
 

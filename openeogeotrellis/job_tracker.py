@@ -370,7 +370,7 @@ class JobTracker:
 
 
 def get_etl_api_access_token(principal: str, keytab: str):
-    vault = Vault("https://vault.vgt.vito.be")
+    vault = Vault(ConfigParams().vault_addr)
     vault_token = vault.login_kerberos(principal, keytab)
 
     etl_api_credentials = vault.get_etl_api_credentials(vault_token)
