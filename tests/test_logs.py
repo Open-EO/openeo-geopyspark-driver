@@ -1,5 +1,3 @@
-import datetime as dt
-import logging
 import mock
 
 import pytest
