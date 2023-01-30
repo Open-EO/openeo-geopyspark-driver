@@ -12,19 +12,18 @@ import py4j.protocol
 import pyproj
 import pyspark.sql.utils
 import requests
-from shapely.geometry import box
-
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.dry_run import ProcessType
 from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
+from shapely.geometry import box
+
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
@@ -552,22 +551,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     cid=collection_id, bs=metadata.band_names))
 
             data_glob = layer_source_info['data_glob']
-            band_name = metadata.band_names[0]
-            date_regex = layer_source_info['date_regex']
-
-            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory(data_glob, band_name, date_regex)
-
-            return (
-                factory.datacube_seq(projected_polygons, from_date, to_date,metadata_properties(),correlation_id,datacubeParams) if single_level
-                else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
-            )
-
-        def file_cgls_pyramid2():
-            if len(metadata.band_names) != 1:
-                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
-                    cid=collection_id, bs=metadata.band_names))
-
-            data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
 
@@ -616,10 +599,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel_hub_pyramid()
         elif layer_source_type == 'creo':
             pyramid = creo_pyramid()
-        elif layer_source_type == 'file-cgls':
+        elif layer_source_type == "file-cgls2":
             pyramid = file_cgls_pyramid()
-        elif layer_source_type == 'file-cgls2':
-            pyramid = file_cgls_pyramid2()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
         elif layer_source_type == 'file-oscars':
