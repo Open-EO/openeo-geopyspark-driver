@@ -416,11 +416,11 @@ def main():
                         help="The full path to the file that contains the keytab for the principal")
     args = parser.parse_args()
 
-    # the assumption here is that a token lifetime of 5 minutes is long enough for a JobTracker run
-    etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
-                                                                                               args.keytab)
-
     try:
+        # the assumption here is that a token lifetime of 5 minutes is long enough for a JobTracker run
+        etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
+                                                                                                   args.keytab)
+
         with EtlApi(ConfigParams().etl_api) as etl_api:
             job_tracker = JobTracker(ZkJobRegistry, args.principal, args.keytab,
                                      etl_api=etl_api, etl_api_access_token=etl_api_access_token)
