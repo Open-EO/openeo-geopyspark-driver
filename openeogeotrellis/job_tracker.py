@@ -69,11 +69,11 @@ class JobTracker:
         # TODO: avoid is_kube_deploy anti-pattern
         self._kube_mode = ConfigParams().is_kube_deploy
 
-        if not self._kube_mode and etl_api is None:
-            raise ValueError(etl_api)
-
-        if etl_api is not None and etl_api_access_token is None:
-            raise ValueError(etl_api_access_token)
+        if not self._kube_mode:
+            if etl_api is None:
+                raise ValueError(etl_api)
+            if etl_api_access_token is None:
+                raise ValueError(etl_api_access_token)
 
         self._job_registry = job_registry
         self._principal = principal
