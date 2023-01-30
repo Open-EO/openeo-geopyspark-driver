@@ -1,6 +1,11 @@
 import mock
 
+import pytest
+
 from openeogeotrellis.logs import elasticsearch_logs
+from openeo_driver.errors import OpenEOApiException
+
+from elasticsearch.exceptions import ConnectionTimeout
 
 
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
@@ -13,7 +18,9 @@ def test_elasticsearch_logs_skips_entry_with_empty_loglevel_simple_case(mock_sea
         "hits": {"hits": [search_hit]},
     }
 
-    actual_log_entries = list(elasticsearch_logs("job-foo", offset=None))
+    actual_log_entries = list(
+        elasticsearch_logs("job-foo", create_time=None, offset=None)
+    )
     assert actual_log_entries == []
 
 
@@ -30,7 +37,9 @@ def test_elasticsearch_logs_keeps_entry_when_loglevel_filled_in(mock_search):
         "hits": {"hits": [search_hit]},
     }
 
-    actual_log_entries = list(elasticsearch_logs("job-foo", offset=None))
+    actual_log_entries = list(
+        elasticsearch_logs("job-foo", create_time=None, offset=None)
+    )
 
     expected_log_entries = [
         {
@@ -75,7 +84,9 @@ def test_elasticsearch_logs_skips_entries_with_empty_loglevel(mock_search):
         "hits": {"hits": search_hits},
     }
 
-    actual_log_entries = list(elasticsearch_logs("job-foo", offset=None))
+    actual_log_entries = list(
+        elasticsearch_logs("job-foo", create_time=None, offset=None)
+    )
 
     expected_log_entries = [
         {
@@ -90,3 +101,17 @@ def test_elasticsearch_logs_skips_entries_with_empty_loglevel(mock_search):
         },
     ]
     assert actual_log_entries == expected_log_entries
+
+
+@mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+def test_connection_timeout_raises_openeoapiexception(mock_search):
+    mock_search.side_effect = ConnectionTimeout(500, "Simulating connection timeout")
+
+    with pytest.raises(OpenEOApiException) as raise_context:
+        list(elasticsearch_logs("job-foo", create_time=None, offset=None))
+
+    expected_message = (
+        "Temporary failure while retrieving logs: ConnectionTimeout. "
+        + "Please try again and report this error if it persists. (ref: no-request)"
+    )
+    assert raise_context.value.message == expected_message
