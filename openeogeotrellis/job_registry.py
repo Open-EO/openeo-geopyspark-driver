@@ -117,16 +117,6 @@ class ZkJobRegistry:
 
         return [source for dependency in (job_info.get('dependencies') or []) for source in sources(dependency)]
 
-    @staticmethod
-    @deprecated("call get_dependency_sources instead")
-    def get_dependency_subfolders(job_info: dict) -> List[str]:
-        def subfolder(results_location: str):
-            uri_parts = urlparse(results_location)
-            return uri_parts.path[1:]
-
-        return [subfolder(location) for location in ZkJobRegistry.get_dependency_sources(job_info)
-                if location.startswith("s3:")]
-
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
 
