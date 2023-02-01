@@ -16,7 +16,7 @@ from subprocess import CalledProcessError
 from typing import Callable, List, NamedTuple, Optional, Union
 
 import requests
-from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
+from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.logging import get_logging_config, setup_logging
 import openeo_driver.utils
@@ -30,6 +30,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
+from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.utils import StatsReporter
@@ -66,6 +67,120 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         raise NotImplementedError
+
+
+class JobCostsCalculator(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
+        raise NotImplementedError
+
+
+class YarnJobCostsCalculator(JobCostsCalculator):  # TerrascopeJobCostsCalculator?
+    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
+        self._etl_api = etl_api
+        self._etl_api_access_token = etl_api_access_token
+
+    def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
+        job_id = job_info["job_id"]
+        # TODO: make _JobMetadata.start_time a datetime instead
+        started_ms = rfc3339.parse_datetime(job_metadata.start_time).timestamp() * 1000
+        cpu_seconds = job_metadata.usage["cpu"]["value"]
+
+        unique_process_ids = result_metadata.get('unique_process_ids', [])
+
+        # TODO: make this usage report handling/logging more generic?
+        sentinelhub_processing_units = (
+            result_metadata.get("usage", {})
+            .get("sentinelhub", {})
+            .get("value", 0.0)
+        )
+
+        sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info) or Decimal("0.0"))
+
+        with self._etl_api as etl_api:
+            resource_costs_in_credits = etl_api.log_resource_usage(
+                batch_job_id=job_id,
+                title=...,
+                application_id=...,
+                user_id=...,
+                started_ms=started_ms,
+                finished_ms=...,
+                state=...,
+                status=...,
+                cpu_seconds=cpu_seconds,
+                mb_seconds=...,
+                duration_ms=...,
+                sentinel_hub_processing_units=sentinelhub_processing_units + sentinelhub_batch_processing_units,
+                access_token=self._etl_api_access_token
+            )
+
+            area = deep_get(result_metadata, 'area', 'value', default=None)
+
+            added_value_costs_in_credits = sum(etl_api.log_added_value(
+                batch_job_id=job_id,
+                title=...,
+                application_id=...,
+                user_id=...,
+                started_ms=started_ms,
+                finished_ms=...,
+                process_id=process_id,
+                square_meters=float(area) if area is not None else 0.0,
+                access_token=self._etl_api_access_token) for process_id in unique_process_ids)
+
+        return resource_costs_in_credits + added_value_costs_in_credits
+
+
+class K8sJobCostsCalculator(JobCostsCalculator):  # CreoDiasJobCostsCalculator?
+    # TODO: reduce code duplication with YarnJobCostsCalculator
+    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
+        self._etl_api = etl_api
+        self._etl_api_access_token = etl_api_access_token
+
+    def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
+        job_id = job_info["job_id"]
+        # TODO: make _JobMetadata.start_time a datetime instead
+        started_ms = rfc3339.parse_datetime(job_metadata.start_time).timestamp() * 1000
+        cpu_hours = job_metadata.usage["cpu"]["value"]
+        cpu_seconds = cpu_hours * 60 * 60
+
+        unique_process_ids = result_metadata.get('unique_process_ids', [])
+
+        with self._etl_api as etl_api:
+            resource_costs_in_credits = etl_api.log_resource_usage(
+                batch_job_id=job_id,
+                title=...,
+                application_id=...,
+                user_id=...,
+                started_ms=started_ms,
+                finished_ms=...,
+                state=...,
+                status=...,
+                cpu_seconds=cpu_seconds,
+                mb_seconds=...,
+                duration_ms=...,
+                sentinel_hub_processing_units=0.0,
+                access_token=self._etl_api_access_token
+            )
+
+            area = deep_get(result_metadata, 'area', 'value', default=None)
+
+            added_value_costs_in_credits = sum(etl_api.log_added_value(
+                batch_job_id=job_id,
+                title=...,
+                application_id=...,
+                user_id=...,
+                started_ms=started_ms,
+                finished_ms=...,
+                process_id=process_id,
+                square_meters=float(area) if area is not None else 0.0,
+                access_token=self._etl_api_access_token) for process_id in unique_process_ids)
+
+        return resource_costs_in_credits + added_value_costs_in_credits
+
+
+class NoCostsCalculator(JobCostsCalculator):
+    def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
+        return 0.0
 
 
 class JobTrackerException(Exception):
@@ -239,13 +354,15 @@ class JobTracker:
         job_registry: ZkJobRegistry,
         principal: str,
         keytab: str,
+        job_costs_calculator: JobCostsCalculator = NoCostsCalculator(),
         output_root_dir: Optional[Union[str, Path]] = None,
-        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
         self._job_registry = job_registry
         self._principal = principal
         self._keytab = keytab
+        self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
         #       Also note that only `get_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actuall be overkill in the first place.
         self._batch_jobs = GpsBatchJobs(
@@ -399,8 +516,6 @@ class JobTracker:
         }:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-            # TODO: skip patching the job znode and read from this file directly?
-            registry.patch(job_id, user_id, **result_metadata)
 
             registry.remove_dependencies(job_id, user_id)
 
@@ -420,31 +535,10 @@ class JobTracker:
                 job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
             )
 
-            # TODO: make this usage report handling/logging more generic?
-            sentinelhub_processing_units = (
-                result_metadata.get("usage", {})
-                .get("sentinelhub", {})
-                .get("value", 0.0)
-            )
+            job_costs = self._job_costs_calculator.calculate_costs(job_info, job_metadata, result_metadata)
 
-            sentinelhub_batch_processing_units = ZkJobRegistry.get_dependency_usage(
-                job_info
-            ) or Decimal("0.0")
-
-            _log.info(
-                f"marked {job_id} as done",
-                extra={
-                    "job_id": job_id,
-                    "user_id": user_id,
-                    "area": result_metadata.get("area"),
-                    "unique_process_ids": result_metadata.get("unique_process_ids"),
-                    # 'cpu_time_seconds': cpu_time_seconds,  # TODO: necessary to get this working again?
-                    "sentinelhub": float(
-                        Decimal(sentinelhub_processing_units)
-                        + sentinelhub_batch_processing_units
-                    ),
-                },
-            )
+            # TODO: skip patching the job znode and read from this file directly?
+            registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
 
 
 class CliApp:
@@ -473,6 +567,8 @@ class CliApp:
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+                etl_api = EtlApi(ConfigParams().etl_api)
+                etl_api_access_token = ...  # FIXME
 
                 app_cluster = args.app_cluster
                 if app_cluster == "auto":
@@ -480,8 +576,10 @@ class CliApp:
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
                     app_state_getter = YarnStatusGetter()
+                    job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()
+                    job_costs_calculator = K8sJobCostsCalculator(etl_api, etl_api_access_token)
                 else:
                     raise ValueError(app_cluster)
                 job_tracker = JobTracker(
@@ -489,6 +587,7 @@ class CliApp:
                     job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
+                    job_costs_calculator=job_costs_calculator
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
