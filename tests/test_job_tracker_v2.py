@@ -294,7 +294,7 @@ class TestYarnJobTracker:
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=YarnStatusGetter(),
-            job_registry=zk_job_registry,
+            zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
             output_root_dir=batch_job_output_root,
@@ -780,7 +780,7 @@ class TestK8sJobTracker:
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(kubecost_url=kubecost_url),
-            job_registry=zk_job_registry,
+            zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
             output_root_dir=batch_job_output_root,

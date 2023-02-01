@@ -237,14 +237,14 @@ class JobTracker:
     def __init__(
         self,
         app_state_getter: JobMetadataGetterInterface,
-        job_registry: ZkJobRegistry,
+        zk_job_registry: ZkJobRegistry,
         principal: str,
         keytab: str,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
     ):
         self._app_state_getter = app_state_getter
-        self._job_registry = job_registry
+        self._zk_job_registry = zk_job_registry
         self._principal = principal
         self._keytab = keytab
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
@@ -262,12 +262,12 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        with self._job_registry as registry, StatsReporter(
+        with self._zk_job_registry as zk_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
-                jobs_to_track = registry.get_running_jobs()
+                jobs_to_track = zk_job_registry.get_running_jobs()
             _log.info(f"Collected {len(jobs_to_track)} jobs to track")
             stats["collected jobs"] = len(jobs_to_track)
 
@@ -309,7 +309,7 @@ class JobTracker:
                         user_id=user_id,
                         application_id=application_id,
                         job_info=job_info,
-                        registry=registry,
+                        zk_job_registry=zk_job_registry,
                         stats=stats,
                     )
                 except Exception as e:
@@ -327,7 +327,7 @@ class JobTracker:
         user_id: str,
         application_id: str,
         job_info: dict,
-        registry: ZkJobRegistry,
+        zk_job_registry: ZkJobRegistry,
         stats: collections.Counter,
     ):
         """Sync job status for a single job"""
@@ -350,7 +350,7 @@ class JobTracker:
         except AppNotFound:
             log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
             # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
-            registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+            zk_job_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
             with ElasticJobRegistry.just_log_errors("job_tracker app not found"):
                 if self._elastic_job_registry:
                     # TODO: also set started/finished, exception/error info ...
@@ -370,8 +370,7 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-
-        registry.patch(
+        zk_job_registry.patch(
             job_id=job_id,
             user_id=user_id,
             status=job_metadata.status,
@@ -399,9 +398,9 @@ class JobTracker:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
             # TODO: skip patching the job znode and read from this file directly?
-            registry.patch(job_id, user_id, **result_metadata)
+            zk_job_registry.patch(job_id, user_id, **result_metadata)
 
-            registry.remove_dependencies(job_id, user_id)
+            zk_job_registry.remove_dependencies(job_id, user_id)
 
             # there can be duplicates if batch processes are recycled
             dependency_sources = list(
@@ -415,7 +414,7 @@ class JobTracker:
 
             # Note: setting the status is already done with a `patch` higher,
             #       but we do it here again with `set_status` for the "auto_mark_done" feature
-            registry.set_status(
+            zk_job_registry.set_status(
                 job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
             )
 
@@ -490,7 +489,7 @@ class CliApp:
                     raise ValueError(app_cluster)
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
-                    job_registry=zk_job_registry,
+                    zk_job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
