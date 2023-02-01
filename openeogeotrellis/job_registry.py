@@ -68,45 +68,6 @@ class ZkJobRegistry:
         return job_info
 
     @staticmethod
-    def job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
-        """Convert job info dict to BatchJobMetadata"""
-        status = job_info.get("status")
-        if status == "submitted":
-            status = JOB_STATUS.CREATED
-        specification = job_info["specification"]
-        if isinstance(specification, str):
-            specification = json.loads(specification)
-        job_options = specification.pop("job_options", None)
-
-        def map_safe(prop: str, f):
-            value = job_info.get(prop)
-            return f(value) if value else None
-
-        return BatchJobMetadata(
-            id=job_info["job_id"],
-            process=specification,
-            title=job_info.get("title"),
-            description=job_info.get("description"),
-            status=status,
-            created=map_safe("created", rfc3339.parse_datetime),
-            updated=map_safe("updated", rfc3339.parse_datetime),
-            job_options=job_options,
-            started=map_safe("started", rfc3339.parse_datetime),
-            finished=map_safe("finished", rfc3339.parse_datetime),
-            memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
-            cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
-            geometry=job_info.get("geometry"),
-            bbox=job_info.get("bbox"),
-            start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
-            end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
-            instruments=job_info.get("instruments", []),
-            epsg=job_info.get("epsg"),
-            links=job_info.get("links", []),
-            usage=job_info.get("usage", {}),
-            costs=job_info.get("costs")
-        )
-
-    @staticmethod
     def get_dependency_sources(job_info: dict) -> List[str]:
         """Returns dependency source locations as URIs."""
         def sources(dependency: dict) -> List[str]:
@@ -349,6 +310,49 @@ class ZkJobRegistry:
 # Legacy alias
 # TODO: remove this legacy alias
 JobRegistry = ZkJobRegistry
+
+
+def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
+    """Convert job info dict (from ZkJobRegistry) to BatchJobMetadata"""
+    status = job_info.get("status")
+    if status == "submitted":
+        status = JOB_STATUS.CREATED
+    specification = job_info["specification"]
+    if isinstance(specification, str):
+        specification = json.loads(specification)
+    job_options = specification.pop("job_options", None)
+
+    def map_safe(prop: str, f):
+        value = job_info.get(prop)
+        return f(value) if value else None
+
+    return BatchJobMetadata(
+        id=job_info["job_id"],
+        process=specification,
+        title=job_info.get("title"),
+        description=job_info.get("description"),
+        status=status,
+        created=map_safe("created", rfc3339.parse_datetime),
+        updated=map_safe("updated", rfc3339.parse_datetime),
+        job_options=job_options,
+        started=map_safe("started", rfc3339.parse_datetime),
+        finished=map_safe("finished", rfc3339.parse_datetime),
+        memory_time_megabyte=map_safe(
+            "memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)
+        ),
+        cpu_time=map_safe(
+            "cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)
+        ),
+        geometry=job_info.get("geometry"),
+        bbox=job_info.get("bbox"),
+        start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
+        end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
+        instruments=job_info.get("instruments", []),
+        epsg=job_info.get("epsg"),
+        links=job_info.get("links", []),
+        usage=job_info.get("usage", {}),
+        costs=job_info.get("costs"),
+    )
 
 
 class InMemoryJobRegistry(JobRegistryInterface):

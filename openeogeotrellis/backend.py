@@ -69,7 +69,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_job_name,
     kube_client,
 )
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry, zk_job_info_to_metadata
 from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -1029,7 +1029,7 @@ class GpsBatchJobs(backend.BatchJobs):
         with ZkJobRegistry() as registry:
             job_info = registry.get_job(job_id, user_id)
 
-        return ZkJobRegistry.job_info_to_metadata(job_info)
+        return zk_job_info_to_metadata(job_info)
 
     def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str,
                                          vault_token: Optional[str]):
@@ -1202,7 +1202,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with ZkJobRegistry() as registry:
             return [
-                registry.job_info_to_metadata(job_info)
+                zk_job_info_to_metadata(job_info)
                 for job_info in registry.get_user_jobs(user_id)
             ]
 
