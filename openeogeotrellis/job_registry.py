@@ -13,7 +13,11 @@ from kazoo.exceptions import NoNodeError, NodeExistsError
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
-from openeo_driver.jobregistry import JOB_STATUS, JobRegistryInterface
+from openeo_driver.jobregistry import (
+    JOB_STATUS,
+    JobRegistryInterface,
+    ElasticJobRegistry,
+)
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.testing import KazooClientMock
@@ -203,7 +207,7 @@ class ZkJobRegistry:
         self._zk.start()
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self._zk.stop()
         self._zk.close()
 
@@ -407,3 +411,36 @@ class InMemoryJobRegistry(JobRegistryInterface):
             data["finished"] = rfc3339.datetime(finished)
 
         self.db[job_id].update(data)
+
+
+class DoubleJobRegistry:
+    """
+    Adapter to simultaneously keep track of jobs in two job registries:
+    a legacy ZkJobRegistry and a new ElasticJobRegistry.
+
+    Meant as temporary stop gap to ease step-by-step migration from one system to the other.
+    """
+
+    def __init__(
+        self,
+        zk_job_registry_factory: Callable[[], ZkJobRegistry] = ZkJobRegistry,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+    ):
+        # Note: we use a factory here because current implementation (and test coverage) heavily depends on
+        # just-in-time instantiation of `ZkJobRegistry` in various places (`with ZkJobRegistry(): ...`)
+        self._zk_job_registry_factory = zk_job_registry_factory
+        self.zk_job_registry = None
+        self.elastic_job_registry = elastic_job_registry
+
+    def __enter__(self):
+        self.zk_job_registry = self._zk_job_registry_factory()
+        self.zk_job_registry.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
+        self.zk_job_registry = None
+
+    def get_job(self, job_id: str, user_id: str) -> dict:
+        # TODO: add attempt to get job info from elastic and e.g. compare?
+        return self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
