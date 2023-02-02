@@ -17,7 +17,12 @@ import openeogeotrellis.job_registry
 from openeo_driver.jobregistry import JOB_STATUS
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeo.util import deep_get
-from openeo_driver.testing import TEST_USER_AUTH_HEADER, TEST_USER, TIFF_DUMMY_DATA
+from openeo_driver.testing import (
+    TEST_USER_AUTH_HEADER,
+    TEST_USER,
+    TIFF_DUMMY_DATA,
+    DictSubSet,
+)
 from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import to_s3_url
@@ -348,7 +353,7 @@ class TestBatchJobs:
 
     @staticmethod
     @contextlib.contextmanager
-    def _mock_kazoo_client():
+    def _mock_kazoo_client() -> KazooClientMock:
         zk_client = KazooClientMock()
         with mock.patch.object(openeogeotrellis.job_registry, 'KazooClient', return_value=zk_client):
             yield zk_client
@@ -370,11 +375,16 @@ class TestBatchJobs:
 
     def test_create_job(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!")
-            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
-            job_id = res.headers['OpenEO-Identifier']
-            raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
-            meta_data = json.loads(raw.decode())
+            data = api.get_process_graph_dict(
+                self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!"
+            )
+            res = api.post(
+                "/jobs", json=data, headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(201)
+            job_id = res.headers["OpenEO-Identifier"]
+            meta_data = zk.get_json_decoded(
+                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+            )
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
             assert meta_data["status"] == "created"
@@ -508,8 +518,9 @@ class TestBatchJobs:
             assert batch_job_args[24] == '0.0'
 
             # Check metadata in zookeeper
-            raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
-            meta_data = json.loads(raw.decode())
+            meta_data = zk.get_json_decoded(
+                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+            )
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
             assert meta_data["status"] == "queued"
@@ -530,9 +541,12 @@ class TestBatchJobs:
 
             # Fake update from job tracker
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
-            raw, _ = zk.get('/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id))
-            meta_data = json.loads(raw.decode())
+                reg.set_status(
+                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
+                )
+            meta_data = zk.get_json_decoded(
+                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+            )
             assert meta_data["status"] == "running"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "running"
@@ -825,7 +839,7 @@ class TestBatchJobs:
             assert batch_job_args[22:24] == [TEST_USER, job_id]
             assert batch_job_args[24] == '0.0'
 
-    def test_cancel_job(self, api):
+    def test_cancel_job(self, api, job_registry):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -851,25 +865,28 @@ class TestBatchJobs:
             # Cancel
             with mock.patch('subprocess.run') as run:
                 res = api.delete('/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER)
-                res.assert_status_code(204)
-                run.assert_called_once()
-                command = run.call_args[0][0]
-                assert command == [
-                    'curl',
-                    '--location-trusted',
-                    '--fail',
-                    '--negotiate',
-                    '-u',
-                    ':',
-                    '--insecure',
-                    '-X',
-                    'PUT',
-                    '-H',
-                    'Content-Type: application/json',
-                    '-d',
-                    '{"state": "KILLED"}',
-                    'https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state'
-                ]
+            res.assert_status_code(204)
+            run.assert_called_once()
+            command = run.call_args[0][0]
+            assert command == [
+                "curl",
+                "--location-trusted",
+                "--fail",
+                "--negotiate",
+                "-u",
+                ":",
+                "--insecure",
+                "-X",
+                "PUT",
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                '{"state": "KILLED"}',
+                "https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state",
+            ]
+            meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            assert meta_data == DictSubSet({"status": "canceled"})
+            assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_get_job_logs_skips_lines_with_empty_loglevel(self, mock_search, api):

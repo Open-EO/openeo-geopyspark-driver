@@ -2124,7 +2124,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return elasticsearch_logs(job_id, job_info.created, offset)
 
     def cancel_job(self, job_id: str, user_id: str):
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
 
         if job_info["status"] in [
@@ -2153,7 +2153,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
                     extra = {'job_id': job_id, 'API response': delete_response}
                 )
-                with ZkJobRegistry() as registry:
+                with self._double_job_registry:
                     registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:
                 try:
@@ -2173,7 +2173,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
                                    exc_info=True, extra={'job_id': job_id})
                 finally:
-                    with ZkJobRegistry() as registry:
+                    with self._double_job_registry as registry:
                         registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
         else:
             with ZkJobRegistry() as registry:

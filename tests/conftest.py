@@ -156,7 +156,7 @@ def batch_job_output_root(tmp_path) -> Path:
 
 
 @pytest.fixture
-def job_registry() -> JobRegistryInterface:
+def job_registry() -> InMemoryJobRegistry:
     return InMemoryJobRegistry()
 
 

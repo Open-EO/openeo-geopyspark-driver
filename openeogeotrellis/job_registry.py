@@ -424,12 +424,13 @@ class DoubleJobRegistry:
     def __init__(
         self,
         zk_job_registry_factory: Callable[[], ZkJobRegistry] = ZkJobRegistry,
+        # TODO: typehint should actually be `JobRegistryInterface` (e.g. `InMemoryJobRegistry` is used in testing)
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
     ):
         # Note: we use a factory here because current implementation (and test coverage) heavily depends on
         # just-in-time instantiation of `ZkJobRegistry` in various places (`with ZkJobRegistry(): ...`)
         self._zk_job_registry_factory = zk_job_registry_factory
-        self.zk_job_registry = None
+        self.zk_job_registry: Optional[ZkJobRegistry] = None
         self.elastic_job_registry = elastic_job_registry
 
     def __enter__(self):
@@ -444,3 +445,8 @@ class DoubleJobRegistry:
     def get_job(self, job_id: str, user_id: str) -> dict:
         # TODO: add attempt to get job info from elastic and e.g. compare?
         return self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+    def set_status(self, job_id: str, user_id: str, status: str) -> None:
+        self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_status(job_id=job_id, status=status)
