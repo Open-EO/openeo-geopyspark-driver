@@ -2227,7 +2227,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 config_params.s3_bucket_name, prefix
             )
 
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
