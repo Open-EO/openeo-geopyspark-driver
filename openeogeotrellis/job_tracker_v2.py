@@ -40,6 +40,17 @@ from openeogeotrellis.utils import StatsReporter
 _log = logging.getLogger("openeogeotrellis.job_tracker_v2")
 
 
+class _Usage(NamedTuple):
+    cpu_seconds: float
+    mb_seconds: float
+
+    def to_dict(self) -> dict:
+        return {
+            "cpu": {"value": self.cpu_seconds, "unit": "cpu-seconds"},
+            "memory": {"value": self.mb_seconds, "unit": "mb-seconds"}
+        }
+
+
 class _JobMetadata(NamedTuple):
     """Simple container for openEO batch job oriented metadata"""
 
@@ -53,7 +64,7 @@ class _JobMetadata(NamedTuple):
     finish_time: Optional[str] = None
 
     # Resource usage stats (if any)
-    usage: Optional[dict] = None
+    usage: Optional[_Usage] = None
 
 
 class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
@@ -84,7 +95,7 @@ class YarnJobCostsCalculator(JobCostsCalculator):  # TerrascopeJobCostsCalculato
         job_id = job_info["job_id"]
         # TODO: make _JobMetadata.start_time a datetime instead
         started_ms = rfc3339.parse_datetime(job_metadata.start_time).timestamp() * 1000
-        cpu_seconds = job_metadata.usage["cpu"]["value"]
+        cpu_seconds = job_metadata.usage.cpu_seconds
 
         unique_process_ids = result_metadata.get('unique_process_ids', [])
 
@@ -140,8 +151,7 @@ class K8sJobCostsCalculator(JobCostsCalculator):  # CreoDiasJobCostsCalculator?
         job_id = job_info["job_id"]
         # TODO: make _JobMetadata.start_time a datetime instead
         started_ms = rfc3339.parse_datetime(job_metadata.start_time).timestamp() * 1000
-        cpu_hours = job_metadata.usage["cpu"]["value"]
-        cpu_seconds = cpu_hours * 60 * 60
+        cpu_seconds = job_metadata.usage.cpu_seconds
 
         unique_process_ids = result_metadata.get('unique_process_ids', [])
 
@@ -234,13 +244,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
 
             allocation = props["Aggregate Resource Allocation"]
             match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", allocation)
-            if match:
-                usage = {
-                    "cpu": {"value": int(match.group(2)), "unit": "cpu-seconds"},
-                    "memory": {"value": int(match.group(1)), "unit": "mb-seconds"},
-                }
-            else:
-                usage = None
+            usage = _Usage(cpu_seconds=int(match.group(2)), mb_seconds=int(match.group(1))) if match else None
 
             return _JobMetadata(
                 status=job_status,
@@ -304,7 +308,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             status=job_status, start_time=start_time, finish_time=finish_time
         )
 
-    def _get_usage(self, job_id: str, user_id: str) -> Union[dict, None]:
+    def _get_usage(self, job_id: str, user_id: str) -> Union[_Usage, None]:
         try:
             url = url_join(self._kubecost_url, "/model/allocation")
             namespace = "spark-jobs"
@@ -332,13 +336,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cost = total_cost["data"][0][namespace]
             # TODO: need to iterate through "data" list?
             _log.info(f"Successfully retrieved total cost {cost}")
-            usage = {}
-            usage["cpu"] = {"value": cost["cpuCoreHours"], "unit": "cpu-hours"}
-            usage["memory"] = {
-                "value": cost["ramByteHours"] / (1024 * 1024),
-                "unit": "mb-hours",
-            }
-            return usage
+            return _Usage(cpu_seconds=cost["cpuCoreHours"] * 60 * 60,
+                          mb_seconds=cost["ramByteHours"] * 60 * 60 / (1024 * 1024))
         except Exception:
             _log.error(
                 f"Failed to retrieve usage stats from kubecost",
@@ -495,7 +494,7 @@ class JobTracker:
             status=job_metadata.status,
             started=job_metadata.start_time,
             finished=job_metadata.finish_time,
-            usage=job_metadata.usage,
+            usage=job_metadata.usage.to_dict(),
         )
         with ElasticJobRegistry.just_log_errors(
             f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
