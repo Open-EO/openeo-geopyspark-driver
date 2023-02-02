@@ -1,3 +1,4 @@
+import kazoo.exceptions
 from moto import mock_s3
 import boto3
 
@@ -887,6 +888,57 @@ class TestBatchJobs:
             meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
+
+    def test_delete_job(self, api, job_registry):
+        with self._mock_kazoo_client() as zk:
+            # Create job
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+            res = api.post(
+                "/jobs", json=data, headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(201)
+            job_id = res.headers["OpenEO-Identifier"]
+            # Start job
+            with mock.patch("subprocess.run") as run:
+                stdout = api.read_file("spark-submit-stdout.txt")
+                run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=stdout, stderr=""
+                )
+                # Trigger job start
+                api.post(
+                    f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER
+                ).assert_status_code(202)
+                run.assert_called_once()
+
+            # Fake running
+            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
+                reg.set_status(
+                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
+                )
+            res = (
+                api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
+                .assert_status_code(200)
+                .json
+            )
+            assert res["status"] == "running"
+
+            # Cancel
+            with mock.patch("subprocess.run") as run:
+                res = api.delete(
+                    f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER
+                )
+            res.assert_status_code(204)
+            run.assert_called_once()
+            meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            assert meta_data == DictSubSet({"status": "canceled"})
+            assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
+
+            # Delete
+            res = api.delete(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
+            res.assert_status_code(204)
+            with pytest.raises(kazoo.exceptions.NoNodeError):
+                _ = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            # TODO
+            # assert job_registry.db[job_id] == DictSubSet({"deleted": True})
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_get_job_logs_skips_lines_with_empty_loglevel(self, mock_search, api):
