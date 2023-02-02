@@ -86,7 +86,7 @@ class JobCostsCalculator(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-class YarnJobCostsCalculator(JobCostsCalculator):  # TerrascopeJobCostsCalculator?
+class EtlApiJobCostsCalculator(JobCostsCalculator):
     def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
         self._etl_api = etl_api
         self._etl_api_access_token = etl_api_access_token
@@ -141,54 +141,7 @@ class YarnJobCostsCalculator(JobCostsCalculator):  # TerrascopeJobCostsCalculato
         return resource_costs_in_credits + added_value_costs_in_credits
 
 
-class K8sJobCostsCalculator(JobCostsCalculator):  # CreoDiasJobCostsCalculator?
-    # TODO: reduce code duplication with YarnJobCostsCalculator
-    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
-        self._etl_api = etl_api
-        self._etl_api_access_token = etl_api_access_token
-
-    def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
-        job_id = job_info["job_id"]
-        # TODO: make _JobMetadata.start_time a datetime instead
-        started_ms = rfc3339.parse_datetime(job_metadata.start_time).timestamp() * 1000
-        cpu_seconds = job_metadata.usage.cpu_seconds
-
-        unique_process_ids = result_metadata.get('unique_process_ids', [])
-
-        with self._etl_api as etl_api:
-            resource_costs_in_credits = etl_api.log_resource_usage(
-                batch_job_id=job_id,
-                title=...,
-                application_id=...,
-                user_id=...,
-                started_ms=started_ms,
-                finished_ms=...,
-                state=...,
-                status=...,
-                cpu_seconds=cpu_seconds,
-                mb_seconds=...,
-                duration_ms=...,
-                sentinel_hub_processing_units=0.0,
-                access_token=self._etl_api_access_token
-            )
-
-            area = deep_get(result_metadata, 'area', 'value', default=None)
-
-            added_value_costs_in_credits = sum(etl_api.log_added_value(
-                batch_job_id=job_id,
-                title=...,
-                application_id=...,
-                user_id=...,
-                started_ms=started_ms,
-                finished_ms=...,
-                process_id=process_id,
-                square_meters=float(area) if area is not None else 0.0,
-                access_token=self._etl_api_access_token) for process_id in unique_process_ids)
-
-        return resource_costs_in_credits + added_value_costs_in_credits
-
-
-class NoCostsCalculator(JobCostsCalculator):
+class NoJobCostsCalculator(JobCostsCalculator):
     def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
         return 0.0
 
@@ -353,7 +306,7 @@ class JobTracker:
         job_registry: ZkJobRegistry,
         principal: str,
         keytab: str,
-        job_costs_calculator: JobCostsCalculator = NoCostsCalculator(),
+        job_costs_calculator: JobCostsCalculator = NoJobCostsCalculator(),
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
@@ -537,6 +490,7 @@ class JobTracker:
             job_costs = self._job_costs_calculator.calculate_costs(job_info, job_metadata, result_metadata)
 
             # TODO: skip patching the job znode and read from this file directly?
+            # TODO: don't add costs if there are none ()?
             registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
 
 
@@ -575,10 +529,8 @@ class CliApp:
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
                     app_state_getter = YarnStatusGetter()
-                    job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()
-                    job_costs_calculator = K8sJobCostsCalculator(etl_api, etl_api_access_token)
                 else:
                     raise ValueError(app_cluster)
                 job_tracker = JobTracker(
@@ -586,7 +538,7 @@ class CliApp:
                     job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
-                    job_costs_calculator=job_costs_calculator
+                    job_costs_calculator=EtlApiJobCostsCalculator(etl_api, etl_api_access_token)
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
