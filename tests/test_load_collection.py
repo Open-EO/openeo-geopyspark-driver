@@ -292,7 +292,7 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
 
     reproject.assert_called_once_with(projected_polys, 32631)
     factory_mock.assert_called_once_with(
-        opensearchclient_mock, "", band_names, "", cellsize_mock
+        opensearchclient_mock, "", band_names, "", cellsize_mock, False
     )
     factory_mock.return_value.datacube_seq.assert_called_once_with(
         projected_polys_native,
