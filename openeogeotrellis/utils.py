@@ -222,8 +222,8 @@ def to_projected_polygons(
     elif isinstance(geometry, DelayedVector):
         return to_projected_polygons(jvm, geometry.path, crs=crs)
     elif isinstance(geometry, DriverVectorCube):
-        expected_crs = str(geometry.get_crs().to_proj4()).lower()
-        provided_crs = CRS.from_user_input(crs).to_proj4().lower() if crs else None
+        expected_crs = str(geometry.get_crs().to_proj4()).lower().replace("ellps","datum")
+        provided_crs = CRS.from_user_input(crs).to_proj4().lower().replace("ellps","datum") if crs else None
         if crs and provided_crs != expected_crs:
             raise RuntimeError(f"Unexpected crs: {provided_crs!r} != {expected_crs!r}")
         # TODO: reverse this: make DriverVectorCube handling the reference implementation
