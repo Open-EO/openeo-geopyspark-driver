@@ -1,5 +1,6 @@
 import json
 import datetime as dt
+import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Callable, Union, Optional
@@ -432,17 +433,23 @@ class DoubleJobRegistry:
         self._zk_job_registry_factory = zk_job_registry_factory
         self.zk_job_registry: Optional[ZkJobRegistry] = None
         self.elastic_job_registry = elastic_job_registry
+        # Synchronisation lock to make sure that only one thread at a time can use this as a context manager.
+        self._lock = threading.RLock()
 
     def __enter__(self):
         _log.debug(f"Context enter {self!r}")
+        self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory()
         self.zk_job_registry.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         _log.debug(f"Context exit {self!r} ({exc_type=})")
-        self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
-        self.zk_job_registry = None
+        try:
+            self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
+        finally:
+            self.zk_job_registry = None
+            self._lock.release()
 
     def get_job(self, job_id: str, user_id: str) -> dict:
         # TODO: add attempt to get job info from elastic and e.g. compare?
