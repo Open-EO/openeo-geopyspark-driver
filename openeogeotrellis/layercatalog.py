@@ -563,6 +563,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 band_names,
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
             )
             return create_pyramid(factory)
 
@@ -579,6 +580,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 band_names,
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
             )
             return create_pyramid(factory)
 
