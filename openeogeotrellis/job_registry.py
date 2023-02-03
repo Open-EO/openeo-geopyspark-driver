@@ -434,11 +434,13 @@ class DoubleJobRegistry:
         self.elastic_job_registry = elastic_job_registry
 
     def __enter__(self):
+        _log.debug(f"Context enter {self!r}")
         self.zk_job_registry = self._zk_job_registry_factory()
         self.zk_job_registry.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        _log.debug(f"Context exit {self!r} ({exc_type=})")
         self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
         self.zk_job_registry = None
 
