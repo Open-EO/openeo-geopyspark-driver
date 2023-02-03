@@ -22,6 +22,7 @@ import dateutil.parser
 from kazoo.client import KazooClient
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
+from pyproj import CRS
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
@@ -221,8 +222,8 @@ def to_projected_polygons(
     elif isinstance(geometry, DelayedVector):
         return to_projected_polygons(jvm, geometry.path, crs=crs)
     elif isinstance(geometry, DriverVectorCube):
-        expected_crs = str(geometry.get_crs()).lower()
-        if crs and crs.lower() != expected_crs:
+        expected_crs = str(geometry.get_crs().to_proj4()).lower()
+        if crs and CRS.from_user_input(crs).to_proj4().lower() != expected_crs:
             raise RuntimeError(f"Unexpected crs: {crs!r} != {expected_crs!r}")
         # TODO: reverse this: make DriverVectorCube handling the reference implementation
         #       and GeometryCollection the legacy/deprecated way
