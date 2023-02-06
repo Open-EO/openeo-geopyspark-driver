@@ -2177,7 +2177,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     with self._double_job_registry as registry:
                         registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
         else:
-            with ZkJobRegistry() as registry:
+            with self._double_job_registry as registry:
                 registry.remove_dependencies(job_id, user_id)
                 registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
 

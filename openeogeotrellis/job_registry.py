@@ -468,6 +468,22 @@ class DoubleJobRegistry:
             # TODO support for deletion in EJR (https://github.com/Open-EO/openeo-python-driver/issues/163)
             _log.warning(f"EJR does not support batch job deletion ({job_id=})")
 
+    def set_dependencies(
+        self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
+    ):
+        self.zk_job_registry.set_dependencies(
+            job_id=job_id, user_id=user_id, dependencies=dependencies
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependencies(
+                job_id=job_id, dependencies=dependencies
+            )
+
+    def remove_dependencies(self, job_id: str, user_id: str):
+        self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.remove_dependencies(job_id=job_id)
+
     def set_dependency_status(
         self, job_id: str, user_id: str, dependency_status: str
     ) -> None:
