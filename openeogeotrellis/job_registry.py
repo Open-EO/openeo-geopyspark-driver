@@ -124,9 +124,8 @@ class ZkJobRegistry:
 
     def patch(self, job_id: str, user_id: str, **kwargs) -> None:
         """Partially updates a registered batch job."""
-
+        # TODO make this a private method to have cleaner API
         job_info, version = self._read(job_id, user_id)
-
         self._update({**job_info, **kwargs}, version)
 
     def mark_done(self, job_id: str, user_id: str) -> None:
@@ -478,4 +477,14 @@ class DoubleJobRegistry:
         if self.elastic_job_registry:
             self.elastic_job_registry.set_dependency_status(
                 job_id=job_id, dependency_status=dependency_status
+            )
+
+    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
+        # TODO: add dedicated method
+        self.zk_job_registry.patch(
+            job_id=job_id, user_id=user_id, proxy_user=proxy_user
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_proxy_user(
+                job_id=job_id, proxy_user=proxy_user
             )

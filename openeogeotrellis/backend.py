@@ -1250,9 +1250,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id, 'user_id': user.user_id})
 
         if proxy_user:
-            with ZkJobRegistry() as registry:
-                # TODO: add dedicated method
-                registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
+            with self._double_job_registry as registry:
+                registry.set_proxy_user(
+                    job_id=job_id, user_id=user.user_id, proxy_user=proxy_user
+                )
 
         # only fetch it when necessary (SHub collection with non-default credentials) and only once
         @lru_cache(maxsize=None)
