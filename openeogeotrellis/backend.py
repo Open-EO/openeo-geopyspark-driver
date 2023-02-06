@@ -2211,9 +2211,9 @@ class GpsBatchJobs(backend.BatchJobs):
             if propagate_errors:
                 raise
 
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
-            dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
+        dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
 
         if dependency_sources:
             # Only for SentinelHub batch processes.
