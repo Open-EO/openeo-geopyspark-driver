@@ -413,6 +413,9 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
         self.db[job_id].update(data)
 
+    def set_dependency_status(self, job_id: str, dependency_status: str):
+        self.db[job_id].update(dependency_status=dependency_status)
+
 
 class DoubleJobRegistry:
     """
@@ -465,3 +468,14 @@ class DoubleJobRegistry:
         if self.elastic_job_registry:
             # TODO support for deletion in EJR (https://github.com/Open-EO/openeo-python-driver/issues/163)
             _log.warning(f"EJR does not support batch job deletion ({job_id=})")
+
+    def set_dependency_status(
+        self, job_id: str, user_id: str, dependency_status: str
+    ) -> None:
+        self.zk_job_registry.set_dependency_status(
+            job_id=job_id, user_id=user_id, dependency_status=dependency_status
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependency_status(
+                job_id=job_id, dependency_status=dependency_status
+            )

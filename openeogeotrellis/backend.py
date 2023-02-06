@@ -46,7 +46,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
-from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS
+from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.logging import (
@@ -1103,8 +1103,8 @@ class GpsBatchJobs(backend.BatchJobs):
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
-            with ZkJobRegistry() as registry:
-                registry.set_dependency_status(job_id, user_id, 'error')
+            with self._double_job_registry as registry:
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1183,14 +1183,14 @@ class GpsBatchJobs(backend.BatchJobs):
                              extra={'job_id': job_id, 'user_id': user_id})
 
                 registry.set_dependencies(job_id, user_id, dependencies)
-                registry.set_dependency_status(job_id, user_id, 'available')
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
         elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
-                with ZkJobRegistry() as registry:
-                    registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
 
                 retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
@@ -1204,8 +1204,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
                              f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
 
-                with ZkJobRegistry() as registry:
-                    registry.set_dependency_status(job_id, user_id, 'error')
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
                 job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1297,7 +1297,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                                                      vault_token=None
                                                                      if sentinel_hub_client_alias == 'default'
                                                                      else get_vault_token(sentinel_hub_client_alias))
-                registry.set_dependency_status(job_id, user_id, 'awaiting')
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING)
                 registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                 with ElasticJobRegistry.just_log_errors(name="Queue job"):
                     if self._elastic_job_registry:
