@@ -11,6 +11,7 @@ class TestDriverVectorCube:
     def test_from_parquet(self):
         testfile = str(get_test_data_file("geometries/geoms.pq"))
         cube = DriverVectorCube.from_fiona([testfile],driver="parquet",options={})
+        assert cube.get_crs().to_epsg() == 4326
         mockjvm = MagicMock()
         to_projected_polygons(jvm=mockjvm, geometry=cube, crs="epsg:4326")
         fromWktMethod = mockjvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt
