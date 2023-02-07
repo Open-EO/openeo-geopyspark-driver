@@ -500,7 +500,8 @@ class DoubleJobRegistry:
         self.zk_job_registry.patch(
             job_id=job_id, user_id=user_id, proxy_user=proxy_user
         )
-        if self.elastic_job_registry:
-            self.elastic_job_registry.set_proxy_user(
-                job_id=job_id, proxy_user=proxy_user
-            )
+        with ElasticJobRegistry.just_log_errors(name="set_proxy_user"):
+            if self.elastic_job_registry:
+                self.elastic_job_registry.set_proxy_user(
+                    job_id=job_id, proxy_user=proxy_user
+                )
