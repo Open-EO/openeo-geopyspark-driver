@@ -14,7 +14,7 @@ import openeogeotrellis
 from kafka import KafkaProducer
 from openeo.util import dict_no_none
 from openeo_driver.errors import JobNotFoundException
-from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.jobregistry import JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
@@ -230,7 +230,10 @@ def main():
                     with ZkJobRegistry() as registry:
                         job_info = registry.get_job(batch_job_id, user_id)
 
-                    if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
+                    if job_info.get("dependency_status") not in [
+                        DEPENDENCY_STATUS.AWAITING,
+                        DEPENDENCY_STATUS.AWAITING_RETRY,
+                    ]:
                         break
                     else:
                         try:

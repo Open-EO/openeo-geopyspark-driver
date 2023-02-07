@@ -1178,8 +1178,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
-        elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
-            if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
+        elif all(
+            status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
+        ):  # all done but some partially failed
+            if (
+                job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
+            ):  # haven't retried yet: retry
                 with self._double_job_registry as registry:
                     registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
 
@@ -1280,7 +1284,11 @@ class GpsBatchJobs(backend.BatchJobs):
             if (
                 batch_process_dependencies is None
                 and job_info.get("dependency_status")
-                not in ["awaiting", "awaiting_retry", "available"]
+                not in [
+                    DEPENDENCY_STATUS.AWAITING,
+                    DEPENDENCY_STATUS.AWAITING_RETRY,
+                    DEPENDENCY_STATUS.AVAILABLE,
+                ]
                 and self._scheduled_sentinelhub_batch_processes(
                     process_graph=spec["process_graph"],
                     api_version=api_version,
