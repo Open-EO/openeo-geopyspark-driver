@@ -415,6 +415,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_dependency_status(self, job_id: str, dependency_status: str):
         self.db[job_id].update(dependency_status=dependency_status)
 
+    def set_proxy_user(self, job_id: str, proxy_user: str):
+        self.db[job_id].update(proxy_user=proxy_user)
 
 class DoubleJobRegistry:
     """
