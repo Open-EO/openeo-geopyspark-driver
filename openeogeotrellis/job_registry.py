@@ -320,6 +320,7 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     """Convert job info dict (from ZkJobRegistry) to BatchJobMetadata"""
     status = job_info.get("status")
     if status == "submitted":
+        # TODO: is conversion of "submitted" still necessary?
         status = JOB_STATUS.CREATED
     specification = job_info["specification"]
     if isinstance(specification, str):
@@ -570,3 +571,10 @@ class DoubleJobRegistry:
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
+
+    def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
+        return [
+            zk_job_info_to_metadata(job_info)
+            for job_info in self.zk_job_registry.get_user_jobs(user_id)
+        ]
+        # TODO: add elastic_job_registry implementation
