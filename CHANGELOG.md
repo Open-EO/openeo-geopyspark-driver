@@ -16,7 +16,7 @@ without compromising stable operations.
 - The size of a single chunk is now automatically increased for larger jobs, to improve IO performance.
 - resample_cube_spatial is no longer needed in all cases when using `merge_cubes`or `mask`
 - Better detection of duplicate products in source catalogs
-
+- The 'if' process will no longer evaluate the branch that is not accepted https://github.com/Open-EO/openeo-python-driver/issues/109
 
 ## 2023-01-20 (0.6.7a1)
 - Changed: Getting a job's logs now leaves out log lines that have no loglevel or a level that is not supported. [openeo-python-driver/#160](https://github.com/Open-EO/openeo-python-driver/issues/160)
