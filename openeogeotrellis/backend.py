@@ -2299,7 +2299,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             jobs_before = registry.get_all_jobs_before(upper)
 
         for job_info in jobs_before:

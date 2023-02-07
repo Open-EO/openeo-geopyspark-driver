@@ -577,4 +577,8 @@ class DoubleJobRegistry:
             zk_job_info_to_metadata(job_info)
             for job_info in self.zk_job_registry.get_user_jobs(user_id)
         ]
-        # TODO: add elastic_job_registry implementation
+        # TODO #236 add elastic_job_registry implementation
+
+    def get_all_jobs_before(self, upper: dt.datetime) -> List[dict]:
+        return self.zk_job_registry.get_all_jobs_before(upper=upper)
+        # TODO #236 add elastic_job_registry implementation
