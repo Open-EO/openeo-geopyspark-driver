@@ -184,7 +184,6 @@ def test_run_orfeo_on_samples(tmp_path):
     orfeo_function(samples)
 
 
-
 def test_run_orfeo_on_single(tmp_path):
     pytest.skip("requires input data")
     #import faulthandler
@@ -213,29 +212,71 @@ def test_run_orfeo_on_single(tmp_path):
         )
         print(data)
 
+def test_run_orfeo_noise_removal_vs_no_data():
+    """
+    This test shows that noise removal works as intended and that it uses a different value from nodata.
+    Nodata should only be used when there is no input data available at that pixel.
 
+    TODO: When you view the resulting file in QGIS you can see that where the input is nodata, the result can differ.
+    Sometimes it sets it to 10000.0 (as intended) and sometimes it sets it to 0. It could be a bug from Orfeo.
+    This is solved when the size of the extent is increased.
+    """
+    # Ensure that otb is added to your python path before you run this test.
+    # E.g. PYTHONPATH=/opt/otb/OTB-8.1.0-Linux64/lib/python
+    extent = {
+        "xmin": 717126.5217391292098910,
+        "ymin": 5856238.7826086897403002,
+        "xmax": 733543.9130434772232547,
+        "ymax": 5869595.3043478215113282,
+    }
+    extent_width = int((extent["xmax"] - extent["xmin"]) / 10)
+    extent_height = int((extent["ymax"] - extent["ymin"]) / 10)
 
-def test_run_orfeo(tmp_path):
-    input = Path("/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2021/05/17/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.zip")
-    target_location = r's1_grd'
-
-    extract_product(input, target_location)
-
-    extent = {'xmin':697534, 'ymin':5865437-80000, 'xmax':697534 + 10000, 'ymax':5865437-40000 }
-    data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
-        input_tiff=Path("s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"),
-        extent=extent, extent_epsg=32631,
-        dem_dir=None,
-        extent_width_px=100, extent_height_px=120,
-        sar_calibration_lut="gamma",
-        noise_removal=True,
-        elev_geoid=None, elev_default=0,
-        log_prefix="test",
-        orfeo_memory=512
+    input = Path(
+        "/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2021/05/17/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.zip"
+    )
+    extract_product(input, target_location=r"s1_grd")
+    extracted_input_path = Path(
+        "s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"
     )
 
-    #orfeo data is returned (y,x)
-    assert (120,100) == data.shape
+    def execute_orfeo(noise_removal):
+        data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
+            input_tiff=extracted_input_path,
+            extent=extent,
+            extent_epsg=32631,
+            dem_dir=None,
+            extent_width_px=extent_width,
+            extent_height_px=extent_height,
+            sar_calibration_lut="gamma",
+            noise_removal=noise_removal,
+            elev_geoid=None,
+            elev_default=0,
+            log_prefix="test",
+            orfeo_memory=512,
+        )
+        return data, nodata
+
+    data_noise_removal, nodata = execute_orfeo(noise_removal=True)
+    data_no_noise_removal, nodata = execute_orfeo(noise_removal=False)
+
+    import numpy as np
+
+    # Assert that noise removal introduces new zeros.
+    # (Currently ~50 out of 1607146 pixels)
+    assert np.count_nonzero(data_noise_removal) < np.count_nonzero(
+        data_no_noise_removal
+    )
+
+    # Assert that the first 20% of the rows are NoData
+    first_rows = data_noise_removal[: int(data_noise_removal.shape[0] * 0.2), :]
+    assert first_rows.min() == first_rows.max() == nodata
+    assert nodata != 0
+    assert (
+        data_noise_removal.shape
+        == data_no_noise_removal.shape
+        == (extent_height, extent_width)
+    )
 
 
 def extract_product(input, target_location):
