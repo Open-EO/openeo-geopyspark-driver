@@ -9,6 +9,7 @@ class ConfigParams:
     #       see https://github.com/Open-EO/openeo-geopyspark-driver/issues/285
 
     def __init__(self, env=os.environ):
+        self.openeo_env = env.get("OPENEO_ENV", "unknown")
         self.zookeepernodes = env.get(
             "ZOOKEEPERNODES",
             'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
@@ -48,6 +49,12 @@ class ConfigParams:
         self.etl_api_oidc_issuer = "https://sso-int.terrascope.be/auth/realms/terrascope"
 
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
+
+        # TODO: We need a better system for determining "which backend deploy is this?"
+        self.ejr_backend_id = (
+            ("creodias" if self.is_kube_deploy else "mep") + "-" + self.openeo_env
+        )
+        self.ejr_api = env.get("OPENEO_EJR_API", "https://jobregistry.openeo.vito.be")
 
     def __str__(self) -> str:
         return pformat(vars(self))

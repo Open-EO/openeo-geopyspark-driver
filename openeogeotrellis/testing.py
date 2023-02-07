@@ -1,6 +1,7 @@
 """
 Reusable helpers, functions, classes, fixtures for testing purposes
 """
+import json
 import uuid
 from pathlib import Path
 from typing import List, Tuple, Union, Dict, Iterator
@@ -126,3 +127,7 @@ class KazooClientMock:
     def dump(self) -> Dict[str, bytes]:
         """Dump ZooKeeper data for inspection"""
         return dict(self.root.dump())
+
+    def get_json_decoded(self, path: Union[str, Path]) -> dict:
+        raw, _ = self.get(path=path)
+        return json.loads(raw.decode("utf-8"))

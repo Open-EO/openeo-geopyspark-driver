@@ -12,19 +12,18 @@ import py4j.protocol
 import pyproj
 import pyspark.sql.utils
 import requests
-from shapely.geometry import box
-
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.dry_run import ProcessType
 from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
+from shapely.geometry import box
+
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
@@ -296,22 +295,29 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
                 .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
-
         def file_s2_pyramid():
-            return file_pyramid(lambda opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path:
-                                jvm.org.openeo.geotrellis.file.Sentinel2PyramidFactory(opensearch_endpoint,
-                                                                                       opensearch_collection_id,
-                                                                                       opensearch_link_titles,
-                                                                                       root_path,
-                                                                                       jvm.geotrellis.raster.CellSize(
-                                                                                           cell_width,
-                                                                                           cell_height),
-                                                                                       experimental
-                                                                                       ))
+            def pyramid_factory(
+                opensearch_endpoint,
+                opensearch_collection_id,
+                opensearch_link_titles,
+                root_path,
+            ):
+                is_utm = (cell_width == cell_height == 10) and (
+                    "COHERENCE" not in opensearch_collection_id
+                )
+                opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                    opensearch_endpoint, is_utm, "", [], ""
+                )
+                return jvm.org.openeo.geotrellis.file.PyramidFactory(
+                    opensearch_client,
+                    opensearch_collection_id,
+                    opensearch_link_titles,
+                    root_path,
+                    jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                    experimental,
+                )
 
-
-        def file_s5p_pyramid():
-            return file_pyramid(jvm.org.openeo.geotrellis.file.Sentinel5PPyramidFactory)
+            return file_pyramid(pyramid_factory)
 
         def file_probav_pyramid():
             opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
@@ -539,41 +545,63 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
 
+
+        def globspatialonly_pyramid():
+            if len(metadata.band_names) != 1:
+                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
+                    cid=collection_id, bs=metadata.band_names))
+
+            data_glob = layer_source_info['data_glob']
+            band_names = metadata.band_names
+
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                data_glob, False, None, band_names, "globspatialonly"
+            )
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
+            )
+            return create_pyramid(factory)
         def file_cgls_pyramid():
             if len(metadata.band_names) != 1:
                 raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
                     cid=collection_id, bs=metadata.band_names))
 
             data_glob = layer_source_info['data_glob']
-            band_name = metadata.band_names[0]
             date_regex = layer_source_info['date_regex']
+            band_names = metadata.band_names
 
-            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory(data_glob, band_name, date_regex)
-
-            return (
-                factory.datacube_seq(projected_polygons, from_date, to_date,metadata_properties(),correlation_id,datacubeParams) if single_level
-                else factory.pyramid_seq(projected_polygons.polygons(), projected_polygons.crs(), from_date, to_date)
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                data_glob, False, date_regex, band_names, "cgls"
             )
-
-        def file_cgls_pyramid2():
-            if len(metadata.band_names) != 1:
-                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
-                    cid=collection_id, bs=metadata.band_names))
-
-            data_glob = layer_source_info['data_glob']
-            date_regex = layer_source_info['date_regex']
-
-            factory = jvm.org.openeo.geotrellis.file.CglsPyramidFactory2(
-                data_glob, date_regex, metadata.band_names,
-                jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
             )
             return create_pyramid(factory)
 
         def file_agera5_pyramid():
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
-            factory = jvm.org.openeo.geotrellis.file.AgEra5PyramidFactory2(
-                data_glob, metadata.band_names, date_regex, jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            band_names = metadata.band_names
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                data_glob, False, date_regex, band_names, "agera5"
+            )
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
             )
             return create_pyramid(factory)
 
@@ -594,12 +622,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel_hub_pyramid()
         elif layer_source_type == 'creo':
             pyramid = creo_pyramid()
-        elif layer_source_type == 'file-cgls':
+        elif layer_source_type == "file-cgls2":
             pyramid = file_cgls_pyramid()
-        elif layer_source_type == 'file-cgls2':
-            pyramid = file_cgls_pyramid2()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'file-globspatialonly':
+            pyramid = globspatialonly_pyramid()
         elif layer_source_type == 'file-oscars':
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':

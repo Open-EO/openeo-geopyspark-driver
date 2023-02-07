@@ -22,7 +22,7 @@ from openeo_driver.util.logging import get_logging_config, setup_logging
 import openeo_driver.utils
 
 from openeogeotrellis import async_task
-from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
+from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import (
     K8S_SPARK_APP_STATE,
@@ -232,6 +232,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         )
 
     def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
+        # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
             metadata = self._kubernetes_api.get_namespaced_custom_object(
@@ -303,7 +304,7 @@ class JobTracker:
     def __init__(
         self,
         app_state_getter: JobMetadataGetterInterface,
-        job_registry: ZkJobRegistry,
+        zk_job_registry: ZkJobRegistry,
         principal: str,
         keytab: str,
         job_costs_calculator: JobCostsCalculator = NoJobCostsCalculator(),
@@ -311,7 +312,7 @@ class JobTracker:
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
-        self._job_registry = job_registry
+        self._zk_job_registry = zk_job_registry
         self._principal = principal
         self._keytab = keytab
         self._job_costs_calculator = job_costs_calculator
@@ -326,18 +327,16 @@ class JobTracker:
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
-        self._elastic_job_registry = get_or_build_elastic_job_registry(
-            elastic_job_registry, ref="JobTracker"
-        )
+        self._elastic_job_registry = elastic_job_registry
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        with self._job_registry as registry, StatsReporter(
+        with self._zk_job_registry as zk_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
-                jobs_to_track = registry.get_running_jobs()
+                jobs_to_track = zk_job_registry.get_running_jobs()
             _log.info(f"Collected {len(jobs_to_track)} jobs to track")
             stats["collected jobs"] = len(jobs_to_track)
 
@@ -379,7 +378,7 @@ class JobTracker:
                         user_id=user_id,
                         application_id=application_id,
                         job_info=job_info,
-                        registry=registry,
+                        zk_job_registry=zk_job_registry,
                         stats=stats,
                     )
                 except Exception as e:
@@ -397,7 +396,7 @@ class JobTracker:
         user_id: str,
         application_id: str,
         job_info: dict,
-        registry: ZkJobRegistry,
+        zk_job_registry: ZkJobRegistry,
         stats: collections.Counter,
     ):
         """Sync job status for a single job"""
@@ -420,7 +419,7 @@ class JobTracker:
         except AppNotFound:
             log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
             # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
-            registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+            zk_job_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
             with ElasticJobRegistry.just_log_errors("job_tracker app not found"):
                 if self._elastic_job_registry:
                     # TODO: also set started/finished, exception/error info ...
@@ -440,8 +439,7 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-
-        registry.patch(
+        zk_job_registry.patch(
             job_id=job_id,
             user_id=user_id,
             status=job_metadata.status,
@@ -469,7 +467,7 @@ class JobTracker:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
 
-            registry.remove_dependencies(job_id, user_id)
+            zk_job_registry.remove_dependencies(job_id, user_id)
 
             # there can be duplicates if batch processes are recycled
             dependency_sources = list(
@@ -483,7 +481,7 @@ class JobTracker:
 
             # Note: setting the status is already done with a `patch` higher,
             #       but we do it here again with `set_status` for the "auto_mark_done" feature
-            registry.set_status(
+            zk_job_registry.set_status(
                 job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
             )
 
@@ -491,7 +489,7 @@ class JobTracker:
 
             # TODO: skip patching the job znode and read from this file directly?
             # TODO: don't add costs if there are none ()?
-            registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
+            zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
 
 
 class CliApp:
@@ -517,12 +515,17 @@ class CliApp:
 
         with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
             try:
+                # ZooKeeper Job Registry
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
                 etl_api = EtlApi(ConfigParams().etl_api)
                 etl_api_access_token = ...  # FIXME
 
+                # Elastic Job Registry (EJR)
+                elastic_job_registry = get_elastic_job_registry()
+
+                # YARN or Kubernetes?
                 app_cluster = args.app_cluster
                 if app_cluster == "auto":
                     # TODO: eliminate (need for) auto-detection.
@@ -535,9 +538,10 @@ class CliApp:
                     raise ValueError(app_cluster)
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
-                    job_registry=zk_job_registry,
+                    zk_job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
+                    elastic_job_registry=elastic_job_registry,
                     job_costs_calculator=EtlApiJobCostsCalculator(etl_api, etl_api_access_token)
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
@@ -605,6 +609,7 @@ class CliApp:
         )
 
         if rotating_file:
+            # TODO: support this appending directly in get_logging_config
             logging_config["handlers"]["rotating_file"] = {
                 "class": "logging.handlers.RotatingFileHandler",
                 "filename": str(rotating_file),

@@ -29,7 +29,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.backend import GpsBatchJobs, get_or_build_elastic_job_registry
+from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.vault import Vault
 from openeogeotrellis import async_task
@@ -89,9 +89,7 @@ class JobTracker:
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
-        self._elastic_job_registry = get_or_build_elastic_job_registry(
-            elastic_job_registry, ref="JobTracker"
-        )
+        self._elastic_job_registry = elastic_job_registry
         self._etl_api = etl_api
         self._etl_api_access_token = etl_api_access_token
 
@@ -421,9 +419,17 @@ def main():
         etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
                                                                                                    args.keytab)
 
+        elastic_job_registry = get_elastic_job_registry()
+
         with EtlApi(ConfigParams().etl_api) as etl_api:
-            job_tracker = JobTracker(ZkJobRegistry, args.principal, args.keytab,
-                                     etl_api=etl_api, etl_api_access_token=etl_api_access_token)
+            job_tracker = JobTracker(
+                job_registry=ZkJobRegistry,
+                principal=args.principal,
+                keytab=args.keytab,
+                etl_api=etl_api,
+                etl_api_access_token=etl_api_access_token,
+                elastic_job_registry=elastic_job_registry,
+            )
             job_tracker.update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})

@@ -46,7 +46,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
-from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS
+from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.logging import (
@@ -69,7 +69,11 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_job_name,
     kube_client,
 )
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_registry import (
+    ZkJobRegistry,
+    zk_job_info_to_metadata,
+    DoubleJobRegistry,
+)
 from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -298,6 +302,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         use_zookeeper=True,
         opensearch_enrich=True,
         batch_job_output_root: Optional[Path] = None,
+        use_job_registry: bool = True,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -321,6 +327,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         principal = conf.get("spark.yarn.principal", conf.get("spark.kerberos.principal"))
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
 
+        if use_job_registry and not elastic_job_registry:
+            # TODO #236 avoid this fallback and just make sure it is always set when necessary
+            logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
+            elastic_job_registry = get_elastic_job_registry()
+
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
@@ -330,6 +341,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 key_tab=key_tab,
                 vault=vault,
                 output_root_dir=batch_job_output_root,
+                elastic_job_registry=elastic_job_registry,
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
@@ -658,7 +670,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             def load_spatial_bounds_from_job_info():
                 job_info = self.batch_jobs.get_job_info(job_id, user_id)
-                return [job_info.bbox[0], job_info.bbox[1], job_info.bbox[2], job_info.bbox[3]], job_info.epsg
+                bbox = job_info.bbox
+                if not (isinstance(bbox, list) and len(bbox) == 4):
+                    raise InternalException(
+                        message=f"Expected bbox list from job info in load_result but got: {bbox!r}"
+                    )
+                return [bbox[0], bbox[1], bbox[2], bbox[3]], job_info.epsg
 
             load_spatial_bounds = load_spatial_bounds_from_job_info
 
@@ -931,17 +948,19 @@ class GpsProcessing(ConcreteProcessing):
                             }
 
 
-def get_or_build_elastic_job_registry(
-    job_registry: Optional[ElasticJobRegistry], ref: str = "n/a"
-) -> Optional[ElasticJobRegistry]:
-    """Helper to get or build (when not given) an ElasticJobRegistry"""
-    # TODO: this is a temporary helper, that should be replaced with a better config or dependency injection system
-    #       Ideally this function should not be necessary (just create a ElasticJobRegistry in one place and reuse it)
-    with ElasticJobRegistry.just_log_errors(name=f"init {ref}"):
-        if not job_registry:
-            job_registry = ElasticJobRegistry.from_environ()
-            job_registry.health_check(log=True)
-    return job_registry
+def get_elastic_job_registry() -> Optional[ElasticJobRegistry]:
+    """Build ElasticJobRegistry instance from config and vault"""
+    with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
+        config = ConfigParams()
+        job_registry = ElasticJobRegistry(
+            backend_id=config.ejr_backend_id,
+            api_url=config.ejr_api,
+        )
+        vault = Vault(config.vault_addr)
+        ejr_creds = vault.get_elastic_job_registry_credentials()
+        job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
+        job_registry.health_check(log=True)
+        return job_registry
 
 
 class GpsBatchJobs(backend.BatchJobs):
@@ -971,8 +990,10 @@ class GpsBatchJobs(backend.BatchJobs):
             output_root_dir or ConfigParams().batch_job_output_root
         )
 
-        self._elastic_job_registry = get_or_build_elastic_job_registry(
-            elastic_job_registry, ref="GpsBatchJobs"
+        self._elastic_job_registry = elastic_job_registry
+        self._double_job_registry = DoubleJobRegistry(
+            zk_job_registry_factory=ZkJobRegistry,
+            elastic_job_registry=elastic_job_registry,
         )
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
@@ -1018,10 +1039,10 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
 
-        return ZkJobRegistry.job_info_to_metadata(job_info)
+        return zk_job_info_to_metadata(job_info)
 
     def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str,
                                          vault_token: Optional[str]):
@@ -1082,8 +1103,8 @@ class GpsBatchJobs(backend.BatchJobs):
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
-            with ZkJobRegistry() as registry:
-                registry.set_dependency_status(job_id, user_id, 'error')
+            with self._double_job_registry as registry:
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1162,14 +1183,14 @@ class GpsBatchJobs(backend.BatchJobs):
                              extra={'job_id': job_id, 'user_id': user_id})
 
                 registry.set_dependencies(job_id, user_id, dependencies)
-                registry.set_dependency_status(job_id, user_id, 'available')
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
         elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
             if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
-                with ZkJobRegistry() as registry:
-                    registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
 
                 retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
@@ -1183,8 +1204,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
                              f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
 
-                with ZkJobRegistry() as registry:
-                    registry.set_dependency_status(job_id, user_id, 'error')
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
                 job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1194,7 +1215,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with ZkJobRegistry() as registry:
             return [
-                registry.job_info_to_metadata(job_info)
+                zk_job_info_to_metadata(job_info)
                 for job_info in registry.get_user_jobs(user_id)
             ]
 
@@ -1229,9 +1250,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id, 'user_id': user.user_id})
 
         if proxy_user:
-            with ZkJobRegistry() as registry:
-                # TODO: add dedicated method
-                registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
+            with self._double_job_registry as registry:
+                registry.set_proxy_user(
+                    job_id=job_id, user_id=user.user_id, proxy_user=proxy_user
+                )
 
         # only fetch it when necessary (SHub collection with non-default credentials) and only once
         @lru_cache(maxsize=None)
@@ -1276,7 +1298,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                                                      vault_token=None
                                                                      if sentinel_hub_client_alias == 'default'
                                                                      else get_vault_token(sentinel_hub_client_alias))
-                registry.set_dependency_status(job_id, user_id, 'awaiting')
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING)
                 registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                 with ElasticJobRegistry.just_log_errors(name="Queue job"):
                     if self._elastic_job_registry:
@@ -1603,7 +1625,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 "user": User(user_id),
                 # TODO #285: use original GeoPySparkBackendImplementation instead of recreating a new one
                 #           or at least set all GeoPySparkBackendImplementation arguments correctly (e.g. through a config)
-                "backend_implementation": GeoPySparkBackendImplementation(),
+                "backend_implementation": GeoPySparkBackendImplementation(
+                    use_job_registry=False
+                ),
             }
         )
 
@@ -2101,7 +2125,7 @@ class GpsBatchJobs(backend.BatchJobs):
         return elasticsearch_logs(job_id, job_info.created, offset)
 
     def cancel_job(self, job_id: str, user_id: str):
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
 
         if job_info["status"] in [
@@ -2130,7 +2154,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
                     extra = {'job_id': job_id, 'API response': delete_response}
                 )
-                with ZkJobRegistry() as registry:
+                with self._double_job_registry:
                     registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:
                 try:
@@ -2150,10 +2174,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning(f"Could not kill corresponding Spark job {application_id}, output was: {e.stdout}",
                                    exc_info=True, extra={'job_id': job_id})
                 finally:
-                    with ZkJobRegistry() as registry:
+                    with self._double_job_registry as registry:
                         registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
         else:
-            with ZkJobRegistry() as registry:
+            with self._double_job_registry as registry:
                 registry.remove_dependencies(job_id, user_id)
                 registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
 
@@ -2187,9 +2211,9 @@ class GpsBatchJobs(backend.BatchJobs):
             if propagate_errors:
                 raise
 
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
-            dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
+        dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
 
         if dependency_sources:
             # Only for SentinelHub batch processes.
@@ -2204,7 +2228,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 config_params.s3_bucket_name, prefix
             )
 
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             registry.delete(job_id, user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})

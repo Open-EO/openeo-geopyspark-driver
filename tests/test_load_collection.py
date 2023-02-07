@@ -114,7 +114,10 @@ def test_load_file_oscars_resample(jvm_mock, catalog):
     env = EvalEnv()
     env = env.push({"pyramid_levels": "single"})
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
+        "https://services.terrascope.be/catalogue", False, "", [], ""
+    )
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
     cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
     cellsize_mock = jvm_mock.geotrellis.raster.CellSize(15, 15)
@@ -129,8 +132,22 @@ def test_load_file_oscars_resample(jvm_mock, catalog):
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
     cellsize_call_mock.assert_called_with(15,15)
 
-    factory_mock.assert_called_once_with('https://services.terrascope.be/catalogue', 'urn:eop:VITO:COP_DEM_GLO_30M_COG', ['DEM'], '/data/MTDA/DEM/COP_DEM_30M_COG', cellsize_mock, True)
-    factory_mock.return_value.datacube_seq.assert_called_once_with(ANY, '2010-01-01T10:36:00+00:00', '2012-01-01T10:36:00+00:00', {}, '', datacubeParams)
+    factory_mock.assert_called_once_with(
+        opensearchclient_mock,
+        "urn:eop:VITO:COP_DEM_GLO_30M_COG",
+        ["DEM"],
+        "/data/MTDA/DEM/COP_DEM_30M_COG",
+        cellsize_mock,
+        True,
+    )
+    factory_mock.return_value.datacube_seq.assert_called_once_with(
+        ANY,
+        "2010-01-01T10:36:00+00:00",
+        "2012-01-01T10:36:00+00:00",
+        {},
+        "",
+        datacubeParams,
+    )
 
 
 def test_load_collection_old_and_new_band_names(jvm_mock, catalog):
@@ -198,7 +215,10 @@ def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
     assert len(collection.metadata.bands) == 1
     assert collection.metadata.bands[0].name == 'TOC-B03_10M'
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.Sentinel2PyramidFactory
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
+        "https://services.terrascope.be/catalogue", False, "", [], ""
+    )
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     extent_mock = jvm_mock.geotrellis.vector.Extent.return_value
 
     cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
@@ -206,8 +226,22 @@ def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
     cellsize_call_mock.assert_called_once_with(15, 15)
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 
-    factory_mock.assert_called_once_with("https://services.terrascope.be/catalogue", 'urn:eop:VITO:TERRASCOPE_S2_TOC_V2', ['TOC-B03_10M'], '/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2', cellsize_call_mock.return_value,False)
-    factory_mock.return_value.pyramid_seq.assert_called_once_with(extent_mock, "EPSG:4326", '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '')
+    factory_mock.assert_called_once_with(
+        opensearchclient_mock,
+        "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        ["TOC-B03_10M"],
+        "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+        cellsize_call_mock.return_value,
+        False,
+    )
+    factory_mock.return_value.pyramid_seq.assert_called_once_with(
+        extent_mock,
+        "EPSG:4326",
+        "2019-01-01T00:00:00+00:00",
+        "2019-01-01T00:00:00+00:00",
+        {},
+        "",
+    )
 
 
 def test_load_collection_data_cube_params(jvm_mock, catalog):
@@ -241,7 +275,13 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     assert len(collection.metadata.bands) == 1
     assert collection.metadata.bands[0].name == 'temperature-mean'
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.AgEra5PyramidFactory2
+    dataglob = "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif"
+    band_names = ["temperature-mean"]
+    date_regex = ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif"
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
+        dataglob, False, date_regex, band_names, "agera5"
+    )
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
     projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
     datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
@@ -251,10 +291,21 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 
     reproject.assert_called_once_with(projected_polys, 32631)
-    factory_mock.assert_called_once_with('/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif', ['temperature-mean'], '.+_(\\d{4})(\\d{2})(\\d{2})\\.tif', cellsize_mock)
-    factory_mock.return_value.datacube_seq.assert_called_once_with(projected_polys_native, '2019-01-01T00:00:00+00:00', '2019-01-01T00:00:00+00:00', {}, '',datacubeParams)
-    getattr(datacubeParams,'tileSize_$eq').assert_called_once_with(1)
-    getattr(datacubeParams, 'layoutScheme_$eq').assert_called_once_with('FloatingLayoutScheme')
+    factory_mock.assert_called_once_with(
+        opensearchclient_mock, "", band_names, "", cellsize_mock, False
+    )
+    factory_mock.return_value.datacube_seq.assert_called_once_with(
+        projected_polys_native,
+        "2019-01-01T00:00:00+00:00",
+        "2019-01-01T00:00:00+00:00",
+        {},
+        "",
+        datacubeParams,
+    )
+    getattr(datacubeParams, "tileSize_$eq").assert_called_once_with(1)
+    getattr(datacubeParams, "layoutScheme_$eq").assert_called_once_with(
+        "FloatingLayoutScheme"
+    )
 
 
 @pytest.mark.parametrize(["missing_products", "expected_source"], [

@@ -1,4 +1,6 @@
 import json
+import datetime as dt
+import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Callable, Union, Optional
@@ -12,7 +14,11 @@ from kazoo.exceptions import NoNodeError, NodeExistsError
 from openeo.util import rfc3339
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
-from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.jobregistry import (
+    JOB_STATUS,
+    JobRegistryInterface,
+    ElasticJobRegistry,
+)
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.testing import KazooClientMock
@@ -67,45 +73,6 @@ class ZkJobRegistry:
         return job_info
 
     @staticmethod
-    def job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
-        """Convert job info dict to BatchJobMetadata"""
-        status = job_info.get("status")
-        if status == "submitted":
-            status = JOB_STATUS.CREATED
-        specification = job_info["specification"]
-        if isinstance(specification, str):
-            specification = json.loads(specification)
-        job_options = specification.pop("job_options", None)
-
-        def map_safe(prop: str, f):
-            value = job_info.get(prop)
-            return f(value) if value else None
-
-        return BatchJobMetadata(
-            id=job_info["job_id"],
-            process=specification,
-            title=job_info.get("title"),
-            description=job_info.get("description"),
-            status=status,
-            created=map_safe("created", rfc3339.parse_datetime),
-            updated=map_safe("updated", rfc3339.parse_datetime),
-            job_options=job_options,
-            started=map_safe("started", rfc3339.parse_datetime),
-            finished=map_safe("finished", rfc3339.parse_datetime),
-            memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
-            cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
-            geometry=job_info.get("geometry"),
-            bbox=job_info.get("bbox"),
-            start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
-            end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
-            instruments=job_info.get("instruments", []),
-            epsg=job_info.get("epsg"),
-            links=job_info.get("links", []),
-            usage=job_info.get("usage", {}),
-            costs=job_info.get("costs")
-        )
-
-    @staticmethod
     def get_dependency_sources(job_info: dict) -> List[str]:
         """Returns dependency source locations as URIs."""
         def sources(dependency: dict) -> List[str]:
@@ -116,16 +83,6 @@ class ZkJobRegistry:
             return [results_location, assembled_location] if assembled_location else [results_location]
 
         return [source for dependency in (job_info.get('dependencies') or []) for source in sources(dependency)]
-
-    @staticmethod
-    @deprecated("call get_dependency_sources instead")
-    def get_dependency_subfolders(job_info: dict) -> List[str]:
-        def subfolder(results_location: str):
-            uri_parts = urlparse(results_location)
-            return uri_parts.path[1:]
-
-        return [subfolder(location) for location in ZkJobRegistry.get_dependency_sources(job_info)
-                if location.startswith("s3:")]
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
@@ -167,9 +124,8 @@ class ZkJobRegistry:
 
     def patch(self, job_id: str, user_id: str, **kwargs) -> None:
         """Partially updates a registered batch job."""
-
+        # TODO make this a private method to have cleaner API
         job_info, version = self._read(job_id, user_id)
-
         self._update({**job_info, **kwargs}, version)
 
     def mark_done(self, job_id: str, user_id: str) -> None:
@@ -251,7 +207,7 @@ class ZkJobRegistry:
         self._zk.start()
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self._zk.stop()
         self._zk.close()
 
@@ -358,3 +314,196 @@ class ZkJobRegistry:
 # Legacy alias
 # TODO: remove this legacy alias
 JobRegistry = ZkJobRegistry
+
+
+def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
+    """Convert job info dict (from ZkJobRegistry) to BatchJobMetadata"""
+    status = job_info.get("status")
+    if status == "submitted":
+        status = JOB_STATUS.CREATED
+    specification = job_info["specification"]
+    if isinstance(specification, str):
+        specification = json.loads(specification)
+    job_options = specification.pop("job_options", None)
+
+    def map_safe(prop: str, f):
+        value = job_info.get(prop)
+        return f(value) if value else None
+
+    return BatchJobMetadata(
+        id=job_info["job_id"],
+        process=specification,
+        title=job_info.get("title"),
+        description=job_info.get("description"),
+        status=status,
+        created=map_safe("created", rfc3339.parse_datetime),
+        updated=map_safe("updated", rfc3339.parse_datetime),
+        job_options=job_options,
+        started=map_safe("started", rfc3339.parse_datetime),
+        finished=map_safe("finished", rfc3339.parse_datetime),
+        memory_time_megabyte=map_safe(
+            "memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)
+        ),
+        cpu_time=map_safe(
+            "cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)
+        ),
+        geometry=job_info.get("geometry"),
+        bbox=job_info.get("bbox"),
+        start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
+        end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
+        instruments=job_info.get("instruments", []),
+        epsg=job_info.get("epsg"),
+        links=job_info.get("links", []),
+        usage=job_info.get("usage", {}),
+        costs=job_info.get("costs"),
+    )
+
+
+class InMemoryJobRegistry(JobRegistryInterface):
+    # TODO move this implementation to openeo_python_driver
+    def __init__(self):
+        self.db: Dict[str, dict] = {}
+
+    def create_job(
+        self,
+        process: dict,
+        user_id: str,
+        job_id: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        api_version: Optional[str] = None,
+        job_options: Optional[dict] = None,
+    ):
+        assert job_id not in self.db
+        created = rfc3339.datetime(dt.datetime.utcnow())
+        self.db[job_id] = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "process": process,
+            "title": title,
+            "description": description,
+            "parent_id": parent_id,
+            "status": JOB_STATUS.CREATED,
+            "created": created,
+            "updated": created,
+            "api_version": api_version,
+            "job_options": job_options,
+        }
+
+    def set_status(
+        self,
+        job_id: str,
+        status: str,
+        *,
+        updated: Optional[str] = None,
+        started: Optional[str] = None,
+        finished: Optional[str] = None,
+    ):
+        assert job_id in self.db
+        data = {
+            "status": status,
+            "updated": rfc3339.datetime(updated or dt.datetime.utcnow()),
+        }
+        if started:
+            data["started"] = rfc3339.datetime(started)
+        if finished:
+            data["finished"] = rfc3339.datetime(finished)
+
+        self.db[job_id].update(data)
+
+    def set_dependency_status(self, job_id: str, dependency_status: str):
+        self.db[job_id].update(dependency_status=dependency_status)
+
+    def set_proxy_user(self, job_id: str, proxy_user: str):
+        self.db[job_id].update(proxy_user=proxy_user)
+
+class DoubleJobRegistry:
+    """
+    Adapter to simultaneously keep track of jobs in two job registries:
+    a legacy ZkJobRegistry and a new ElasticJobRegistry.
+
+    Meant as temporary stop gap to ease step-by-step migration from one system to the other.
+    """
+
+    def __init__(
+        self,
+        zk_job_registry_factory: Callable[[], ZkJobRegistry] = ZkJobRegistry,
+        # TODO: typehint should actually be `JobRegistryInterface` (e.g. `InMemoryJobRegistry` is used in testing)
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+    ):
+        # Note: we use a factory here because current implementation (and test coverage) heavily depends on
+        # just-in-time instantiation of `ZkJobRegistry` in various places (`with ZkJobRegistry(): ...`)
+        self._zk_job_registry_factory = zk_job_registry_factory
+        self.zk_job_registry: Optional[ZkJobRegistry] = None
+        self.elastic_job_registry = elastic_job_registry
+        # Synchronisation lock to make sure that only one thread at a time can use this as a context manager.
+        self._lock = threading.RLock()
+
+    def __enter__(self):
+        _log.debug(f"Context enter {self!r}")
+        self._lock.acquire()
+        self.zk_job_registry = self._zk_job_registry_factory()
+        self.zk_job_registry.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _log.debug(f"Context exit {self!r} ({exc_type=})")
+        try:
+            self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
+        finally:
+            self.zk_job_registry = None
+            self._lock.release()
+
+    def get_job(self, job_id: str, user_id: str) -> dict:
+        # TODO: add attempt to get job info from elastic and e.g. compare?
+        return self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+    def set_status(self, job_id: str, user_id: str, status: str) -> None:
+        self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_status(job_id=job_id, status=status)
+
+    def delete(self, job_id: str, user_id: str) -> None:
+        self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
+        if self.elastic_job_registry:
+            # TODO support for deletion in EJR (https://github.com/Open-EO/openeo-python-driver/issues/163)
+            _log.warning(f"EJR does not support batch job deletion ({job_id=})")
+
+    def set_dependencies(
+        self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
+    ):
+        self.zk_job_registry.set_dependencies(
+            job_id=job_id, user_id=user_id, dependencies=dependencies
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependencies(
+                job_id=job_id, dependencies=dependencies
+            )
+
+    def remove_dependencies(self, job_id: str, user_id: str):
+        self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.remove_dependencies(job_id=job_id)
+
+    def set_dependency_status(
+        self, job_id: str, user_id: str, dependency_status: str
+    ) -> None:
+        self.zk_job_registry.set_dependency_status(
+            job_id=job_id, user_id=user_id, dependency_status=dependency_status
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependency_status(
+                job_id=job_id, dependency_status=dependency_status
+            )
+
+    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
+        # TODO: add dedicated method
+        self.zk_job_registry.patch(
+            job_id=job_id, user_id=user_id, proxy_user=proxy_user
+        )
+        with ElasticJobRegistry.just_log_errors(name="set_proxy_user"):
+            if self.elastic_job_registry:
+                self.elastic_job_registry.set_proxy_user(
+                    job_id=job_id, proxy_user=proxy_user
+                )
