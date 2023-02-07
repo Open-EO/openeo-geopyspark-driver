@@ -11,6 +11,17 @@ ORCHESTRATOR = "openeo"
 _log = logging.getLogger(__name__)
 
 
+class ETL_API_STATE:
+    # https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource
+
+    ACCEPTED = "ACCEPTED"
+    RUNNING = "RUNNING"
+    FINISHED = "FINISHED"
+    KILLED = "KILLED",
+    FAILED = "FAILED",
+    UNDEFINED = "UNDEFINED"
+
+
 class EtlApi:
     def __init__(self, endpoint: str):
         self._endpoint = endpoint
@@ -25,23 +36,28 @@ class EtlApi:
     def close(self):
         self._session.close()
 
-    def log_resource_usage(self, batch_job_id: str, title: Optional[str], application_id: str, user_id: str,
-                           started_ms: float, finished_ms: float, state: str, status: str, cpu_seconds: float,
-                           mb_seconds: float, duration_ms: float, sentinel_hub_processing_units: float,
-                           access_token: str) -> float:
-        metrics = {
-            'cpu': {'value': cpu_seconds, 'unit': 'cpu-seconds'},
-            'memory': {'value': mb_seconds, 'unit': 'mb-seconds'},
-            'time': {'value': duration_ms, 'unit': 'milliseconds'},
-        }
+    def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
+                           started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
+                           cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
+                           sentinel_hub_processing_units: Optional[float], access_token: str) -> float:
+        metrics = {}
 
-        if sentinel_hub_processing_units > 0:
+        if cpu_seconds is not None:
+            metrics['cpu'] = {'value': cpu_seconds, 'unit': 'cpu-seconds'}
+
+        if mb_seconds is not None:
+            metrics['memory'] = {'value': mb_seconds, 'unit': 'mb-seconds'}
+
+        if duration_ms is not None:
+            metrics['time'] = {'value': duration_ms, 'unit': 'milliseconds'}
+
+        if sentinel_hub_processing_units is not None:
             metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
 
         data = {
             'jobId': batch_job_id,
             'jobName': title,
-            'executionId': application_id,
+            'executionId': execution_id,
             'userId': user_id,
             'sourceId': SOURCE_ID,
             'orchestrator': ORCHESTRATOR,

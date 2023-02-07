@@ -31,9 +31,10 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import EtlApi
+from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATE
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_tracker import get_etl_api_access_token
 from openeogeotrellis.utils import StatsReporter
 
 
@@ -55,14 +56,17 @@ class _Usage(NamedTuple):
 class _JobMetadata(NamedTuple):
     """Simple container for openEO batch job oriented metadata"""
 
+    # Job state, implementation-specific
+    app_state: str
+
     # Job status, following the openEO API spec (see `openeo_driver.jobregistry.JOB_STATUS`)
     status: str
 
-    # RFC-3339 formatted UTC datetime (or None if not started yet)
-    start_time: Optional[str] = None
+    # UTC datetime (or None if not started yet)
+    start_time: Optional[dt.datetime] = None
 
-    # RFC-3339 formatted UTC datetime (or None if not finished yet)
-    finish_time: Optional[str] = None
+    # UTC datetime (or None if not finished yet)
+    finish_time: Optional[dt.datetime] = None
 
     # Resource usage stats (if any)
     usage: Optional[_Usage] = None
@@ -92,11 +96,21 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
         self._etl_api = etl_api
         self._etl_api_access_token = etl_api_access_token
 
+    @abc.abstractmethod
+    def etl_api_state(self, app_state: str) -> str:
+        raise NotImplementedError
+
     def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
         job_id = job_info["job_id"]
-        # TODO: make _JobMetadata.start_time a datetime instead
-        started_ms = rfc3339.parse_datetime(job_metadata.start_time).timestamp() * 1000
-        cpu_seconds = job_metadata.usage.cpu_seconds
+        user_id = job_info["user_id"]
+        application_id = job_info["application_id"]
+        job_title = job_info.get("title")
+
+        started_ms = job_metadata.start_time.timestamp() * 1000 if job_metadata.start_time is not None else None
+        finished_ms = job_metadata.finish_time.timestamp() * 1000 if job_metadata.finish_time is not None else None
+        duration_ms = finished_ms - started_ms if finished_ms is not None and started_ms is not None else None
+        cpu_seconds = job_metadata.usage.cpu_seconds if job_metadata.usage is not None else None
+        mb_seconds = job_metadata.usage.mb_seconds if job_metadata.usage is not None else None
 
         unique_process_ids = result_metadata.get('unique_process_ids', [])
 
@@ -112,16 +126,16 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
         with self._etl_api as etl_api:
             resource_costs_in_credits = etl_api.log_resource_usage(
                 batch_job_id=job_id,
-                title=...,
-                application_id=...,
-                user_id=...,
+                title=job_title,
+                execution_id=application_id,
+                user_id=user_id,
                 started_ms=started_ms,
-                finished_ms=...,
-                state=...,
-                status=...,
+                finished_ms=finished_ms,
+                state=self.etl_api_state(job_metadata.app_state),
+                status='UNDEFINED',  # TODO: map as well? it's just for reporting
                 cpu_seconds=cpu_seconds,
-                mb_seconds=...,
-                duration_ms=...,
+                mb_seconds=mb_seconds,
+                duration_ms=duration_ms,
                 sentinel_hub_processing_units=sentinelhub_processing_units + sentinelhub_batch_processing_units,
                 access_token=self._etl_api_access_token
             )
@@ -130,11 +144,11 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
 
             added_value_costs_in_credits = sum(etl_api.log_added_value(
                 batch_job_id=job_id,
-                title=...,
-                application_id=...,
-                user_id=...,
+                title=job_title,
+                application_id=application_id,
+                user_id=user_id,
                 started_ms=started_ms,
-                finished_ms=...,
+                finished_ms=finished_ms,
                 process_id=process_id,
                 square_meters=float(area) if area is not None else 0.0,
                 access_token=self._etl_api_access_token) for process_id in unique_process_ids)
@@ -145,6 +159,32 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
 class NoJobCostsCalculator(JobCostsCalculator):
     def calculate_costs(self, job_info: dict, job_metadata: _JobMetadata, result_metadata: dict) -> float:
         return 0.0
+
+
+class YarnJobCostsCalculator(EtlApiJobCostsCalculator):
+    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
+        super().__init__(etl_api, etl_api_access_token)
+
+    def etl_api_state(self, app_state: str) -> str:
+        return app_state
+
+
+class K8sJobCostsCalculator(EtlApiJobCostsCalculator):
+    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
+        super().__init__(etl_api, etl_api_access_token)
+
+    def etl_api_state(self, app_state: str) -> str:
+        if app_state in {K8S_SPARK_APP_STATE.NEW, K8S_SPARK_APP_STATE.SUBMITTED}:
+            return ETL_API_STATE.ACCEPTED
+        if app_state in {K8S_SPARK_APP_STATE.RUNNING, K8S_SPARK_APP_STATE.SUCCEEDING}:
+            return ETL_API_STATE.RUNNING
+        if app_state == K8S_SPARK_APP_STATE.COMPLETED:
+            return ETL_API_STATE.FINISHED
+        if app_state in {K8S_SPARK_APP_STATE.FAILED, K8S_SPARK_APP_STATE.SUBMISSION_FAILED,
+                         K8S_SPARK_APP_STATE.FAILING}:
+            return ETL_API_STATE.FAILED
+
+        return ETL_API_STATE.ACCEPTED
 
 
 class JobTrackerException(Exception):
@@ -182,16 +222,16 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         try:
             props = dict(re.findall(r"^\t(.+?) : (.+)$", report, flags=re.MULTILINE))
 
+            state = props["State"]
             job_status = yarn_state_to_openeo_job_status(
-                state=props["State"], final_state=props["Final-State"]
+                state=state, final_state=props["Final-State"]
             )
 
-            def ms_epoch_to_date(epoch_millis: str) -> Union[str, None]:
+            def ms_epoch_to_date(epoch_millis: str) -> Union[dt.datetime, None]:
                 """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
                 if epoch_millis == "0":
                     return None
-                utc_datetime = dt.datetime.utcfromtimestamp(int(epoch_millis) / 1000)
-                return rfc3339.datetime(utc_datetime)
+                return dt.datetime.utcfromtimestamp(int(epoch_millis) / 1000)
 
             start_time = ms_epoch_to_date(props["Start-Time"])
             finish_time = ms_epoch_to_date(props["Finish-Time"])
@@ -201,6 +241,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             usage = _Usage(cpu_seconds=int(match.group(2)), mb_seconds=int(match.group(1))) if match else None
 
             return _JobMetadata(
+                app_state=state,
                 status=job_status,
                 start_time=start_time,
                 finish_time=finish_time,
@@ -226,6 +267,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         job_status = self._get_job_status(job_id=job_id, user_id=user_id)
         usage = self._get_usage(job_id=job_id, user_id=user_id)
         return _JobMetadata(
+            app_state=job_status.app_state,
             status=job_status.status,
             start_time=job_status.start_time,
             finish_time=job_status.finish_time,
@@ -251,8 +293,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
-            start_time = metadata["status"]["lastSubmissionAttemptTime"]
-            finish_time = metadata["status"]["terminationTime"]
+            start_time = rfc3339.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
+            finish_time = rfc3339.parse_datetime(metadata["status"]["terminationTime"])
         else:
             _log.warning("No K8s app status found, assuming new app")
             app_state = K8S_SPARK_APP_STATE.NEW
@@ -260,7 +302,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         job_status = k8s_state_to_openeo_job_status(app_state)
         return _JobMetadata(
-            status=job_status, start_time=start_time, finish_time=finish_time
+            app_state=app_state, status=job_status, start_time=start_time, finish_time=finish_time
         )
 
     def _get_usage(self, job_id: str, user_id: str) -> Union[_Usage, None]:
@@ -440,7 +482,6 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-
         if job_metadata.status in {
             JOB_STATUS.FINISHED,
             JOB_STATUS.ERROR,
@@ -470,16 +511,15 @@ class JobTracker:
             job_costs = self._job_costs_calculator.calculate_costs(job_info, job_metadata, result_metadata)
 
             # TODO: skip patching the job znode and read from this file directly?
-            # TODO: don't add costs if there are none ()?
             zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
 
         zk_job_registry.patch(
             job_id=job_id,
             user_id=user_id,
             status=job_metadata.status,
-            started=job_metadata.start_time,
-            finished=job_metadata.finish_time,
-            usage=job_metadata.usage,
+            started=rfc3339.datetime(job_metadata.start_time),
+            finished=rfc3339.datetime(job_metadata.finish_time),
+            usage=job_metadata.usage.to_dict(),
         )
         with ElasticJobRegistry.just_log_errors(
             f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
@@ -488,8 +528,8 @@ class JobTracker:
                 self._elastic_job_registry.set_status(
                     job_id=job_id,
                     status=job_metadata.status,
-                    started=job_metadata.start_time,
-                    finished=job_metadata.finish_time,
+                    started=rfc3339.datetime(job_metadata.start_time),
+                    finished=rfc3339.datetime(job_metadata.finish_time),
                     # TODO: also record usage data
                 )
 
@@ -522,7 +562,7 @@ class CliApp:
                 _log.info(f"Using {zk_root_path=}")
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
                 etl_api = EtlApi(ConfigParams().etl_api)
-                etl_api_access_token = ...  # FIXME
+                etl_api_access_token = get_etl_api_access_token(args.principal, args.keytab)
 
                 # Elastic Job Registry (EJR)
                 elastic_job_registry = get_elastic_job_registry(
@@ -536,8 +576,10 @@ class CliApp:
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
                     app_state_getter = YarnStatusGetter()
+                    job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()
+                    job_costs_calculator = K8sJobCostsCalculator(etl_api, etl_api_access_token)
                 else:
                     raise ValueError(app_cluster)
                 job_tracker = JobTracker(
@@ -546,7 +588,7 @@ class CliApp:
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
-                    job_costs_calculator=EtlApiJobCostsCalculator(etl_api, etl_api_access_token)
+                    job_costs_calculator=job_costs_calculator
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
