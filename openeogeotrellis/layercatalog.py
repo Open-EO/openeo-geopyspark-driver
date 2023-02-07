@@ -545,6 +545,27 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
 
+
+        def globspatialonly_pyramid():
+            if len(metadata.band_names) != 1:
+                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
+                    cid=collection_id, bs=metadata.band_names))
+
+            data_glob = layer_source_info['data_glob']
+            band_names = metadata.band_names
+
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                data_glob, False, None, band_names, "globspatialonly"
+            )
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
+            )
+            return create_pyramid(factory)
         def file_cgls_pyramid():
             if len(metadata.band_names) != 1:
                 raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
@@ -605,6 +626,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'file-globspatialonly':
+            pyramid = globspatialonly_pyramid()
         elif layer_source_type == 'file-oscars':
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
