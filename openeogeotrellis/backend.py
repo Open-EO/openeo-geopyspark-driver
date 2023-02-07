@@ -1154,7 +1154,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:  # no caching involved, the collection is fully defined by these batch process results
                     pass
 
-            with ZkJobRegistry() as registry:
+            with self._double_job_registry as registry:
                 def processing_units_spent(value_estimate: Decimal, temporal_step: Optional[str]) -> Decimal:
                     seconds_per_day = 24 * 3600
                     temporal_interval_in_days: Optional[float] = (

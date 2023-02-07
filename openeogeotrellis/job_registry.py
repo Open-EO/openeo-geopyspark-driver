@@ -535,6 +535,17 @@ class DoubleJobRegistry:
                 job_id=job_id, dependency_status=dependency_status
             )
 
+    def set_dependency_usage(
+        self, job_id: str, user_id: str, dependency_usage: Decimal
+    ):
+        self.zk_job_registry.set_dependency_usage(
+            job_id=job_id, user_id=user_id, processing_units=dependency_usage
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependency_usage(
+                job_id=job_id, dependency_usage=dependency_usage
+            )
+
     def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
         # TODO: add dedicated method
         self.zk_job_registry.patch(
