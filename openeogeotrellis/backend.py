@@ -1004,34 +1004,26 @@ class GpsBatchJobs(backend.BatchJobs):
         self._get_terrascope_access_token = get_terrascope_access_token
 
     def create_job(
-            self, user_id: str, process: dict, api_version: str,
-            metadata: dict, job_options: dict = None
+        self,
+        user_id: str,
+        process: dict,
+        api_version: str,
+        metadata: dict,
+        job_options: Optional[dict] = None,
     ) -> BatchJobMetadata:
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
-        with ZkJobRegistry() as registry:
-            job_info = registry.register(
+        with self._double_job_registry as registry:
+            job_info = registry.create_job(
                 job_id=job_id,
                 user_id=user_id,
                 api_version=api_version,
-                specification=dict_no_none(
-                    process_graph=process["process_graph"],
-                    job_options=job_options,
-                ),
-                title=title, description=description,
+                process=process,
+                job_options=job_options,
+                title=title,
+                description=description,
             )
-        if self._elastic_job_registry:
-            with ElasticJobRegistry.just_log_errors(name="Create job"):
-                self._elastic_job_registry.create_job(
-                    process=process,
-                    user_id=user_id,
-                    job_id=job_id,
-                    title=title,
-                    description=description,
-                    api_version=api_version,
-                    job_options=job_options,
-                )
         return BatchJobMetadata(
             id=job_id, process=process, status=job_info["status"],
             created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options,

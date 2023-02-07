@@ -11,7 +11,7 @@ from deprecated import deprecated
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
 
-from openeo.util import rfc3339
+from openeo.util import rfc3339, dict_no_none
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import (
@@ -458,6 +458,40 @@ class DoubleJobRegistry:
         finally:
             self.zk_job_registry = None
             self._lock.release()
+
+    def create_job(
+        self,
+        job_id: str,
+        user_id: str,
+        api_version: str,
+        process: dict,
+        job_options: Optional[dict] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> dict:
+        job_info = self.zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version=api_version,
+            specification=dict_no_none(
+                process_graph=process["process_graph"],
+                job_options=job_options,
+            ),
+            title=title,
+            description=description,
+        )
+        if self.elastic_job_registry:
+            with ElasticJobRegistry.just_log_errors(name="Create job"):
+                self.elastic_job_registry.create_job(
+                    process=process,
+                    user_id=user_id,
+                    job_id=job_id,
+                    title=title,
+                    description=description,
+                    api_version=api_version,
+                    job_options=job_options,
+                )
+        return job_info
 
     def get_job(self, job_id: str, user_id: str) -> dict:
         # TODO: add attempt to get job info from elastic and e.g. compare?
