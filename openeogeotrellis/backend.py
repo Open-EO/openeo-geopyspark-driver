@@ -990,7 +990,6 @@ class GpsBatchJobs(backend.BatchJobs):
             output_root_dir or ConfigParams().batch_job_output_root
         )
 
-        self._elastic_job_registry = elastic_job_registry
         self._double_job_registry = DoubleJobRegistry(
             zk_job_registry_factory=ZkJobRegistry,
             elastic_job_registry=elastic_job_registry,
