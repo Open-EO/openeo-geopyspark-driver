@@ -1289,16 +1289,32 @@ class GpsBatchJobs(backend.BatchJobs):
 
             logger.debug("job_options: {o!r}".format(o=job_options), extra={'job_id': job_id, 'user_id': user_id})
 
-            if (batch_process_dependencies is None
-                    and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
-                    and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id, job_options,
-                                                                    sentinel_hub_client_alias, get_vault_token)):
-                async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id, sentinel_hub_client_alias,
-                                                                     vault_token=None
-                                                                     if sentinel_hub_client_alias == 'default'
-                                                                     else get_vault_token(sentinel_hub_client_alias))
-                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING)
+            if (
+                batch_process_dependencies is None
+                and job_info.get("dependency_status")
+                not in ["awaiting", "awaiting_retry", "available"]
+                and self._scheduled_sentinelhub_batch_processes(
+                    process_graph=spec["process_graph"],
+                    api_version=api_version,
+                    zk_job_registry=registry,
+                    user_id=user_id,
+                    job_id=job_id,
+                    job_options=job_options,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    get_vault_token=get_vault_token,
+                )
+            ):
+                async_task.schedule_poll_sentinelhub_batch_processes(
+                    batch_job_id=job_id,
+                    user_id=user_id,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    vault_token=None
+                    if sentinel_hub_client_alias == "default"
+                    else get_vault_token(sentinel_hub_client_alias),
+                )
+                registry.set_dependency_status(
+                    job_id, user_id, DEPENDENCY_STATUS.AWAITING
+                )
                 registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
                 with ElasticJobRegistry.just_log_errors(name="Queue job"):
                     if self._elastic_job_registry:
@@ -1611,10 +1627,17 @@ class GpsBatchJobs(backend.BatchJobs):
             raise _BatchJobError(stream)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
-    def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: ZkJobRegistry, user_id: str, job_id: str,
-                                               job_options: dict, sentinel_hub_client_alias: str,
-                                               get_vault_token: Callable[[str], str]) -> bool:
+    def _scheduled_sentinelhub_batch_processes(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        zk_job_registry: ZkJobRegistry,
+        user_id: str,
+        job_id: str,
+        job_options: dict,
+        sentinel_hub_client_alias: str,
+        get_vault_token: Callable[[str], str],
+    ) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -1995,7 +2018,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     ))
 
         if batch_process_dependencies:
-            job_registry.set_dependencies(job_id, user_id, batch_process_dependencies)
+            zk_job_registry.set_dependencies(
+                job_id, user_id, batch_process_dependencies
+            )
             return True
 
         return False
