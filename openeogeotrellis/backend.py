@@ -1267,8 +1267,8 @@ class GpsBatchJobs(backend.BatchJobs):
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
-        with ZkJobRegistry() as registry:
-            job_info = registry.get_job(job_id, user_id)
+        with ZkJobRegistry() as zk_registry, self._double_job_registry as dbl_registry:
+            job_info = dbl_registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
             if batch_process_dependencies is None:
@@ -1278,9 +1278,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 if current_status in [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]:
                     return
                 elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
-                    registry.mark_ongoing(job_id, user_id)
-                    registry.set_application_id(job_id, user_id, None)
-                    registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
+                    dbl_registry.mark_ongoing(job_id, user_id)
+                    dbl_registry.set_application_id(job_id, user_id, None)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
 
             spec = json.loads(job_info['specification'])
             job_title = job_info.get('title', '')
@@ -1296,7 +1296,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 and self._scheduled_sentinelhub_batch_processes(
                     process_graph=spec["process_graph"],
                     api_version=api_version,
-                    zk_job_registry=registry,
+                    zk_job_registry=zk_registry,
                     user_id=user_id,
                     job_id=job_id,
                     job_options=job_options,
@@ -1312,13 +1312,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     if sentinel_hub_client_alias == "default"
                     else get_vault_token(sentinel_hub_client_alias),
                 )
-                registry.set_dependency_status(
+                dbl_registry.set_dependency_status(
                     job_id, user_id, DEPENDENCY_STATUS.AWAITING
                 )
-                registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-                with ElasticJobRegistry.just_log_errors(name="Queue job"):
-                    if self._elastic_job_registry:
-                        self._elastic_job_registry.set_status(job_id, JOB_STATUS.QUEUED)
+                dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 return
 
@@ -1490,7 +1487,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
                     spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
-                    registry.set_application_id(job_id, user_id, spark_app_id)
+                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
                     retry=0
                     while('status' not in status_response and retry<10):
@@ -1504,11 +1501,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if('status' not in status_response):
                         logger.warning(f"invalid status response: {status_response}, assuming it is queued.", extra={'job_id': job_id})
-                        registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
-                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             else:
                 # TODO: remove old submit scripts?
@@ -1600,10 +1597,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.info("mapped job_id %s to application ID %s" % (job_id, application_id),
                                 extra={'job_id': job_id})
 
-                    registry.set_application_id(job_id, user_id, application_id)
-                    registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-                    with ElasticJobRegistry.just_log_errors(name="Queue job"):
-                        self._elastic_job_registry.set_status(job_id, JOB_STATUS.QUEUED)
+                    dbl_registry.set_application_id(job_id, user_id, application_id)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)

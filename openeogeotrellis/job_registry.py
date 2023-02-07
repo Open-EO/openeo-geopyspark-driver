@@ -418,6 +418,10 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_proxy_user(self, job_id: str, proxy_user: str):
         self.db[job_id].update(proxy_user=proxy_user)
 
+    def set_application_id(self, job_id: str, application_id: str):
+        self.db[job_id].update(application_id=application_id)
+
+
 class DoubleJobRegistry:
     """
     Adapter to simultaneously keep track of jobs in two job registries:
@@ -507,3 +511,17 @@ class DoubleJobRegistry:
                 self.elastic_job_registry.set_proxy_user(
                     job_id=job_id, proxy_user=proxy_user
                 )
+
+    def set_application_id(
+        self, job_id: str, user_id: str, application_id: str
+    ) -> None:
+        self.zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=application_id
+        )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_application_id(
+                job_id=job_id, application_id=application_id
+            )
+
+    def mark_ongoing(self, job_id: str, user_id: str) -> None:
+        self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
