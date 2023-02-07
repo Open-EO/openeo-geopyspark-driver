@@ -37,7 +37,7 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
 from openeo.util import dict_no_none, rfc3339, deep_get
 from openeo_driver import backend
-from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
+from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
                                    CollectionCatalog)
 from openeo_driver.datacube import DriverVectorCube
@@ -1652,7 +1652,7 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer}))
+        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[]}))
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
