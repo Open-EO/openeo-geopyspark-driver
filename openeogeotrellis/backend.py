@@ -1267,7 +1267,7 @@ class GpsBatchJobs(backend.BatchJobs):
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
-        with ZkJobRegistry() as zk_registry, self._double_job_registry as dbl_registry:
+        with self._double_job_registry as dbl_registry:
             job_info = dbl_registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
@@ -1296,7 +1296,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 and self._scheduled_sentinelhub_batch_processes(
                     process_graph=spec["process_graph"],
                     api_version=api_version,
-                    zk_job_registry=zk_registry,
+                    dbl_registry=dbl_registry,
                     user_id=user_id,
                     job_id=job_id,
                     job_options=job_options,
@@ -1626,7 +1626,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self,
         process_graph: dict,
         api_version: Union[str, None],
-        zk_job_registry: ZkJobRegistry,
+        dbl_registry: DoubleJobRegistry,
         user_id: str,
         job_id: str,
         job_options: dict,
@@ -2013,8 +2013,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     ))
 
         if batch_process_dependencies:
-            zk_job_registry.set_dependencies(
-                job_id, user_id, batch_process_dependencies
+            dbl_registry.set_dependencies(
+                job_id=job_id, user_id=user_id, dependencies=batch_process_dependencies
             )
             return True
 
