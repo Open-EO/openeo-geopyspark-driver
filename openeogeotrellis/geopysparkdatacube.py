@@ -1439,10 +1439,11 @@ class GeopysparkDataCube(DriverDataCube):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
+        bucket = str(ConfigParams().s3_bucket_name)
         filename = str(filename)
         directory = str(pathlib.Path(filename).parent)
-        s3_filename = "s3://OpenEO-data{}".format(filename)
-        s3_directory = "s3://OpenEO-data{}".format(directory)
+        s3_filename = "s3://{b}{f}".format(b=bucket, f=filename)
+        s3_directory = "s3://{b}{d}".format(b=bucket, d=directory)
         format = format.upper()
         format_options = format_options or {}
         strict_cropping = format_options.get("strict_cropping", True)
