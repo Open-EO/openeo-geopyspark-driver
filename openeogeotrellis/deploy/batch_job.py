@@ -443,13 +443,11 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
             result.options["batch_mode"] = True
             result.options["file_metadata"] = global_metadata_attributes
             if( result.options.get("sample_by_feature")):
-                geoms = tracer.get_geometries("filter_spatial")
-                if len(geoms) > 1:
-                    logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(geoms)))
-                elif len(geoms) == 0:
+                geoms = tracer.get_last_geometry("filter_spatial")
+                if geoms == None:
                     logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
                 else:
-                    result.options["geometries"] = geoms[0]
+                    result.options["geometries"] = geoms
                 if(result.options["geometries"] == None):
                     logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
             the_assets_metadata = result.write_assets(str(output_file))
