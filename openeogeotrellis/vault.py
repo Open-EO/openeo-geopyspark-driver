@@ -16,6 +16,10 @@ class OAuthCredentials(NamedTuple):
     client_secret: str
 
 
+class VaultLoginError(Exception):
+    pass
+
+
 class Vault:
     def __init__(self, url: str):
         self._url = url
@@ -77,8 +81,9 @@ class Vault:
             vault_token = subprocess.check_output(cmd, text=True, stderr=PIPE)
             return vault_token
         except CalledProcessError as e:
-            _log.error(msg=f"{e} stderr: {e.stderr.strip()}", exc_info=True)
-            raise
+            raise VaultLoginError(
+                f"Vault login (Kerberos) failed: {e!s}. stderr: {e.stderr.strip()!r}"
+            ) from e
 
     def _client(self, token: Optional[str] = None):
         return hvac.Client(self._url, token=token)
