@@ -1,13 +1,11 @@
-import json
 import datetime as dt
+import json
+import logging
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Callable, Union, Optional
-import logging
-from urllib.parse import urlparse
 
-from deprecated import deprecated
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
 
@@ -19,8 +17,9 @@ from openeo_driver.jobregistry import (
     JobRegistryInterface,
     ElasticJobRegistry,
 )
-from openeogeotrellis.configparams import ConfigParams
+from openeo_driver.util.logging import just_log_exceptions
 from openeogeotrellis import sentinel_hub
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import StatsReporter
 
@@ -431,6 +430,8 @@ class DoubleJobRegistry:
     Meant as temporary stop gap to ease step-by-step migration from one system to the other.
     """
 
+    _log = logging.getLogger(f"{__name__}.double")
+
     def __init__(
         self,
         zk_job_registry_factory: Callable[[], ZkJobRegistry] = ZkJobRegistry,
@@ -446,19 +447,25 @@ class DoubleJobRegistry:
         self._lock = threading.RLock()
 
     def __enter__(self):
-        _log.debug(f"Context enter {self!r}")
+        self._log.debug(f"Context enter {self!r}")
         self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory()
         self.zk_job_registry.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        _log.debug(f"Context exit {self!r} ({exc_type=})")
+        self._log.debug(f"Context exit {self!r} ({exc_type=})")
         try:
             self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
         finally:
             self.zk_job_registry = None
             self._lock.release()
+
+    def _just_log_errors(self, name: str):
+        """Context manager to just log exceptions"""
+        return just_log_exceptions(
+            log=self._log.warning, name=f"DoubleJobRegistry.{name}"
+        )
 
     def create_job(
         self,
@@ -482,7 +489,7 @@ class DoubleJobRegistry:
             description=description,
         )
         if self.elastic_job_registry:
-            with ElasticJobRegistry.just_log_errors(name="Create job"):
+            with self._just_log_errors("create_job"):
                 self.elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
@@ -501,13 +508,14 @@ class DoubleJobRegistry:
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
         self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_status(job_id=job_id, status=status)
+            with self._just_log_errors("set_status"):
+                self.elastic_job_registry.set_status(job_id=job_id, status=status)
 
     def delete(self, job_id: str, user_id: str) -> None:
         self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             # TODO support for deletion in EJR (https://github.com/Open-EO/openeo-python-driver/issues/163)
-            _log.warning(f"EJR does not support batch job deletion ({job_id=})")
+            self._log.warning(f"EJR TODO: support job deletion ({job_id=})")
 
     def set_dependencies(
         self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
@@ -516,14 +524,16 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, dependencies=dependencies
         )
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_dependencies(
-                job_id=job_id, dependencies=dependencies
-            )
+            with self._just_log_errors("set_dependencies"):
+                self.elastic_job_registry.set_dependencies(
+                    job_id=job_id, dependencies=dependencies
+                )
 
     def remove_dependencies(self, job_id: str, user_id: str):
         self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            self.elastic_job_registry.remove_dependencies(job_id=job_id)
+            with self._just_log_errors("remove_dependencies"):
+                self.elastic_job_registry.remove_dependencies(job_id=job_id)
 
     def set_dependency_status(
         self, job_id: str, user_id: str, dependency_status: str
@@ -532,9 +542,10 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, dependency_status=dependency_status
         )
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_dependency_status(
-                job_id=job_id, dependency_status=dependency_status
-            )
+            with self._just_log_errors("set_dependency_status"):
+                self.elastic_job_registry.set_dependency_status(
+                    job_id=job_id, dependency_status=dependency_status
+                )
 
     def set_dependency_usage(
         self, job_id: str, user_id: str, dependency_usage: Decimal
@@ -543,17 +554,18 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, processing_units=dependency_usage
         )
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_dependency_usage(
-                job_id=job_id, dependency_usage=dependency_usage
-            )
+            with self._just_log_errors("set_dependency_usage"):
+                self.elastic_job_registry.set_dependency_usage(
+                    job_id=job_id, dependency_usage=dependency_usage
+                )
 
     def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
         # TODO: add dedicated method
         self.zk_job_registry.patch(
             job_id=job_id, user_id=user_id, proxy_user=proxy_user
         )
-        with ElasticJobRegistry.just_log_errors(name="set_proxy_user"):
-            if self.elastic_job_registry:
+        if self.elastic_job_registry:
+            with self._just_log_errors("set_proxy_user"):
                 self.elastic_job_registry.set_proxy_user(
                     job_id=job_id, proxy_user=proxy_user
                 )
@@ -565,20 +577,25 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, application_id=application_id
         )
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_application_id(
-                job_id=job_id, application_id=application_id
-            )
+            with self._just_log_errors("set_application_id"):
+                self.elastic_job_registry.set_application_id(
+                    job_id=job_id, application_id=application_id
+                )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
-        return [
+        jobs = [
             zk_job_info_to_metadata(job_info)
             for job_info in self.zk_job_registry.get_user_jobs(user_id)
         ]
         # TODO #236 add elastic_job_registry implementation
+        self._log.warning(f"EJR TODO: get_user_jobs implementation")
+        return jobs
 
     def get_all_jobs_before(self, upper: dt.datetime) -> List[dict]:
-        return self.zk_job_registry.get_all_jobs_before(upper=upper)
+        jobs = self.zk_job_registry.get_all_jobs_before(upper=upper)
         # TODO #236 add elastic_job_registry implementation
+        self._log.warning(f"EJR TODO: get_all_jobs_before implementation")
+        return jobs
