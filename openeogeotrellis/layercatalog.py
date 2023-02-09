@@ -56,13 +56,18 @@ logger = logging.getLogger(__name__)
 
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
-
-    def __init__(self, all_metadata: List[dict], vault: Vault = None):
+    def __init__(
+        self,
+        all_metadata: List[dict],
+        vault: Vault = None,
+        opensearch_enriched: Optional[bool] = None,
+    ):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
         self._default_sentinel_hub_client_id = None
         self._default_sentinel_hub_client_secret = None
         self._vault = vault
+        self.opensearch_enriched = opensearch_enriched
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -836,7 +841,11 @@ def get_layer_catalog(vault: Vault=None, opensearch_enrich=False) -> GeoPySparkL
 
     metadata = _merge_layers_with_common_name(metadata)
 
-    return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()), vault=vault)
+    return GeoPySparkLayerCatalog(
+        all_metadata=list(metadata.values()),
+        vault=vault,
+        opensearch_enriched=opensearch_enrich,
+    )
 
 
 def _merge_layers_with_common_name(metadata):

@@ -74,7 +74,11 @@ from openeogeotrellis.job_registry import (
     zk_job_info_to_metadata,
     DoubleJobRegistry,
 )
-from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
+from openeogeotrellis.layercatalog import (
+    get_layer_catalog,
+    check_missing_products,
+    GeoPySparkLayerCatalog,
+)
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
@@ -300,7 +304,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def __init__(
         self,
         use_zookeeper=True,
-        opensearch_enrich=True,
+        opensearch_enrich: bool = True,
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
@@ -967,7 +971,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
         self,
-        catalog: CollectionCatalog,
+        catalog: GeoPySparkLayerCatalog,
         jvm: JVMView,
         principal: str,
         key_tab: str,
@@ -1298,6 +1302,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     job_options=job_options,
                     sentinel_hub_client_alias=sentinel_hub_client_alias,
                     get_vault_token=get_vault_token,
+                    opensearch_enrich=self._catalog.opensearch_enriched,
                 )
             ):
                 async_task.schedule_poll_sentinelhub_batch_processes(
@@ -1628,6 +1633,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_options: dict,
         sentinel_hub_client_alias: str,
         get_vault_token: Callable[[str], str],
+        opensearch_enrich: bool = True,
     ) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
@@ -1640,7 +1646,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 # TODO #285: use original GeoPySparkBackendImplementation instead of recreating a new one
                 #           or at least set all GeoPySparkBackendImplementation arguments correctly (e.g. through a config)
                 "backend_implementation": GeoPySparkBackendImplementation(
-                    use_job_registry=False
+                    use_job_registry=False, opensearch_enrich=opensearch_enrich
                 ),
             }
         )
