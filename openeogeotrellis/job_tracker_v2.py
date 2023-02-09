@@ -138,6 +138,81 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             raise YarnAppReportParseException() from e
 
 
+class YarnRestApiStatusGetter(JobMetadataGetterInterface):
+    """YARN app status getter"""
+
+    # TODO: Replace hardcoded root URL with configuration, something must be able to override it in fixtures in conftest
+    DEFAULT_YARN_ROOT_URL = "https://epod-master1.vgt.vito.be:8090/"
+
+    @classmethod
+    def get_application_url(cls, application_id: str) -> str:
+        return url_join(
+            cls.DEFAULT_YARN_ROOT_URL, f"/ws/v1/cluster/apps/{application_id}"
+        )
+        # return url_join(self.yarn_root_url, f"/ws/v1/cluster/apps/{application_id}")
+
+    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+        # TODO: Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
+        # TODO: We should do the same with requests as this example curl command:
+        # curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
+        response = requests.get(self.get_application_url(application_id=app_id))
+        response.raise_for_status()
+        return self.parse_application_response(json=response.json())
+
+    @staticmethod
+    def _ms_epoch_to_date(epoch_millis: int) -> Union[str, None]:
+        """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
+        if epoch_millis == 0:
+            return None
+        utc_datetime = dt.datetime.utcfromtimestamp(epoch_millis / 1000)
+        return rfc3339.datetime(utc_datetime)
+
+    def parse_application_response(self, json: dict) -> _JobMetadata:
+        if not json:
+            raise YarnAppReportParseException("Response is empty")
+
+        report = json.get("app", {})
+        required_keys = ["state", "finalStatus", "startedTime", "finishedTime"]
+        missing_keys = [k for k in required_keys if k not in report]
+        if missing_keys:
+            raise YarnAppReportParseException(
+                f"JSON respoinse is missing following required keys: {missing_keys}"
+            )
+
+        try:
+            job_status = yarn_state_to_openeo_job_status(
+                state=report["state"], final_state=report["finalStatus"]
+            )
+            start_time = self._ms_epoch_to_date(report["startedTime"])
+            finish_time = self._ms_epoch_to_date(report["finishedTime"])
+
+            if not ("memorySeconds" in report or "vcoreSeconds" in report):
+                usage = None
+            else:
+                usage = {}
+                memory_seconds = report.get("memorySeconds")
+                vcore_seconds = report.get("vcoreSeconds")
+                if memory_seconds is not None:
+                    usage["memory"] = {
+                        "value": int(memory_seconds),
+                        "unit": "mb-seconds",
+                    }
+                if vcore_seconds is not None:
+                    usage["cpu"] = {"value": int(vcore_seconds), "unit": "cpu-seconds"}
+
+            return _JobMetadata(
+                status=job_status,
+                start_time=start_time,
+                finish_time=finish_time,
+                usage=usage,
+            )
+        except Exception as e:
+            raise YarnAppReportParseException() from e
+
+
+# Ugly switch to test while implementing the new version based on the YARN REST API
+# YarnStatusGetter = _YarnStatusGetter_ORIGINAL
+YarnStatusGetter = YarnRestApiStatusGetter
 class K8sException(Exception):
     pass
 

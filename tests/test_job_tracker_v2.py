@@ -28,6 +28,7 @@ from openeogeotrellis.job_tracker_v2 import (
     K8sStatusGetter,
     YarnAppReportParseException,
     YarnStatusGetter,
+    YarnRestApiStatusGetter,
 )
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
@@ -100,6 +101,99 @@ class YarnAppInfo:
         ]
         return "\n".join(["Application Report : "] + fields + [""])
 
+    def status_rest_response(self) -> dict:
+        return fake_yarn_rest_repsonse_json(
+            app_id=self.app_id,
+            user=self.user_id,
+            state=self.state,
+            final_status=self.final_state,
+            queue=self.queue,
+            progress=int(self.progress[:-2]),
+            started_time=self.start_time,
+            finished_time=self.finish_time,
+            memory_seconds=self.memory_seconds,
+            vcore_seconds=self.vcore_seconds,
+            diagnostics=self.diagnostics,
+        )
+
+
+def fake_yarn_rest_repsonse_json(
+    app_id: str,
+    user: str = "jenkins",
+    state: str = "FINISHED",
+    final_status: str = "SUCCEEDED",
+    queue: str = "default",
+    progress: int = 0.0,
+    started_time: int = 0,
+    finished_time: int = 0,
+    memory_seconds: int = 0,
+    vcore_seconds: int = 0,
+    diagnostics: str = "",
+):
+    """Helper function to create JSON for YARN REST responses in mocks."""
+    return {
+        "app": {
+            "id": app_id,
+            "user": user,
+            "name": "openEO batch_None_j-a697fe72ef44449e9c5b7e11f0c2b89a_user a1a40dc638599c56313417ac216e814b8ff5eb124b896569360abe95b8b9cb28@egi.eu",
+            "queue": queue,
+            "state": state,
+            "finalStatus": final_status,
+            "progress": progress,
+            "trackingUI": "History",
+            "trackingUrl": "https://openeo.test",
+            "diagnostics": diagnostics,
+            "clusterId": 1674538064532,
+            "applicationType": "SPARK",
+            "applicationTags": "openeo",
+            "priority": 0,
+            "startedTime": started_time,
+            "finishedTime": finished_time,
+            "elapsedTime": 299033,
+            "amContainerLogs": "https://openeo.test/somewhere",
+            "amHostHttpAddress": "fake.test:11111",
+            "amRPCAddress": "fake.test:22222",
+            "masterNodeId": "fake.test:33333",
+            "allocatedMB": -1,
+            "allocatedVCores": -1,
+            "reservedMB": -1,
+            "reservedVCores": -1,
+            "runningContainers": -1,
+            "memorySeconds": memory_seconds,
+            "vcoreSeconds": vcore_seconds,
+            "queueUsagePercentage": 0.0,
+            "clusterUsagePercentage": 0.0,
+            "resourceSecondsMap": {
+                "entry": {
+                    "key": "memory-mb",
+                    "value": f'"{memory_seconds}"',  # In the yarn response this is a string, not an int.
+                },
+                "entry": {
+                    "key": "vcores",
+                    "value": f'"{vcore_seconds}"',  # In the yarn response this is a string, not an int.
+                },
+            },
+            "preemptedResourceMB": 0,
+            "preemptedResourceVCores": 0,
+            "numNonAMContainerPreempted": 0,
+            "numAMContainerPreempted": 0,
+            "preemptedMemorySeconds": 0,
+            "preemptedVcoreSeconds": 0,
+            "preemptedResourceSecondsMap": {},
+            "logAggregationStatus": "TIME_OUT",
+            "unmanagedApplication": False,
+            "amNodeLabelExpression": "",
+            "timeouts": {
+                "timeout": [
+                    {
+                        "type": "LIFETIME",
+                        "expiryTime": "UNLIMITED",
+                        "remainingTimeInSeconds": -1,
+                    }
+                ]
+            },
+        }
+    }
 
 class YarnMock:
     """YARN cluster mock"""
@@ -754,6 +848,93 @@ class TestYarnStatusGetter:
     def test_parse_application_report_empty(self):
         with pytest.raises(YarnAppReportParseException):
             _ = YarnStatusGetter().parse_application_report(report="")
+
+
+class TestYarnRestApiStatusGetter:
+    def test_parse_application_response_basic(self):
+        # report = textwrap.dedent(
+        #     """
+        #     Application Report :
+        #     \tApplication-Id : application_1671092799310_26739
+        #     \tApplication-Name : openEO batch_test_random_forest_train_and_load_from_jobid-user jenkins
+        #     \tApplication-Type : SPARK
+        #     \tUser : jenkins
+        #     \tQueue : default
+        #     \tApplication Priority : 0
+        #     \tStart-Time : 1673021672793
+        #     \tFinish-Time : 1673021943245
+        #     \tProgress : 100%
+        #     \tState : FINISHED
+        #     \tFinal-State : SUCCEEDED
+        #     \tAM Host : epod0123.test
+        #     \tAggregate Resource Allocation : 5116996 MB-seconds, 2265 vcore-seconds
+        #     \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
+        #     \tTimeoutType : LIFETIME	ExpiryTime : UNLIMITED	RemainingTime : -1seconds
+        # """
+        # )
+
+        response = fake_yarn_rest_repsonse_json(
+            app_id="application_1671092799310_26739",
+            state="FINISHED",
+            final_status="SUCCEEDED",
+            started_time=1673021672793,
+            finished_time=1673021943245,
+            memory_seconds=5116996,
+            vcore_seconds=2265,
+        )
+
+        job_metadata = YarnRestApiStatusGetter().parse_application_response(
+            json=response
+        )
+        assert job_metadata.status == "finished"
+        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
+        assert job_metadata.usage == {
+            "cpu": {"unit": "cpu-seconds", "value": 2265},
+            "memory": {"unit": "mb-seconds", "value": 5116996},
+        }
+
+    def test_parse_application_response_running(self):
+        # report = textwrap.dedent(
+        #     """
+        #     Application Report :
+        #     \tApplication-Id : application_1671092799310_26739
+        #     \tStart-Time : 1673021672793
+        #     \tFinish-Time : 0
+        #     \tState : RUNNING
+        #     \tFinal-State : UNDEFINED
+        #     \tAM Host : epod0123.test
+        #     \tAggregate Resource Allocation : 96183879 MB-seconds, 46964 vcore-seconds
+        #     \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
+        # """
+        # )
+
+        response = fake_yarn_rest_repsonse_json(
+            app_id="application_1671092799310_26739",
+            state="RUNNING",
+            final_status="UNDEFINED",
+            started_time=1673021672793,
+            finished_time=0,
+            progress=50.0,
+            memory_seconds=96183879,
+            vcore_seconds=46964,
+            diagnostics="",
+        )
+
+        job_metadata = YarnRestApiStatusGetter().parse_application_response(
+            json=response
+        )
+        assert job_metadata.status == "running"
+        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.finish_time is None
+        assert job_metadata.usage == {
+            "cpu": {"unit": "cpu-seconds", "value": 46964},
+            "memory": {"unit": "mb-seconds", "value": 96183879},
+        }
+
+    def test_parse_application_response_empty(self):
+        with pytest.raises(YarnAppReportParseException):
+            _ = YarnRestApiStatusGetter().parse_application_response(json={})
 
 
 class TestK8sJobTracker:
