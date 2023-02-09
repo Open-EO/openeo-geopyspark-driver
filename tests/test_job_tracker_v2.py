@@ -45,10 +45,14 @@ class YarnAppInfo:
     queue: str = "default"
     start_time: int = 0
     finish_time: int = 0
-    progress: str = "0%"
+    progress: str = "0%"  # TODO: #292 switch to int when you finish refactoring for YARN REST API JSON
     state: str = YARN_STATE.SUBMITTED
     final_state: str = YARN_FINAL_STATUS.UNDEFINED
+    # TODO: #292 split aggregate_resource_allocation into the separate properties for YARN REST API JSON
     aggregate_resource_allocation: Tuple[int, int] = (1234, 32)
+    memory_seconds: int = 1234
+    vcore_seconds: int = 32
+    diagnostics: str = ""
 
     def set_state(self, state: str, final_state: str) -> "YarnAppInfo":
         self.state = state
@@ -108,7 +112,7 @@ class YarnAppInfo:
             state=self.state,
             final_status=self.final_state,
             queue=self.queue,
-            progress=int(self.progress[:-2]),
+            # progress=int(self.progress[:-2]),
             started_time=self.start_time,
             finished_time=self.finish_time,
             memory_seconds=self.memory_seconds,
@@ -236,9 +240,35 @@ class YarnMock:
     def patch(self):
         with mock.patch(
             "subprocess.check_output", new=self._check_output
-        ) as check_output:
-            yield check_output
+        ) as check_output, requests_mock.Mocker() as requests_mocker:
+            YarnRestApiStatusGetter.DEFAULT_YARN_ROOT_URL = "https://openeo.test"
+            url_matcher = re.compile("https://openeo.test/ws/v1/cluster/apps/")
 
+            def response_call_back(request, context):
+                context.status_code = 200
+                app_id = str(request.url).split("/")[-1]
+                if app_id in self.corrupt_app_ids:
+                    return f"C0rRup7! {app_id}'"
+                elif app_id in self.apps:
+                    body = self.apps[app_id].status_rest_response()
+                    # return json.dumps(body)
+                    return body
+                else:
+                    context.status_code = 400
+                    return {
+                        "RemoteException": {
+                            "exception": "BadRequestException",
+                            "message": f"java.lang.IllegalArgumentException: Invalid ApplicationId: {app_id}",
+                            "javaClassName": "org.apache.hadoop.yarn.webapp.BadRequestException",
+                        }
+                    }
+
+            requests_mocker.get(
+                url_matcher,
+                json=response_call_back,
+            )
+
+            yield check_output
 
 @dataclass
 class KubernetesAppInfo:
@@ -654,7 +684,12 @@ class TestYarnJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 logging.ERROR,
-                "Failed status sync for job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
+                # "Failed status sync for job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
+                (
+                    "Failed status sync for job_id='job-2': "
+                    + "unexpected YarnAppReportParseException: "
+                    + 'Response is corrupt, not valid JSON. Received following string: "C0rRup7! app-2\'"'
+                ),
             )
         ]
 

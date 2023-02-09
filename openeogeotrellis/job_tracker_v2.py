@@ -149,15 +149,35 @@ class YarnRestApiStatusGetter(JobMetadataGetterInterface):
         return url_join(
             cls.DEFAULT_YARN_ROOT_URL, f"/ws/v1/cluster/apps/{application_id}"
         )
-        # return url_join(self.yarn_root_url, f"/ws/v1/cluster/apps/{application_id}")
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         # TODO: Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
         # TODO: We should do the same with requests as this example curl command:
         # curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
+
         response = requests.get(self.get_application_url(application_id=app_id))
-        response.raise_for_status()
-        return self.parse_application_response(json=response.json())
+
+        # Seems like YARN's API returns a HTTP 400 rather than a 404.
+        # TODO: should we include HTTP404 as well? Needs to be checked in the docs and tested more thoroughly.
+        # Example of an error responses body:
+        # {
+        #     "RemoteException":
+        #         {
+        #             "exception":"BadRequestException",
+        #             "message": "java.lang.IllegalArgumentException: Invalid ApplicationId: yourappid",
+        #             "javaClassName":"org.apache.hadoop.yarn.webapp.BadRequestException"
+        #         }
+        # }
+        if response.status_code in [400, 404]:
+            remote_exc = response.json().get("RemoteException", {})
+            message = remote_exc.get(
+                "message",
+                "Unknown error. Error response did not contain the message property.",
+            )
+            raise AppNotFound(message) from None
+        else:
+            response.raise_for_status()
+            return self.parse_application_response(json=response.json())
 
     @staticmethod
     def _ms_epoch_to_date(epoch_millis: int) -> Union[str, None]:
@@ -171,12 +191,18 @@ class YarnRestApiStatusGetter(JobMetadataGetterInterface):
         if not json:
             raise YarnAppReportParseException("Response is empty")
 
+        # TODO: not sure if this can really happen at this point. Possibly this was just an incorrect mock.
+        if isinstance(json, str):
+            raise YarnAppReportParseException(
+                f"Response is corrupt, not valid JSON. Received following string: {json!r}"
+            )
+
         report = json.get("app", {})
         required_keys = ["state", "finalStatus", "startedTime", "finishedTime"]
         missing_keys = [k for k in required_keys if k not in report]
         if missing_keys:
             raise YarnAppReportParseException(
-                f"JSON respoinse is missing following required keys: {missing_keys}"
+                f"JSON response is missing following required keys: {missing_keys}"
             )
 
         try:
@@ -213,6 +239,8 @@ class YarnRestApiStatusGetter(JobMetadataGetterInterface):
 # Ugly switch to test while implementing the new version based on the YARN REST API
 # YarnStatusGetter = _YarnStatusGetter_ORIGINAL
 YarnStatusGetter = YarnRestApiStatusGetter
+
+
 class K8sException(Exception):
     pass
 
