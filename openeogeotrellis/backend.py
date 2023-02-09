@@ -1718,8 +1718,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
                                     .areaInSquareMeters())
                         elif isinstance(geometries, DriverVectorCube):
-                            # TODO: only area of covered regions instead of whole bbox area?
-                            return geometries.get_bounding_box_area()
+                            return area_in_square_meters(geometries.to_multipolygon(), crs)
                         elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
                             return area_in_square_meters(geometries, crs)
                         else:
