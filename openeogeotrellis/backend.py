@@ -304,7 +304,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def __init__(
         self,
         use_zookeeper=True,
-        opensearch_enrich: bool = True,
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
@@ -323,7 +322,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         vault = Vault(ConfigParams().vault_addr)
 
-        catalog = get_layer_catalog(vault, opensearch_enrich=opensearch_enrich)
+        catalog = get_layer_catalog(vault)
 
         jvm = get_jvm()
 
@@ -1302,7 +1301,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     job_options=job_options,
                     sentinel_hub_client_alias=sentinel_hub_client_alias,
                     get_vault_token=get_vault_token,
-                    opensearch_enrich=self._catalog.opensearch_enriched,
                 )
             ):
                 async_task.schedule_poll_sentinelhub_batch_processes(
@@ -1633,7 +1631,6 @@ class GpsBatchJobs(backend.BatchJobs):
         job_options: dict,
         sentinel_hub_client_alias: str,
         get_vault_token: Callable[[str], str],
-        opensearch_enrich: bool = True,
     ) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
@@ -1646,7 +1643,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 # TODO #285: use original GeoPySparkBackendImplementation instead of recreating a new one
                 #           or at least set all GeoPySparkBackendImplementation arguments correctly (e.g. through a config)
                 "backend_implementation": GeoPySparkBackendImplementation(
-                    use_job_registry=False, opensearch_enrich=opensearch_enrich
+                    use_job_registry=False,
                 ),
             }
         )

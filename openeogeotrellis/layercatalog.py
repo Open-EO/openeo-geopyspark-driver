@@ -56,18 +56,12 @@ logger = logging.getLogger(__name__)
 
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
-    def __init__(
-        self,
-        all_metadata: List[dict],
-        vault: Vault = None,
-        opensearch_enriched: Optional[bool] = None,
-    ):
+    def __init__(self, all_metadata: List[dict], vault: Vault = None):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
         self._default_sentinel_hub_client_id = None
         self._default_sentinel_hub_client_secret = None
         self._vault = vault
-        self.opensearch_enriched = opensearch_enriched
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -749,20 +743,26 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
-def get_layer_catalog(vault: Vault=None, opensearch_enrich=False) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(
+    vault: Vault = None, opensearch_enrich: Optional[bool] = None
+) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
+    if opensearch_enrich is None:
+        opensearch_enrich = ConfigParams().opensearch_enrich
+
     metadata: Dict[str, dict] = {}
 
     def read_catalog_file(catalog_file) -> Dict[str, dict]:
         return {coll["id"]: coll for coll in read_json(catalog_file)}
 
     catalog_files = ConfigParams().layer_catalog_metadata_files
+    logger.info(f"get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
-        logger.info(f"Reading layer catalog metadata from {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
 
+    logger.info(f"get_layer_catalog: {opensearch_enrich=}")
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
@@ -844,7 +844,6 @@ def get_layer_catalog(vault: Vault=None, opensearch_enrich=False) -> GeoPySparkL
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
-        opensearch_enriched=opensearch_enrich,
     )
 
 

@@ -183,7 +183,7 @@ def main():
         try:
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
                 vault = Vault(ConfigParams().vault_addr)
-                catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
+                catalog = get_layer_catalog(vault=vault)
 
                 jvm = java_gateway.jvm
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)

@@ -3,6 +3,8 @@ from pathlib import Path
 from pprint import pformat
 from typing import Optional
 
+from openeo_driver.utils import smart_bool
+
 
 class ConfigParams:
     # TODO: start using real config files instead of this thin wrapper around env vars?
@@ -27,6 +29,8 @@ class ConfigParams:
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
 
         self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")
+
+        self.opensearch_enrich = smart_bool(env.get("OPENSEARCH_ENRICH", True))
 
         # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         self.is_kube_deploy = env.get("KUBE", False)
