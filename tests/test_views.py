@@ -384,7 +384,7 @@ class TestBatchJobs:
             ).assert_status_code(201)
             job_id = res.headers["OpenEO-Identifier"]
             meta_data = zk.get_json_decoded(
-                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
@@ -434,7 +434,7 @@ class TestBatchJobs:
                 'user_id': TEST_USER
             }
             zk.create(
-                path='/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id),
+                path=f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}",
                 value=json.dumps(raw).encode(),
                 makepath=True
             )
@@ -520,7 +520,7 @@ class TestBatchJobs:
 
             # Check metadata in zookeeper
             meta_data = zk.get_json_decoded(
-                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
@@ -546,7 +546,7 @@ class TestBatchJobs:
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
                 )
             meta_data = zk.get_json_decoded(
-                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
             assert meta_data["status"] == "running"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -885,7 +885,9 @@ class TestBatchJobs:
                 '{"state": "KILLED"}',
                 "https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state",
             ]
-            meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            meta_data = zk.get_json_decoded(
+                f"/openeo.test/jobs/done/{TEST_USER}/{job_id}"
+            )
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
@@ -928,7 +930,9 @@ class TestBatchJobs:
                 )
             res.assert_status_code(204)
             run.assert_called_once()
-            meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            meta_data = zk.get_json_decoded(
+                f"/openeo.test/jobs/done/{TEST_USER}/{job_id}"
+            )
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
@@ -936,7 +940,7 @@ class TestBatchJobs:
             res = api.delete(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
             res.assert_status_code(204)
             with pytest.raises(kazoo.exceptions.NoNodeError):
-                _ = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+                _ = zk.get_json_decoded(f"/openeo.test/jobs/done/{TEST_USER}/{job_id}")
             # TODO
             # assert job_registry.db[job_id] == DictSubSet({"deleted": True})
 

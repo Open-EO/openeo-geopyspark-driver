@@ -33,7 +33,9 @@ class ZkJobRegistry:
         root_path: Optional[str] = None,
         zk_client: Union[str, KazooClient, KazooClientMock, None] = None,
     ):
-        self._root = root_path or ConfigParams().batch_jobs_zookeeper_root_path
+        self._root = (
+            root_path or ConfigParams().batch_jobs_zookeeper_root_path
+        ).rstrip("/")
         _log.debug(f"Using batch job zk root path {self._root}")
         if zk_client is None:
             zk_client = KazooClient(hosts=",".join(ConfigParams().zookeepernodes))
