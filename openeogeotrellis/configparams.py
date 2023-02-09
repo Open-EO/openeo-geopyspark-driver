@@ -21,6 +21,11 @@ class ConfigParams:
         self.async_task_handler_environment = env.get("ASYNC_TASK_HANDLER_ENV")
         self.cache_shub_batch_results = ConfigParams._as_boolean(env.get("CACHE_SHUB_BATCH_RESULTS"))
 
+        self.async_tasks_kafka_bootstrap_servers = env.get(
+            "ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS",
+            "epod-master1.vgt.vito.be:6668,epod-master2.vgt.vito.be:6668,epod-master3.vgt.vito.be:6668",
+        )
+
         # TODO #283 using this "is_ci_context" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         # Are we running in a unittest or continuous integration context?
         self.is_ci_context = any(v in env for v in ['PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])

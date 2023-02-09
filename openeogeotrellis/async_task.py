@@ -7,11 +7,13 @@ import time
 from subprocess import Popen, PIPE
 from typing import List, Optional
 
+import kafka
 import kazoo.client
 from py4j.java_gateway import OutputConsumer, ProcessConsumer
+from py4j.clientserver import ClientServer, JavaParameters
+from pythonjsonlogger.jsonlogger import JsonFormatter
 
 import openeogeotrellis
-from kafka import KafkaProducer
 from openeo.util import dict_no_none
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, DEPENDENCY_STATUS
@@ -21,10 +23,8 @@ from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
-from py4j.clientserver import ClientServer, JavaParameters
-
 from openeogeotrellis.job_registry import ZkJobRegistry
-from pythonjsonlogger.jsonlogger import JsonFormatter
+
 
 ARG_BATCH_JOB_ID = 'batch_job_id'
 ARG_USER_ID = 'user_id'
@@ -65,13 +65,14 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
         'arguments': arguments
     }
 
-    env = ConfigParams().async_task_handler_environment
+    config = ConfigParams()
+    env = config.async_task_handler_environment
 
     def encode(s: str) -> bytes:
         return s.encode('utf-8')
 
-    producer = KafkaProducer(
-        bootstrap_servers="epod-master1.vgt.vito.be:6668,epod-master2.vgt.vito.be:6668,epod-master3.vgt.vito.be:6668",
+    producer = kafka.KafkaProducer(
+        bootstrap_servers=config.async_tasks_kafka_bootstrap_servers,
         security_protocol='PLAINTEXT',
         acks='all'
     )
