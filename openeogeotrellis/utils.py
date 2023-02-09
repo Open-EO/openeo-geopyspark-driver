@@ -231,7 +231,7 @@ def to_projected_polygons(
         return to_projected_polygons(
             jvm,
             GeometryCollection(list(geometry.get_geometries())),
-            crs=str(geometry.get_crs()),
+            crs=f"EPSG:{geometry.get_crs().to_epsg()}",
             buffer_points=buffer_points,
             none_for_points=none_for_points,
         )
