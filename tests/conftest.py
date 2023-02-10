@@ -36,6 +36,7 @@ def pytest_configure(config):
     os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
     os.environ["VAULT_ADDR"] = "https://vault.test"
     os.environ["OPENSEARCH_ENRICH"] = "no"
+    os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)

@@ -385,6 +385,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
             "process": process,
             "title": title,
             "description": description,
+            "application_id": None,
             "parent_id": parent_id,
             "status": JOB_STATUS.CREATED,
             "created": created,
@@ -392,6 +393,11 @@ class InMemoryJobRegistry(JobRegistryInterface):
             "api_version": api_version,
             "job_options": job_options,
         }
+
+    def _update(self, job_id: str, **kwargs):
+        assert job_id in self.db
+        self.db[job_id].update(**kwargs)
+        return self.db[job_id]
 
     def set_status(
         self,
@@ -402,26 +408,38 @@ class InMemoryJobRegistry(JobRegistryInterface):
         started: Optional[str] = None,
         finished: Optional[str] = None,
     ):
-        assert job_id in self.db
-        data = {
-            "status": status,
-            "updated": rfc3339.datetime(updated or dt.datetime.utcnow()),
-        }
+        self._update(
+            job_id=job_id,
+            status=status,
+            updated=rfc3339.datetime(updated or dt.datetime.utcnow()),
+        )
         if started:
-            data["started"] = rfc3339.datetime(started)
+            self._update(job_id=job_id, started=rfc3339.datetime(started))
         if finished:
-            data["finished"] = rfc3339.datetime(finished)
+            self._update(job_id=job_id, finished=rfc3339.datetime(finished))
+        return self.db[job_id]
 
-        self.db[job_id].update(data)
+    def set_dependencies(self, job_id: str, dependencies: List[Dict[str, str]]):
+        return self._update(job_id=job_id, dependencies=dependencies)
+
+    def remove_dependencies(self, job_id: str):
+        return self._update(job_id=job_id, dependencies=None, dependency_status=None)
 
     def set_dependency_status(self, job_id: str, dependency_status: str):
-        self.db[job_id].update(dependency_status=dependency_status)
+        return self._update(job_id=job_id, dependency_status=dependency_status)
+
+    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> dict:
+        return self._update(job_id, dependency_usage=str(dependency_usage))
 
     def set_proxy_user(self, job_id: str, proxy_user: str):
-        self.db[job_id].update(proxy_user=proxy_user)
+        return self._update(job_id=job_id, proxy_user=proxy_user)
 
     def set_application_id(self, job_id: str, application_id: str):
-        self.db[job_id].update(application_id=application_id)
+        return self._update(job_id=job_id, application_id=application_id)
+
+    def list_active_jobs(self) -> List[dict]:
+        active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
+        return [job for job in self.db.values() if job["status"] in active]
 
 
 class DoubleJobRegistry:

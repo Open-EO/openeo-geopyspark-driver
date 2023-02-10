@@ -81,8 +81,16 @@ from openeogeotrellis.layercatalog import (
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
-from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
-                                               AbstractServiceRegistry, SecondaryService, ServiceEntity)
+from openeogeotrellis.sentinel_hub.batchprocessing import (
+    SentinelHubBatchProcessing,
+)
+from openeogeotrellis.service_registry import (
+    InMemoryServiceRegistry,
+    ZooKeeperServiceRegistry,
+    AbstractServiceRegistry,
+    SecondaryService,
+    ServiceEntity,
+)
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
@@ -1038,8 +1046,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return zk_job_info_to_metadata(job_info)
 
-    def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str,
-                                         vault_token: Optional[str]):
+    def poll_sentinelhub_batch_processes(
+        self,
+        job_info: dict,
+        sentinel_hub_client_alias: str,
+        vault_token: Optional[str] = None,
+    ):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
@@ -1064,9 +1076,14 @@ class GpsBatchJobs(backend.BatchJobs):
                 sentinel_hub_client_id, sentinel_hub_client_secret = (
                     self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
-            batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                endpoint, bucket_name, sentinel_hub_client_id, sentinel_hub_client_secret,
-                ','.join(ConfigParams().zookeepernodes), f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+            batch_processing_service = (
+                SentinelHubBatchProcessing.get_batch_processing_service(
+                    endpoint=endpoint,
+                    bucket_name=bucket_name,
+                    sentinel_hub_client_id=sentinel_hub_client_id,
+                    sentinel_hub_client_secret=sentinel_hub_client_secret,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                )
             )
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
@@ -1794,12 +1811,14 @@ class GpsBatchJobs(backend.BatchJobs):
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias,
                                                                      get_vault_token(sentinel_hub_client_alias)))
 
-                    batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                        endpoint,
-                        bucket_name,
-                        sentinel_hub_client_id, sentinel_hub_client_secret,
-                        ','.join(ConfigParams().zookeepernodes),
-                        f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+                    batch_processing_service = (
+                        SentinelHubBatchProcessing.get_batch_processing_service(
+                            endpoint=endpoint,
+                            bucket_name=bucket_name,
+                            sentinel_hub_client_id=sentinel_hub_client_id,
+                            sentinel_hub_client_secret=sentinel_hub_client_secret,
+                            sentinel_hub_client_alias=sentinel_hub_client_alias,
+                        )
                     )
 
                     shub_band_names = metadata.band_names
