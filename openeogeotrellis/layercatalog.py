@@ -739,7 +739,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if isinstance(crs, int):  # EPSG code
                 return f"EPSG:{crs}"
 
-            raise NotImplementedError(f"unsupported CRS format: {crs}")
+            raise NotImplementedError(f"unsupported CRS format: {crs} in cube:dimension, provide an int for epsg codes or a projjson dict.")
 
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
