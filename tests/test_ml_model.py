@@ -177,7 +177,7 @@ def test_fit_class_random_forest_synchronous(get_collection_metadata, load_colle
     cube_xybt: GeopysparkDataCube = imagecollection_with_two_bands_and_one_date.apply_to_levels(
         lambda layer: imagecollection_with_two_bands_and_one_date._convert_celltype(layer, "float32"))
     load_collection.return_value = cube_xybt
-    get_collection_metadata.return_value = cube_xybt.metadata
+    get_collection_metadata.return_value = cube_xybt.metadata._orig_metadata
     request = {
         'process': {
             'process_graph': {
