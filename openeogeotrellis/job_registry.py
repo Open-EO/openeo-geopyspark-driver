@@ -64,11 +64,12 @@ class ZkJobRegistry:
             # TODO: move api_Version into specification?
             'api_version': api_version,
             # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
-            'specification': json.dumps(specification),
-            'application_id': None,
-            'created': rfc3339.datetime(datetime.utcnow()),
-            'title': title,
-            'description': description,
+            "specification": json.dumps(specification),
+            "application_id": None,
+            "created": rfc3339.datetime(datetime.utcnow()),
+            "updated": rfc3339.datetime(datetime.utcnow()),
+            "title": title,
+            "description": description,
         }
         self._create(job_info)
         return job_info
