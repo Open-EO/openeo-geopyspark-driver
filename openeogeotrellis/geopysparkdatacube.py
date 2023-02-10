@@ -1493,6 +1493,7 @@ class GeopysparkDataCube(DriverDataCube):
         overviews = format_options.get("overviews", "AUTO")
         overview_resample = format_options.get("overview_method", "near")
         colormap = format_options.get("colormap", None)
+        description = format_options.get("file_metadata",{}).get("description","")
 
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy else directory
@@ -1554,6 +1555,8 @@ class GeopysparkDataCube(DriverDataCube):
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
+                    if description != "":
+                        gtiff_options.addHeadTag("ImageDescription", description)
                     gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     color_cmap = get_color_cmap()
