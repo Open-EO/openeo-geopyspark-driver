@@ -1738,7 +1738,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
                                     .areaInSquareMeters())
                         elif isinstance(geometries, DriverVectorCube):
-                            return area_in_square_meters(geometries.to_multipolygon(), crs)
+                            return geometries.get_area()
                         elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
                             return area_in_square_meters(geometries, crs)
                         else:
