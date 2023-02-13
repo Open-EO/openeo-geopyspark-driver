@@ -66,8 +66,8 @@ class ZkJobRegistry:
             # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
             "specification": json.dumps(specification),
             "application_id": None,
-            "created": rfc3339.datetime(datetime.utcnow()),
-            "updated": rfc3339.datetime(datetime.utcnow()),
+            "created": rfc3339.utcnow(),
+            "updated": rfc3339.utcnow(),
             "title": title,
             "description": description,
         }
@@ -96,7 +96,7 @@ class ZkJobRegistry:
     ) -> None:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
 
-        self.patch(job_id, user_id, status=status, updated=rfc3339.datetime(datetime.utcnow()))
+        self.patch(job_id, user_id, status=status, updated=rfc3339.utcnow())
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
 
         if auto_mark_done and status in {
@@ -379,7 +379,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         job_options: Optional[dict] = None,
     ):
         assert job_id not in self.db
-        created = rfc3339.datetime(dt.datetime.utcnow())
+        created = rfc3339.utcnow()
         self.db[job_id] = {
             "job_id": job_id,
             "user_id": user_id,
@@ -412,7 +412,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         self._update(
             job_id=job_id,
             status=status,
-            updated=rfc3339.datetime(updated or dt.datetime.utcnow()),
+            updated=rfc3339.datetime(updated) if updated else rfc3339.utcnow(),
         )
         if started:
             self._update(job_id=job_id, started=rfc3339.datetime(started))

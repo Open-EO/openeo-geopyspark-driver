@@ -153,6 +153,9 @@ class UtcNowClock:
     Helper class to have a mockable wrapper for datetime.datetime.utcnow
     (which is not straightforward to mock directly).
     """
+
+    # TODO: just start using `time_machine` module for time mocking
+
     _utcnow = _utcnow_orig = datetime.datetime.utcnow
 
     @classmethod
