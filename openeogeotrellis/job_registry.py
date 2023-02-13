@@ -438,8 +438,9 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_application_id(self, job_id: str, application_id: str):
         return self._update(job_id=job_id, application_id=application_id)
 
-    def list_active_jobs(self) -> List[dict]:
+    def list_active_jobs(self, max_age: Optional[int] = None) -> List[dict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
+        # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
 
 

@@ -964,8 +964,8 @@ def get_elastic_job_registry() -> Optional[ElasticJobRegistry]:
     with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
         config = ConfigParams()
         job_registry = ElasticJobRegistry(
-            backend_id=config.ejr_backend_id,
             api_url=config.ejr_api,
+            backend_id=config.ejr_backend_id,
         )
         vault = Vault(config.vault_addr)
         ejr_creds = vault.get_elastic_job_registry_credentials()
