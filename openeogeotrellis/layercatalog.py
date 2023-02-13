@@ -129,13 +129,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             logger.info(f"Resolved 'merged_by_common_name' to collection {metadata.get('id')}")
 
         sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
-
         if load_params.sar_backscatter is not None and not sar_backscatter_compatible:
             raise OpenEOApiException(message="""Process "sar_backscatter" is not applicable for collection {c}."""
                                      .format(c=collection_id), status_code=400)
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-
+        is_utm = layer_source_info.get("is_utm", False)
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -301,9 +300,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 opensearch_link_titles,
                 root_path,
             ):
-                is_utm = (cell_width == cell_height == 10) and (
-                    "COHERENCE" not in opensearch_collection_id
-                )
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
                     opensearch_endpoint, is_utm, "", [], ""
                 )
