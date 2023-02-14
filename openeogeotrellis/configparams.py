@@ -67,6 +67,11 @@ class ConfigParams:
         )
         self.ejr_api = env.get("OPENEO_EJR_API", "https://jobregistry.openeo.vito.be")
 
+        self.ejr_credentials_vault_path = env.get(
+            "OPENEO_EJR_CREDENTIALS_VAULT_PATH",
+            "TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
+        )
+
     def __str__(self) -> str:
         return pformat(vars(self))
 
