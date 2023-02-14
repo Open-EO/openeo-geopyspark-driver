@@ -322,7 +322,6 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
                 ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
                 ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
-                ortho_rect.SetParameterFloat("outputs.default", 10000.0)
 
                 ortho_rect.Execute()
                 # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
@@ -351,7 +350,7 @@ class S1BackscatterOrfeo:
                 f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
                 f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
             )
-            return data, 10000.0
+            return data,0
 
 
 
