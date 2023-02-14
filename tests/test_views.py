@@ -1,6 +1,7 @@
 import collections
 import decimal
 from typing import Optional
+import datetime
 
 import kazoo.exceptions
 import time_machine
@@ -8,7 +9,6 @@ from moto import mock_s3
 import boto3
 
 import contextlib
-import datetime
 import logging
 import json
 import os
@@ -371,8 +371,12 @@ class TestBatchJobs:
     @staticmethod
     @contextlib.contextmanager
     def _mock_utcnow():
-        with mock.patch('openeogeotrellis.job_registry.datetime', new=mock.Mock(wraps=datetime.datetime)) as dt:
-            dt.utcnow.return_value = datetime.datetime(2020, 4, 20, 16, 4, 3)
+        now = datetime.datetime(2020, 4, 20, 16, 4, 3)
+        with mock.patch(
+            "openeogeotrellis.job_registry.datetime",
+            new=mock.Mock(wraps=datetime.datetime),
+        ) as dt, time_machine.travel(now.replace(tzinfo=datetime.timezone.utc)):
+            dt.utcnow.return_value = now
             yield dt.utcnow
 
     @staticmethod
