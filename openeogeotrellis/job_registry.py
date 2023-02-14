@@ -313,11 +313,6 @@ class ZkJobRegistry:
         return "{r}/done".format(r=self._root)
 
 
-# Legacy alias
-# TODO: remove this legacy alias
-JobRegistry = ZkJobRegistry
-
-
 def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     """Convert job info dict (from ZkJobRegistry) to BatchJobMetadata"""
     status = job_info.get("status")
