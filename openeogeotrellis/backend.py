@@ -1083,6 +1083,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     sentinel_hub_client_id=sentinel_hub_client_id,
                     sentinel_hub_client_secret=sentinel_hub_client_secret,
                     sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    jvm=self._jvm,
                 )
             )
 
@@ -1818,6 +1819,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             sentinel_hub_client_id=sentinel_hub_client_id,
                             sentinel_hub_client_secret=sentinel_hub_client_secret,
                             sentinel_hub_client_alias=sentinel_hub_client_alias,
+                            jvm=self._jvm,
                         )
                     )
 
