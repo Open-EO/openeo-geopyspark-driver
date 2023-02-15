@@ -54,13 +54,15 @@ setup(
         'pyspark==3.2.2; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
+        # rasterio is an undeclared but required dependency for geopyspark
+        # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
+        'rasterio~=1.1.8',
         'py4j',
         'numpy==1.22.4',
         'pandas>=0.24.2,<1.4.0',
         'pyproj==3.4.1',
         'protobuf~=3.9.2',
         'kazoo~=2.8.0',
-        'rasterio~=1.1.8',
         'h5py==2.10.0',
         'h5netcdf',
         'requests>=2.26.0,<3.0',
