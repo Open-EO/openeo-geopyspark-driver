@@ -461,8 +461,7 @@ class DoubleJobRegistry:
     def __init__(
         self,
         zk_job_registry_factory: Callable[[], ZkJobRegistry] = ZkJobRegistry,
-        # TODO: typehint should actually be `JobRegistryInterface` (e.g. `InMemoryJobRegistry` is used in testing)
-        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        elastic_job_registry: Optional[JobRegistryInterface] = None,
     ):
         # Note: we use a factory here because current implementation (and test coverage) heavily depends on
         # just-in-time instantiation of `ZkJobRegistry` in various places (`with ZkJobRegistry(): ...`)
