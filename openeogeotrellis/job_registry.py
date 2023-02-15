@@ -16,6 +16,7 @@ from openeo_driver.jobregistry import (
     JOB_STATUS,
     JobRegistryInterface,
     ElasticJobRegistry,
+    JobDict,
 )
 from openeo_driver.util.logging import just_log_exceptions
 from openeogeotrellis import sentinel_hub
@@ -360,7 +361,7 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
 class InMemoryJobRegistry(JobRegistryInterface):
     # TODO move this implementation to openeo_python_driver
     def __init__(self):
-        self.db: Dict[str, dict] = {}
+        self.db: Dict[str, JobDict] = {}
 
     def create_job(
         self,
@@ -372,7 +373,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         parent_id: Optional[str] = None,
         api_version: Optional[str] = None,
         job_options: Optional[dict] = None,
-    ):
+    ) -> JobDict:
         assert job_id not in self.db
         created = rfc3339.utcnow()
         self.db[job_id] = {
@@ -389,8 +390,14 @@ class InMemoryJobRegistry(JobRegistryInterface):
             "api_version": api_version,
             "job_options": job_options,
         }
+        return self.db[job_id]
 
-    def _update(self, job_id: str, **kwargs):
+    def get_job(self, job_id: str) -> JobDict:
+        if job_id not in self.db:
+            raise JobNotFoundException(job_id=job_id)
+        return self.db[job_id]
+
+    def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
         self.db[job_id].update(**kwargs)
         return self.db[job_id]
@@ -403,7 +410,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
-    ):
+    ) -> JobDict:
         self._update(
             job_id=job_id,
             status=status,
@@ -415,25 +422,27 @@ class InMemoryJobRegistry(JobRegistryInterface):
             self._update(job_id=job_id, finished=rfc3339.datetime(finished))
         return self.db[job_id]
 
-    def set_dependencies(self, job_id: str, dependencies: List[Dict[str, str]]):
+    def set_dependencies(
+        self, job_id: str, dependencies: List[Dict[str, str]]
+    ) -> JobDict:
         return self._update(job_id=job_id, dependencies=dependencies)
 
-    def remove_dependencies(self, job_id: str):
+    def remove_dependencies(self, job_id: str) -> JobDict:
         return self._update(job_id=job_id, dependencies=None, dependency_status=None)
 
-    def set_dependency_status(self, job_id: str, dependency_status: str):
+    def set_dependency_status(self, job_id: str, dependency_status: str) -> JobDict:
         return self._update(job_id=job_id, dependency_status=dependency_status)
 
-    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> dict:
+    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> JobDict:
         return self._update(job_id, dependency_usage=str(dependency_usage))
 
-    def set_proxy_user(self, job_id: str, proxy_user: str):
+    def set_proxy_user(self, job_id: str, proxy_user: str) -> JobDict:
         return self._update(job_id=job_id, proxy_user=proxy_user)
 
-    def set_application_id(self, job_id: str, application_id: str):
+    def set_application_id(self, job_id: str, application_id: str) -> JobDict:
         return self._update(job_id=job_id, application_id=application_id)
 
-    def list_active_jobs(self, max_age: Optional[int] = None) -> List[dict]:
+    def list_active_jobs(self, max_age: Optional[int] = None) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
         # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
@@ -519,8 +528,17 @@ class DoubleJobRegistry:
         return job_info
 
     def get_job(self, job_id: str, user_id: str) -> dict:
-        # TODO: add attempt to get job info from elastic and e.g. compare?
-        return self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+        job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+        if self.elastic_job_registry:
+            with self._just_log_errors("get_job"):
+                # For now: compare job metadata between Zk and EJR
+                job_ejr = self.elastic_job_registry.get_job(job_id=job_id)
+                for f in ["status", "created"]:
+                    if job_ejr != job[f]:
+                        raise self._log.warning(
+                            f"EJR get_job failure ({job_id=} {f=}): expected {job[f]!r} but got {job_ejr[f]!r}"
+                        )
+        return job
 
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
         self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
