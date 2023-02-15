@@ -2019,59 +2019,6 @@ class GeopysparkDataCube(DriverDataCube):
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
                                                                                   tile_grid, max_compression)
 
-    def _save_stitched_tiled(self, spatial_rdd, filename):
-        import rasterio as rstr
-        from affine import Affine
-        import rasterio._warp as rwarp
-
-        max_level = self.get_max_level()
-
-        spatial_rdd = spatial_rdd.persist()
-
-        sorted_keys = sorted(spatial_rdd.collect_keys())
-
-        upper_left_coords = GeopysparkDataCube._mapTransform(max_level.layer_metadata.layout_definition, sorted_keys[0])
-        lower_right_coords = GeopysparkDataCube._mapTransform(max_level.layer_metadata.layout_definition, sorted_keys[-1])
-
-        data = spatial_rdd.stitch()
-
-        bands, w, h = data.cells.shape
-        nodata = max_level.layer_metadata.no_data_value
-        dtype = data.cells.dtype
-        ex = Extent(xmin=upper_left_coords.left, ymin=lower_right_coords.bottom, xmax=lower_right_coords.right, ymax=upper_left_coords.top)
-        cw, ch = (ex.xmax - ex.xmin) / w, (ex.ymax - ex.ymin) / h
-        overview_level = int(math.log(w) / math.log(2) - 8)
-
-        with rstr.io.MemoryFile() as memfile, open(filename, 'wb') as f:
-            with memfile.open(driver='GTiff',
-                              count=bands,
-                              width=w,
-                              height=h,
-                              transform=Affine(cw, 0.0, ex.xmin,
-                                               0.0, -ch, ex.ymax),
-                              crs=rstr.crs.CRS.from_proj4(spatial_rdd.layer_metadata.crs),
-                              nodata=nodata,
-                              dtype=dtype,
-                              compress='lzw',
-                              tiled=True) as mem:
-                windows = list(mem.block_windows(1))
-                for _, w in windows:
-                    segment = data.cells[:, w.row_off:(w.row_off + w.height), w.col_off:(w.col_off + w.width)]
-                    mem.write(segment, window=w)
-                    mask_value = np.all(segment != nodata, axis=0).astype(np.uint8) * 255
-                    mem.write_mask(mask_value, window=w)
-
-                    overviews = [2 ** j for j in range(1, overview_level + 1)]
-                    mem.build_overviews(overviews, rwarp.Resampling.nearest)
-                    mem.update_tags(ns='rio_oveview', resampling=rwarp.Resampling.nearest.value)
-
-            while True:
-                chunk = memfile.read(8192)
-                if not chunk:
-                    break
-
-                f.write(chunk)
-
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
         return self._ndvi_v10(**kwargs)
 
