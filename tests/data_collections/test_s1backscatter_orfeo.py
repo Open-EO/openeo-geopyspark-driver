@@ -2,10 +2,10 @@ import datetime
 import os
 import subprocess
 import sys
+import tempfile
 import textwrap
 import zipfile
 from pathlib import Path
-from unittest import skip
 
 import pytest
 import rasterio
@@ -279,6 +279,82 @@ def test_creodias_dem_subset_geotiff(bbox, bbox_epsg):
         "11/1043/683.tif": "/path/to/geotiff/11/1043/683.tif",
     }
     assert not temp_dir.exists()
+
+
+@pytest.mark.parametrize(
+    ["bbox", "bbox_epsg", "expected_symlinks"],
+    [
+        (
+            (5.1, 51.2, 6.5, 51.3),
+            4326,
+            {
+                "Copernicus_DSM_COG_10_N51_00_E006_00_DEM.tif": "Copernicus_DSM_COG_10_N51_00_E006_00_DEM/Copernicus_DSM_COG_10_N51_00_E006_00_DEM.tif",
+                "Copernicus_DSM_COG_10_N51_00_E005_00_DEM.tif": "Copernicus_DSM_COG_10_N51_00_E005_00_DEM/Copernicus_DSM_COG_10_N51_00_E005_00_DEM.tif",
+            },
+        ),
+        (
+            (-1.1, -0.9, 0.1, 1.1),
+            4326,
+            {
+                "Copernicus_DSM_COG_10_N00_00_E000_00_DEM.tif": "Copernicus_DSM_COG_10_N00_00_E000_00_DEM/Copernicus_DSM_COG_10_N00_00_E000_00_DEM.tif",
+                "Copernicus_DSM_COG_10_N00_00_W001_00_DEM.tif": "Copernicus_DSM_COG_10_N00_00_W001_00_DEM/Copernicus_DSM_COG_10_N00_00_W001_00_DEM.tif",
+                "Copernicus_DSM_COG_10_S01_00_W001_00_DEM.tif": "Copernicus_DSM_COG_10_S01_00_W001_00_DEM/Copernicus_DSM_COG_10_S01_00_W001_00_DEM.tif",
+                "Copernicus_DSM_COG_10_N01_00_W001_00_DEM.tif": "Copernicus_DSM_COG_10_N01_00_W001_00_DEM/Copernicus_DSM_COG_10_N01_00_W001_00_DEM.tif",
+                "Copernicus_DSM_COG_10_S01_00_W002_00_DEM.tif": "Copernicus_DSM_COG_10_S01_00_W002_00_DEM/Copernicus_DSM_COG_10_S01_00_W002_00_DEM.tif",
+                "Copernicus_DSM_COG_10_N01_00_E000_00_DEM.tif": "Copernicus_DSM_COG_10_N01_00_E000_00_DEM/Copernicus_DSM_COG_10_N01_00_E000_00_DEM.tif",
+                "Copernicus_DSM_COG_10_N01_00_W002_00_DEM.tif": "Copernicus_DSM_COG_10_N01_00_W002_00_DEM/Copernicus_DSM_COG_10_N01_00_W002_00_DEM.tif",
+                "Copernicus_DSM_COG_10_S01_00_E000_00_DEM.tif": "Copernicus_DSM_COG_10_S01_00_E000_00_DEM/Copernicus_DSM_COG_10_S01_00_E000_00_DEM.tif",
+                "Copernicus_DSM_COG_10_N00_00_W002_00_DEM.tif": "Copernicus_DSM_COG_10_N00_00_W002_00_DEM/Copernicus_DSM_COG_10_N00_00_W002_00_DEM.tif",
+            },
+        ),
+        (
+            (506986, 5672070, 534857, 5683305),
+            32631,
+            {
+                "Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif": "Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif",
+            },
+        ),
+    ],
+)
+def test_creodias_dem_subset_copernicus30_geotiff(bbox, bbox_epsg, expected_symlinks):
+    import shapely
+    import math
+    import pyproj
+
+    # Create a temp source directory and fill it with empty files.
+    source_dir = tempfile.TemporaryDirectory(suffix="-copernicus30")
+    bbox_lonlat: shapely.geometry.Polygon = shapely.ops.transform(
+        pyproj.Transformer.from_crs(
+            crs_from=bbox_epsg, crs_to=4326, always_xy=True
+        ).transform,
+        shapely.geometry.box(*bbox),
+    )
+    (minx, miny, maxx, maxy) = bbox_lonlat.bounds
+    for lat in range(math.floor(miny) - 5, math.ceil(maxy) + 5):
+        for lon in range(math.floor(minx) - 5, math.ceil(maxx) + 5):
+            lat_char = "N" if lat >= 0 else "S"
+            lon_char = "E" if lon >= 0 else "W"
+            tile_name = f"Copernicus_DSM_COG_10_{lat_char}{abs(lat):02d}_00_{lon_char}{abs(lon):03d}_00_DEM"
+            tile_dir = Path(source_dir.name) / tile_name
+            tile_dir.mkdir(parents=True, exist_ok=True)
+            tile_file = tile_dir / f"{tile_name}.tif"
+            tile_file.touch()
+
+    # Create the symlinks
+    symlinks = {}
+    with S1BackscatterOrfeo._creodias_dem_subset_copernicus30_geotiff(
+        bbox=bbox, bbox_epsg=bbox_epsg, copernicus_root=Path(source_dir.name)
+    ) as temp_dir:
+        temp_dir = Path(temp_dir)
+        for path in temp_dir.glob("**/*"):
+            relative = path.relative_to(temp_dir)
+            if path.is_symlink():
+                symlinks[str(relative)] = str(
+                    Path(os.readlink(path)).relative_to(source_dir.name)
+                )
+            else:
+                raise ValueError(path)
+    assert symlinks == expected_symlinks
 
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg", "expected"], [

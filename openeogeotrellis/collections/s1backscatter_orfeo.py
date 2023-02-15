@@ -22,6 +22,7 @@ import numpy as np
 import pyproj
 import pyspark
 import shapely.geometry
+import shapely.geometry.polygon
 import shapely.ops
 from py4j.java_gateway import JVMView, JavaObject
 
@@ -267,12 +268,18 @@ class S1BackscatterOrfeo:
                 dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
             )
         elif elevation_model in ["copernicus_30"]:
-            import contextlib
-
-            copernicus_dem_dir = os.environ.get(
-                "OPENEO_S1BACKSCATTER_DEM_DIR", "/s1backscatter_copernicus_30/"
+            dem_dir_context = (
+                S1BackscatterOrfeo._creodias_dem_subset_copernicus30_geotiff(
+                    bbox=(
+                        extent["xmin"],
+                        extent["ymin"],
+                        extent["xmax"],
+                        extent["ymax"],
+                    ),
+                    bbox_epsg=epsg,
+                    copernicus_root="/eodata/auxdata/Copernicus30/dem",
+                )
             )
-            dem_dir_context = contextlib.nullcontext(copernicus_dem_dir)
         elif elevation_model in ["off"]:
             # Context that returns None when entering
             dem_dir_context = nullcontext()
@@ -634,37 +641,57 @@ class S1BackscatterOrfeo:
         return temp_dir
 
     @staticmethod
-    def _creodias_dem_subset_srtm_hgt_unzip(
-            bbox: Tuple, bbox_epsg: int, srtm_root="/eodata/auxdata/SRTMGL1/dem"
+    def _creodias_dem_subset_copernicus30_geotiff(
+        bbox: Tuple,
+        bbox_epsg: int,
+        copernicus_root="/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/",
     ) -> tempfile.TemporaryDirectory:
         """
-        Create subset of Creodias SRTM hgt files covering the given lon-lat bbox to pass to Orfeo
-        obtained from unzipping the necessary .SRTMGL1.hgt.zip files at /eodata/auxdata/SRTMGL1/dem/
-        (e.g. N50E003.SRTMGL1.hgt.zip)
+        Create subset of Creodias DEM symlinks covering the given lon-lat bbox to pass to Orfeo
+        based on the geotiff DEM tiles at /eodata/auxdata/CopDEM_COG/copernicus-dem-30m/
+        (e.g. Copernicus_DSM_COG_10_N80_00_W103_00_DEM.tif)
+        (e.g. Copernicus_DSM_COG_10_S01_00_E006_00_DEM.tif)
+        (e.g. Copernicus_DSM_COG_10_N00_00_E000_00_DEM.tif)
 
         :return: tempfile.TemporaryDirectory to be used as context manager (for automatic cleanup)
         """
-        # Get range of lon-lat tiles to cover
-        to_lonlat = pyproj.Transformer.from_crs(crs_from=bbox_epsg, crs_to=4326, always_xy=True)
-        bbox_lonlat = shapely.ops.transform(to_lonlat.transform, shapely.geometry.box(*bbox)).bounds
-        lon_min, lat_min, lon_max, lat_max = [int(b) for b in bbox_lonlat]
+        # Convert bbox to degrees (EPSG:4326).
+        bbox_lonlat: shapely.geometry.Polygon = shapely.ops.transform(
+            pyproj.Transformer.from_crs(
+                crs_from=bbox_epsg, crs_to=4326, always_xy=True
+            ).transform,
+            shapely.geometry.box(*bbox),
+        )
+        # Divide bbox_lonlat.bounds into 1x1 degree tiles, get the indices (northing, easting) for each tile.
+        tile_indices = []
+        import math
 
-        # Unzip to temp dir
-        temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-dem-srtm")
-        msg = f"Unzip SRTM tiles from {srtm_root} in range lon [{lon_min}:{lon_max}] x lat [{lat_min}:{lat_max}] to {temp_dir}"
-        with TimingLogger(title=msg, logger=logger):
-            for lon in range(lon_min, lon_max + 1):
-                for lat in range(lat_min, lat_max + 1):
-                    # Something like: N50E003.SRTMGL1.hgt.zip"
-                    basename = "{ns}{lat:02d}{ew}{lon:03d}.SRTMGL1.hgt".format(
-                        ew="E" if lon >= 0 else "W", lon=abs(lon),
-                        ns="N" if lat >= 0 else "S", lat=abs(lat)
-                    )
-                    zip_filename = pathlib.Path(srtm_root) / (basename + '.zip')
-                    with zipfile.ZipFile(zip_filename, 'r') as z:
-                        logger.info(f"{zip_filename}: {z.infolist()}")
-                        z.extractall(temp_dir.name)
+        (xmin, ymin, xmax, ymax) = bbox_lonlat.bounds
+        for lon in range(math.floor(xmin), math.ceil(xmax)):
+            for lat in range(math.floor(ymin), math.ceil(ymax)):
+                tile_indices.append((lat, lon))
 
+        # Set up temp symlinks.
+        temp_dir = tempfile.TemporaryDirectory(
+            suffix="-openeo-dem-copernicus30-geotiff"
+        )
+        root = pathlib.Path(temp_dir.name)
+        logger.info(
+            "Creating temporary DEM tile subset directory for {b} (epsg {e}): {r!s} symlinking to {t}".format(
+                b=bbox, e=bbox_epsg, r=root, t=copernicus_root
+            )
+        )
+        for lat, lon in tile_indices:
+            lat_char = "N" if lat >= 0 else "S"
+            lon_char = "E" if lon >= 0 else "W"
+            tile_name = "Copernicus_DSM_COG_10_{lat_char}{lat:02d}_00_{lon_char}{lon:03d}_00_DEM".format(
+                lat_char=lat_char, lat=abs(lat), lon_char=lon_char, lon=abs(lon)
+            )
+            source_path = pathlib.Path(copernicus_root, tile_name, tile_name + ".tif")
+            dest_path = pathlib.Path(root, tile_name + ".tif")
+            if not source_path.exists():
+                continue
+            dest_path.symlink_to(source_path)
         return temp_dir
 
 
