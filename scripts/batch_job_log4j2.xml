@@ -1,0 +1,32 @@
+<Configuration>
+    <Appenders>
+        <Console name="stdout" target="SYSTEM_OUT">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+        </Console>
+        <File name="file" fileName="${sys:spark.yarn.app.container.log.dir}/openeo.log">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+        </File>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.openeo" level="${sys:openeo.logging.threshold}"> <!-- TODO: configure root logger instead? -->
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
+        </Logger>
+        <Logger name="org.apache.spark" level="error">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
+        </Logger>
+        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
+        </Logger>
+        <Logger name="org.apache.zookeeper" level="warn">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
+        </Logger>
+        <Logger name="org.apache.curator" level="warn">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
+        </Logger>
+    </Loggers>
+</Configuration>
