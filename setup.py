@@ -26,7 +26,6 @@ tests_require = [
     "time_machine>=2.8.0",
     "kubernetes",
     "re-assert",
-    "rasterio>=1.1.8",
 ]
 
 setup(
@@ -61,6 +60,7 @@ setup(
         'pyproj==3.4.1',
         'protobuf~=3.9.2',
         'kazoo~=2.8.0',
+        'rasterio~=1.1.8',
         'h5py==2.10.0',
         'h5netcdf',
         'requests>=2.26.0,<3.0',
