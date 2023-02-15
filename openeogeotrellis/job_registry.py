@@ -359,7 +359,11 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
 
 
 class InMemoryJobRegistry(JobRegistryInterface):
+    """
+    Simple in-memory implementation of JobRegistryInterface for testing/dummy purposes
+    """
     # TODO move this implementation to openeo_python_driver
+
     def __init__(self):
         self.db: Dict[str, JobDict] = {}
 
@@ -442,7 +446,14 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_application_id(self, job_id: str, application_id: str) -> JobDict:
         return self._update(job_id=job_id, application_id=application_id)
 
-    def list_active_jobs(self, max_age: Optional[int] = None) -> List[JobDict]:
+    def list_user_jobs(
+        self, user_id: str, fields: Optional[List[str]] = None
+    ) -> List[JobDict]:
+        return [job for job in self.db.values() if job["user_id"] == user_id]
+
+    def list_active_jobs(
+        self, max_age: Optional[int] = None, fields: Optional[List[str]] = None
+    ) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
         # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
