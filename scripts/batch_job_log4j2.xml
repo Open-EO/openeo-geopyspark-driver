@@ -9,25 +9,13 @@
         </File>
     </Appenders>
     <Loggers>
-        <Logger name="org.openeo" level="${sys:openeo.logging.threshold}"> <!-- TODO: configure root logger instead? -->
+        <Logger name="org.apache.spark" level="error"/>
+        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
+        <Logger name="org.apache.zookeeper" level="warn"/>
+        <Logger name="org.apache.curator" level="warn"/>
+        <Root level="${sys:openeo.logging.threshold}">
             <AppenderRef ref="stdout"/>
             <AppenderRef ref="file"/>
-        </Logger>
-        <Logger name="org.apache.spark" level="error">
-            <AppenderRef ref="stdout"/>
-            <AppenderRef ref="file"/>
-        </Logger>
-        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off">
-            <AppenderRef ref="stdout"/>
-            <AppenderRef ref="file"/>
-        </Logger>
-        <Logger name="org.apache.zookeeper" level="warn">
-            <AppenderRef ref="stdout"/>
-            <AppenderRef ref="file"/>
-        </Logger>
-        <Logger name="org.apache.curator" level="warn">
-            <AppenderRef ref="stdout"/>
-            <AppenderRef ref="file"/>
-        </Logger>
+        </Root>
     </Loggers>
 </Configuration>
