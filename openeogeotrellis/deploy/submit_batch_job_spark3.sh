@@ -10,11 +10,11 @@ if [ -z "${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE}" ]; then
     exit 1
 fi
 
-sparkSubmitLog4jConfigurationFile="/opt/venv/openeo-geopyspark-driver/submit_batch_job_log4j.properties"
+sparkSubmitLog4jConfigurationFile="/opt/venv/openeo-geopyspark-driver/submit_batch_job_log4j2.xml"
 
 if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
     # TODO: is this path still valid?
-    sparkSubmitLog4jConfigurationFile='scripts/submit_batch_job_log4j.properties'
+    sparkSubmitLog4jConfigurationFile='scripts/submit_batch_job_log4j2.xml'
     if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
         >&2 echo "${sparkSubmitLog4jConfigurationFile} is missing"
         exit 1
@@ -59,7 +59,7 @@ kinit -kt ${keyTab} ${principal} || true
 export HDP_VERSION=3.1.4.0-315
 export SPARK_HOME=/opt/spark3_3_1
 export PATH="$SPARK_HOME/bin:$PATH"
-export SPARK_SUBMIT_OPTS="-Dlog4j.configuration=file:${sparkSubmitLog4jConfigurationFile}"
+export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"

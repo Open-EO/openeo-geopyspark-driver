@@ -39,6 +39,7 @@ setup(
             "CHANGELOG.md",
             # TODO: make these config files real "package_data" so that they can be managed/found more easily in different contexts
             "scripts/submit_batch_job_log4j.properties",
+            "scripts/submit_batch_job_log4j2.xml",
             "scripts/batch_job_log4j.properties",
             "scripts/batch_job_log4j2.xml",
             "scripts/cleaner-entrypoint.sh",
