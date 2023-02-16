@@ -694,6 +694,46 @@ class S1BackscatterOrfeo:
             dest_path.symlink_to(source_path)
         return temp_dir
 
+    @staticmethod
+    def _creodias_dem_subset_srtm_hgt_unzip(
+        bbox: Tuple, bbox_epsg: int, srtm_root="/eodata/auxdata/SRTMGL1/dem"
+    ) -> tempfile.TemporaryDirectory:
+        """
+        Create subset of Creodias SRTM hgt files covering the given lon-lat bbox to pass to Orfeo
+        obtained from unzipping the necessary .SRTMGL1.hgt.zip files at /eodata/auxdata/SRTMGL1/dem/
+        (e.g. N50E003.SRTMGL1.hgt.zip)
+
+        :return: tempfile.TemporaryDirectory to be used as context manager (for automatic cleanup)
+        """
+        # Get range of lon-lat tiles to cover
+        to_lonlat = pyproj.Transformer.from_crs(
+            crs_from=bbox_epsg, crs_to=4326, always_xy=True
+        )
+        bbox_lonlat = shapely.ops.transform(
+            to_lonlat.transform, shapely.geometry.box(*bbox)
+        ).bounds
+        lon_min, lat_min, lon_max, lat_max = [int(b) for b in bbox_lonlat]
+
+        # Unzip to temp dir
+        temp_dir = tempfile.TemporaryDirectory(suffix="-openeo-dem-srtm")
+        msg = f"Unzip SRTM tiles from {srtm_root} in range lon [{lon_min}:{lon_max}] x lat [{lat_min}:{lat_max}] to {temp_dir}"
+        with TimingLogger(title=msg, logger=logger):
+            for lon in range(lon_min, lon_max + 1):
+                for lat in range(lat_min, lat_max + 1):
+                    # Something like: N50E003.SRTMGL1.hgt.zip"
+                    basename = "{ns}{lat:02d}{ew}{lon:03d}.SRTMGL1.hgt".format(
+                        ew="E" if lon >= 0 else "W",
+                        lon=abs(lon),
+                        ns="N" if lat >= 0 else "S",
+                        lat=abs(lat),
+                    )
+                    zip_filename = pathlib.Path(srtm_root) / (basename + ".zip")
+                    with zipfile.ZipFile(zip_filename, "r") as z:
+                        logger.info(f"{zip_filename}: {z.infolist()}")
+                        z.extractall(temp_dir.name)
+
+        return temp_dir
+
 
 class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
     """
