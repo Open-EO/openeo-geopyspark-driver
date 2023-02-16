@@ -277,7 +277,7 @@ class S1BackscatterOrfeo:
                         extent["ymax"],
                     ),
                     bbox_epsg=epsg,
-                    copernicus_root="/eodata/auxdata/Copernicus30/dem",
+                    copernicus_root="/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/",
                 )
             )
         elif elevation_model in ["off"]:
@@ -642,9 +642,7 @@ class S1BackscatterOrfeo:
 
     @staticmethod
     def _creodias_dem_subset_copernicus30_geotiff(
-        bbox: Tuple,
-        bbox_epsg: int,
-        copernicus_root="/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/",
+        bbox: Tuple, bbox_epsg: int, copernicus_root
     ) -> tempfile.TemporaryDirectory:
         """
         Create subset of Creodias DEM symlinks covering the given lon-lat bbox to pass to Orfeo
