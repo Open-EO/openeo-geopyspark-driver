@@ -171,7 +171,8 @@ def main():
             "-client",
             f"-Xmx{args.py4j_maximum_heap_size}",
             "-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService",
-            "-Dlog4j2.configuration=file:async_task_log4j2.xml"
+            "-Dlog4j2.configurationFile=file:async_task_log4j2.xml",
+            "-Dlog4j2.debug",
         ]
 
         java_gateway = launch_client_server(jarpath=args.py4j_jarpath,
