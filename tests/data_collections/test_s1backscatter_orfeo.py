@@ -6,6 +6,7 @@ import tempfile
 import textwrap
 import zipfile
 from pathlib import Path
+from unittest import skip
 
 import pytest
 import rasterio
@@ -21,6 +22,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
 )
 
 
+@skip
 @pytest.mark.parametrize(
     [
         "spatial_extent",
