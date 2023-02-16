@@ -507,8 +507,8 @@ class DoubleJobRegistry:
         self,
         job_id: str,
         user_id: str,
-        api_version: str,
         process: dict,
+        api_version: Optional[str] = None,
         job_options: Optional[dict] = None,
         title: Optional[str] = None,
         description: Optional[str] = None,
@@ -544,9 +544,9 @@ class DoubleJobRegistry:
                 # For now: compare job metadata between Zk and EJR
                 job_ejr = self.elastic_job_registry.get_job(job_id=job_id)
                 for f in ["status", "created"]:
-                    if job_ejr != job[f]:
-                        raise self._log.warning(
-                            f"EJR get_job failure ({job_id=} {f=}): expected {job[f]!r} but got {job_ejr[f]!r}"
+                    if job_ejr[f] != job[f]:
+                        self._log.warning(
+                            f"DoubleJobRegistry.get_job mismatch ({job_id=} {f=}) Zk:{job[f]!r} EJR:{job_ejr[f]!r}"
                         )
         return job
 
@@ -630,13 +630,26 @@ class DoubleJobRegistry:
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
-    def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
+    def get_user_jobs(
+        self, user_id: str, fields: Optional[List[str]] = None
+    ) -> List[BatchJobMetadata]:
         jobs = [
             zk_job_info_to_metadata(job_info)
             for job_info in self.zk_job_registry.get_user_jobs(user_id)
         ]
-        # TODO #236 add elastic_job_registry implementation
-        self._log.warning(f"EJR TODO: get_user_jobs implementation")
+        if self.elastic_job_registry:
+            with self._just_log_errors("get_user_jobs"):
+                ejr_jobs = self.elastic_job_registry.list_user_jobs(
+                    user_id=user_id, fields=fields
+                )
+                # TODO: only look at recent jobs (e.g. max 1 week old)
+                zk_job_ids = set(j.id for j in jobs)
+                ejr_job_ids = set(j["job_id"] for j in ejr_jobs)
+                if zk_job_ids != ejr_job_ids:
+                    self._log.warning(
+                        f"DoubleJobRegistry.get_user_jobs({user_id=}) mismatch Zk:{len(zk_job_ids)=} EJR:{len(ejr_job_ids)=}"
+                    )
+
         return jobs
 
     def get_all_jobs_before(self, upper: dt.datetime) -> List[dict]:

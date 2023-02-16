@@ -1028,8 +1028,8 @@ class GpsBatchJobs(backend.BatchJobs):
             job_info = registry.create_job(
                 job_id=job_id,
                 user_id=user_id,
-                api_version=api_version,
                 process=process,
+                api_version=api_version,
                 job_options=job_options,
                 title=title,
                 description=description,
