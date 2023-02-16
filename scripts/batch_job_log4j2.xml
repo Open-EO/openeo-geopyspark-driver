@@ -1,4 +1,5 @@
 <Configuration>
+    <!-- Used by batch_job.py to output logs in the Java implementation (e.g. ComputeStatsGeotrellisAdapter). -->
     <Appenders>
         <Console name="stdout" target="SYSTEM_OUT">
             <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>

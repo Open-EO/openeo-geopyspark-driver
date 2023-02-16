@@ -83,12 +83,12 @@ main_py_file="/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batc
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
- -Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
+ -Dlog4j2.debug=true -Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dopeneo.logging.threshold=$logging_threshold"
 
-sparkExecutorJavaOptions="-Dlog4j.debug=true -Dlog4j.configuration=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
+sparkExecutorJavaOptions="-Dlog4j2.debug=true -Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
  -Dopeneo.logging.threshold=$logging_threshold"
