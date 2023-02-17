@@ -4,6 +4,7 @@ from subprocess import CalledProcessError, PIPE
 from typing import NamedTuple, Optional
 
 import hvac
+import requests
 
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.jobregistry import ElasticJobRegistryCredentials
@@ -21,8 +22,9 @@ class VaultLoginError(Exception):
 
 
 class Vault:
-    def __init__(self, url: str):
+    def __init__(self, url: str, requests_session: Optional[requests.Session] = None):
         self._url = url
+        self._session = requests_session or requests.Session()
 
     def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> OAuthCredentials:
         client_credentials = self._get_kv_credentials(
@@ -86,7 +88,7 @@ class Vault:
             ) from e
 
     def _client(self, token: Optional[str] = None):
-        return hvac.Client(self._url, token=token)
+        return hvac.Client(self._url, token=token, session=self._session)
 
     def __str__(self):
         return self._url
