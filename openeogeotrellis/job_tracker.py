@@ -427,7 +427,9 @@ def main():
         etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
                                                                                                    args.keytab)
 
-        elastic_job_registry = get_elastic_job_registry()
+        elastic_job_registry = get_elastic_job_registry(
+            requests_session=requests_with_retry(total=3, backoff_factor=2)
+        )
 
         with EtlApi(ConfigParams().etl_api) as etl_api:
             job_tracker = JobTracker(
