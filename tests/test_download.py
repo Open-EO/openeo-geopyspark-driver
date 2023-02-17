@@ -5,7 +5,8 @@ from unittest import TestCase, skip
 
 import geopyspark as gps
 import numpy as np
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+import pytest
+from geopyspark.geotrellis import (SpatialKey, SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from openeo_driver.util.geometry import geojson_to_geometry
@@ -88,6 +89,32 @@ class TestDownload:
                     }
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+
+    def create_spatial_layer(self):
+        cells = np.array([self.first, self.second], dtype='int')
+        tile = Tile.from_numpy_array(cells, -1)
+
+        layer = [(SpatialKey(0, 0), tile),
+                 (SpatialKey(1, 0), tile),
+                 (SpatialKey(0, 1), tile),
+                 (SpatialKey(1, 1), tile)]
+
+        rdd = SparkContext.getOrCreate().parallelize(layer)
+
+        metadata = {'cellType': 'int32ud-1',
+                    'extent': self.extent,
+                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+                    'bounds': {
+                        'minKey': {'col': 0, 'row': 0},
+                        'maxKey': {'col': 1, 'row': 1}
+                    },
+                    'layoutDefinition': {
+                        'extent': self.extent,
+                        'tileLayout': self.layout
+                    }
+                    }
+
+        return TiledRasterLayer.from_numpy_rdd(LayerType.SPATIAL, rdd, metadata)
 
     def download_no_bands(self, tmp_path, format):
         input = self.create_spacetime_layer()
@@ -201,9 +228,11 @@ class TestDownload:
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
 
-        res = imagecollection.write_assets(str(tmp_path / "test_download_result.") + format, format=format,format_options={
-            "multidate":True,
-            "batch_mode":True
+        print("tmp_path: " + str(tmp_path))
+        res = imagecollection.write_assets(str(tmp_path / "ignored.tiff"), format=format,format_options={
+            "multidate": True,
+            "batch_mode": True,
+            "filename_prefix": "filenamePrefixTest"
         })
         assert 1 == len(res)
         name, asset = res.popitem()
@@ -211,8 +240,10 @@ class TestDownload:
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
+        assert "filenamePrefixTest" in asset['href']
         assert 'image/tiff; application=geotiff' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
+        assert "filenamePrefixTest" in name
 
     with get_test_data_file("geometries/polygons02.geojson").open() as f:
         features = json.load(f)
@@ -224,41 +255,176 @@ class TestDownload:
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
 
-        res = imagecollection.write_assets(str(tmp_path / "test_download_result.") + format, format=format,format_options={
-            "multidate":True,
-            "batch_mode":True,
-            "geometries":geojson_to_geometry(self.features),
+        res = imagecollection.write_assets(str(tmp_path / "ignored.tiff"), format=format, format_options={
+            "multidate": True,
+            "batch_mode": True,
+            "geometries": geojson_to_geometry(self.features),
             "sample_by_feature": True,
-            "feature_id_property": 'id'
+            "feature_id_property": 'id',
+            "filename_prefix": "filenamePrefixTest",
         })
         assert len(res) == 3
-        name,asset = res.popitem()
+        name, asset = res.popitem()
         assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
+        assert "filenamePrefixTest" in asset['href']
         assert 'image/tiff; application=geotiff' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
-    def test_write_assets_samples_netcdf(self, tmp_path):
+    def test_write_assets_samples_tile_grid(self, tmp_path):
         input = self.create_spacetime_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
-        format = 'netCDF'
+        format = 'GTiff'
 
-        res = imagecollection.write_assets(str(tmp_path / "test_download_result.") + format, format=format,format_options={
-            "batch_mode":True,
-            "geometries":geojson_to_geometry(self.features),
+        res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format, format_options={
+            "multidate": True,
+            "batch_mode": False,
+            "geometries": geojson_to_geometry(self.features),
             "sample_by_feature": True,
-            "feature_id_property": 'id'
+            "feature_id_property": 'id',
+            "filename_prefix": "filenamePrefixTest",
+            "tile_grid": "100km",
         })
-        assert len(res) == 3
-        name,asset = res.popitem()
-        file = asset['href']
+        assert len(res) == 30
+        name, asset = res.popitem()
+        assert Path(asset['href']).parent == tmp_path
+        assert asset['roles'] == ['data']
+        assert "test_download_result" in asset['href']
+        assert 'image/tiff; application=geotiff' == asset['type']
+
+    def test_write_assets_samples_tile_grid_batch(self, tmp_path):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'GTiff'
+
+        res = imagecollection.write_assets(str(tmp_path / "ignored.tiff"), format=format, format_options={
+            "multidate": True,
+            "batch_mode": True,
+            "geometries": geojson_to_geometry(self.features),
+            "sample_by_feature": True,
+            "feature_id_property": 'id',
+            "filename_prefix": "filenamePrefixTest",
+            "tile_grid": "100km",
+        })
+        assert len(res) == 30
+        name, asset = res.popitem()
+        assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
+        assert "filenamePrefixTest" in asset['href']
+        assert 'image/tiff; application=geotiff' == asset['type']
+        assert asset['datetime'] == "2017-09-25T11:37:00Z"
+
+    def test_write_assets_samples_stitch_tile_grid(self, tmp_path):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'GTiff'
+
+        res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format,format_options={
+            "multidate":True,
+            "batch_mode":True,
+            "geometries":geojson_to_geometry(self.features),
+            "sample_by_feature": True,
+            "feature_id_property": 'id',
+            "filename_prefix": "filenamePrefixTest",
+            "stitch": True,
+            "tile_grid": "100km",
+        })
+        assert len(res) == 30
+        name,asset = res.popitem()
+        assert Path(asset['href']).parent == tmp_path
+        assert asset['roles'] == ['data']
+        assert "test_download_result" in asset['href']
+        assert 'image/tiff; application=geotiff' == asset['type']
+
+    def test_write_assets_samples_stitch(self, tmp_path):
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'GTiff'
+
+        res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format,format_options={
+            "multidate":True,
+            "batch_mode":True,
+            "geometries":geojson_to_geometry(self.features),
+            "sample_by_feature": True,
+            "feature_id_property": 'id',
+            "stitch": True,
+        })
+        assert len(res) == 1
+        name,asset = res.popitem()
+        assert Path(asset['href']).parent == tmp_path
+
+    def test_write_assets_samples_catalog(self, tmp_path):
+        """ filename_prefix gets used to write the files, but has no effect on 'res' """
+        input = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        format = 'GTiff'
+
+        res = imagecollection.write_assets(str(tmp_path / "catalogresult.tiff"), format=format,format_options={
+            "multidate":True,
+            "batch_mode":True,
+            "geometries":geojson_to_geometry(self.features),
+            "sample_by_feature": True,
+            "feature_id_property": 'id',
+            "filename_prefix": "filenamePrefixTest",
+            "parameters": {
+                "catalog": True,
+            },
+        })
+        assert len(res) == 1
+        name,asset = res.popitem()
+        assert Path(asset['href']).parent == tmp_path
+        # assert "filenamePrefixTest" in asset['href']
+
+    @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
+    @pytest.mark.parametrize("prefix", [None, "prefixTest"])
+    @pytest.mark.parametrize("stitch", [False, True])
+    def test_write_assets_samples_netcdf(self, space_type, prefix, stitch, tmp_path):
+        if space_type == "spacetime":
+            input_layer = self.create_spacetime_layer()
+        else:
+            input_layer = self.create_spatial_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+
+        assets = imagecollection.write_assets(
+            str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if file would be indeed used
+            format="netCDF",
+            format_options={
+                "batch_mode": True,
+                "geometries": geojson_to_geometry(self.features),
+                "sample_by_feature": True,
+                "feature_id_property": 'id',
+                "filename_prefix": prefix,
+                "stitch": stitch,
+            }
+        )
+        assert len(assets) == 3
+        name, asset = assets.popitem()
+        assert Path(asset['href']).parent == tmp_path
+        if prefix:
+            assert prefix in asset['href']
+        assert asset['nodata'] == -1
+        assert asset['roles'] == ['data']
+        assert 2 == len(asset['bands'])
+        if prefix:
+            assert assets[prefix + "_0.nc"]
+        else:
+            assert assets["openEO_0.nc"]
         assert 'application/x-netcdf' == asset['type']
 
 

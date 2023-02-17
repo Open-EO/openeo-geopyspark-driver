@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# run it from the root of the openeo-gepyspark-driver
+# run it from the root of the openeo-geopyspark-driver
 
 
 export SPARK_HOME=$(find_spark_home.py)

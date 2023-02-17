@@ -37,6 +37,7 @@ def test_png_export(tmp_path):
     assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
     assets = metadata["assets"]
     assert len(assets) == 1
+    assert assets["out.png"]
     for asset in assets:
         theAsset = assets[asset]
 
@@ -135,8 +136,10 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         da = xarray.open_dataset(href, engine='h5netcdf')
         print(da)
 
-def test_ep3874_filter_spatial(tmp_path):
 
+@pytest.mark.parametrize("prefix", [None, "prefixTest"])
+def test_ep3874_filter_spatial(prefix, tmp_path):
+    print("tmp_path: ", tmp_path)
     job_spec = {"process_graph":{
         "lc": {
             "process_id": "load_collection",
@@ -172,6 +175,7 @@ def test_ep3874_filter_spatial(tmp_path):
         "save": {
             "process_id": "save_result",
             "arguments": {"data": {"from_node": "filterspatial1"}, "format": "netCDF","options":{
+                "filename_prefix": prefix,
                 "sample_by_feature":True
             }},
             "result": True,
@@ -185,6 +189,13 @@ def test_ep3874_filter_spatial(tmp_path):
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
     assets = metadata["assets"]
     assert len(assets) == 2
+    if prefix:
+        assert assets[prefix + "_0.nc"]
+        assert assets[prefix + "_1.nc"]
+    else:
+        assert assets["openEO_0.nc"]
+        assert assets["openEO_1.nc"]
+
     for asset in assets:
         theAsset = assets[asset]
         bands = [Band(**b) for b in theAsset["bands"]]
