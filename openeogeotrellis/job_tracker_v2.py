@@ -18,6 +18,7 @@ from typing import Callable, List, NamedTuple, Optional, Union
 import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import get_logging_config, setup_logging
 import openeo_driver.utils
 
@@ -474,7 +475,9 @@ class CliApp:
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 # Elastic Job Registry (EJR)
-                elastic_job_registry = get_elastic_job_registry()
+                elastic_job_registry = get_elastic_job_registry(
+                    requests_session=requests_with_retry(total=3, backoff_factor=2)
+                )
 
                 # YARN or Kubernetes?
                 app_cluster = args.app_cluster
