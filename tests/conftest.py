@@ -33,7 +33,10 @@ def pytest_configure(config):
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
 
     # TODO #285 we need a better config system, e.g. to avoid monkeypatching `os.environ` here
+    os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
     os.environ["VAULT_ADDR"] = "https://vault.test"
+    os.environ["OPENSEARCH_ENRICH"] = "no"
+    os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
@@ -167,7 +170,6 @@ def backend_implementation(
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     backend = GeoPySparkBackendImplementation(
-        opensearch_enrich=False,
         batch_job_output_root=batch_job_output_root,
         elastic_job_registry=job_registry,
     )

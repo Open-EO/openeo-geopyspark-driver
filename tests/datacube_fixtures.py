@@ -78,7 +78,6 @@ def imagecollection_with_two_bands_and_one_date(request):
 
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
-    print(request)
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
     tile = Tile.from_numpy_array(two_band_one_two, -1)
 

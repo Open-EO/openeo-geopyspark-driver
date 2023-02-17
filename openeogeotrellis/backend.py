@@ -37,7 +37,7 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
 from openeo.util import dict_no_none, rfc3339, deep_get
 from openeo_driver import backend
-from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing
+from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
                                    CollectionCatalog)
 from openeo_driver.datacube import DriverVectorCube
@@ -46,7 +46,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException)
-from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS
+from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.logging import (
@@ -74,11 +74,23 @@ from openeogeotrellis.job_registry import (
     zk_job_info_to_metadata,
     DoubleJobRegistry,
 )
-from openeogeotrellis.layercatalog import get_layer_catalog, check_missing_products
+from openeogeotrellis.layercatalog import (
+    get_layer_catalog,
+    check_missing_products,
+    GeoPySparkLayerCatalog,
+)
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
-from openeogeotrellis.service_registry import (InMemoryServiceRegistry, ZooKeeperServiceRegistry,
-                                               AbstractServiceRegistry, SecondaryService, ServiceEntity)
+from openeogeotrellis.sentinel_hub.batchprocessing import (
+    SentinelHubBatchProcessing,
+)
+from openeogeotrellis.service_registry import (
+    InMemoryServiceRegistry,
+    ZooKeeperServiceRegistry,
+    AbstractServiceRegistry,
+    SecondaryService,
+    ServiceEntity,
+)
 from openeogeotrellis.traefik import Traefik
 from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
@@ -300,7 +312,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def __init__(
         self,
         use_zookeeper=True,
-        opensearch_enrich=True,
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
@@ -319,7 +330,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         vault = Vault(ConfigParams().vault_addr)
 
-        catalog = get_layer_catalog(vault, opensearch_enrich=opensearch_enrich)
+        catalog = get_layer_catalog(vault)
 
         jvm = get_jvm()
 
@@ -953,8 +964,8 @@ def get_elastic_job_registry() -> Optional[ElasticJobRegistry]:
     with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
         config = ConfigParams()
         job_registry = ElasticJobRegistry(
-            backend_id=config.ejr_backend_id,
             api_url=config.ejr_api,
+            backend_id=config.ejr_backend_id,
         )
         vault = Vault(config.vault_addr)
         ejr_creds = vault.get_elastic_job_registry_credentials()
@@ -967,7 +978,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
         self,
-        catalog: CollectionCatalog,
+        catalog: GeoPySparkLayerCatalog,
         jvm: JVMView,
         principal: str,
         key_tab: str,
@@ -990,7 +1001,6 @@ class GpsBatchJobs(backend.BatchJobs):
             output_root_dir or ConfigParams().batch_job_output_root
         )
 
-        self._elastic_job_registry = elastic_job_registry
         self._double_job_registry = DoubleJobRegistry(
             zk_job_registry_factory=ZkJobRegistry,
             elastic_job_registry=elastic_job_registry,
@@ -1004,34 +1014,26 @@ class GpsBatchJobs(backend.BatchJobs):
         self._get_terrascope_access_token = get_terrascope_access_token
 
     def create_job(
-            self, user_id: str, process: dict, api_version: str,
-            metadata: dict, job_options: dict = None
+        self,
+        user_id: str,
+        process: dict,
+        api_version: str,
+        metadata: dict,
+        job_options: Optional[dict] = None,
     ) -> BatchJobMetadata:
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
-        with ZkJobRegistry() as registry:
-            job_info = registry.register(
+        with self._double_job_registry as registry:
+            job_info = registry.create_job(
                 job_id=job_id,
                 user_id=user_id,
+                process=process,
                 api_version=api_version,
-                specification=dict_no_none(
-                    process_graph=process["process_graph"],
-                    job_options=job_options,
-                ),
-                title=title, description=description,
+                job_options=job_options,
+                title=title,
+                description=description,
             )
-        if self._elastic_job_registry:
-            with ElasticJobRegistry.just_log_errors(name="Create job"):
-                self._elastic_job_registry.create_job(
-                    process=process,
-                    user_id=user_id,
-                    job_id=job_id,
-                    title=title,
-                    description=description,
-                    api_version=api_version,
-                    job_options=job_options,
-                )
         return BatchJobMetadata(
             id=job_id, process=process, status=job_info["status"],
             created=rfc3339.parse_datetime(job_info["created"]), job_options=job_options,
@@ -1044,8 +1046,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return zk_job_info_to_metadata(job_info)
 
-    def poll_sentinelhub_batch_processes(self, job_info: dict, sentinel_hub_client_alias: str,
-                                         vault_token: Optional[str]):
+    def poll_sentinelhub_batch_processes(
+        self,
+        job_info: dict,
+        sentinel_hub_client_alias: str,
+        vault_token: Optional[str] = None,
+    ):
         # TODO: split polling logic and resuming logic?
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
@@ -1070,9 +1076,15 @@ class GpsBatchJobs(backend.BatchJobs):
                 sentinel_hub_client_id, sentinel_hub_client_secret = (
                     self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
-            batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                endpoint, bucket_name, sentinel_hub_client_id, sentinel_hub_client_secret,
-                ','.join(ConfigParams().zookeepernodes), f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+            batch_processing_service = (
+                SentinelHubBatchProcessing.get_batch_processing_service(
+                    endpoint=endpoint,
+                    bucket_name=bucket_name,
+                    sentinel_hub_client_id=sentinel_hub_client_id,
+                    sentinel_hub_client_secret=sentinel_hub_client_secret,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    jvm=self._jvm,
+                )
             )
 
             batch_request_ids = (batch_process_dependency.get('batch_request_ids') or
@@ -1103,8 +1115,8 @@ class GpsBatchJobs(backend.BatchJobs):
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
-            with ZkJobRegistry() as registry:
-                registry.set_dependency_status(job_id, user_id, 'error')
+            with self._double_job_registry as registry:
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1162,7 +1174,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:  # no caching involved, the collection is fully defined by these batch process results
                     pass
 
-            with ZkJobRegistry() as registry:
+            with self._double_job_registry as registry:
                 def processing_units_spent(value_estimate: Decimal, temporal_step: Optional[str]) -> Decimal:
                     seconds_per_day = 24 * 3600
                     temporal_interval_in_days: Optional[float] = (
@@ -1183,14 +1195,18 @@ class GpsBatchJobs(backend.BatchJobs):
                              extra={'job_id': job_id, 'user_id': user_id})
 
                 registry.set_dependencies(job_id, user_id, dependencies)
-                registry.set_dependency_status(job_id, user_id, 'available')
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
-        elif all(status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()):  # all done but some partially failed
-            if job_info.get('dependency_status') != 'awaiting_retry':  # haven't retried yet: retry
-                with ZkJobRegistry() as registry:
-                    registry.set_dependency_status(job_id, user_id, 'awaiting_retry')
+        elif all(
+            status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
+        ):  # all done but some partially failed
+            if (
+                job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
+            ):  # haven't retried yet: retry
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
 
                 retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
@@ -1204,8 +1220,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
                              f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
 
-                with ZkJobRegistry() as registry:
-                    registry.set_dependency_status(job_id, user_id, 'error')
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                     registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
                 job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1213,11 +1229,8 @@ class GpsBatchJobs(backend.BatchJobs):
             pass
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
-        with ZkJobRegistry() as registry:
-            return [
-                zk_job_info_to_metadata(job_info)
-                for job_info in registry.get_user_jobs(user_id)
-            ]
+        with self._double_job_registry as registry:
+            return registry.get_user_jobs(user_id=user_id)
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     def get_job_output_dir(self, job_id: str) -> Path:
@@ -1250,9 +1263,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id, 'user_id': user.user_id})
 
         if proxy_user:
-            with ZkJobRegistry() as registry:
-                # TODO: add dedicated method
-                registry.patch(job_id=job_id, user_id=user.user_id, proxy_user=proxy_user)
+            with self._double_job_registry as registry:
+                registry.set_proxy_user(
+                    job_id=job_id, user_id=user.user_id, proxy_user=proxy_user
+                )
 
         # only fetch it when necessary (SHub collection with non-default credentials) and only once
         @lru_cache(maxsize=None)
@@ -1266,8 +1280,8 @@ class GpsBatchJobs(backend.BatchJobs):
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
-        with ZkJobRegistry() as registry:
-            job_info = registry.get_job(job_id, user_id)
+        with self._double_job_registry as dbl_registry:
+            job_info = dbl_registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
             if batch_process_dependencies is None:
@@ -1277,9 +1291,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 if current_status in [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]:
                     return
                 elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
-                    registry.mark_ongoing(job_id, user_id)
-                    registry.set_application_id(job_id, user_id, None)
-                    registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
+                    dbl_registry.mark_ongoing(job_id, user_id)
+                    dbl_registry.set_application_id(job_id, user_id, None)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
 
             spec = json.loads(job_info['specification'])
             job_title = job_info.get('title', '')
@@ -1288,20 +1302,37 @@ class GpsBatchJobs(backend.BatchJobs):
 
             logger.debug("job_options: {o!r}".format(o=job_options), extra={'job_id': job_id, 'user_id': user_id})
 
-            if (batch_process_dependencies is None
-                    and job_info.get('dependency_status') not in ['awaiting', 'awaiting_retry', 'available']
-                    and self._scheduled_sentinelhub_batch_processes(spec['process_graph'], api_version, registry,
-                                                                    user_id, job_id, job_options,
-                                                                    sentinel_hub_client_alias, get_vault_token)):
-                async_task.schedule_poll_sentinelhub_batch_processes(job_id, user_id, sentinel_hub_client_alias,
-                                                                     vault_token=None
-                                                                     if sentinel_hub_client_alias == 'default'
-                                                                     else get_vault_token(sentinel_hub_client_alias))
-                registry.set_dependency_status(job_id, user_id, 'awaiting')
-                registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-                with ElasticJobRegistry.just_log_errors(name="Queue job"):
-                    if self._elastic_job_registry:
-                        self._elastic_job_registry.set_status(job_id, JOB_STATUS.QUEUED)
+            if (
+                batch_process_dependencies is None
+                and job_info.get("dependency_status")
+                not in [
+                    DEPENDENCY_STATUS.AWAITING,
+                    DEPENDENCY_STATUS.AWAITING_RETRY,
+                    DEPENDENCY_STATUS.AVAILABLE,
+                ]
+                and self._scheduled_sentinelhub_batch_processes(
+                    process_graph=spec["process_graph"],
+                    api_version=api_version,
+                    dbl_registry=dbl_registry,
+                    user_id=user_id,
+                    job_id=job_id,
+                    job_options=job_options,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    get_vault_token=get_vault_token,
+                )
+            ):
+                async_task.schedule_poll_sentinelhub_batch_processes(
+                    batch_job_id=job_id,
+                    user_id=user_id,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    vault_token=None
+                    if sentinel_hub_client_alias == "default"
+                    else get_vault_token(sentinel_hub_client_alias),
+                )
+                dbl_registry.set_dependency_status(
+                    job_id, user_id, DEPENDENCY_STATUS.AWAITING
+                )
+                dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 return
 
@@ -1473,7 +1504,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
                     spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
-                    registry.set_application_id(job_id, user_id, spark_app_id)
+                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
                     retry=0
                     while('status' not in status_response and retry<10):
@@ -1487,11 +1518,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     if('status' not in status_response):
                         logger.warning(f"invalid status response: {status_response}, assuming it is queued.", extra={'job_id': job_id})
-                        registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
-                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             else:
                 # TODO: remove old submit scripts?
@@ -1583,10 +1614,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.info("mapped job_id %s to application ID %s" % (job_id, application_id),
                                 extra={'job_id': job_id})
 
-                    registry.set_application_id(job_id, user_id, application_id)
-                    registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-                    with ElasticJobRegistry.just_log_errors(name="Queue job"):
-                        self._elastic_job_registry.set_status(job_id, JOB_STATUS.QUEUED)
+                    dbl_registry.set_application_id(job_id, user_id, application_id)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)
@@ -1610,10 +1639,17 @@ class GpsBatchJobs(backend.BatchJobs):
             raise _BatchJobError(stream)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
-    def _scheduled_sentinelhub_batch_processes(self, process_graph: dict, api_version: Union[str, None],
-                                               job_registry: ZkJobRegistry, user_id: str, job_id: str,
-                                               job_options: dict, sentinel_hub_client_alias: str,
-                                               get_vault_token: Callable[[str], str]) -> bool:
+    def _scheduled_sentinelhub_batch_processes(
+        self,
+        process_graph: dict,
+        api_version: Union[str, None],
+        dbl_registry: DoubleJobRegistry,
+        user_id: str,
+        job_id: str,
+        job_options: dict,
+        sentinel_hub_client_alias: str,
+        get_vault_token: Callable[[str], str],
+    ) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -1625,7 +1661,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 # TODO #285: use original GeoPySparkBackendImplementation instead of recreating a new one
                 #           or at least set all GeoPySparkBackendImplementation arguments correctly (e.g. through a config)
                 "backend_implementation": GeoPySparkBackendImplementation(
-                    use_job_registry=False
+                    use_job_registry=False,
                 ),
             }
         )
@@ -1637,7 +1673,7 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer}))
+        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[]}))
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
@@ -1703,8 +1739,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                     .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
                                     .areaInSquareMeters())
                         elif isinstance(geometries, DriverVectorCube):
-                            # TODO: only area of covered regions instead of whole bbox area?
-                            return geometries.get_bounding_box_area()
+                            return geometries.get_area()
                         elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
                             return area_in_square_meters(geometries, crs)
                         else:
@@ -1777,12 +1812,15 @@ class GpsBatchJobs(backend.BatchJobs):
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias,
                                                                      get_vault_token(sentinel_hub_client_alias)))
 
-                    batch_processing_service = self._jvm.org.openeo.geotrellissentinelhub.BatchProcessingService(
-                        endpoint,
-                        bucket_name,
-                        sentinel_hub_client_id, sentinel_hub_client_secret,
-                        ','.join(ConfigParams().zookeepernodes),
-                        f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+                    batch_processing_service = (
+                        SentinelHubBatchProcessing.get_batch_processing_service(
+                            endpoint=endpoint,
+                            bucket_name=bucket_name,
+                            sentinel_hub_client_id=sentinel_hub_client_id,
+                            sentinel_hub_client_secret=sentinel_hub_client_secret,
+                            sentinel_hub_client_alias=sentinel_hub_client_alias,
+                            jvm=self._jvm,
+                        )
                     )
 
                     shub_band_names = metadata.band_names
@@ -1994,7 +2032,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     ))
 
         if batch_process_dependencies:
-            job_registry.set_dependencies(job_id, user_id, batch_process_dependencies)
+            dbl_registry.set_dependencies(
+                job_id=job_id, user_id=user_id, dependencies=batch_process_dependencies
+            )
             return True
 
         return False
@@ -2176,7 +2216,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     with self._double_job_registry as registry:
                         registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
         else:
-            with ZkJobRegistry() as registry:
+            with self._double_job_registry as registry:
                 registry.remove_dependencies(job_id, user_id)
                 registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
 
@@ -2210,9 +2250,9 @@ class GpsBatchJobs(backend.BatchJobs):
             if propagate_errors:
                 raise
 
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
-            dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
+        dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
 
         if dependency_sources:
             # Only for SentinelHub batch processes.
@@ -2289,7 +2329,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
     def delete_jobs_before(self, upper: datetime) -> None:
-        with ZkJobRegistry() as registry:
+        with self._double_job_registry as registry:
             jobs_before = registry.get_all_jobs_before(upper)
 
         for job_info in jobs_before:

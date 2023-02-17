@@ -56,7 +56,6 @@ logger = logging.getLogger(__name__)
 
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
-
     def __init__(self, all_metadata: List[dict], vault: Vault = None):
         super().__init__(all_metadata=all_metadata)
         self._geotiff_pyramid_factories = {}
@@ -130,13 +129,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             logger.info(f"Resolved 'merged_by_common_name' to collection {metadata.get('id')}")
 
         sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
-
         if load_params.sar_backscatter is not None and not sar_backscatter_compatible:
             raise OpenEOApiException(message="""Process "sar_backscatter" is not applicable for collection {c}."""
                                      .format(c=collection_id), status_code=400)
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
-
+        is_utm = layer_source_info.get("is_utm", False)
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -302,9 +300,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 opensearch_link_titles,
                 root_path,
             ):
-                is_utm = (cell_width == cell_height == 10) and (
-                    "COHERENCE" not in opensearch_collection_id
-                )
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
                     opensearch_endpoint, is_utm, "", [], ""
                 )
@@ -545,6 +540,27 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
                 .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
 
+
+        def globspatialonly_pyramid():
+            if len(metadata.band_names) != 1:
+                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
+                    cid=collection_id, bs=metadata.band_names))
+
+            data_glob = layer_source_info['data_glob']
+            band_names = metadata.band_names
+
+            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+                data_glob, False, None, band_names, "globspatialonly"
+            )
+            factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                "",
+                band_names,
+                "",
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False,
+            )
+            return create_pyramid(factory)
         def file_cgls_pyramid():
             if len(metadata.band_names) != 1:
                 raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
@@ -605,6 +621,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5':
             pyramid = file_agera5_pyramid()
+        elif layer_source_type == 'file-globspatialonly':
+            pyramid = globspatialonly_pyramid()
         elif layer_source_type == 'file-oscars':
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
@@ -716,25 +734,31 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if isinstance(crs, int):  # EPSG code
                 return f"EPSG:{crs}"
 
-            raise NotImplementedError(f"unsupported CRS format: {crs}")
+            raise NotImplementedError(f"unsupported CRS format: {crs} in cube:dimension, provide an int for epsg codes or a projjson dict.")
 
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
-def get_layer_catalog(vault: Vault=None, opensearch_enrich=False) -> GeoPySparkLayerCatalog:
+def get_layer_catalog(
+    vault: Vault = None, opensearch_enrich: Optional[bool] = None
+) -> GeoPySparkLayerCatalog:
     """
     Get layer catalog (from JSON files)
     """
+    if opensearch_enrich is None:
+        opensearch_enrich = ConfigParams().opensearch_enrich
+
     metadata: Dict[str, dict] = {}
 
     def read_catalog_file(catalog_file) -> Dict[str, dict]:
         return {coll["id"]: coll for coll in read_json(catalog_file)}
 
     catalog_files = ConfigParams().layer_catalog_metadata_files
+    logger.info(f"get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
-        logger.info(f"Reading layer catalog metadata from {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
 
+    logger.info(f"get_layer_catalog: {opensearch_enrich=}")
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
@@ -813,7 +837,10 @@ def get_layer_catalog(vault: Vault=None, opensearch_enrich=False) -> GeoPySparkL
 
     metadata = _merge_layers_with_common_name(metadata)
 
-    return GeoPySparkLayerCatalog(all_metadata=list(metadata.values()), vault=vault)
+    return GeoPySparkLayerCatalog(
+        all_metadata=list(metadata.values()),
+        vault=vault,
+    )
 
 
 def _merge_layers_with_common_name(metadata):
