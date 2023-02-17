@@ -20,6 +20,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
@@ -372,7 +373,11 @@ def get_etl_api_access_token(principal: str, keytab: str):
     vault_token = vault.login_kerberos(principal, keytab)
 
     etl_api_credentials = vault.get_etl_api_credentials(vault_token)
-    oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
+
+    session = requests_with_retry(total=3, backoff_factor=2)
+    oidc_provider = OidcProviderInfo(
+        issuer=ConfigParams().etl_api_oidc_issuer, requests_session=session
+    )
 
     client_info = OidcClientInfo(
         provider=oidc_provider,
@@ -380,7 +385,9 @@ def get_etl_api_access_token(principal: str, keytab: str):
         client_secret=etl_api_credentials.client_secret,
     )
 
-    authenticator = OidcClientCredentialsAuthenticator(client_info)
+    authenticator = OidcClientCredentialsAuthenticator(
+        client_info, requests_session=session
+    )
     return authenticator.get_tokens().access_token
 
 
