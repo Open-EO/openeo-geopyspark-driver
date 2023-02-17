@@ -369,16 +369,16 @@ class JobTracker:
 
 
 def get_etl_api_access_token(principal: str, keytab: str):
-    vault = Vault(ConfigParams().vault_addr)
-    vault_token = vault.login_kerberos(principal, keytab)
+    requests_session = requests_with_retry(total=3, backoff_factor=2)
 
+    vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
+    vault_token = vault.login_kerberos(principal, keytab)
     etl_api_credentials = vault.get_etl_api_credentials(vault_token)
 
-    session = requests_with_retry(total=3, backoff_factor=2)
     oidc_provider = OidcProviderInfo(
-        issuer=ConfigParams().etl_api_oidc_issuer, requests_session=session
+        issuer=ConfigParams().etl_api_oidc_issuer,
+        requests_session=requests_session,
     )
-
     client_info = OidcClientInfo(
         provider=oidc_provider,
         client_id=etl_api_credentials.client_id,
@@ -386,7 +386,8 @@ def get_etl_api_access_token(principal: str, keytab: str):
     )
 
     authenticator = OidcClientCredentialsAuthenticator(
-        client_info, requests_session=session
+        client_info=client_info,
+        requests_session=requests_session,
     )
     return authenticator.get_tokens().access_token
 
