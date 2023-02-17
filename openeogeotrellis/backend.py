@@ -959,15 +959,18 @@ class GpsProcessing(ConcreteProcessing):
                             }
 
 
-def get_elastic_job_registry() -> Optional[ElasticJobRegistry]:
+def get_elastic_job_registry(
+    requests_session: Optional[requests.Session] = None,
+) -> Optional[ElasticJobRegistry]:
     """Build ElasticJobRegistry instance from config and vault"""
     with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
         config = ConfigParams()
         job_registry = ElasticJobRegistry(
             api_url=config.ejr_api,
             backend_id=config.ejr_backend_id,
+            session=requests_session,
         )
-        vault = Vault(config.vault_addr)
+        vault = Vault(config.vault_addr, requests_session=requests_session)
         ejr_creds = vault.get_elastic_job_registry_credentials()
         job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
         job_registry.health_check(log=True)
