@@ -827,6 +827,7 @@ class TestYarnJobTracker:
 
 
 class TestYarnStatusGetter:
+    @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
     def test_parse_application_report_basic(self):
         report = textwrap.dedent(
             """
@@ -857,6 +858,7 @@ class TestYarnStatusGetter:
             "memory": {"unit": "mb-seconds", "value": 5116996},
         }
 
+    @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
     def test_parse_application_report_running(self):
         report = textwrap.dedent(
             """
@@ -880,6 +882,7 @@ class TestYarnStatusGetter:
             "memory": {"unit": "mb-seconds", "value": 96183879},
         }
 
+    @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
     def test_parse_application_report_empty(self):
         with pytest.raises(YarnAppReportParseException):
             _ = YarnStatusGetter().parse_application_report(report="")

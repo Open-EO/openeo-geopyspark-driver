@@ -16,6 +16,7 @@ from subprocess import CalledProcessError
 from typing import Callable, List, NamedTuple, Optional, Union
 
 import requests
+from requests_gssapi import HTTPKerberosAuth
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
@@ -141,24 +142,50 @@ class YarnStatusGetter(JobMetadataGetterInterface):
 class YarnRestApiStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
-    # TODO: Replace hardcoded root URL with configuration, something must be able to override it in fixtures in conftest
-    DEFAULT_YARN_ROOT_URL = "https://epod-master1.vgt.vito.be:8090/"
+    def __init__(
+        self,
+        yarn_rest_api_base_url: str,
+        authentication_provider: Optional[callable] = None,
+    ):
+        self.yarn_rest_api_base_url = yarn_rest_api_base_url
+        self.authentication_provider = authentication_provider
 
     @classmethod
-    def get_application_url(cls, application_id: str) -> str:
-        return url_join(
-            cls.DEFAULT_YARN_ROOT_URL, f"/ws/v1/cluster/apps/{application_id}"
+    def from_config(cls, config_params: ConfigParams) -> "YarnRestApiStatusGetter":
+        auth = HTTPKerberosAuth if config_params.yarn_auth_use_kerberos else None
+        return cls(
+            yarn_rest_api_base_url=config_params.yarn_rest_api_base_url,
+            authentication_provider = auth
         )
 
+    # TODO: This is a bit of a hack to support overriding the URL in the test suite, 
+    #   by changing the value of a class-level attribute.
+    def get_application_url(self, application_id: str) -> str:
+        return url_join(
+            self.DEFAULT_YARN_ROOT_URL, f"/ws/v1/cluster/apps/{application_id}"
+        )
+
+    def get_auth_provider(self):
+        if self.authentication_provider:
+            return self.authentication_provider()
+        return None
+
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        # TODO: Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
-        # TODO: We should do the same with requests as this example curl command:
-        # curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
+        # TODO: (WIP) Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
+        #   We should find the equivalent of this example curl command using the requests library:
+        #   curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
 
-        response = requests.get(self.get_application_url(application_id=app_id))
+        # TODO: Are there any cases were we *do* need to provide credentials to the Keberos authentication?
+        #   At present we are assuming there is already a Kerberos ticket because kinit was run before
+        #   the geopyspark driver process was started.
+        #   AFAIK that means we don't have to provide user & pw which is in fact the whole point.
+        url = self.get_application_url(application_id=app_id)
+        response = requests.get(url, auth=self.get_auth_provider())
 
+        #
         # Seems like YARN's API returns a HTTP 400 rather than a 404.
-        # TODO: should we include HTTP404 as well? Needs to be checked in the docs and tested more thoroughly.
+        # TODO: Should we include HTTP 404 as well? Needs to be checked in the docs and tested more thoroughly.
+        #
         # Example of an error responses body:
         # {
         #     "RemoteException":
