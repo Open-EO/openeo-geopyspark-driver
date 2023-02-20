@@ -235,7 +235,7 @@ class TestDownload:
             "filename_prefix": "filenamePrefixTest"
         })
         assert 1 == len(res)
-        name, asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
@@ -264,7 +264,7 @@ class TestDownload:
             "filename_prefix": "filenamePrefixTest",
         })
         assert len(res) == 3
-        name, asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
@@ -290,7 +290,7 @@ class TestDownload:
             "tile_grid": "100km",
         })
         assert len(res) == 30
-        name, asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['roles'] == ['data']
         assert "test_download_result" in asset['href']
@@ -313,7 +313,7 @@ class TestDownload:
             "tile_grid": "100km",
         })
         assert len(res) == 30
-        name, asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
@@ -340,7 +340,7 @@ class TestDownload:
             "tile_grid": "100km",
         })
         assert len(res) == 30
-        name,asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['roles'] == ['data']
         assert "test_download_result" in asset['href']
@@ -362,7 +362,7 @@ class TestDownload:
             "stitch": True,
         })
         assert len(res) == 1
-        name,asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
 
     def test_write_assets_samples_catalog(self, tmp_path):
@@ -385,14 +385,14 @@ class TestDownload:
             },
         })
         assert len(res) == 1
-        name,asset = res.popitem()
+        name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         # assert "filenamePrefixTest" in asset['href']
 
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
-    @pytest.mark.parametrize("prefix", [None, "prefixTest"])
     @pytest.mark.parametrize("stitch", [False, True])
-    def test_write_assets_samples_netcdf(self, space_type, prefix, stitch, tmp_path):
+    @pytest.mark.parametrize("prefix", [None, "prefixTest"])
+    def test_write_assets_samples_netcdf_batch(self, prefix, stitch, space_type, tmp_path):
         if space_type == "spacetime":
             input_layer = self.create_spacetime_layer()
         else:
@@ -402,7 +402,7 @@ class TestDownload:
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
 
         assets = imagecollection.write_assets(
-            str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if file would be indeed used
+            str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if filename would be written to fs
             format="netCDF",
             format_options={
                 "batch_mode": True,
@@ -414,20 +414,54 @@ class TestDownload:
             }
         )
         assert len(assets) == 3
-        name, asset = assets.popitem()
+        if prefix:
+            assert assets[prefix + "_0.nc"]
+        else:
+            assert assets["openEO_0.nc"]
+        name, asset = next(iter(assets.items()))
         assert Path(asset['href']).parent == tmp_path
         if prefix:
             assert prefix in asset['href']
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
-        if prefix:
-            assert assets[prefix + "_0.nc"]
-        else:
-            assert assets["openEO_0.nc"]
         assert 'application/x-netcdf' == asset['type']
 
+    @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
+    @pytest.mark.parametrize("stitch", [False, True])
+    def test_write_assets_samples_netcdf(self, stitch, space_type, tmp_path):
+        if space_type == "spacetime":
+            input_layer = self.create_spacetime_layer()
+        else:
+            input_layer = self.create_spatial_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
 
+        filename = "test_download_result.nc"
+        assets = imagecollection.write_assets(
+            str(tmp_path / filename),
+            format="netCDF",
+            format_options={
+                "batch_mode": False,
+                "geometries": geojson_to_geometry(self.features),
+                "sample_by_feature": True,
+                "feature_id_property": 'id',
+                # "filename_prefix": prefix,
+                "stitch": stitch,
+            }
+        )
+        assert len(assets) == 1
+        assert assets[filename]
+        name, asset = next(iter(assets.items()))
+        assert Path(asset['href']).parent == tmp_path
+        assert "test_download_result" in asset['href']
+        if not stitch:
+            # IDK why there are fewer attributes here.
+            assert asset['nodata'] == -1
+            assert asset['roles'] == ['data']
+            assert 2 == len(asset['bands'])
+            assert 'application/x-netcdf' == asset['type']
 
     #skipped because gdal_merge.py is not available on jenkins
     @skip
