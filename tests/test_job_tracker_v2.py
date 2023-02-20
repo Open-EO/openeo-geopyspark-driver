@@ -28,10 +28,10 @@ from openeogeotrellis.job_tracker_v2 import (
     K8sStatusGetter,
     YarnAppReportParseException,
     YarnStatusGetter,
-    YarnRestApiStatusGetter,
 )
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
+from openeogeotrellis.configparams import ConfigParams
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
 
@@ -241,8 +241,10 @@ class YarnMock:
         with mock.patch(
             "subprocess.check_output", new=self._check_output
         ) as check_output, requests_mock.Mocker() as requests_mocker:
-            YarnRestApiStatusGetter.DEFAULT_YARN_ROOT_URL = "https://openeo.test"
-            url_matcher = re.compile("https://openeo.test/ws/v1/cluster/apps/")
+            # Mock the requests to the REST API of YARN. The configuration tells us what the base URL is.
+            # To direct the request to a fake URL, mock the environment variable YARN_REST_API_BASE_URL.
+            base_url = ConfigParams().yarn_rest_api_base_url
+            url_matcher = re.compile(f"{base_url}/ws/v1/cluster/apps/")
 
             def response_call_back(request, context):
                 context.status_code = 200
@@ -251,7 +253,6 @@ class YarnMock:
                     return f"C0rRup7! {app_id}'"
                 elif app_id in self.apps:
                     body = self.apps[app_id].status_rest_response()
-                    # return json.dumps(body)
                     return body
                 else:
                     context.status_code = 400
@@ -486,7 +487,12 @@ class TestYarnJobTracker:
         )
 
         # Trigger `update_statuses`
-        job_tracker.update_statuses()
+        # TODO: clarify explanation why we want fail_fast=True in this test. Comment below is not clear.
+        # fail_fast=True helps to detect that kerberos authentication is not set up correctly.
+        # In a unit test environment you will not always have Kerberos, because it requires
+        # some set up that is not trivial. Within the VITO environment running kinit before may be enough,
+        # But in other environments you would need your own Kerberos server etc.
+        job_tracker.update_statuses(fail_fast=True)
         assert zk_job_info() == DictSubSet(
             {
                 "status": "queued",
@@ -826,6 +832,7 @@ class TestYarnJobTracker:
         }
 
 
+# TODO: Remove TestYarnStatusGetter, replacing olf YarnStatusGetter with new implementation based on YARN REST API
 class TestYarnStatusGetter:
     @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
     def test_parse_application_report_basic(self):
@@ -921,9 +928,7 @@ class TestYarnRestApiStatusGetter:
             vcore_seconds=2265,
         )
 
-        job_metadata = YarnRestApiStatusGetter().parse_application_response(
-            json=response
-        )
+        job_metadata = YarnStatusGetter.parse_application_response(json=response)
         assert job_metadata.status == "finished"
         assert job_metadata.start_time == "2023-01-06T16:14:32Z"
         assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
@@ -959,9 +964,7 @@ class TestYarnRestApiStatusGetter:
             diagnostics="",
         )
 
-        job_metadata = YarnRestApiStatusGetter().parse_application_response(
-            json=response
-        )
+        job_metadata = YarnStatusGetter.parse_application_response(json=response)
         assert job_metadata.status == "running"
         assert job_metadata.start_time == "2023-01-06T16:14:32Z"
         assert job_metadata.finish_time is None
@@ -972,7 +975,7 @@ class TestYarnRestApiStatusGetter:
 
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
-            _ = YarnRestApiStatusGetter().parse_application_response(json={})
+            _ = YarnStatusGetter.parse_application_response(json={})
 
 
 class TestK8sJobTracker:

@@ -16,7 +16,8 @@ from subprocess import CalledProcessError
 from typing import Callable, List, NamedTuple, Optional, Union
 
 import requests
-from requests_gssapi import HTTPKerberosAuth
+import requests_gssapi
+
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
@@ -83,7 +84,7 @@ class YarnAppReportParseException(Exception):
     pass
 
 
-class YarnStatusGetter(JobMetadataGetterInterface):
+class OLD_YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
@@ -139,48 +140,32 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             raise YarnAppReportParseException() from e
 
 
-class YarnRestApiStatusGetter(JobMetadataGetterInterface):
+class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
-    def __init__(
-        self,
-        yarn_rest_api_base_url: str,
-        authentication_provider: Optional[callable] = None,
-    ):
-        self.yarn_rest_api_base_url = yarn_rest_api_base_url
-        self.authentication_provider = authentication_provider
-
-    @classmethod
-    def from_config(cls, config_params: ConfigParams) -> "YarnRestApiStatusGetter":
-        auth = HTTPKerberosAuth if config_params.yarn_auth_use_kerberos else None
-        return cls(
-            yarn_rest_api_base_url=config_params.yarn_rest_api_base_url,
-            authentication_provider = auth
-        )
-
-    # TODO: This is a bit of a hack to support overriding the URL in the test suite, 
-    #   by changing the value of a class-level attribute.
     def get_application_url(self, application_id: str) -> str:
         return url_join(
-            self.DEFAULT_YARN_ROOT_URL, f"/ws/v1/cluster/apps/{application_id}"
+            ConfigParams().yarn_rest_api_base_url,
+            f"/ws/v1/cluster/apps/{application_id}",
         )
-
-    def get_auth_provider(self):
-        if self.authentication_provider:
-            return self.authentication_provider()
-        return None
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         # TODO: (WIP) Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
         #   We should find the equivalent of this example curl command using the requests library:
         #   curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
 
-        # TODO: Are there any cases were we *do* need to provide credentials to the Keberos authentication?
+        # TODO: Are there any cases were we *do* need to provide credentials to the Kerberos authentication?
         #   At present we are assuming there is already a Kerberos ticket because kinit was run before
         #   the geopyspark driver process was started.
         #   AFAIK that means we don't have to provide user & pw which is in fact the whole point.
+
+        auth = None
+        if ConfigParams().yarn_auth_use_kerberos:
+            auth = requests_gssapi.HTTPKerberosAuth(
+                mutual_authentication=requests_gssapi.REQUIRED
+            )
         url = self.get_application_url(application_id=app_id)
-        response = requests.get(url, auth=self.get_auth_provider())
+        response = requests.get(url, auth=auth)
 
         #
         # Seems like YARN's API returns a HTTP 400 rather than a 404.
@@ -214,7 +199,8 @@ class YarnRestApiStatusGetter(JobMetadataGetterInterface):
         utc_datetime = dt.datetime.utcfromtimestamp(epoch_millis / 1000)
         return rfc3339.datetime(utc_datetime)
 
-    def parse_application_response(self, json: dict) -> _JobMetadata:
+    @classmethod
+    def parse_application_response(cls, json: dict) -> _JobMetadata:
         if not json:
             raise YarnAppReportParseException("Response is empty")
 
@@ -236,8 +222,8 @@ class YarnRestApiStatusGetter(JobMetadataGetterInterface):
             job_status = yarn_state_to_openeo_job_status(
                 state=report["state"], final_state=report["finalStatus"]
             )
-            start_time = self._ms_epoch_to_date(report["startedTime"])
-            finish_time = self._ms_epoch_to_date(report["finishedTime"])
+            start_time = cls._ms_epoch_to_date(report["startedTime"])
+            finish_time = cls._ms_epoch_to_date(report["finishedTime"])
 
             if not ("memorySeconds" in report or "vcoreSeconds" in report):
                 usage = None
@@ -261,12 +247,6 @@ class YarnRestApiStatusGetter(JobMetadataGetterInterface):
             )
         except Exception as e:
             raise YarnAppReportParseException() from e
-
-
-# Ugly switch to test while implementing the new version based on the YARN REST API
-# YarnStatusGetter = _YarnStatusGetter_ORIGINAL
-YarnStatusGetter = YarnRestApiStatusGetter
-
 
 class K8sException(Exception):
     pass
