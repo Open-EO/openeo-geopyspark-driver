@@ -1,5 +1,7 @@
 import datetime
 import json
+import os
+import shutil
 from pathlib import Path
 from unittest import TestCase, skip
 
@@ -117,14 +119,14 @@ class TestDownload:
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPATIAL, rdd, metadata)
 
     def download_no_bands(self, tmp_path, format):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         res = imagecollection.save_result(str(tmp_path / "test_download_result.") + format, format=format)
         print(res)
 
     def download_no_args(self, tmp_path, format, format_options={}):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -134,8 +136,8 @@ class TestDownload:
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
     def download_no_args_single_byte_band(self, tmp_path, format, format_options={}):
-        input = self.create_spacetime_layer().convert_data_type(gps.CellType.UINT8)
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer().convert_data_type(gps.CellType.UINT8)
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
         imagecollection.filter_bands(['band_one'])
@@ -146,8 +148,8 @@ class TestDownload:
         return res
 
     def download_masked(self, tmp_path, format):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -160,8 +162,8 @@ class TestDownload:
         #TODO how can we verify downloaded geotiffs, preferably without introducing a dependency on another library.
 
     def download_masked_reproject(self, tmp_path, format):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata=imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata=imagecollection.metadata.append_band(Band('band_two','',''))
 
@@ -222,8 +224,8 @@ class TestDownload:
         self.download_masked_reproject(tmp_path, 'json')
 
     def test_write_assets(self, tmp_path):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -249,8 +251,8 @@ class TestDownload:
         features = json.load(f)
 
     def test_write_assets_samples(self, tmp_path):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -274,8 +276,8 @@ class TestDownload:
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
     def test_write_assets_samples_tile_grid(self, tmp_path):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -297,8 +299,8 @@ class TestDownload:
         assert 'image/tiff; application=geotiff' == asset['type']
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -323,8 +325,8 @@ class TestDownload:
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
     def test_write_assets_samples_stitch_tile_grid(self, tmp_path):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -347,8 +349,8 @@ class TestDownload:
         assert 'image/tiff; application=geotiff' == asset['type']
 
     def test_write_assets_samples_stitch(self, tmp_path):
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -367,8 +369,8 @@ class TestDownload:
 
     def test_write_assets_samples_catalog(self, tmp_path):
         """ filename_prefix gets used to write the files, but has no effect on 'res' """
-        input = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        input_layer = self.create_spacetime_layer()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         format = 'GTiff'
@@ -389,10 +391,20 @@ class TestDownload:
         assert Path(asset['href']).parent == tmp_path
         # assert "filenamePrefixTest" in asset['href']
 
+    test_write_assets_samples_netcdf_batch_path = "tmp/test_write_assets_samples_netcdf_batch/"
+    shutil.rmtree(test_write_assets_samples_netcdf_batch_path, ignore_errors=True)
+    os.makedirs(test_write_assets_samples_netcdf_batch_path)
+
+    @pytest.mark.parametrize("prefix", [None, "prefixTest"])
+    @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
     @pytest.mark.parametrize("stitch", [False, True])
-    @pytest.mark.parametrize("prefix", [None, "prefixTest"])
-    def test_write_assets_samples_netcdf_batch(self, prefix, stitch, space_type, tmp_path):
+    @pytest.mark.parametrize("format_arg", ["netCDF"])  # "GTIFF" behaves different from "netCDF", so not testing now
+    def test_write_assets_samples_netcdf_batch(self, format_arg, stitch, space_type, tile_grid, prefix, tmp_path):
+        d = locals()
+        d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
+        test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
+
         if space_type == "spacetime":
             input_layer = self.create_spacetime_layer()
         else:
@@ -403,21 +415,30 @@ class TestDownload:
 
         assets = imagecollection.write_assets(
             str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if filename would be written to fs
-            format="netCDF",
+            format=format_arg,
             format_options={
                 "batch_mode": True,
                 "geometries": geojson_to_geometry(self.features),
-                "sample_by_feature": True,
+                "sample_by_feature": True,  # 'sample_by_feature' is only supported in 'batch_mode'
                 "feature_id_property": 'id',
                 "filename_prefix": prefix,
                 "stitch": stitch,
+                "tile_grid": tile_grid,
             }
         )
-        assert len(assets) == 3
-        if prefix:
-            assert assets[prefix + "_0.nc"]
+        with open(self.test_write_assets_samples_netcdf_batch_path + test_name + ".json", 'w') as fp:
+            json.dump(assets, fp, indent=2)
+
+        if format_arg == "netCDF":
+            extension = ".nc"
         else:
-            assert assets["openEO_0.nc"]
+            extension = ".tif"
+        assert len(assets) == 3
+        if format_arg == "netCDF":
+            if prefix:
+                assert assets[prefix + "_0" + extension]
+            else:
+                assert assets["openEO_0" + extension]
         name, asset = next(iter(assets.items()))
         assert Path(asset['href']).parent == tmp_path
         if prefix:
@@ -425,11 +446,23 @@ class TestDownload:
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
-        assert 'application/x-netcdf' == asset['type']
+        if format_arg == "netCDF":
+            assert 'application/x-netcdf' == asset['type']
+        else:
+            assert 'image/tiff; application=geotiff' == asset['type']
+
+    test_write_assets_samples_netcdf_path = "tmp/test_write_assets_samples_netcdf/"
+    shutil.rmtree(test_write_assets_samples_netcdf_path, ignore_errors=True)
+    os.makedirs(test_write_assets_samples_netcdf_path)
 
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
     @pytest.mark.parametrize("stitch", [False, True])
-    def test_write_assets_samples_netcdf(self, stitch, space_type, tmp_path):
+    @pytest.mark.parametrize("format_arg", ["netCDF", "GTIFF"])
+    def test_write_assets_samples_netcdf(self, format_arg, stitch, space_type, tmp_path):
+        d = locals()
+        d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
+        test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
+
         if space_type == "spacetime":
             input_layer = self.create_spacetime_layer()
         else:
@@ -438,35 +471,45 @@ class TestDownload:
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
 
-        filename = "test_download_result.nc"
+        if format_arg == "netCDF":
+            extension = ".nc"
+        else:
+            extension = ".tif"
+        filename = "test_download_result" + extension
         assets = imagecollection.write_assets(
             str(tmp_path / filename),
-            format="netCDF",
+            format=format_arg,
             format_options={
                 "batch_mode": False,
                 "geometries": geojson_to_geometry(self.features),
-                "sample_by_feature": True,
+                # "sample_by_feature": False,  # 'sample_by_feature' is only supported in 'batch_mode'
                 "feature_id_property": 'id',
                 # "filename_prefix": prefix,
                 "stitch": stitch,
             }
         )
+        with open(self.test_write_assets_samples_netcdf_path + test_name + ".json", 'w') as fp:
+            json.dump(assets, fp, indent=2)
+
         assert len(assets) == 1
         assert assets[filename]
         name, asset = next(iter(assets.items()))
         assert Path(asset['href']).parent == tmp_path
         assert "test_download_result" in asset['href']
         if not stitch:
-            # IDK why there are fewer attributes here.
+            # IDK why there are more attributes here.
             assert asset['nodata'] == -1
             assert asset['roles'] == ['data']
             assert 2 == len(asset['bands'])
-            assert 'application/x-netcdf' == asset['type']
+            if format_arg == "netCDF":
+                assert 'application/x-netcdf' == asset['type']
+            else:
+                assert 'image/tiff; application=geotiff' == asset['type']
 
     #skipped because gdal_merge.py is not available on jenkins
     @skip
     def test_download_as_catalog(self):
-        input = self.create_spacetime_layer()
+        input_layer = self.create_spacetime_layer()
 
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})
