@@ -38,7 +38,7 @@ def pytest_configure(config):
     os.environ["OPENSEARCH_ENRICH"] = "no"
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
-    # TODO: perhaps it is better to monkeypatch these 2 environment variables only in the tests that need them.
+    # For testing job_tracker_v2: TestYarnStatusGetter and TestYarnJobTracker
     os.environ["YARN_REST_API_BASE_URL"] = "https://openeo.test"
     os.environ["YARN_AUTH_USE_KERBEROS"] = "no"
 

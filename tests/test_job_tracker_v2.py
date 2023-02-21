@@ -15,6 +15,7 @@ import kubernetes
 import pytest
 import re_assert
 import requests_mock
+import requests_gssapi
 from openeo.util import rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
@@ -660,7 +661,6 @@ class TestYarnJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 logging.ERROR,
-                # "Failed status sync for job_id='job-2': unexpected CalledProcessError: Command '['yarn', 'application', '-status', 'app-2']' returned non-zero exit status 255.",
                 (
                     "Failed status sync for job_id='job-2': "
                     + "unexpected YarnAppReportParseException: "
@@ -930,6 +930,17 @@ class TestYarnStatusGetter:
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
             _ = YarnStatusGetter.parse_application_response(json={})
+
+    def test_get_authentication_provider_use_kerberos_on(self, monkeypatch):
+        """Simple check that the config has the desired effect: we get the expected auth object."""
+        monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "yes")
+        auth = YarnStatusGetter().get_authentication_provider()
+        assert isinstance(auth, requests_gssapi.HTTPKerberosAuth)
+
+    def test_get_authentication_provider_use_kerberos_off(self, monkeypatch):
+        """Simple check that the config has the desired effect: authentication should be None."""
+        monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "no")
+        assert YarnStatusGetter().get_authentication_provider() is None
 
 
 class TestK8sJobTracker:

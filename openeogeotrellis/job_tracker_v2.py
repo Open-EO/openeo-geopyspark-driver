@@ -172,7 +172,6 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             # In particular, sometimes YARN can't launch the container and then the
             # field 'diagnostics' provides more info why this failed.
             diagnostics = report.get("diagnostics", None)
-            # TODO: simplify: can we just assume that if diagnostics has a value, then job_status is always ERROR?
             if job_status == JOB_STATUS.ERROR and diagnostics:
                 _log.error(
                     f"YARN application status reports error diagnostics: diagnostics: {diagnostics}"
