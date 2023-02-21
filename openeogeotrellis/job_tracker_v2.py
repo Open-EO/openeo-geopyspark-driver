@@ -105,10 +105,6 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         return auth
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        # TODO: (WIP) Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
-        #   We should find the equivalent of this example curl command using the requests library:
-        #   curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
-        #
         # TODO: Are there any cases were we *do* need to provide credentials to the Kerberos authentication?
         #   At present we are assuming there is already a Kerberos ticket because kinit was run before
         #   the geopyspark driver process was started.
@@ -117,20 +113,19 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         url = self.get_application_url(application_id=app_id)
         response = requests.get(url, auth=self.get_authentication_provider())
 
-        #
-        # Seems like YARN's API returns a HTTP 400 rather than a 404.
-        # TODO: Should we include HTTP 404 as well? Needs to be checked in the docs and tested more thoroughly.
+        # Handle error responses: We need the field "message" from "RemoteException"
+        # See https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/WebServicesIntro.html
+        #   specifically, the section: Response Errors
         #
         # Example of an error responses body:
         # {
-        #     "RemoteException":
-        #         {
-        #             "exception":"BadRequestException",
-        #             "message": "java.lang.IllegalArgumentException: Invalid ApplicationId: yourappid",
-        #             "javaClassName":"org.apache.hadoop.yarn.webapp.BadRequestException"
-        #         }
+        #     "RemoteException": {
+        #         "exception": "NotFoundException",
+        #         "message": "java.lang.Exception: app with id: application_1674538064532_46723 not found",
+        #         "javaClassName": "org.apache.hadoop.yarn.webapp.NotFoundException"
+        #     }
         # }
-        if response.status_code in [400, 404]:
+        if response.status_code == 404:
             remote_exc = response.json().get("RemoteException", {})
             message = remote_exc.get(
                 "message",
@@ -138,6 +133,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             )
             raise AppNotFound(message) from None
         else:
+            # Check if there was any other HTTP error status.
             response.raise_for_status()
             return self.parse_application_response(json=response.json())
 
@@ -154,7 +150,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         if not json:
             raise YarnAppReportParseException("Response is empty")
 
-        # TODO: not sure if this can really happen at this point. Possibly this was just an incorrect mock.
+        # Handle a corrupt response that comes through as a string, not valid JSON.
         if isinstance(json, str):
             raise YarnAppReportParseException(
                 f"Response is corrupt, not valid JSON. Received following string: {json!r}"
@@ -172,6 +168,16 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             job_status = yarn_state_to_openeo_job_status(
                 state=report["state"], final_state=report["finalStatus"]
             )
+            # Log the diagnostics if there was an error.
+            # In particular, sometimes YARN can't launch the container and then the
+            # field 'diagnostics' provides more info why this failed.
+            diagnostics = report.get("diagnostics", None)
+            # TODO: simplify: can we just assume that if diagnostics has a value, then job_status is always ERROR?
+            if job_status == JOB_STATUS.ERROR and diagnostics:
+                _log.error(
+                    f"YARN application status reports error diagnostics: diagnostics: {diagnostics}"
+                )
+
             start_time = cls._ms_epoch_to_date(report["startedTime"])
             finish_time = cls._ms_epoch_to_date(report["finishedTime"])
 

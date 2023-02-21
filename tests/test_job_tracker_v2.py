@@ -45,11 +45,9 @@ class YarnAppInfo:
     queue: str = "default"
     start_time: int = 0
     finish_time: int = 0
-    progress: str = "0%"  # TODO: #292 switch to int when you finish refactoring for YARN REST API JSON
+    progress: int = 0
     state: str = YARN_STATE.SUBMITTED
     final_state: str = YARN_FINAL_STATUS.UNDEFINED
-    # TODO: #292 split aggregate_resource_allocation into the separate properties for YARN REST API JSON
-    aggregate_resource_allocation: Tuple[int, int] = (1234, 32)
     memory_seconds: int = 1234
     vcore_seconds: int = 32
     diagnostics: str = ""
@@ -83,7 +81,12 @@ class YarnAppInfo:
     def set_killed(self):
         return self.set_state(YARN_STATE.KILLED, YARN_FINAL_STATUS.KILLED)
 
-    def set_launch_container_failed(self):
+    def set_launch_failed(self):
+        """Simulate that yarn launch failed to launch the application.
+
+        Often the cause is that the container could not be launched / could not be found.
+        The 'diagnostics' field in the response should contain more information about what went wrong.
+        """
         self.diagnostics = textwrap.dedent(
             f"""
             Application {self.app_id} failed 1 times (global limit =2; local limit is =1) due to AM Container for appattempt_1670152552564_21143_000001 exited with  exitCode: 7
@@ -98,28 +101,6 @@ class YarnAppInfo:
         )
         return self.set_failed()
 
-    def status_report(self) -> str:
-        fields = [
-            f"\t{k} : {v}"
-            for k, v in [
-                ("Application-Id", self.app_id),
-                ("User", self.user_id),
-                ("Queue", self.queue),
-                ("Start-Time", self.start_time),
-                ("Finish-Time", self.finish_time),
-                ("Progress", self.progress),
-                ("State", self.state),
-                ("Final-State", self.final_state),
-                (
-                    "Aggregate Resource Allocation",
-                    "{} MB-seconds, {} vcore-seconds".format(
-                        *self.aggregate_resource_allocation
-                    ),
-                ),
-            ]
-        ]
-        return "\n".join(["Application Report : "] + fields + [""])
-
     def status_rest_response(self) -> dict:
         return fake_yarn_rest_repsonse_json(
             app_id=self.app_id,
@@ -127,7 +108,7 @@ class YarnAppInfo:
             state=self.state,
             final_status=self.final_state,
             queue=self.queue,
-            # progress=int(self.progress[:-2]),
+            progress=self.progress,
             started_time=self.start_time,
             finished_time=self.finish_time,
             memory_seconds=self.memory_seconds,
@@ -249,7 +230,7 @@ class YarnMock:
                 elif app_id in self.failed_yarn_launch_app_ids:
                     return self.apps[app_id].status_rest_response()
                 else:
-                    context.status_code = 400
+                    context.status_code = 404
                     return {
                         "RemoteException": {
                             "exception": "BadRequestException",
@@ -481,12 +462,7 @@ class TestYarnJobTracker:
         )
 
         # Trigger `update_statuses`
-        # TODO: clarify explanation why we want fail_fast=True in this test. Comment below is not clear.
-        # fail_fast=True helps to detect that kerberos authentication is not set up correctly.
-        # In a unit test environment you will not always have Kerberos, because it requires
-        # some set up that is not trivial. Within the VITO environment running kinit before may be enough,
-        # But in other environments you would need your own Kerberos server etc.
-        job_tracker.update_statuses(fail_fast=True)
+        job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
             {
                 "status": "queued",
@@ -771,6 +747,87 @@ class TestYarnJobTracker:
             "status change 'created' -> 'running'": 1,
         }
 
+    def test_yarn_zookeeper_yarn_failed_to_launch_container(
+        self,
+        zk_job_registry,
+        yarn_mock,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+    ):
+        caplog.set_level(logging.WARNING)
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+
+        # Create openeo batch job (not started yet)
+        user_id = "john"
+        job_id = "job-123"
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=DUMMY_PROCESS_1,
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+        )
+
+        def zk_job_info() -> dict:
+            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+        # Check initial status in registry
+        assert zk_job_info() == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": "created",
+                "created": "2022-12-14T12:00:00Z",
+                # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db == {
+            "job-123": DictSubSet(
+                {
+                    "job_id": "job-123",
+                    "user_id": "john",
+                    "status": "created",
+                    "process": DUMMY_PROCESS_1,
+                    "created": "2022-12-14T12:00:00Z",
+                    "updated": "2022-12-14T12:00:00Z",
+                }
+            )
+        }
+
+        # Start job: submit app to yarn
+        time_machine.coordinates.shift(70)
+        yarn_app = yarn_mock.submit(app_id="app-123")
+        # Simulate that the yarn launch failed.
+        yarn_app.set_launch_failed()
+        zk_job_registry.set_application_id(
+            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
+        )
+
+        # Trigger `update_statuses`
+        job_tracker.update_statuses()
+        assert zk_job_info() == DictSubSet(
+            {
+                "status": "error",
+                "created": "2022-12-14T12:00:00Z",
+                "application_id": yarn_app.app_id,
+                # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
+            }
+        )
+        assert elastic_job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "error",
+                "created": "2022-12-14T12:00:00Z",
+                "updated": "2022-12-14T12:01:10Z",
+                # "application_id": yarn_app.app_id,  # TODO: get this working?
+            }
+        )
+
+        # When yarn could not launch the application, then we want to see the diagnostics in the logs.
+        assert yarn_app.diagnostics in caplog.text
 
     def test_yarn_zookeeper_stats(
         self,
