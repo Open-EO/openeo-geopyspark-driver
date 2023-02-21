@@ -1488,7 +1488,7 @@ class GeopysparkDataCube(DriverDataCube):
         catalog = format_options.get("parameters", {}).get("catalog", False)
         tile_grid = format_options.get("tile_grid", None)
         sample_by_feature = format_options.get("sample_by_feature", False)
-        feature_id_property = format_options.get("feature_id_property", False)
+        # feature_id_property = format_options.get("feature_id_property", False)
         batch_mode = format_options.get("batch_mode", False)
         overviews = format_options.get("overviews", "AUTO")
         overview_resample = format_options.get("overview_method", "near")
@@ -1714,9 +1714,10 @@ class GeopysparkDataCube(DriverDataCube):
 
                 return self.return_netcdf_assets(asset_paths, bands, nodata)
             else:
+                originalName = pathlib.Path(filename)
+                filename_tmp = "openEO.nc" if originalName.name == "out" else originalName.name
                 if not stitch:
-                    originalName = pathlib.Path(filename)
-                    filename = save_directory + "/" + ("openEO.nc" if originalName.name == "out" else originalName.name)
+                    filename = save_directory + "/" + filename_tmp
                     if strict_cropping:
                         options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
                         options.setBandNames(band_names)
@@ -1751,8 +1752,8 @@ class GeopysparkDataCube(DriverDataCube):
                         result=self._collect_as_xarray(max_level)
 
 
-                    if batch_mode:
-                        filename = directory +  "/openEO.nc"
+                    # if batch_mode:
+                    #     filename = directory +  "/openEO.nc"
                     XarrayIO.to_netcdf_file(array=result, path=filename)
                     if batch_mode:
                         asset = {
@@ -1762,7 +1763,7 @@ class GeopysparkDataCube(DriverDataCube):
                         }
                         if bands is not None:
                             asset["bands"] = bands
-                        return {"openEO.nc": asset}
+                        return {filename_tmp: asset}
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory

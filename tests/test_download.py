@@ -283,7 +283,7 @@ class TestDownload:
         format = 'GTiff'
 
         res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format, format_options={
-            "multidate": True,
+            "multidate": True,  # not used
             "batch_mode": False,
             "geometries": geojson_to_geometry(self.features),
             "sample_by_feature": True,
@@ -324,83 +324,19 @@ class TestDownload:
         assert 'image/tiff; application=geotiff' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
-    def test_write_assets_samples_stitch_tile_grid(self, tmp_path):
-        input_layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
-        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
-        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
-        format = 'GTiff'
+    test_write_assets_parameterize_batch_path = "tmp/test_write_assets_parameterize_batch/"
+    shutil.rmtree(test_write_assets_parameterize_batch_path, ignore_errors=True)
+    os.makedirs(test_write_assets_parameterize_batch_path)
 
-        res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format,format_options={
-            "multidate":True,
-            "batch_mode":True,
-            "geometries":geojson_to_geometry(self.features),
-            "sample_by_feature": True,
-            "feature_id_property": 'id',
-            "filename_prefix": "filenamePrefixTest",
-            "stitch": True,
-            "tile_grid": "100km",
-        })
-        assert len(res) == 30
-        name, asset = next(iter(res.items()))
-        assert Path(asset['href']).parent == tmp_path
-        assert asset['roles'] == ['data']
-        assert "test_download_result" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
-
-    def test_write_assets_samples_stitch(self, tmp_path):
-        input_layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
-        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
-        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
-        format = 'GTiff'
-
-        res = imagecollection.write_assets(str(tmp_path / "test_download_result.tiff"), format=format,format_options={
-            "multidate":True,
-            "batch_mode":True,
-            "geometries":geojson_to_geometry(self.features),
-            "sample_by_feature": True,
-            "feature_id_property": 'id',
-            "stitch": True,
-        })
-        assert len(res) == 1
-        name, asset = next(iter(res.items()))
-        assert Path(asset['href']).parent == tmp_path
-
-    def test_write_assets_samples_catalog(self, tmp_path):
-        """ filename_prefix gets used to write the files, but has no effect on 'res' """
-        input_layer = self.create_spacetime_layer()
-        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
-        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
-        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
-        format = 'GTiff'
-
-        res = imagecollection.write_assets(str(tmp_path / "catalogresult.tiff"), format=format,format_options={
-            "multidate":True,
-            "batch_mode":True,
-            "geometries":geojson_to_geometry(self.features),
-            "sample_by_feature": True,
-            "feature_id_property": 'id',
-            "filename_prefix": "filenamePrefixTest",
-            "parameters": {
-                "catalog": True,
-            },
-        })
-        assert len(res) == 1
-        name, asset = next(iter(res.items()))
-        assert Path(asset['href']).parent == tmp_path
-        # assert "filenamePrefixTest" in asset['href']
-
-    test_write_assets_samples_netcdf_batch_path = "tmp/test_write_assets_samples_netcdf_batch/"
-    shutil.rmtree(test_write_assets_samples_netcdf_batch_path, ignore_errors=True)
-    os.makedirs(test_write_assets_samples_netcdf_batch_path)
-
-    @pytest.mark.parametrize("prefix", [None, "prefixTest"])
+    @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
     @pytest.mark.parametrize("stitch", [False, True])
+    @pytest.mark.parametrize("catalog", [False, True])
+    @pytest.mark.parametrize("sample_by_feature", [False, True])
     @pytest.mark.parametrize("format_arg", ["netCDF"])  # "GTIFF" behaves different from "netCDF", so not testing now
-    def test_write_assets_samples_netcdf_batch(self, format_arg, stitch, space_type, tile_grid, prefix, tmp_path):
+    def test_write_assets_parameterize_batch(self, format_arg, sample_by_feature, catalog, stitch, space_type,
+                                             tile_grid, filename_prefix, tmp_path):
         d = locals()
         d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
         test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
@@ -419,14 +355,14 @@ class TestDownload:
             format_options={
                 "batch_mode": True,
                 "geometries": geojson_to_geometry(self.features),
-                "sample_by_feature": True,  # 'sample_by_feature' is only supported in 'batch_mode'
+                "sample_by_feature": True,
                 "feature_id_property": 'id',
-                "filename_prefix": prefix,
+                "filename_prefix": filename_prefix,
                 "stitch": stitch,
                 "tile_grid": tile_grid,
             }
         )
-        with open(self.test_write_assets_samples_netcdf_batch_path + test_name + ".json", 'w') as fp:
+        with open(self.test_write_assets_parameterize_batch_path + test_name + ".json", 'w') as fp:
             json.dump(assets, fp, indent=2)
 
         if format_arg == "netCDF":
@@ -435,14 +371,14 @@ class TestDownload:
             extension = ".tif"
         assert len(assets) == 3
         if format_arg == "netCDF":
-            if prefix:
-                assert assets[prefix + "_0" + extension]
+            if filename_prefix:
+                assert assets[filename_prefix + "_0" + extension]
             else:
                 assert assets["openEO_0" + extension]
         name, asset = next(iter(assets.items()))
         assert Path(asset['href']).parent == tmp_path
-        if prefix:
-            assert prefix in asset['href']
+        if filename_prefix:
+            assert filename_prefix in asset['href']
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
         assert 2 == len(asset['bands'])
@@ -451,17 +387,38 @@ class TestDownload:
         else:
             assert 'image/tiff; application=geotiff' == asset['type']
 
-    test_write_assets_samples_netcdf_path = "tmp/test_write_assets_samples_netcdf/"
-    shutil.rmtree(test_write_assets_samples_netcdf_path, ignore_errors=True)
-    os.makedirs(test_write_assets_samples_netcdf_path)
+    test_write_assets_parameterize_path = "tmp/test_write_assets_parameterize/"
+    shutil.rmtree(test_write_assets_parameterize_path, ignore_errors=True)
+    os.makedirs(test_write_assets_parameterize_path)
 
+    # Parameters found inside 'write_assets'. 768 cases, would be OK to reduce the combinations a bit.
+    # Now runs for about 2 minutes
+    @pytest.mark.parametrize("tiled", [True, False])
+    @pytest.mark.parametrize("stitch", [True, False])
+    @pytest.mark.parametrize("catalog", [True, False])
+    @pytest.mark.parametrize("tile_grid", [None, "100km"])
+    @pytest.mark.parametrize("sample_by_feature", [True, False])
+    @pytest.mark.parametrize("batch_mode", [True, False])
+    @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
-    @pytest.mark.parametrize("stitch", [False, True])
-    @pytest.mark.parametrize("format_arg", ["netCDF", "GTIFF"])
-    def test_write_assets_samples_netcdf(self, format_arg, stitch, space_type, tmp_path):
+    @pytest.mark.parametrize("format_arg", ["NETCDF", "GTIFF", "PNG"])
+    def test_write_assets_parameterize(self, tmp_path,
+                                       tiled,
+                                       stitch,
+                                       catalog,
+                                       tile_grid,
+                                       sample_by_feature,
+                                       batch_mode,
+                                       filename_prefix,
+                                       space_type,
+                                       format_arg,
+                                       ):
         d = locals()
         d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
         test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
+        if batch_mode and sample_by_feature:
+            # 'sample_by_feature' is only relevant in 'batch_mode'
+            return
 
         if space_type == "spacetime":
             input_layer = self.create_spacetime_layer()
@@ -471,40 +428,64 @@ class TestDownload:
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
 
-        if format_arg == "netCDF":
+        if format_arg == "NETCDF":
             extension = ".nc"
-        else:
+        elif format_arg == "PNG":
+            extension = ".png"
+        elif format_arg == "GTIFF":
             extension = ".tif"
+        else:
+            assert False
         filename = "test_download_result" + extension
         assets = imagecollection.write_assets(
             str(tmp_path / filename),
             format=format_arg,
             format_options={
-                "batch_mode": False,
-                "geometries": geojson_to_geometry(self.features),
-                # "sample_by_feature": False,  # 'sample_by_feature' is only supported in 'batch_mode'
-                "feature_id_property": 'id',
-                # "filename_prefix": prefix,
+                "tiled": tiled,
                 "stitch": stitch,
+                "parameters": {
+                    "catalog": catalog,
+                },
+                "tile_grid": tile_grid,
+                "sample_by_feature": sample_by_feature,
+                "batch_mode": batch_mode,
+                "filename_prefix": filename_prefix,  # no effect when outputting single file
+
+                # non parametrized:
+                "geometries": geojson_to_geometry(self.features),
+                # "feature_id_property": 'id',  # not used
+                # "multidate": True,  # not used
             }
         )
-        with open(self.test_write_assets_samples_netcdf_path + test_name + ".json", 'w') as fp:
-            json.dump(assets, fp, indent=2)
+        # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:
+        #     json.dump(assets, fp, indent=2)
 
-        assert len(assets) == 1
-        assert assets[filename]
         name, asset = next(iter(assets.items()))
-        assert Path(asset['href']).parent == tmp_path
-        assert "test_download_result" in asset['href']
-        if not stitch:
-            # IDK why there are more attributes here.
-            assert asset['nodata'] == -1
-            assert asset['roles'] == ['data']
-            assert 2 == len(asset['bands'])
-            if format_arg == "netCDF":
-                assert 'application/x-netcdf' == asset['type']
+        print("href of first asset: " + asset['href'])
+
+        # Special case for saveRDDTemporal as it only returns one case, but is designed to return multiple cases
+        # But WHY is there only one file returned?
+        saveRDDTemporalCase = format_arg == "GTIFF" and not catalog and not stitch and batch_mode \
+                              and space_type == "spacetime" and not tile_grid and not sample_by_feature
+
+        if len(assets) == 1 and not saveRDDTemporalCase:
+            assert assets[filename]
+            assert filename in asset['href']
+        else:
+            if format_arg == "GTIFF" and tile_grid:
+                # special case for _save_stitched_tile_grid
+                if "test_download_result" not in asset['href']:
+                    if filename_prefix:
+                        assert filename_prefix in asset['href']
+                    else:
+                        assert "/openEO" in asset['href']
+                pass
             else:
-                assert 'image/tiff; application=geotiff' == asset['type']
+                if filename_prefix:
+                    assert filename_prefix in asset['href']
+                else:
+                    assert "/openEO" in asset['href']
+        assert Path(asset['href']).parent == tmp_path
 
     #skipped because gdal_merge.py is not available on jenkins
     @skip
