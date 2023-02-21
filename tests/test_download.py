@@ -472,17 +472,14 @@ class TestDownload:
             assert assets[filename]
             assert filename in asset['href']
         else:
-            if format_arg == "GTIFF" and tile_grid:
-                # special case for _save_stitched_tile_grid
-                if "test_download_result" not in asset['href']:
-                    if filename_prefix:
-                        assert filename_prefix in asset['href']
-                    else:
-                        assert "/openEO" in asset['href']
-                pass
+            if filename_prefix:
+                assert filename_prefix in asset['href']
             else:
-                if filename_prefix:
-                    assert filename_prefix in asset['href']
+                if (tile_grid and stitch and not catalog and format_arg == "GTIFF") \
+                        or (tile_grid and not (batch_mode and space_type != "spatial") and not stitch and not catalog
+                            and format_arg == "GTIFF"):
+                    # special case for _save_stitched_tile_grid
+                    assert "/test_download_result" in asset['href']
                 else:
                     assert "/openEO" in asset['href']
         assert Path(asset['href']).parent == tmp_path

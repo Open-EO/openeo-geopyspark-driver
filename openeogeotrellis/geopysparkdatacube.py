@@ -1532,7 +1532,7 @@ class GeopysparkDataCube(DriverDataCube):
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
                         tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds,
-                                                              zlevel=zlevel)
+                                                              zlevel=zlevel, filename_prefix=filename_prefix)
 
                         # noinspection PyProtectedMember
                         return {str(pathlib.Path(tile._1()).name): {
@@ -1622,7 +1622,7 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         if tile_grid:
                             tiles = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
-                                                                  zlevel=zlevel)
+                                                                  zlevel=zlevel, filename_prefix=filename_prefix)
 
                             # noinspection PyProtectedMember
                             return {str(pathlib.Path(tile._1()).name): {
@@ -1978,7 +1978,8 @@ class GeopysparkDataCube(DriverDataCube):
                    xmax=max(reprojected_xmax1,reprojected_xmax2), ymax=max(reprojected_ymax1,reprojected_ymax2))
         return crop_bounds
 
-    def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path, zlevel=6, filename_prefix=None):
+    def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path, zlevel=6,
+                           filename_prefix=get_jvm().scala.Option.apply(None)):
         geotiff_rdd = spatial_rdd.to_geotiff_rdd(
             storage_method=gps.StorageMethod.TILED,
             compression=gps.Compression.DEFLATE_COMPRESSION
@@ -1988,7 +1989,7 @@ class GeopysparkDataCube(DriverDataCube):
         basedir.mkdir(parents=True, exist_ok=True)
 
         pre = ""
-        if filename_prefix.isDefined():
+        if filename_prefix and filename_prefix.isDefined():
             pre = filename_prefix.get() + "_"
 
         def write_tiff(item):
@@ -2019,8 +2020,14 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
 
-    def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6):
+    def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6,
+                                 filename_prefix=get_jvm().scala.Option.apply(None)):
         jvm = get_jvm()
+
+        if filename_prefix.isDefined():
+            p = pathlib.Path(path)
+            ext = p.name[p.name.index("."):]
+            path = str(p.parent / (filename_prefix.get() + ext))
 
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
