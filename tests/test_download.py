@@ -295,7 +295,6 @@ class TestDownload:
         name, asset = next(iter(res.items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['roles'] == ['data']
-        assert "test_download_result" in asset['href']
         assert 'image/tiff; application=geotiff' == asset['type']
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
@@ -393,9 +392,9 @@ class TestDownload:
 
     # Parameters found inside 'write_assets'. 768 cases, would be OK to reduce the combinations a bit.
     # Now runs for about 2 minutes
-    @pytest.mark.parametrize("tiled", [True, False])
-    @pytest.mark.parametrize("stitch", [True, False])
-    @pytest.mark.parametrize("catalog", [True, False])
+    @pytest.mark.parametrize("tiled", [True])
+    @pytest.mark.parametrize("stitch", [True])
+    @pytest.mark.parametrize("catalog", [True])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])

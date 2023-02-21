@@ -1979,7 +1979,7 @@ class GeopysparkDataCube(DriverDataCube):
         return crop_bounds
 
     def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path, zlevel=6,
-                           filename_prefix=get_jvm().scala.Option.apply(None)):
+                           filename_prefix=None):
         geotiff_rdd = spatial_rdd.to_geotiff_rdd(
             storage_method=gps.StorageMethod.TILED,
             compression=gps.Compression.DEFLATE_COMPRESSION
@@ -2021,10 +2021,10 @@ class GeopysparkDataCube(DriverDataCube):
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
 
     def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6,
-                                 filename_prefix=get_jvm().scala.Option.apply(None)):
+                                 filename_prefix=None):
         jvm = get_jvm()
 
-        if filename_prefix.isDefined():
+        if filename_prefix and filename_prefix.isDefined():
             p = pathlib.Path(path)
             ext = p.name[p.name.index("."):]
             path = str(p.parent / (filename_prefix.get() + ext))
