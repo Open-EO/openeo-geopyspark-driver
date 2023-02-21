@@ -84,62 +84,6 @@ class YarnAppReportParseException(Exception):
     pass
 
 
-class OLD_YarnStatusGetter(JobMetadataGetterInterface):
-    """YARN app status getter"""
-
-    def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        try:
-            command = ["yarn", "application", "-status", app_id]
-            with TimingLogger(f"Running {command}", logger=_log.debug):
-                application_report = subprocess.check_output(
-                    command, stderr=subprocess.PIPE
-                ).decode("utf-8")
-        except CalledProcessError as e:
-            stdout = e.stdout.decode()
-            if "doesn't exist in RM or Timeline Server" in stdout:
-                raise AppNotFound(stdout) from None
-            else:
-                raise
-        return self.parse_application_report(application_report)
-
-    def parse_application_report(self, report: str) -> _JobMetadata:
-        try:
-            props = dict(re.findall(r"^\t(.+?) : (.+)$", report, flags=re.MULTILINE))
-
-            job_status = yarn_state_to_openeo_job_status(
-                state=props["State"], final_state=props["Final-State"]
-            )
-
-            def ms_epoch_to_date(epoch_millis: str) -> Union[str, None]:
-                """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
-                if epoch_millis == "0":
-                    return None
-                utc_datetime = dt.datetime.utcfromtimestamp(int(epoch_millis) / 1000)
-                return rfc3339.datetime(utc_datetime)
-
-            start_time = ms_epoch_to_date(props["Start-Time"])
-            finish_time = ms_epoch_to_date(props["Finish-Time"])
-
-            allocation = props["Aggregate Resource Allocation"]
-            match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", allocation)
-            if match:
-                usage = {
-                    "cpu": {"value": int(match.group(2)), "unit": "cpu-seconds"},
-                    "memory": {"value": int(match.group(1)), "unit": "mb-seconds"},
-                }
-            else:
-                usage = None
-
-            return _JobMetadata(
-                status=job_status,
-                start_time=start_time,
-                finish_time=finish_time,
-                usage=usage,
-            )
-        except Exception as e:
-            raise YarnAppReportParseException() from e
-
-
 class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
@@ -149,23 +93,29 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             f"/ws/v1/cluster/apps/{application_id}",
         )
 
+    def get_authentication_provider(self):
+        auth = None
+        if ConfigParams().yarn_auth_use_kerberos:
+            # TODO: HTTPKerberosAuth is deprecated, this is a utility class for compatibility with requests_kerberos.
+            #   Find the better way to do this, using requests_gssapi directly.
+            # Have to set mutual_authentication to REQUIRED or it just skips kerberos auth it seems.
+            auth = requests_gssapi.HTTPKerberosAuth(
+                mutual_authentication=requests_gssapi.REQUIRED
+            )
+        return auth
+
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         # TODO: (WIP) Find out how to support Kerberos, namely what the option '--negotiate -u :' in the curl command does.
         #   We should find the equivalent of this example curl command using the requests library:
         #   curl --location-trusted --negotiate -u :  https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1674538064532_46723
-
+        #
         # TODO: Are there any cases were we *do* need to provide credentials to the Kerberos authentication?
         #   At present we are assuming there is already a Kerberos ticket because kinit was run before
         #   the geopyspark driver process was started.
         #   AFAIK that means we don't have to provide user & pw which is in fact the whole point.
 
-        auth = None
-        if ConfigParams().yarn_auth_use_kerberos:
-            auth = requests_gssapi.HTTPKerberosAuth(
-                mutual_authentication=requests_gssapi.REQUIRED
-            )
         url = self.get_application_url(application_id=app_id)
-        response = requests.get(url, auth=auth)
+        response = requests.get(url, auth=self.get_authentication_provider())
 
         #
         # Seems like YARN's API returns a HTTP 400 rather than a 404.

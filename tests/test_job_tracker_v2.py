@@ -83,6 +83,21 @@ class YarnAppInfo:
     def set_killed(self):
         return self.set_state(YARN_STATE.KILLED, YARN_FINAL_STATUS.KILLED)
 
+    def set_launch_container_failed(self):
+        self.diagnostics = textwrap.dedent(
+            f"""
+            Application {self.app_id} failed 1 times (global limit =2; local limit is =1) due to AM Container for appattempt_1670152552564_21143_000001 exited with  exitCode: 7
+            Failing this attempt.Diagnostics: [2022-12-14 10:27:49.976]Exception from container-launch.
+            Container id: container_e5070_1670152552564_21143_01_000001
+            Exit code: 7
+            Exception message: Launch container failed
+            Shell error output: Unable to find image 'test-repository/test-image:1234' locally
+            docker: Error response from daemon: <some error response here, left it out>
+            See 'docker run --help'.
+            """
+        )
+        return self.set_failed()
+
     def status_report(self) -> str:
         fields = [
             f"\t{k} : {v}"
@@ -206,6 +221,9 @@ class YarnMock:
         self.apps: Dict[str, YarnAppInfo] = {}
         self.corrupt_app_ids = set()
 
+        # Simulates app IDs for which yarn could not launch a container.
+        self.failed_yarn_launch_app_ids = set()
+
     def submit(self, app_id: Optional[str] = None, **kwargs) -> YarnAppInfo:
         """Create a new (dummy) YARN app"""
         if app_id is None:
@@ -213,34 +231,9 @@ class YarnMock:
         self.apps[app_id] = app = YarnAppInfo(app_id=app_id, **kwargs)
         return app
 
-    def _check_output(self, popenargs: List[str], **kwargs):
-        """Mock for subprocess.check_output(["yarn", ...])"""
-        if len(popenargs) == 4 and popenargs[:3] == ["yarn", "application", "-status"]:
-            app_id = popenargs[3]
-            if app_id in self.corrupt_app_ids:
-                raise subprocess.CalledProcessError(
-                    returncode=255,
-                    cmd=popenargs,
-                    output=f"C0rRup7! {app_id}'".encode("utf-8"),
-                )
-            elif app_id in self.apps:
-                return self.apps[app_id].status_report().encode("utf-8")
-            else:
-                raise subprocess.CalledProcessError(
-                    returncode=255,
-                    cmd=popenargs,
-                    output=f"Application with id '{app_id}' doesn't exist in RM or Timeline Server.".encode(
-                        "utf-8"
-                    ),
-                )
-
-        raise RuntimeError(f"Unsupported check_output({popenargs!r})")
-
     @contextlib.contextmanager
     def patch(self):
-        with mock.patch(
-            "subprocess.check_output", new=self._check_output
-        ) as check_output, requests_mock.Mocker() as requests_mocker:
+        with requests_mock.Mocker() as requests_mocker:
             # Mock the requests to the REST API of YARN. The configuration tells us what the base URL is.
             # To direct the request to a fake URL, mock the environment variable YARN_REST_API_BASE_URL.
             base_url = ConfigParams().yarn_rest_api_base_url
@@ -252,8 +245,9 @@ class YarnMock:
                 if app_id in self.corrupt_app_ids:
                     return f"C0rRup7! {app_id}'"
                 elif app_id in self.apps:
-                    body = self.apps[app_id].status_rest_response()
-                    return body
+                    return self.apps[app_id].status_rest_response()
+                elif app_id in self.failed_yarn_launch_app_ids:
+                    return self.apps[app_id].status_rest_response()
                 else:
                     context.status_code = 400
                     return {
@@ -269,7 +263,7 @@ class YarnMock:
                 json=response_call_back,
             )
 
-            yield check_output
+            yield
 
 @dataclass
 class KubernetesAppInfo:
@@ -777,6 +771,7 @@ class TestYarnJobTracker:
             "status change 'created' -> 'running'": 1,
         }
 
+
     def test_yarn_zookeeper_stats(
         self,
         zk_job_registry,
@@ -832,92 +827,8 @@ class TestYarnJobTracker:
         }
 
 
-# TODO: Remove TestYarnStatusGetter, replacing olf YarnStatusGetter with new implementation based on YARN REST API
 class TestYarnStatusGetter:
-    @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
-    def test_parse_application_report_basic(self):
-        report = textwrap.dedent(
-            """
-            Application Report :
-            \tApplication-Id : application_1671092799310_26739
-            \tApplication-Name : openEO batch_test_random_forest_train_and_load_from_jobid-user jenkins
-            \tApplication-Type : SPARK
-            \tUser : jenkins
-            \tQueue : default
-            \tApplication Priority : 0
-            \tStart-Time : 1673021672793
-            \tFinish-Time : 1673021943245
-            \tProgress : 100%
-            \tState : FINISHED
-            \tFinal-State : SUCCEEDED
-            \tAM Host : epod0123.test
-            \tAggregate Resource Allocation : 5116996 MB-seconds, 2265 vcore-seconds
-            \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
-            \tTimeoutType : LIFETIME	ExpiryTime : UNLIMITED	RemainingTime : -1seconds
-        """
-        )
-        job_metadata = YarnStatusGetter().parse_application_report(report=report)
-        assert job_metadata.status == "finished"
-        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
-        assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
-        assert job_metadata.usage == {
-            "cpu": {"unit": "cpu-seconds", "value": 2265},
-            "memory": {"unit": "mb-seconds", "value": 5116996},
-        }
-
-    @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
-    def test_parse_application_report_running(self):
-        report = textwrap.dedent(
-            """
-            Application Report :
-            \tApplication-Id : application_1671092799310_26739
-            \tStart-Time : 1673021672793
-            \tFinish-Time : 0
-            \tState : RUNNING
-            \tFinal-State : UNDEFINED
-            \tAM Host : epod0123.test
-            \tAggregate Resource Allocation : 96183879 MB-seconds, 46964 vcore-seconds
-            \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
-        """
-        )
-        job_metadata = YarnStatusGetter().parse_application_report(report=report)
-        assert job_metadata.status == "running"
-        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
-        assert job_metadata.finish_time is None
-        assert job_metadata.usage == {
-            "cpu": {"unit": "cpu-seconds", "value": 46964},
-            "memory": {"unit": "mb-seconds", "value": 96183879},
-        }
-
-    @pytest.mark.skip(reason="Soon to be replaced by REST API implementation below")
-    def test_parse_application_report_empty(self):
-        with pytest.raises(YarnAppReportParseException):
-            _ = YarnStatusGetter().parse_application_report(report="")
-
-
-class TestYarnRestApiStatusGetter:
     def test_parse_application_response_basic(self):
-        # report = textwrap.dedent(
-        #     """
-        #     Application Report :
-        #     \tApplication-Id : application_1671092799310_26739
-        #     \tApplication-Name : openEO batch_test_random_forest_train_and_load_from_jobid-user jenkins
-        #     \tApplication-Type : SPARK
-        #     \tUser : jenkins
-        #     \tQueue : default
-        #     \tApplication Priority : 0
-        #     \tStart-Time : 1673021672793
-        #     \tFinish-Time : 1673021943245
-        #     \tProgress : 100%
-        #     \tState : FINISHED
-        #     \tFinal-State : SUCCEEDED
-        #     \tAM Host : epod0123.test
-        #     \tAggregate Resource Allocation : 5116996 MB-seconds, 2265 vcore-seconds
-        #     \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
-        #     \tTimeoutType : LIFETIME	ExpiryTime : UNLIMITED	RemainingTime : -1seconds
-        # """
-        # )
-
         response = fake_yarn_rest_repsonse_json(
             app_id="application_1671092799310_26739",
             state="FINISHED",
@@ -938,20 +849,6 @@ class TestYarnRestApiStatusGetter:
         }
 
     def test_parse_application_response_running(self):
-        # report = textwrap.dedent(
-        #     """
-        #     Application Report :
-        #     \tApplication-Id : application_1671092799310_26739
-        #     \tStart-Time : 1673021672793
-        #     \tFinish-Time : 0
-        #     \tState : RUNNING
-        #     \tFinal-State : UNDEFINED
-        #     \tAM Host : epod0123.test
-        #     \tAggregate Resource Allocation : 96183879 MB-seconds, 46964 vcore-seconds
-        #     \tAggregate Resource Preempted : 0 MB-seconds, 0 vcore-seconds
-        # """
-        # )
-
         response = fake_yarn_rest_repsonse_json(
             app_id="application_1671092799310_26739",
             state="RUNNING",
