@@ -14,11 +14,11 @@ class Traefik:
 
     def proxy_service(self, service_id, host, port) -> None:
         """
-        Routes requests to a dynamically created service.
+        Routes requests to a dynamically created secondary service.
 
-        Creates a backend, a backend server and a frontend rule specifically for this service.
+        Creates a service, a server and a router rule specifically for this service.
 
-        :param service_id: the services's unique ID, typically a UUID
+        :param service_id: the secondary services's unique ID, typically a UUID
         :param host: the host the service runs on, typically myself
         :param port: the port the service runs on, typically random
         """
@@ -41,14 +41,15 @@ class Traefik:
 
     def add_load_balanced_server(self, cluster_id, server_id, host, port, environment) -> None:
         """
-        Adds a server to a particular load-balanced cluster.
+        Adds an HTTP server to a particular load-balanced cluster (a "service" in Traefik parlance).
 
-        Always creates a backend server; the backend and frontend are created only if they don't already exist.
+        Creates a service, a router rule that routes to this service and a server to be part of this service. More
+        correctly, it will update existing services/routers/servers because they are all identified by particular IDs.
 
-        :param cluster_id: identifies the cluster, e.g. "openeo-prod" or "0"
-        :param server_id: uniquely identifies the server, e.g. a UUID or even "192.168.207.194:40661"
-        :param host: hostname or IP of the server
-        :param port: the port the service runs on
+        :param cluster_id: uniquely identifies the load-balanced cluster of servers, e.g. "openeo-prod"
+        :param server_id: uniquely identifies the server, e.g. "epod-openeo-1.vgt.vito.be"
+        :param host: hostname or IP of the HTTP server, e.g. "192.168.207.60"
+        :param port: port of the HTTP server, e.g. 43845
         """
 
         if environment == 'prod':
@@ -89,7 +90,7 @@ class Traefik:
         tservice_key = self._tservice_key(tservice_id)
         url_key = f"{tservice_key}/loadBalancer/servers/{server_id}/url"
         url = f"http://{host}:{port}"
-        _log.info(f"Create service {url_key}: {url}")
+        _log.info(f"Create server {url_key}: {url}")
         self._zk_merge(url_key, url.encode())
 
     def _setup_load_balancer_health_check(self, tservice_id: str):

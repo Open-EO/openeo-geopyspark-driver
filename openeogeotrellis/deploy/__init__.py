@@ -40,6 +40,8 @@ def get_socket() -> (str, int):
 
 
 def update_zookeeper(host: str, port: int, env: str) -> None:
+    # TODO: move the construction of this cluster_id to Traefik.add_load_balanced_server? Now decisions based on "env"
+    #  are in two places.
     cluster_id = 'openeo-' + env
     server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
 
