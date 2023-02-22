@@ -39,9 +39,10 @@ class Traefik:
 
         self._trigger_configuration_update()
 
-    def add_load_balanced_server(self, cluster_id, server_id, host, port, environment) -> None:
+    def add_load_balanced_server(self, cluster_id, server_id, host, port, rule) -> None:
         """
-        Adds an HTTP server to a particular load-balanced cluster (a "service" in Traefik parlance).
+        Adds an HTTP server to a particular load-balanced cluster (a "service" in Traefik parlance). Requests will be
+        routed to this cluster if they match the specified router rule.
 
         Creates a service, a router rule that routes to this service and a server to be part of this service. More
         correctly, it will update existing services/routers/servers because they are all identified by particular IDs.
@@ -50,18 +51,12 @@ class Traefik:
         :param server_id: uniquely identifies the server, e.g. "epod-openeo-1.vgt.vito.be"
         :param host: hostname or IP of the HTTP server, e.g. "192.168.207.60"
         :param port: port of the HTTP server, e.g. 43845
+        :param rule: the router rule, e.g. "Host(`openeo.vito.be`)"
         """
-
-        if environment == 'prod':
-            match_openeo = "Host(`openeo.vgt.vito.be`,`openeo.vito.be`) && " \
-                           "PathPrefix(`/openeo`,`/.well-known/openeo`)"
-        else:
-            match_openeo = "Host(`openeo-dev.vgt.vito.be`,`openeo-dev.vito.be`) && " \
-                           "PathPrefix(`/openeo`,`/.well-known/openeo`)"
 
         self._create_tservice_server(tservice_id=cluster_id, server_id=server_id, host=host, port=port)
         self._setup_load_balancer_health_check(tservice_id=cluster_id)
-        self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, matcher=match_openeo, priority=100)
+        self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, rule=rule, priority=100)
 
         self._trigger_configuration_update()
 
@@ -104,14 +99,14 @@ class Traefik:
         # TODO: very liberal timeout for now
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/timeout", b"20s")
 
-    def _create_router_rule(self, router_id, tservice_id, matcher, priority: int, *middleware_ids):
+    def _create_router_rule(self, router_id, tservice_id, rule, priority: int, *middleware_ids):
         router_key = self._router_key(router_id)
         _log.info(f"Create router rule for {router_key}")
 
         self._zk_merge(f"{router_key}/entrypoints", b"web")
         self._zk_merge(f"{router_key}/service", tservice_id.encode())
         self._zk_merge(f"{router_key}/priority", str(priority).encode())
-        self._zk_merge(f"{router_key}/rule", matcher.encode())
+        self._zk_merge(f"{router_key}/rule", rule.encode())
 
         for i, middleware_id in enumerate(middleware_ids):
             self._zk_merge(f"{router_key}/middlewares/{i}", middleware_id.encode())
