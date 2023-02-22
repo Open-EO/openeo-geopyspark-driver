@@ -942,6 +942,51 @@ class TestYarnStatusGetter:
         monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "no")
         assert YarnStatusGetter().get_authentication_provider() is None
 
+    def test_kerberos_auth_should_fail_when_there_is_no_kerberos_setup(
+        self, monkeypatch, requests_mock
+    ):
+        """Test that it actually attempts to do kerberos authentication.
+
+        Reason to cover this case:
+
+        During early testing we found out HTTPKerberosAuth was not having any effect,
+        and this was because in the constructor requests_gssapi.HTTPKerberosAuth(),
+        the default argument for mutual_authentication is requests_gssapi.DISABLED.
+
+        This was a bit surprising. Also this behavior is different from
+        requests_kerberos.HTTPKerberosAuth, for which it is supposed to be a
+        compatible replacement, however it is not 100% the same.
+        If this happens again it should not go unnoticed.
+
+        So the test checks that the requests_gssapi.HTTPKerberosAuth actually has an effect,
+        but no more than that.
+        """
+        monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "yes")
+
+        status_getter = YarnStatusGetter()
+        app_id = "application_1671092799310_26739"
+        app_url = status_getter.get_application_url(app_id)
+        response = fake_yarn_rest_repsonse_json(
+            app_id=app_id,
+            state="RUNNING",
+            final_status="UNDEFINED",
+            started_time=1673021672793,
+            finished_time=0,
+            progress=50.0,
+            memory_seconds=96183879,
+            vcore_seconds=46964,
+            diagnostics="",
+        )
+        m_get = requests_mock.get(app_url, json=response)
+
+        # To test this, we just try to run get_job_metadata with authentication turned on,
+        # but we don't have a Kerberos server in the unit test, so we expect that is raises
+        # a MutualAuthenticationError.
+        with pytest.raises(requests_gssapi.MutualAuthenticationError) as result:
+            status_getter.get_job_metadata(None, None, app_id)
+
+        assert m_get.called
+
 
 class TestK8sJobTracker:
     @pytest.fixture
