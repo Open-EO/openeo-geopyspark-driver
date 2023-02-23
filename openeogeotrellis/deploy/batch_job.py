@@ -23,7 +23,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult, \
     MlModelResult
 from openeo_driver.users import User
-from openeo_driver.util.geometry import spatial_extent_union
+from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
 from openeo_driver.util.logging import BatchJobLoggingFilter, user_id_trim, get_logging_config, setup_logging, \
     LOGGING_CONTEXT_BATCH_JOB
 from openeo_driver.util.utm import area_in_square_meters
@@ -97,6 +97,10 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
+        if spatial_extent["crs"] != "EPSG:4326":
+            spatial_extent = reproject_bounding_box(
+                spatial_extent, from_crs=None, to_crs="EPSG:4326"
+            )
         bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in bbox):
             polygon = Polygon.from_bounds(*bbox)
@@ -320,8 +324,8 @@ def main(argv: List[str]) -> None:
             vault_token = _get_vault_token(sc.getConf())
 
             kerberos(principal, key_tab)
-            
-            def run_driver(): 
+
+            def run_driver():
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
@@ -329,7 +333,7 @@ def main(argv: List[str]) -> None:
                     default_sentinel_hub_credentials=default_sentinel_hub_credentials,
                     sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
                 )
-            
+
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
                 driver_profile = BasicProfiler(sc)
