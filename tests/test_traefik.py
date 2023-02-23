@@ -7,7 +7,7 @@ def test_add_load_balanced_server():
     zk = mock.Mock()
     Traefik(zk=zk).add_load_balanced_server(
         cluster_id="openeo-test", server_id="openeo-test-01", host="10.0.0.0", port=123,
-        rule="Host(`openeo-test.vito.be`)",
+        rule="Host(`openeo-test.vito.be`)", health_check=True
     )
     zk_sets = {c.args[0]: c.args[1] for c in zk.set.mock_calls}
     assert zk_sets == {

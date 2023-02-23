@@ -39,7 +39,7 @@ class Traefik:
 
         self._trigger_configuration_update()
 
-    def add_load_balanced_server(self, cluster_id, server_id, host, port, rule) -> None:
+    def add_load_balanced_server(self, cluster_id, server_id, host, port, rule, health_check: bool) -> None:
         """
         Adds an HTTP server to a particular load-balanced cluster (a "service" in Traefik parlance). Requests will be
         routed to this cluster if they match the specified router rule.
@@ -52,10 +52,12 @@ class Traefik:
         :param host: hostname or IP of the HTTP server, e.g. "192.168.207.60"
         :param port: port of the HTTP server, e.g. 43845
         :param rule: the router rule, e.g. "Host(`openeo.vito.be`)"
+        :param health_check: include health check?
         """
 
         self._create_tservice_server(tservice_id=cluster_id, server_id=server_id, host=host, port=port)
-        self._setup_load_balancer_health_check(tservice_id=cluster_id)
+        if health_check:
+            self._setup_load_balancer_health_check(tservice_id=cluster_id)
         self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, rule=rule, priority=100)
 
         self._trigger_configuration_update()
