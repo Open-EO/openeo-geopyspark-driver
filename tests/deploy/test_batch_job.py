@@ -22,9 +22,6 @@ from openeogeotrellis._version import __version__
 from tests.data import get_test_data_file
 
 
-TEST_DATA_DIR = (Path(__file__) / "../../data").resolve()
-
-
 def test_extract_result_metadata():
     tracer = DryRunDataTracer()
     cube = tracer.load_collection(collection_id="Sentinel2", arguments={
@@ -146,7 +143,9 @@ def test_run_job(evaluate, tmp_path):
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     cube_mock = MagicMock()
-    first_asset_path = str(TEST_DATA_DIR / "orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    first_asset_path = str(
+        get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    )
     asset_meta = {
         first_asset_path: {
             "href": first_asset_path,
@@ -246,7 +245,9 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
 ):
     cube_mock = MagicMock()
 
-    first_asset_path = str(TEST_DATA_DIR / "orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    first_asset_path = str(
+        get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    )
     second_asset_path = str(tmp_path / "copy_copernicus-dem-30m-unittest.vrt")
     shutil.copyfile(first_asset_path, second_asset_path)
     asset_meta = {
