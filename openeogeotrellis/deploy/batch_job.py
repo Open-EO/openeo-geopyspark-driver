@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import stat
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
+from osgeo import gdal
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -191,6 +193,58 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 }
             }
         else:
+            # TODO: When all metadata is the same for all assets, set it at the item level only? Or on both levels?.
+            same_epsg_all_assets = True
+            previous_epsg = None
+            same_bbox_all_assets = True
+            previous_bbox = None
+            for asset_path, md in asset_metadata.items():
+                if not Path(asset_path).exists():
+                    # This should only happen during unit tests, i.e. when they don't use actual files in the test.
+                    logger.error(
+                        "Can not read asset's projection extension metadata, asset file not found: {asset_path}"
+                    )
+                    same_epsg_all_assets = False
+                    same_bbox_all_assets = False
+                else:
+                    projection_metadata = _extract_projection_extension_metadata(
+                        asset_path
+                    )
+                    # There might not be any projection info if gdal could not extract it from the file.
+                    if not projection_metadata:
+                        same_epsg_all_assets = False
+                        same_bbox_all_assets = False
+                        continue
+
+                    md["proj_extension"] = projection_metadata
+                    if (
+                        same_epsg_all_assets
+                        and previous_epsg
+                        and previous_epsg != projection_metadata["proj:epsg"]
+                    ):
+                        same_epsg_all_assets = False
+                    else:
+                        previous_epsg = projection_metadata["proj:epsg"]
+
+                    if (
+                        same_bbox_all_assets
+                        and previous_bbox
+                        and previous_bbox != projection_metadata["proj:bbox"]
+                    ):
+                        same_bbox_all_assets = False
+                    else:
+                        previous_bbox = projection_metadata["proj:bbox"]
+
+            # If all asset EPSG codes are the same, and the item-level epgs does not have a value yet,
+            # then use that single value for the general epsg.
+            if not epsg and not metadata.get("epsg"):
+                if same_epsg_all_assets:
+                    epsg = previous_epsg
+
+            if not metadata.get("bbox"):
+                if same_bbox_all_assets:
+                    metadata["bbox"] = previous_bbox
+
             #new approach: SaveResult has generated metadata already for us
             metadata['assets'] = asset_metadata
 
@@ -210,6 +264,72 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     add_permissions(metadata_file, stat.S_IWGRP)
 
     logger.info("wrote metadata to %s" % metadata_file)
+
+
+def _extract_projection_extension_metadata(asset_path: str) -> dict:
+    """Get the projection metadata for the file in asset_path.
+
+    :param asset_path: path to the asset file to read.
+
+    :return: a dictionary containing the following fields, as described in stac-extensions,
+        see: https://github.com/stac-extensions/projection
+
+        - "proj:epsg"  The EPSG code of the CRS.
+        - "proj:shape" The pixel size of the asset.
+        - "proj:bbox"  The bounding box expressed in the asset CRS.
+
+        Note that these dictionary keys in the return value *do* include the colon to be
+        in line with the names in stac-extensions.
+
+    TODO: upgrade GDAL to 3.6 and use the STAC dictionary it returns instead
+    of extracting it from the other output of gdal.Info() .
+
+    In a future version we can upgrade to GDAL v3.6 and in that version the
+    gdal.Info function include these properties directly in the key "stac" of
+    the dictionary it returns.
+    """
+    # Make gdal raise exception, otherwise it just writes errors on stdout.
+    gdal.UseExceptions()
+    proj_metadata = {}
+
+    try:
+        info = gdal.Info(asset_path, options=gdal.InfoOptions(format="json"))
+    except Exception as exc:
+        logger.warning(
+            "Could not get projection extension metadata, "
+            + f"gdal.Info failed for following asset: {asset_path}. File is probably not a raster"
+        )
+        return None
+
+    # Extract the EPSG code from the WKT string
+    crs_as_wkt = info.get("coordinateSystem", {}).get("wkt")
+    if m := re.search('ID\["EPSG"\,(\d*)\]', crs_as_wkt):
+        epsg_str = m.group(1)
+        try:
+            epsg = int(epsg_str)
+        except:
+            logger.error(
+                f"Could not convert epsg code top int: epsg_str={epsg_str}"
+                + "WKT for CRS: {crs_as_wkt}"
+            )
+        else:
+            proj_metadata["proj:epsg"] = epsg
+
+    # Size of the pixels
+    proj_metadata["proj:shape"] = info["size"]
+
+    # convert cornerCoordinates to proj:bbox format specified in
+    # https://github.com/stac-extensions/projection
+    # TODO: do we need to also handle 3D bboxes, i.e. the elevation bounds, if present?
+    if "cornerCoordinates" in info:
+        corner_coords = info.get("cornerCoordinates")
+        # TODO: check if this way to combine the corners also handles 3D bounding boxes correctly.
+        #   Need a correct example to test with.
+        lole = corner_coords["lowerLeft"]
+        upri = corner_coords["upperRight"]
+        proj_metadata["proj:bbox"] = [*lole, *upri]
+
+    return proj_metadata
 
 def _get_tracker(tracker_id=""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
@@ -320,8 +440,8 @@ def main(argv: List[str]) -> None:
             vault_token = _get_vault_token(sc.getConf())
 
             kerberos(principal, key_tab)
-            
-            def run_driver(): 
+
+            def run_driver():
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
@@ -329,7 +449,7 @@ def main(argv: List[str]) -> None:
                     default_sentinel_hub_credentials=default_sentinel_hub_credentials,
                     sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
                 )
-            
+
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
                 driver_profile = BasicProfiler(sc)

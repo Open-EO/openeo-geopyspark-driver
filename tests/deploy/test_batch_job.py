@@ -1,4 +1,5 @@
 import json
+import shutil
 from mock import MagicMock
 from pathlib import Path
 from unittest import mock
@@ -19,6 +20,9 @@ from openeogeotrellis.deploy.batch_job import (
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis._version import __version__
 from tests.data import get_test_data_file
+
+
+TEST_DATA_DIR = (Path(__file__) / "../../data").resolve()
 
 
 def test_extract_result_metadata():
@@ -139,6 +143,218 @@ def test_run_job(evaluate, tmp_path):
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
+    cube_mock = MagicMock()
+    first_asset_path = str(TEST_DATA_DIR / "orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    asset_meta = {
+        first_asset_path: {
+            "href": first_asset_path,
+            "roles": "data",
+        },
+        "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
+    }
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": {
+            first_asset_path: {
+                "href": first_asset_path,
+                "roles": "data",
+                "proj_extension": {
+                    "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                    "proj:epsg": 4326,
+                    "proj:shape": [17788, 14400],
+                },
+            },
+            "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
+        },
+        "bbox": None,
+        "end_datetime": None,
+        "epsg": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(
+    evaluate, tmp_path
+):
+    cube_mock = MagicMock()
+
+    first_asset_path = str(TEST_DATA_DIR / "orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    second_asset_path = str(tmp_path / "copy_copernicus-dem-30m-unittest.vrt")
+    shutil.copyfile(first_asset_path, second_asset_path)
+    asset_meta = {
+        first_asset_path: {
+            "href": first_asset_path,
+            "roles": "data",
+        },
+        # use same file twice to simulate the same CRS and bbox
+        second_asset_path: {
+            "href": second_asset_path,
+            "roles": "data",
+        },
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": {
+            first_asset_path: {
+                "href": first_asset_path,
+                "roles": "data",
+                "proj_extension": {
+                    "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                    "proj:epsg": 4326,
+                    "proj:shape": [17788, 14400],
+                },
+            },
+            second_asset_path: {
+                "href": second_asset_path,
+                "roles": "data",
+                "proj_extension": {
+                    "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                    "proj:epsg": 4326,
+                    "proj:shape": [17788, 14400],
+                },
+            },
+        },
+        "bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+        "end_datetime": None,
+        "epsg": 4326,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
     """Helper function to create test data."""
 
@@ -211,5 +427,3 @@ def test_convert_job_metadatafile_outputs_to_s3_urls(tmp_path):
 
     assert converted_metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
     assert converted_metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
-
-
