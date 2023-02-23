@@ -21,7 +21,7 @@ pythonPipeline {
   wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
   extras_require = 'dev'
-  upload_dev_wheels = true
+  upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart']
   custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0'
