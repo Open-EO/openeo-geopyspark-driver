@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from kazoo.client import KazooClient
+from typing import Optional
 
 _log = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class Traefik:
 
         self._trigger_configuration_update()
 
-    def add_load_balanced_server(self, cluster_id, server_id, host, port, rule) -> None:
+    def add_load_balanced_server(self, cluster_id, server_id, host, port, rule, health_check: Optional[str]) -> None:
         """
         Adds an HTTP server to a particular load-balanced cluster (a "service" in Traefik parlance). Requests will be
         routed to this cluster if they match the specified router rule.
@@ -52,10 +53,12 @@ class Traefik:
         :param host: hostname or IP of the HTTP server, e.g. "192.168.207.60"
         :param port: port of the HTTP server, e.g. 43845
         :param rule: the router rule, e.g. "Host(`openeo.vito.be`)"
+        :param health_check: path to perform a health check, e.g. "/openeo/1.0/health"
         """
 
         self._create_tservice_server(tservice_id=cluster_id, server_id=server_id, host=host, port=port)
-        self._setup_load_balancer_health_check(tservice_id=cluster_id)
+        if health_check:
+            self._setup_load_balancer_health_check(tservice_id=cluster_id, path=health_check)
         self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, rule=rule, priority=100)
 
         self._trigger_configuration_update()
@@ -88,13 +91,10 @@ class Traefik:
         _log.info(f"Create server {url_key}: {url}")
         self._zk_merge(url_key, url.encode())
 
-    def _setup_load_balancer_health_check(self, tservice_id: str):
+    def _setup_load_balancer_health_check(self, tservice_id: str, path: str):
         tservice_key = self._tservice_key(tservice_id)
         _log.info(f"Setup loadBalancer healthCheck for {tservice_key}")
-        self._zk_merge(
-            f"{tservice_key}/loadBalancer/healthCheck/path",
-            b"/openeo/1.0/health?mode=jvm&from=TraefikLoadBalancer"
-        )
+        self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/path", path.encode())
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/interval", b"60s")
         # TODO: very liberal timeout for now
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/timeout", b"20s")
