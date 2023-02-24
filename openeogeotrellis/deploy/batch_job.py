@@ -193,60 +193,49 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 }
             }
         else:
+            # new approach: SaveResult has generated metadata already for us
+            metadata["assets"] = asset_metadata
+
             # TODO: When all metadata is the same for all assets, set it at the item level only? Or on both levels?.
-            same_epsg_all_assets = True
-            previous_epsg = None
-            same_bbox_all_assets = True
-            previous_bbox = None
+            missing_files_or_projection_md = False
             for asset_path, md in asset_metadata.items():
                 if not Path(asset_path).exists():
                     # This should only happen during unit tests, i.e. when they don't use actual files in the test.
+                    # However, if it happens in production we should see it.
+                    #
+                    # Also note: As soon as any file is missing we can't have the same CRS and BBox anymore.
+                    missing_files_or_projection_md = True
                     logger.error(
                         "Can not read asset's projection extension metadata, asset file not found: {asset_path}"
                     )
-                    same_epsg_all_assets = False
-                    same_bbox_all_assets = False
                 else:
                     projection_metadata = _extract_projection_extension_metadata(
                         asset_path
                     )
                     # There might not be any projection info if gdal could not extract it from the file.
-                    if not projection_metadata:
-                        same_epsg_all_assets = False
-                        same_bbox_all_assets = False
-                        continue
-
-                    md["proj_extension"] = projection_metadata
-                    if (
-                        same_epsg_all_assets
-                        and previous_epsg
-                        and previous_epsg != projection_metadata["proj:epsg"]
-                    ):
-                        same_epsg_all_assets = False
+                    if projection_metadata:
+                        md.update(projection_metadata)
                     else:
-                        previous_epsg = projection_metadata["proj:epsg"]
+                        missing_files_or_projection_md = True
 
-                    if (
-                        same_bbox_all_assets
-                        and previous_bbox
-                        and previous_bbox != projection_metadata["proj:bbox"]
-                    ):
-                        same_bbox_all_assets = False
-                    else:
-                        previous_bbox = projection_metadata["proj:bbox"]
+            if not missing_files_or_projection_md:
+                epsgs = {m["proj:epsg"] for m in asset_metadata.values()}
+                same_epsg_all_assets = len(epsgs) == 1
 
-            # If all asset EPSG codes are the same, and the item-level epgs does not have a value yet,
-            # then use that single value for the general epsg.
-            if not epsg and not metadata.get("epsg"):
-                if same_epsg_all_assets:
-                    epsg = previous_epsg
+                bboxs = {tuple(m["proj:bbox"]) for m in asset_metadata.values()}
+                same_bbox_all_assets = len(bboxs) == 1
 
-            if not metadata.get("bbox"):
-                if same_bbox_all_assets:
-                    metadata["bbox"] = previous_bbox
+                # If all asset EPSG codes are the same, then use that single value for the item-level epsg,
+                # unless there is already a value for epsg from above, so don't overwrite it.
+                if same_epsg_all_assets and not epsg and not metadata.get("epsg"):
+                    epsg = epsgs.pop()
 
-            #new approach: SaveResult has generated metadata already for us
-            metadata['assets'] = asset_metadata
+                # Similarly: use the single value for BBox at the item level,
+                # unless it would overwrite the existing value.
+                if same_bbox_all_assets and not metadata.get("bbox"):
+                    metadata["bbox"] = list(bboxs.pop())
+
+                # TODO: Should we also add the shape at the item level when it is the same for all bands?
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments

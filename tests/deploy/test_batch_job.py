@@ -143,6 +143,8 @@ def test_run_job(evaluate, tmp_path):
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     cube_mock = MagicMock()
+    # TODO: the virtual rasters test data is going to be replaced.
+    #   Add a DEM to the test data repo or get data another way.
     first_asset_path = str(
         get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
     )
@@ -189,11 +191,9 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
             first_asset_path: {
                 "href": first_asset_path,
                 "roles": "data",
-                "proj_extension": {
-                    "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
-                    "proj:epsg": 4326,
-                    "proj:shape": [17788, 14400],
-                },
+                "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                "proj:epsg": 4326,
+                "proj:shape": [17788, 14400],
             },
             "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
         },
@@ -245,6 +245,8 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
 ):
     cube_mock = MagicMock()
 
+    # TODO: the virtual rasters test data is going to be replaced.
+    #   Add a DEM to the test data repo or get data another way.
     first_asset_path = str(
         get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
     )
@@ -298,20 +300,16 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
             first_asset_path: {
                 "href": first_asset_path,
                 "roles": "data",
-                "proj_extension": {
-                    "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
-                    "proj:epsg": 4326,
-                    "proj:shape": [17788, 14400],
-                },
+                "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                "proj:epsg": 4326,
+                "proj:shape": [17788, 14400],
             },
             second_asset_path: {
                 "href": second_asset_path,
                 "roles": "data",
-                "proj_extension": {
-                    "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
-                    "proj:epsg": 4326,
-                    "proj:shape": [17788, 14400],
-                },
+                "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                "proj:epsg": 4326,
+                "proj:shape": [17788, 14400],
             },
         },
         "bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
