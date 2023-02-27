@@ -96,16 +96,14 @@ class ZkJobRegistry:
         self, job_id: str, user_id: str, status: str, auto_mark_done: bool = True
     ) -> None:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
-
-        self.patch(job_id, user_id, status=status, updated=rfc3339.utcnow())
+        self.patch(
+            job_id,
+            user_id,
+            status=status,
+            updated=rfc3339.utcnow(),
+            auto_mark_done=auto_mark_done,
+        )
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
-
-        if auto_mark_done and status in {
-            JOB_STATUS.FINISHED,
-            JOB_STATUS.ERROR,
-            JOB_STATUS.CANCELED,
-        }:
-            self.mark_done(job_id=job_id, user_id=user_id)
 
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
@@ -125,16 +123,24 @@ class ZkJobRegistry:
     def remove_dependencies(self, job_id: str, user_id: str):
         self.patch(job_id, user_id, dependencies=None, dependency_status=None)
 
-    def patch(self, job_id: str, user_id: str, **kwargs) -> None:
+    def patch(
+        self, job_id: str, user_id: str, auto_mark_done: bool = True, **kwargs
+    ) -> None:
         """Partially updates a registered batch job."""
         # TODO make this a private method to have cleaner API
+        # TODO: is there still need to have `auto_mark_done` as public argument?
         job_info, version = self._read(job_id, user_id)
         self._update({**job_info, **kwargs}, version)
 
-    def mark_done(self, job_id: str, user_id: str) -> None:
-        """Marks a job as done (not to be tracked anymore)."""
-        # TODO: possible to make this a private method (as implementation detail)?
+        if auto_mark_done and kwargs.get("status") in {
+            JOB_STATUS.FINISHED,
+            JOB_STATUS.ERROR,
+            JOB_STATUS.CANCELED,
+        }:
+            self._mark_done(job_id=job_id, user_id=user_id)
 
+    def _mark_done(self, job_id: str, user_id: str) -> None:
+        """Marks a job as done (not to be tracked anymore)."""
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id)
 
@@ -147,8 +153,11 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
+        _log.info(f"Marked {job_id} as done", extra={"job_id": job_id})
+
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         """Marks as job as ongoing (to be tracked)."""
+        # TODO: can this method be made private or removed completely?
 
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id, include_done=True)

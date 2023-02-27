@@ -436,25 +436,6 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-        zk_job_registry.patch(
-            job_id=job_id,
-            user_id=user_id,
-            status=job_metadata.status,
-            started=job_metadata.start_time,
-            finished=job_metadata.finish_time,
-            usage=job_metadata.usage,
-        )
-        with ElasticJobRegistry.just_log_errors(
-            f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
-        ):
-            if self._elastic_job_registry:
-                self._elastic_job_registry.set_status(
-                    job_id=job_id,
-                    status=job_metadata.status,
-                    started=job_metadata.start_time,
-                    finished=job_metadata.finish_time,
-                    # TODO: also record usage data
-                )
 
         if job_metadata.status in {
             JOB_STATUS.FINISHED,
@@ -477,12 +458,6 @@ class JobTracker:
                 async_task.schedule_delete_batch_process_dependency_sources(
                     job_id, user_id, dependency_sources
                 )
-
-            # Note: setting the status is already done with a `patch` higher,
-            #       but we do it here again with `set_status` for the "auto_mark_done" feature
-            zk_job_registry.set_status(
-                job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
-            )
 
             # TODO: make this usage report handling/logging more generic?
             sentinelhub_processing_units = (
@@ -509,6 +484,26 @@ class JobTracker:
                     ),
                 },
             )
+
+        zk_job_registry.patch(
+            job_id=job_id,
+            user_id=user_id,
+            status=job_metadata.status,
+            started=job_metadata.start_time,
+            finished=job_metadata.finish_time,
+            usage=job_metadata.usage,
+        )
+        with ElasticJobRegistry.just_log_errors(
+            f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
+        ):
+            if self._elastic_job_registry:
+                self._elastic_job_registry.set_status(
+                    job_id=job_id,
+                    status=job_metadata.status,
+                    started=job_metadata.start_time,
+                    finished=job_metadata.finish_time,
+                    # TODO: also record usage data
+                )
 
 
 class CliApp:
