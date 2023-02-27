@@ -390,11 +390,10 @@ class TestDownload:
     shutil.rmtree(test_write_assets_parameterize_path, ignore_errors=True)
     os.makedirs(test_write_assets_parameterize_path)
 
-    # Parameters found inside 'write_assets'. 768 cases, would be OK to reduce the combinations a bit.
-    # Now runs for about 2 minutes
-    @pytest.mark.parametrize("tiled", [True])
-    @pytest.mark.parametrize("stitch", [True])
-    @pytest.mark.parametrize("catalog", [True])
+    # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
+    @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("stitch", [True])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("catalog", [True])  # Specify [True, False] to run more tests
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
