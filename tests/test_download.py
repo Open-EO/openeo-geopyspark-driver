@@ -66,7 +66,7 @@ class TestDownload:
         (Point(-10.0, 15.0), None, None)
     ]
 
-    def create_spacetime_layer(self):
+    def create_spacetime_layer(self, multiple_dates=False):
         cells = np.array([self.first, self.second], dtype='int')
         tile = Tile.from_numpy_array(cells, -1)
 
@@ -75,14 +75,25 @@ class TestDownload:
                  (SpaceTimeKey(0, 1, self.now), tile),
                  (SpaceTimeKey(1, 1, self.now), tile)]
 
+        if multiple_dates:
+            layer.extend([
+                (SpaceTimeKey(0, 0, self.now + datetime.timedelta(days=10)), tile),
+                (SpaceTimeKey(1, 0, self.now + datetime.timedelta(days=10)), tile),
+                (SpaceTimeKey(0, 1, self.now + datetime.timedelta(days=10)), tile),
+                (SpaceTimeKey(1, 1, self.now + datetime.timedelta(days=10)), tile)
+            ])
+
+        min_instant = min(layer,key=lambda item:item[0].instant)[0].instant
+        max_instant = max(layer,key=lambda item:item[0].instant)[0].instant
+
         rdd = SparkContext.getOrCreate().parallelize(layer)
 
         metadata = {'cellType': 'int32ud-1',
                     'extent': self.extent,
                     'crs': '+proj=longlat +datum=WGS84 +no_defs ',
                     'bounds': {
-                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(self.now)},
-                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(self.now)}
+                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(min_instant)},
+                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(max_instant)}
                     },
                     'layoutDefinition': {
                         'extent': self.extent,
@@ -391,9 +402,9 @@ class TestDownload:
     os.makedirs(test_write_assets_parameterize_path)
 
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
-    @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
-    @pytest.mark.parametrize("stitch", [True])  # Specify [True, False] to run more tests
-    @pytest.mark.parametrize("catalog", [True])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("tiled", [True, False])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("stitch", [True, False])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("catalog", [True, False])  # Specify [True, False] to run more tests
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
@@ -419,7 +430,7 @@ class TestDownload:
             return
 
         if space_type == "spacetime":
-            input_layer = self.create_spacetime_layer()
+            input_layer = self.create_spacetime_layer(multiple_dates=True)
         else:
             input_layer = self.create_spatial_layer()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
@@ -461,12 +472,7 @@ class TestDownload:
         name, asset = next(iter(assets.items()))
         print("href of first asset: " + asset['href'])
 
-        # Special case for saveRDDTemporal as it only returns one case, but is designed to return multiple cases
-        # But WHY is there only one file returned?
-        saveRDDTemporalCase = format_arg == "GTIFF" and not catalog and not stitch and batch_mode \
-                              and space_type == "spacetime" and not tile_grid and not sample_by_feature
-
-        if len(assets) == 1 and not saveRDDTemporalCase:
+        if len(assets) == 1:
             assert assets[filename]
             assert filename in asset['href']
         else:
