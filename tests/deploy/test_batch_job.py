@@ -153,6 +153,9 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
             "href": first_asset_path,
             "roles": "data",
         },
+        # The second file does not exist on the filesystem.
+        # This triggers that the projection extension metadata is put on the
+        # bands, for the remaining assets (Here there is only 1 other asset off course).
         "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
     }
     cube_mock.write_assets.return_value = asset_meta
@@ -243,6 +246,9 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
 def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(
     evaluate, tmp_path
 ):
+    """When there are two raster assets with the same projection metadata, it should put
+    those metadata at the level of the item instead of the individual bands.
+    """
     cube_mock = MagicMock()
 
     # TODO: the virtual rasters test data is going to be replaced.
@@ -250,6 +256,8 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     first_asset_path = str(
         get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
     )
+    # For the second file: use a copy of the first file  (in the temp dir) so we know
+    # that GDAL will find exactly the same metadata under a different asset path.
     second_asset_path = str(tmp_path / "copy_copernicus-dem-30m-unittest.vrt")
     shutil.copyfile(first_asset_path, second_asset_path)
     asset_meta = {
@@ -300,21 +308,18 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
             first_asset_path: {
                 "href": first_asset_path,
                 "roles": "data",
-                "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
-                "proj:epsg": 4326,
-                "proj:shape": [17788, 14400],
+                # Projection extension metadata should not be here, but higher up.
             },
             second_asset_path: {
                 "href": second_asset_path,
                 "roles": "data",
-                "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
-                "proj:epsg": 4326,
-                "proj:shape": [17788, 14400],
+                # Idem: projection extension metadata should not be here, but higher up.
             },
         },
         "bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
         "end_datetime": None,
         "epsg": 4326,
+        "proj:shape": [17788, 14400],
         "geometry": None,
         "area": None,
         "unique_process_ids": ["discard_result"],

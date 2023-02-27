@@ -193,49 +193,67 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 }
             }
         else:
-            # new approach: SaveResult has generated metadata already for us
-            metadata["assets"] = asset_metadata
+            # New approach: SaveResult has generated metadata already for us
 
-            # TODO: When all metadata is the same for all assets, set it at the item level only? Or on both levels?.
+            # Add the projection extension metadata.
+            # When the projection metadata is the same for all assets, then set it at the item level only.
+            # This makes it easier to read, so we see at a glance that all bands have the same proj metadata.
+            projection_metadata = {}
+
+            # We also check whether any asset file was missing or its projection metadata could not be read.
+            # In that case we never write the projection metadata at the item level.
             missing_files_or_projection_md = False
-            for asset_path, md in asset_metadata.items():
+
+            for asset_path in asset_metadata.keys():
                 if not Path(asset_path).exists():
-                    # This should only happen during unit tests, i.e. when they don't use actual files in the test.
-                    # However, if it happens in production we should see it.
+                    # Path should exist so log an error.
+                    # We should only have missing files during unit tests that don't actually use files.
+                    # However, if this happens in production we should see it in the logs.
                     #
-                    # Also note: As soon as any file is missing we can't have the same CRS and BBox anymore.
+                    # Also note: As soon as any file is missing we can't really have the same CRS and
+                    # BBox for all assets anymore.
                     missing_files_or_projection_md = True
                     logger.error(
                         "Can not read asset's projection extension metadata, asset file not found: {asset_path}"
                     )
                 else:
-                    projection_metadata = _extract_projection_extension_metadata(
+                    asset_proj_metadata = _extract_projection_extension_metadata(
                         asset_path
                     )
-                    # There might not be any projection info if gdal could not extract it from the file.
-                    if projection_metadata:
-                        md.update(projection_metadata)
+                    # If gdal could not extract the projection metadata from the file (The file is corrupt perhaps?).
+                    if asset_proj_metadata:
+                        projection_metadata[asset_path] = asset_proj_metadata
                     else:
                         missing_files_or_projection_md = True
+                        logger.error(
+                            "Could not get projection extension metadata for following asset file: {asset_path}"
+                        )
 
+            same_epsg_all_assets = False
+            same_bbox_all_assets = False
+            same_shapes_all_assets = False
             if not missing_files_or_projection_md:
-                epsgs = {m["proj:epsg"] for m in asset_metadata.values()}
+                epsgs = {m["proj:epsg"] for m in projection_metadata.values()}
                 same_epsg_all_assets = len(epsgs) == 1
 
-                bboxs = {tuple(m["proj:bbox"]) for m in asset_metadata.values()}
+                bboxs = {tuple(m["proj:bbox"]) for m in projection_metadata.values()}
                 same_bbox_all_assets = len(bboxs) == 1
 
-                # If all asset EPSG codes are the same, then use that single value for the item-level epsg,
-                # unless there is already a value for epsg from above, so don't overwrite it.
-                if same_epsg_all_assets and not epsg and not metadata.get("epsg"):
+                shapes = {tuple(m["proj:shape"]) for m in projection_metadata.values()}
+                same_shapes_all_assets = len(shapes) == 1
+
+            if same_epsg_all_assets and same_bbox_all_assets and same_shapes_all_assets:
+                # TODO: Should we overwrite existing values for epsg and bbox, or keep what is already there?
+                if not epsg and not metadata.get("epsg"):
                     epsg = epsgs.pop()
-
-                # Similarly: use the single value for BBox at the item level,
-                # unless it would overwrite the existing value.
-                if same_bbox_all_assets and not metadata.get("bbox"):
+                if not metadata.get("bbox"):
                     metadata["bbox"] = list(bboxs.pop())
+                metadata["proj:shape"] = list(shapes.pop())
+            else:
+                for asset_path, proj_md in projection_metadata.items():
+                    asset_metadata[asset_path].update(proj_md)
 
-                # TODO: Should we also add the shape at the item level when it is the same for all bands?
+            metadata["assets"] = asset_metadata
 
     metadata['epsg'] = epsg
     metadata['instruments'] = instruments
@@ -270,12 +288,12 @@ def _extract_projection_extension_metadata(asset_path: str) -> dict:
         Note that these dictionary keys in the return value *do* include the colon to be
         in line with the names in stac-extensions.
 
-    TODO: upgrade GDAL to 3.6 and use the STAC dictionary it returns instead
-    of extracting it from the other output of gdal.Info() .
+    TODO: upgrade GDAL to 3.6 and use the STAC dictionary that GDAL 3.6+ returns,
+        instead of extracting it from the other output of ``gdal.Info()``.
 
-    In a future version we can upgrade to GDAL v3.6 and in that version the
-    gdal.Info function include these properties directly in the key "stac" of
-    the dictionary it returns.
+    In a future version of the GeoPySpark driver we can upgrade to GDAL v3.6
+    and in that version the gdal.Info function include these properties directly
+    in the key "stac" of the dictionary it returns.
     """
     # Make gdal raise exception, otherwise it just writes errors on stdout.
     gdal.UseExceptions()
