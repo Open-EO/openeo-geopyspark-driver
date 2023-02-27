@@ -684,7 +684,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 bbox = job_info.bbox
                 if not (isinstance(bbox, list) and len(bbox) == 4):
                     raise InternalException(
-                        message=f"Expected bbox list from job info in load_result but got: {bbox!r}"
+                        message=f"load_result with job {job_id} expects bbox list but got: {bbox!r}"
                     )
                 return [bbox[0], bbox[1], bbox[2], bbox[3]], job_info.epsg
 
