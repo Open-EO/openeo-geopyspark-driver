@@ -516,6 +516,7 @@ class TestYarnJobTracker:
         """
         Check that JobTracker.update_statuses() keeps working if there is unexpected error while checking YARN state.
         """
+        caplog.set_level(logging.WARNING)
         for j in [1, 2, 3]:
             zk_job_registry.register(
                 job_id=f"job-{j}",
