@@ -43,6 +43,9 @@ class TestGpsBackendConfig:
 class TestGetGpsBackendConfig:
     @pytest.fixture(autouse=True)
     def _flush_gps_backend_config(self):
+        # Make sure config cached is cleared before and after each test
+        flush_gps_backend_config()
+        yield
         flush_gps_backend_config()
 
     def test_gps_backend_config_default(self, tmp_path):
