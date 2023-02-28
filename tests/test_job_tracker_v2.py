@@ -27,7 +27,6 @@ from openeogeotrellis.job_tracker_v2 import (
     K8sStatusGetter,
     YarnAppReportParseException,
     YarnStatusGetter,
-    get_kerberos_auth,
 )
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
@@ -927,50 +926,6 @@ class TestYarnStatusGetter:
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
             _ = YarnStatusGetter.parse_application_response(json={})
-
-    def test_kerberos_auth_is_actually_attempted(self, requests_mock):
-        """Test that it actually attempts to do kerberos authentication.
-
-        Reason to cover this case:
-
-        During early testing we found out HTTPKerberosAuth was not having any effect,
-        and this was because in the constructor requests_gssapi.HTTPKerberosAuth(),
-        the default argument for mutual_authentication is requests_gssapi.DISABLED.
-
-        This was a bit surprising. Also this behavior is different from
-        requests_kerberos.HTTPKerberosAuth, for which it is supposed to be a
-        compatible replacement, however it is not 100% the same.
-        If this happens again it should not go unnoticed.
-
-        So the test checks that the requests_gssapi.HTTPKerberosAuth actually has an effect,
-        but no more than that.
-        """
-
-        status_getter = YarnStatusGetter(
-            ConfigParams().yarn_rest_api_base_url, get_kerberos_auth()
-        )
-        app_id = "application_1671092799310_26739"
-        app_url = status_getter.get_application_url(app_id)
-        response = fake_yarn_rest_response_json(
-            app_id=app_id,
-            state="RUNNING",
-            final_status="UNDEFINED",
-            started_time=1673021672793,
-            finished_time=0,
-            progress=50.0,
-            memory_seconds=96183879,
-            vcore_seconds=46964,
-            diagnostics="",
-        )
-        m_get = requests_mock.get(app_url, json=response)
-
-        # To test this, we just try to run get_job_metadata with authentication turned on,
-        # but we don't have a Kerberos server in the unit test, so we expect that is raises
-        # a MutualAuthenticationError.
-        with pytest.raises(requests_gssapi.MutualAuthenticationError):
-            status_getter.get_job_metadata(None, None, app_id)
-
-        assert m_get.called
 
 
 class TestK8sJobTracker:

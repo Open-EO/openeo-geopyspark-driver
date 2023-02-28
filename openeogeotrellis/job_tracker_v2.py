@@ -81,13 +81,6 @@ class YarnAppReportParseException(Exception):
     pass
 
 
-def get_kerberos_auth():
-    """Small helper function to get Kerberos authentication in a consistent way."""
-    return requests_gssapi.HTTPSPNEGOAuth(
-        mutual_authentication=requests_gssapi.REQUIRED
-    )
-
-
 class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
@@ -543,7 +536,10 @@ class CliApp:
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
                     app_state_getter = YarnStatusGetter(
-                        ConfigParams().yarn_rest_api_base_url, get_kerberos_auth()
+                        yarn_api_base_url=ConfigParams().yarn_rest_api_base_url,
+                        auth=requests_gssapi.HTTPSPNEGOAuth(
+                            mutual_authentication=requests_gssapi.REQUIRED
+                        ),
                     )
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()
