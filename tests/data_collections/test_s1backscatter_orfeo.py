@@ -341,7 +341,7 @@ def test_creodias_dem_subset_copernicus30_geotiff(bbox, bbox_epsg, expected_syml
     # Compare the symlinks with the expected ones.
     for i, expected_symlink in enumerate(expected_symlinks):
         expected_symlinks[i] = str(Path(expected_symlink, expected_symlink + ".tif"))
-    assert expected_symlinks == symlinks
+    assert set(expected_symlinks) == set(symlinks)
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg", "expected"], [
     ((3.1, 51.2, 3.5, 51.3), 4326, {"N51E003.hgt"}),
