@@ -17,7 +17,8 @@ from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.vault import Vault
 
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
-    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
+    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc, \
+    imagecollection_with_two_bands_spatial_only
 from .data import get_test_data_file, TEST_DATA_ROOT
 
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
