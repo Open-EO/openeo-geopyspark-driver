@@ -3,6 +3,8 @@ from pathlib import Path
 from pprint import pformat
 from typing import Optional
 
+from openeo_driver.utils import smart_bool
+
 
 class ConfigParams:
     # TODO: start using real config files instead of this thin wrapper around env vars?
@@ -15,9 +17,16 @@ class ConfigParams:
             'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
         ).split(',')
 
-        self.batch_jobs_zookeeper_root_path = env.get("BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs")
+        self.batch_jobs_zookeeper_root_path = env.get(
+            "BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs"
+        )
         self.async_task_handler_environment = env.get("ASYNC_TASK_HANDLER_ENV")
         self.cache_shub_batch_results = ConfigParams._as_boolean(env.get("CACHE_SHUB_BATCH_RESULTS"))
+
+        self.async_tasks_kafka_bootstrap_servers = env.get(
+            "ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS",
+            "epod-master1.vgt.vito.be:6668,epod-master2.vgt.vito.be:6668,epod-master3.vgt.vito.be:6668",
+        )
 
         # TODO #283 using this "is_ci_context" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         # Are we running in a unittest or continuous integration context?
@@ -27,6 +36,8 @@ class ConfigParams:
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
 
         self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")
+
+        self.opensearch_enrich = smart_bool(env.get("OPENSEARCH_ENRICH", True))
 
         # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         self.is_kube_deploy = env.get("KUBE", False)
@@ -55,6 +66,11 @@ class ConfigParams:
             ("creodias" if self.is_kube_deploy else "mep") + "-" + self.openeo_env
         )
         self.ejr_api = env.get("OPENEO_EJR_API", "https://jobregistry.openeo.vito.be")
+
+        self.ejr_credentials_vault_path = env.get(
+            "OPENEO_EJR_CREDENTIALS_VAULT_PATH",
+            "TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
+        )
 
     def __str__(self) -> str:
         return pformat(vars(self))

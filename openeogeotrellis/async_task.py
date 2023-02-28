@@ -7,24 +7,24 @@ import time
 from subprocess import Popen, PIPE
 from typing import List, Optional
 
+import kafka
 import kazoo.client
 from py4j.java_gateway import OutputConsumer, ProcessConsumer
+from py4j.clientserver import ClientServer, JavaParameters
+from pythonjsonlogger.jsonlogger import JsonFormatter
 
 import openeogeotrellis
-from kafka import KafkaProducer
 from openeo.util import dict_no_none
 from openeo_driver.errors import JobNotFoundException
-from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.jobregistry import JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
-from py4j.clientserver import ClientServer, JavaParameters
-
 from openeogeotrellis.job_registry import ZkJobRegistry
-from pythonjsonlogger.jsonlogger import JsonFormatter
+
 
 ARG_BATCH_JOB_ID = 'batch_job_id'
 ARG_USER_ID = 'user_id'
@@ -65,13 +65,14 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
         'arguments': arguments
     }
 
-    env = ConfigParams().async_task_handler_environment
+    config = ConfigParams()
+    env = config.async_task_handler_environment
 
     def encode(s: str) -> bytes:
         return s.encode('utf-8')
 
-    producer = KafkaProducer(
-        bootstrap_servers="epod-master1.vgt.vito.be:6668,epod-master2.vgt.vito.be:6668,epod-master3.vgt.vito.be:6668",
+    producer = kafka.KafkaProducer(
+        bootstrap_servers=config.async_tasks_kafka_bootstrap_servers,
         security_protocol='PLAINTEXT',
         acks='all'
     )
@@ -183,7 +184,7 @@ def main():
         try:
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
                 vault = Vault(ConfigParams().vault_addr)
-                catalog = get_layer_catalog(vault=vault, opensearch_enrich=True)
+                catalog = get_layer_catalog(vault=vault)
 
                 jvm = java_gateway.jvm
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
@@ -230,7 +231,10 @@ def main():
                     with ZkJobRegistry() as registry:
                         job_info = registry.get_job(batch_job_id, user_id)
 
-                    if job_info.get('dependency_status') not in ['awaiting', "awaiting_retry"]:
+                    if job_info.get("dependency_status") not in [
+                        DEPENDENCY_STATUS.AWAITING,
+                        DEPENDENCY_STATUS.AWAITING_RETRY,
+                    ]:
                         break
                     else:
                         try:

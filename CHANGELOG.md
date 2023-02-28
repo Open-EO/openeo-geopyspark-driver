@@ -10,6 +10,22 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2023-02-27 (0.6.7a1)
+- GeoParquet support to allow loading large vector files
+- Improved specific log messages 
+- Better support for multiple filter_spatial prcesses in same process graph (https://github.com/Open-EO/openeo-geopyspark-driver/issues/147)
+- Bugfix for sampling sentinelhub based collections (https://github.com/Open-EO/openeo-geopyspark-driver/issues/279)
+- vector_buffer: Throw an error when a negative buffer size resuls in invalid geometries (https://github.com/Open-EO/openeo-python-driver/issues/164)
+- batch jobs now also report usage of credits (https://github.com/Open-EO/openeo-geopyspark-driver/issues/272)
+- non-utm collections should now have a better alignment to the original rasters, if the process graph does not apply an explicit resampling (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69)
+
+## 2023-02-07 (0.6.7a1)
+- Added initial support for the `inspect` process. It can be used on datacubes and in callbacks.
+- The size of a single chunk is now automatically increased for larger jobs, to improve IO performance.
+- resample_cube_spatial is no longer needed in all cases when using `merge_cubes`or `mask`
+- Better detection of duplicate products in source catalogs
+- The 'if' process will no longer evaluate the branch that is not accepted https://github.com/Open-EO/openeo-python-driver/issues/109
+
 ## 2023-01-20 (0.6.7a1)
 - Changed: Getting a job's logs now leaves out log lines that have no loglevel or a level that is not supported. [openeo-python-driver/#160](https://github.com/Open-EO/openeo-python-driver/issues/160)
 

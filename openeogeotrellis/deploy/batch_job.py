@@ -422,8 +422,12 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         format_options["batch_mode"] = True
         result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
 
-    if not isinstance(result, SaveResult):  # Assume generic JSON result
+    if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
         result = JSONResult(result)
+
+    result_list = result
+    if not isinstance(result,List):
+        result_list = [result]
 
     global_metadata_attributes = {
         "title" : job_specification.get("title",""),
@@ -432,41 +436,37 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
 
     }
 
-    assets_metadata = None
-    ml_model_metadata = None
-    if('write_assets' in dir(result)):
-        result.options["batch_mode"] = True
-        result.options["file_metadata"] = global_metadata_attributes
-        if( result.options.get("sample_by_feature")):
-            geoms = tracer.get_geometries("filter_spatial")
-            if len(geoms) > 1:
-                logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(geoms)))
-            elif len(geoms) == 0:
-                logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
-            else:
-                result.options["geometries"] = geoms[0]
-            if(result.options["geometries"] == None):
-                logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
-        assets_metadata = result.write_assets(str(output_file))
-        if isinstance(result, MlModelResult):
-            ml_model_metadata = result.get_model_metadata(str(output_file))
-            logger.info("Extracted ml model metadata from %s" % output_file)
-        for name,asset in assets_metadata.items():
-            add_permissions(Path(asset["href"]), stat.S_IWGRP)
-        logger.info(f"wrote {len(assets_metadata)} assets to {output_file}")
-    elif isinstance(result, ImageCollectionResult):
-        result.options["batch_mode"] = True
-        result.save_result(filename=str(output_file))
-        add_permissions(output_file, stat.S_IWGRP)
-        logger.info("wrote image collection to %s" % output_file)
-    elif isinstance(result, MultipleFilesResult):
-        result.reduce(output_file, delete_originals=True)
-        add_permissions(output_file, stat.S_IWGRP)
-        logger.info("reduced %d files to %s" % (len(result.files), output_file))
-    elif isinstance(result, NullResult):
-        logger.info("skipping output file %s" % output_file)
-    else:
-        raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
+    assets_metadata = {}
+    for result in result_list:
+        ml_model_metadata = None
+        if('write_assets' in dir(result)):
+            result.options["batch_mode"] = True
+            result.options["file_metadata"] = global_metadata_attributes
+            if( result.options.get("sample_by_feature")):
+                geoms = tracer.get_last_geometry("filter_spatial")
+                if geoms == None:
+                    logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
+                else:
+                    result.options["geometries"] = geoms
+                if(result.options["geometries"] == None):
+                    logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
+            the_assets_metadata = result.write_assets(str(output_file))
+            if isinstance(result, MlModelResult):
+                ml_model_metadata = result.get_model_metadata(str(output_file))
+                logger.info("Extracted ml model metadata from %s" % output_file)
+            for name,asset in the_assets_metadata.items():
+                add_permissions(Path(asset["href"]), stat.S_IWGRP)
+            logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
+            assets_metadata = {**assets_metadata,**the_assets_metadata}
+        elif isinstance(result, ImageCollectionResult):
+            result.options["batch_mode"] = True
+            result.save_result(filename=str(output_file))
+            add_permissions(output_file, stat.S_IWGRP)
+            logger.info("wrote image collection to %s" % output_file)
+        elif isinstance(result, NullResult):
+            logger.info("skipping output file %s" % output_file)
+        else:
+            raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
     if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
         logger.debug("awaiting Sentinel Hub CARD4L data...")

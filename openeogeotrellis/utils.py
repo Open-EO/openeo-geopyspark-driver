@@ -153,6 +153,9 @@ class UtcNowClock:
     Helper class to have a mockable wrapper for datetime.datetime.utcnow
     (which is not straightforward to mock directly).
     """
+
+    # TODO: just start using `time_machine` module for time mocking
+
     _utcnow = _utcnow_orig = datetime.datetime.utcnow
 
     @classmethod
@@ -231,7 +234,7 @@ def to_projected_polygons(
         return to_projected_polygons(
             jvm,
             GeometryCollection(list(geometry.get_geometries())),
-            crs=str(geometry.get_crs()),
+            crs=f"EPSG:{geometry.get_crs().to_epsg()}",
             buffer_points=buffer_points,
             none_for_points=none_for_points,
         )

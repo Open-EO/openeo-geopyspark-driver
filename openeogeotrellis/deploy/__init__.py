@@ -39,8 +39,7 @@ def get_socket() -> (str, int):
     return local_ip, port
 
 
-def update_zookeeper(host: str, port: int, env: str) -> None:
-    cluster_id = 'openeo-' + env
+def update_zookeeper(cluster_id: str, rule: str, host: str, port: int, health_check: str = None) -> None:
     server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
 
     zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
@@ -50,7 +49,8 @@ def update_zookeeper(host: str, port: int, env: str) -> None:
             cluster_id=cluster_id,
             server_id=server_id,
             host=host, port=port,
-            environment=env,
+            rule=rule,
+            health_check=health_check
         )
     finally:
         zk.stop()

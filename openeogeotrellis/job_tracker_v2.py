@@ -18,6 +18,7 @@ from typing import Callable, List, NamedTuple, Optional, Union
 import requests
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import get_logging_config, setup_logging
 import openeo_driver.utils
 
@@ -439,25 +440,6 @@ class JobTracker:
             stats["status same"] += 1
             stats[f"status same {job_metadata.status!r}"] += 1
 
-        zk_job_registry.patch(
-            job_id=job_id,
-            user_id=user_id,
-            status=job_metadata.status,
-            started=job_metadata.start_time,
-            finished=job_metadata.finish_time,
-            usage=job_metadata.usage.to_dict(),
-        )
-        with ElasticJobRegistry.just_log_errors(
-            f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
-        ):
-            if self._elastic_job_registry:
-                self._elastic_job_registry.set_status(
-                    job_id=job_id,
-                    status=job_metadata.status,
-                    started=job_metadata.start_time,
-                    finished=job_metadata.finish_time,
-                    # TODO: also record usage data
-                )
 
         if job_metadata.status in {
             JOB_STATUS.FINISHED,
@@ -491,6 +473,26 @@ class JobTracker:
             # TODO: don't add costs if there are none ()?
             zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
 
+        zk_job_registry.patch(
+            job_id=job_id,
+            user_id=user_id,
+            status=job_metadata.status,
+            started=job_metadata.start_time,
+            finished=job_metadata.finish_time,
+            usage=job_metadata.usage,
+        )
+        with ElasticJobRegistry.just_log_errors(
+            f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
+        ):
+            if self._elastic_job_registry:
+                self._elastic_job_registry.set_status(
+                    job_id=job_id,
+                    status=job_metadata.status,
+                    started=job_metadata.start_time,
+                    finished=job_metadata.finish_time,
+                    # TODO: also record usage data
+                )
+
 
 class CliApp:
     def main(self, *, args: Optional[List[str]] = None):
@@ -523,7 +525,9 @@ class CliApp:
                 etl_api_access_token = ...  # FIXME
 
                 # Elastic Job Registry (EJR)
-                elastic_job_registry = get_elastic_job_registry()
+                elastic_job_registry = get_elastic_job_registry(
+                    requests_session=requests_with_retry(total=3, backoff_factor=2)
+                )
 
                 # YARN or Kubernetes?
                 app_cluster = args.app_cluster

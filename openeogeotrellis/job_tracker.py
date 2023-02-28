@@ -20,6 +20,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
@@ -117,19 +118,6 @@ class JobTracker:
 
                                 new_status = k8s_state_to_openeo_job_status(state)
 
-                                registry.patch(job_id, user_id,
-                                               status=new_status,
-                                               started=start_time,
-                                               finished=finish_time)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from K8s"):
-                                    if self._elastic_job_registry:
-                                        self._elastic_job_registry.set_status(
-                                            job_id=job_id,
-                                            status=new_status,
-                                            started=start_time,
-                                            finished=finish_time,
-                                        )
-
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
                                               (job_id, current_status, new_status), extra={'job_id': job_id})
@@ -144,8 +132,24 @@ class JobTracker:
                                         result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
 
-                                    registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
+                                registry.patch(
+                                    job_id=job_id,
+                                    user_id=user_id,
+                                    status=new_status,
+                                    started=start_time,
+                                    finished=finish_time,
+                                )
+                                with ElasticJobRegistry.just_log_errors(
+                                    f"job_tracker {new_status=} from K8s"
+                                ):
+                                    if self._elastic_job_registry:
+                                        self._elastic_job_registry.set_status(
+                                            job_id=job_id,
+                                            status=new_status,
+                                            started=start_time,
+                                            finished=finish_time,
+                                        )
+
                             else:
                                 state, final_state, start_time, finish_time, aggregate_resource_allocation =\
                                     JobTracker._yarn_status(application_id)
@@ -156,25 +160,6 @@ class JobTracker:
                                 new_status = yarn_state_to_openeo_job_status(
                                     state, final_state
                                 )
-
-                                registry.patch(job_id, user_id,
-                                               status=new_status,
-                                               started=JobTracker._to_serializable_datetime(start_time),
-                                               finished=JobTracker._to_serializable_datetime(finish_time),
-                                               memory_time_megabyte_seconds=memory_time_megabyte_seconds,
-                                               cpu_time_seconds=cpu_time_seconds)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from YARN"):
-                                    if self._elastic_job_registry:
-                                        self._elastic_job_registry.set_status(
-                                            job_id=job_id,
-                                            status=new_status,
-                                            started=JobTracker._to_serializable_datetime(
-                                                start_time
-                                            ),
-                                            finished=JobTracker._to_serializable_datetime(
-                                                finish_time
-                                            ),
-                                    )
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
@@ -236,8 +221,7 @@ class JobTracker:
                                         async_task.schedule_delete_batch_process_dependency_sources(
                                             job_id, user_id, dependency_sources)
 
-                                    registry.mark_done(job_id, user_id)
-
+                                    # TODO: is this ETL related logging still necessary?
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
                                         'area': result_metadata.get('area'),
@@ -246,6 +230,35 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
+
+                                registry.patch(
+                                    job_id=job_id,
+                                    user_id=user_id,
+                                    status=new_status,
+                                    started=JobTracker._to_serializable_datetime(
+                                        start_time
+                                    ),
+                                    finished=JobTracker._to_serializable_datetime(
+                                        finish_time
+                                    ),
+                                    memory_time_megabyte_seconds=memory_time_megabyte_seconds,
+                                    cpu_time_seconds=cpu_time_seconds,
+                                )
+                                with ElasticJobRegistry.just_log_errors(
+                                    f"job_tracker {new_status=} from YARN"
+                                ):
+                                    if self._elastic_job_registry:
+                                        self._elastic_job_registry.set_status(
+                                            job_id=job_id,
+                                            status=new_status,
+                                            started=JobTracker._to_serializable_datetime(
+                                                start_time
+                                            ),
+                                            finished=JobTracker._to_serializable_datetime(
+                                                finish_time
+                                            ),
+                                        )
+
                         except UnknownYarnApplicationException:
                             # TODO eliminate this whole try-except (but not now to keep diff simple)
                             raise
@@ -368,19 +381,26 @@ class JobTracker:
 
 
 def get_etl_api_access_token(principal: str, keytab: str):
-    vault = Vault(ConfigParams().vault_addr)
+    requests_session = requests_with_retry(total=3, backoff_factor=2)
+
+    vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
     vault_token = vault.login_kerberos(principal, keytab)
-
     etl_api_credentials = vault.get_etl_api_credentials(vault_token)
-    oidc_provider = OidcProviderInfo(issuer=ConfigParams().etl_api_oidc_issuer)
 
+    oidc_provider = OidcProviderInfo(
+        issuer=ConfigParams().etl_api_oidc_issuer,
+        requests_session=requests_session,
+    )
     client_info = OidcClientInfo(
         provider=oidc_provider,
         client_id=etl_api_credentials.client_id,
         client_secret=etl_api_credentials.client_secret,
     )
 
-    authenticator = OidcClientCredentialsAuthenticator(client_info)
+    authenticator = OidcClientCredentialsAuthenticator(
+        client_info=client_info,
+        requests_session=requests_session,
+    )
     return authenticator.get_tokens().access_token
 
 
@@ -419,7 +439,9 @@ def main():
         etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
                                                                                                    args.keytab)
 
-        elastic_job_registry = get_elastic_job_registry()
+        elastic_job_registry = get_elastic_job_registry(
+            requests_session=requests_with_retry(total=3, backoff_factor=2)
+        )
 
         with EtlApi(ConfigParams().etl_api) as etl_api:
             job_tracker = JobTracker(

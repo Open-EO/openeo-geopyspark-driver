@@ -4,6 +4,7 @@ from subprocess import CalledProcessError, PIPE
 from typing import NamedTuple, Optional
 
 import hvac
+import requests
 
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.jobregistry import ElasticJobRegistryCredentials
@@ -16,9 +17,14 @@ class OAuthCredentials(NamedTuple):
     client_secret: str
 
 
+class VaultLoginError(Exception):
+    pass
+
+
 class Vault:
-    def __init__(self, url: str):
+    def __init__(self, url: str, requests_session: Optional[requests.Session] = None):
         self._url = url
+        self._session = requests_session or requests.Session()
 
     def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> OAuthCredentials:
         client_credentials = self._get_kv_credentials(
@@ -77,11 +83,12 @@ class Vault:
             vault_token = subprocess.check_output(cmd, text=True, stderr=PIPE)
             return vault_token
         except CalledProcessError as e:
-            _log.error(msg=f"{e} stderr: {e.stderr.strip()}", exc_info=True)
-            raise
+            raise VaultLoginError(
+                f"Vault login (Kerberos) failed: {e!s}. stderr: {e.stderr.strip()!r}"
+            ) from e
 
     def _client(self, token: Optional[str] = None):
-        return hvac.Client(self._url, token=token)
+        return hvac.Client(self._url, token=token, session=self._session)
 
     def __str__(self):
         return self._url
@@ -92,7 +99,7 @@ class Vault:
         client = self._client(token=vault_token or self.login_kerberos())
 
         secret = client.secrets.kv.v2.read_secret_version(
-            f"TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
+            ConfigParams().ejr_credentials_vault_path,
             mount_point="kv",
         )
 

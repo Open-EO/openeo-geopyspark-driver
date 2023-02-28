@@ -1,9 +1,14 @@
+import collections
+import decimal
+from typing import Optional
+import datetime
+
 import kazoo.exceptions
+import time_machine
 from moto import mock_s3
 import boto3
 
 import contextlib
-import datetime
 import logging
 import json
 import os
@@ -16,17 +21,21 @@ from elasticsearch.exceptions import ConnectionTimeout
 
 import openeogeotrellis.job_registry
 from openeo_driver.jobregistry import JOB_STATUS
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry, DoubleJobRegistry
 from openeo.util import deep_get
 from openeo_driver.testing import (
     TEST_USER_AUTH_HEADER,
     TEST_USER,
     TIFF_DUMMY_DATA,
     DictSubSet,
+    TEST_USER_BEARER_TOKEN,
+    ApiTester,
 )
 from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import to_s3_url
+import openeogeotrellis.sentinel_hub.batchprocessing
+from .data import TEST_DATA_ROOT
 
 
 def test_capabilities(api100):
@@ -362,9 +371,24 @@ class TestBatchJobs:
     @staticmethod
     @contextlib.contextmanager
     def _mock_utcnow():
-        with mock.patch('openeogeotrellis.job_registry.datetime', new=mock.Mock(wraps=datetime.datetime)) as dt:
-            dt.utcnow.return_value = datetime.datetime(2020, 4, 20, 16, 4, 3)
+        now = datetime.datetime(2020, 4, 20, 16, 4, 3)
+        with mock.patch(
+            "openeogeotrellis.job_registry.datetime",
+            new=mock.Mock(wraps=datetime.datetime),
+        ) as dt, time_machine.travel(now.replace(tzinfo=datetime.timezone.utc)):
+            dt.utcnow.return_value = now
             yield dt.utcnow
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _mock_sentinelhub_batch_processing_service():
+        service = mock.Mock()
+        with mock.patch.object(
+            openeogeotrellis.sentinel_hub.batchprocessing.SentinelHubBatchProcessing,
+            "get_batch_processing_service",
+            return_value=service,
+        ):
+            yield service
 
     def test_get_user_jobs_no_auth(self, api):
         api.get('/jobs').assert_status_code(401).assert_error_code("AuthenticationRequired")
@@ -384,7 +408,7 @@ class TestBatchJobs:
             ).assert_status_code(201)
             job_id = res.headers["OpenEO-Identifier"]
             meta_data = zk.get_json_decoded(
-                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
@@ -408,6 +432,7 @@ class TestBatchJobs:
                 "process": {"process_graph": self.DUMMY_PROCESS_GRAPH},
                 "status": "created",
                 "created": "2020-04-20T16:04:03Z",
+                "updated": "2020-04-20T16:04:03Z",
                 "title": "Dummy",
             }
         else:
@@ -434,7 +459,7 @@ class TestBatchJobs:
                 'user_id': TEST_USER
             }
             zk.create(
-                path='/openeo/jobs/ongoing/{u}/{j}'.format(u=TEST_USER, j=job_id),
+                path=f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}",
                 value=json.dumps(raw).encode(),
                 makepath=True
             )
@@ -465,7 +490,13 @@ class TestBatchJobs:
             created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
             assert result == {
                 "jobs": [
-                    {"id": job_id, "title": "Dummy", "status": created, created: "2020-04-20T16:04:03Z"},
+                    {
+                        "id": job_id,
+                        "title": "Dummy",
+                        "status": created,
+                        created: "2020-04-20T16:04:03Z",
+                        "updated": "2020-04-20T16:04:03Z",
+                    },
                 ],
                 "links": []
             }
@@ -486,6 +517,8 @@ class TestBatchJobs:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
+            assert job_id.startswith("j-")
+
             # Start job
             with mock.patch('subprocess.run') as run:
                 os.mkdir(batch_job_output_root / job_id)
@@ -493,10 +526,10 @@ class TestBatchJobs:
                 run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
                 # Trigger job start
                 api.post(
-                    '/jobs/{j}/results'.format(j=job_id), json={}, headers=TEST_USER_AUTH_HEADER
+                    f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
                 ).assert_status_code(202)
-                run.assert_called_once()
-                batch_job_args = run.call_args[0][0]
+            run.assert_called_once()
+            batch_job_args = run.call_args[0][0]
 
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
@@ -520,7 +553,7 @@ class TestBatchJobs:
 
             # Check metadata in zookeeper
             meta_data = zk.get_json_decoded(
-                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
             assert meta_data["job_id"] == job_id
             assert meta_data["user_id"] == TEST_USER
@@ -546,34 +579,46 @@ class TestBatchJobs:
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
                 )
             meta_data = zk.get_json_decoded(
-                f"/openeo/jobs/ongoing/{TEST_USER}/{job_id}"
+                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
             assert meta_data["status"] == "running"
-            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+            res = (
+                api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
+                .assert_status_code(200)
+                .json
+            )
             assert res["status"] == "running"
 
             # Try to download results too early
-            res = api.get('/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER)
-            res.assert_error(status_code=400, error_code='JobNotFinished')
+            res = api.get(f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER)
+            res.assert_error(status_code=400, error_code="JobNotFinished")
 
             # Set up fake output and finish
-            with job_output.open('wb') as f:
+            with job_output.open("wb") as f:
                 f.write(TIFF_DUMMY_DATA)
-            with job_log.open('w') as f:
+            with job_log.open("w") as f:
                 f.write("[INFO] Hello world")
-            with job_metadata.open('w') as f:
+            with job_metadata.open("w") as f:
                 metadata = api.load_json(JOB_METADATA_FILENAME)
-                json.dump(metadata,f)
+                json.dump(metadata, f)
 
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
-            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+                reg.set_status(
+                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
+                )
+            res = (
+                api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
+                .assert_status_code(200)
+                .json
+            )
             assert res["status"] == "finished"
 
             # Download
-            res = api.get(
-                '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
-            ).assert_status_code(200).json
+            res = (
+                api.get(f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER)
+                .assert_status_code(200)
+                .json
+            )
             if api.api_version_compare.at_least("1.0.0"):
                 download_url = res["assets"]["out"]["href"]
                 assert "openEO_2017-11-21Z.tif" in res["assets"]
@@ -586,11 +631,14 @@ class TestBatchJobs:
             assert res.data == TIFF_DUMMY_DATA
 
             # Get logs
-            res = api.get(
-                '/jobs/{j}/logs'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
-            ).assert_status_code(200).json
-            #TODO: mock retrieval of logs from ES
+            res = (
+                api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
+                .assert_status_code(200)
+                .json
+            )
+            # TODO: mock retrieval of logs from ES
             assert res["logs"] == []
+
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
@@ -815,7 +863,7 @@ class TestBatchJobs:
                 run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
                 # Trigger job start
                 api.post(
-                    '/jobs/{j}/results'.format(j=job_id), json={}, headers=TEST_USER_AUTH_HEADER
+                    f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
                 ).assert_status_code(202)
                 run.assert_called_once()
                 batch_job_args = run.call_args[0][0]
@@ -852,8 +900,7 @@ class TestBatchJobs:
                 run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
                 # Trigger job start
                 api.post(
-                    '/jobs/{j}/results'.format(j=job_id), json={},
-                    headers=TEST_USER_AUTH_HEADER
+                    f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
                 ).assert_status_code(202)
                 run.assert_called_once()
 
@@ -885,7 +932,9 @@ class TestBatchJobs:
                 '{"state": "KILLED"}',
                 "https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state",
             ]
-            meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            meta_data = zk.get_json_decoded(
+                f"/openeo.test/jobs/done/{TEST_USER}/{job_id}"
+            )
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
@@ -928,7 +977,9 @@ class TestBatchJobs:
                 )
             res.assert_status_code(204)
             run.assert_called_once()
-            meta_data = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+            meta_data = zk.get_json_decoded(
+                f"/openeo.test/jobs/done/{TEST_USER}/{job_id}"
+            )
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
@@ -936,7 +987,7 @@ class TestBatchJobs:
             res = api.delete(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
             res.assert_status_code(204)
             with pytest.raises(kazoo.exceptions.NoNodeError):
-                _ = zk.get_json_decoded(f"/openeo/jobs/done/{TEST_USER}/{job_id}")
+                _ = zk.get_json_decoded(f"/openeo.test/jobs/done/{TEST_USER}/{job_id}")
             # TODO
             # assert job_registry.db[job_id] == DictSubSet({"deleted": True})
 
@@ -994,9 +1045,7 @@ class TestBatchJobs:
 
             # Get logs
             res = (
-                api.get(
-                    "/jobs/{j}/logs".format(j=job_id), headers=TEST_USER_AUTH_HEADER
-                )
+                api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
                 .assert_status_code(200)
                 .json
             )
@@ -1053,9 +1102,7 @@ class TestBatchJobs:
 
             # Get logs
             res = (
-                api.get(
-                    "/jobs/{j}/logs".format(j=job_id), headers=TEST_USER_AUTH_HEADER
-                )
+                api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
                 .assert_status_code(200)
                 .json
             )
@@ -1081,3 +1128,520 @@ class TestBatchJobs:
             # To view these logs in caplog.text, run pytest with the '-s' option.
             print(caplog.text)
             assert sensitive_info in caplog.text
+
+
+class TestSentinelHubBatchJobs:
+    """Tests for batch jobs involving SentinelHub collections and batch processes"""
+
+    @pytest.fixture
+    def api(self, api_version, client) -> ApiTester:
+        """ApiTester, with authentication headers by default"""
+        api = ApiTester(
+            api_version=api_version, client=client, data_root=TEST_DATA_ROOT
+        )
+        api.set_auth_bearer_token(TEST_USER_BEARER_TOKEN)
+        return api
+
+    @pytest.fixture
+    def zk_client(self) -> KazooClientMock:
+        zk_client = KazooClientMock()
+        with mock.patch.object(
+            openeogeotrellis.job_registry, "KazooClient", return_value=zk_client
+        ):
+            yield zk_client
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _mock_sentinelhub_batch_processing_service(
+        batch_request_id: Optional[str] = "224635b-7d60-40f2-bae6-d30e923bcb83",
+    ):
+        service = mock.Mock()
+        with mock.patch.object(
+            openeogeotrellis.sentinel_hub.batchprocessing.SentinelHubBatchProcessing,
+            "get_batch_processing_service",
+            return_value=service,
+        ):
+            if batch_request_id:
+                service.start_batch_process.return_value = batch_request_id
+
+            yield service
+
+    def _build_process_graph(self, spatial_size: float = 1):
+        # Small (no SH batch processing) or large spatial extent (trigger SH batch processing code path)?
+        spatial_extent = {
+            "west": 3,
+            "south": 51,
+            "east": 3 + spatial_size,
+            "north": 51 + spatial_size,
+        }
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SENTINEL2_L2A_SENTINELHUB",
+                    "spatial_extent": spatial_extent,
+                    "temporal_extent": ["2023-02-01", "2023-02-20"],
+                },
+                "result": True,
+            }
+        }
+        return process_graph
+
+    @contextlib.contextmanager
+    def _submit_batch_job_mock(self, api: ApiTester):
+        """Mock for subprocess calling of batch job submit scripts like submit_batch_job_*.sh"""
+
+        def subprocess_run(cmd, *args, **kwargs):
+            assert re.search(r"/submit_batch_job.*\.sh$", cmd[0])
+            stdout = api.read_file("spark-submit-stdout.txt")
+            return subprocess.CompletedProcess(
+                args=args, returncode=0, stdout=stdout, stderr=""
+            )
+
+        with mock.patch("subprocess.run", wraps=subprocess_run) as run_mock:
+            yield run_mock
+
+    def _check_submit_batch_job_cmd(
+        self,
+        submit_batch_job_mock,
+        batch_job_output_root,
+        job_id,
+        expected_dependencies="[]",
+    ):
+        submit_batch_job_mock.assert_called_once()
+        args = submit_batch_job_mock.call_args[0][0]
+
+        job_dir = batch_job_output_root / job_id
+        job_output = job_dir / "out"
+        job_log = job_dir / "log"
+        job_metadata = job_dir / JOB_METADATA_FILENAME
+        assert args[2].endswith(".in")
+        assert args[3] == str(job_dir)
+        assert args[4] == job_output.name
+        assert args[5] == job_log.name
+        assert args[6] == job_metadata.name
+        assert args[9] == TEST_USER
+        assert args[17] == "default"
+        assert args[19] == expected_dependencies
+        assert args[22:24] == [TEST_USER, job_id]
+        return args
+
+    @pytest.mark.parametrize(["spatial_size"], [(0.1,), (1,)])
+    def test_create(self, api, job_registry, time_machine, zk_client, spatial_size):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+
+        job_data = api.get_process_graph_dict(
+            process_graph=self._build_process_graph(spatial_size=spatial_size)
+        )
+        res = api.post("/jobs", json=job_data).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        assert job_id.startswith("j-")
+
+        # Check status
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "created",
+                "application_id": None,
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:01:01Z",
+            }
+        )
+        assert job_registry.db[job_id] == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "created",
+                "application_id": None,
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:01:01Z",
+                "process": {
+                    "process_graph": {
+                        "loadcollection1": DictSubSet({"process_id": "load_collection"})
+                    }
+                },
+            }
+        )
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "created"
+
+    def test_start_small_extent(
+        self,
+        api,
+        job_registry,
+        time_machine,
+        zk_client,
+        batch_job_output_root,
+    ):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+
+        job_data = api.get_process_graph_dict(
+            process_graph=self._build_process_graph(spatial_size=0.1)
+        )
+        res = api.post("/jobs", json=job_data).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        assert job_id.startswith("j-")
+
+        # Check status
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet({"status": "created"})
+        assert job_registry.db[job_id] == DictSubSet({"status": "created"})
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "created"
+
+        # Start job
+        time_machine.move_to("2020-04-20T12:02:02Z")
+        with self._submit_batch_job_mock(
+            api=api
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service:
+            # Trigger job start
+            api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
+
+        # no SH batch processes: submit_batch_job should be called
+        self._check_submit_batch_job_cmd(
+            submit_batch_job_mock=submit_batch_job,
+            batch_job_output_root=batch_job_output_root,
+            job_id=job_id,
+        )
+        sh_batch_service.start_batch_process.assert_not_called()
+
+        # Check metadata in zookeeper
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": "application_1587387643572_0842",
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:02:02Z",
+            }
+        )
+        # Check metadata in (elastic) job tracker
+        assert job_registry.db[job_id] == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": "application_1587387643572_0842",
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:02:02Z",
+            }
+        )
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "queued"
+
+    def test_start_large_extent(
+        self,
+        api,
+        job_registry,
+        time_machine,
+        zk_client,
+        batch_job_output_root,
+    ):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+
+        job_data = api.get_process_graph_dict(
+            process_graph=self._build_process_graph(spatial_size=1)
+        )
+        res = api.post("/jobs", json=job_data).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        assert job_id.startswith("j-")
+
+        # Check status
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet({"status": "created"})
+        # Check metadata in (elastic) job tracker
+        assert job_registry.db[job_id] == DictSubSet({"status": "created"})
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "created"
+
+        # Start job
+        time_machine.move_to("2020-04-20T12:02:02Z")
+        with self._submit_batch_job_mock(
+            api=api
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
+            "kafka.KafkaProducer"
+        ) as KafkaProducer:
+            # Trigger job start
+            api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
+
+        # submit_batch_job not called yet
+        submit_batch_job.assert_not_called()
+        sh_batch_service.start_batch_process.assert_called_once_with(
+            "sentinel-2-l2a", "sentinel-2-l2a", *([mock.ANY] * 8)
+        )
+        KafkaProducer.return_value.send.assert_called_once_with(
+            topic="openeo-async-tasks", value=mock.ANY, headers=None
+        )
+
+        # Check metadata in zookeeper
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": None,
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:02:02Z",
+                "dependency_status": "awaiting",
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ],
+            }
+        )
+        # Check metadata in (elastic) job tracker
+        assert job_registry.db[job_id] == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": None,
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:02:02Z",
+                "dependency_status": "awaiting",
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ],
+            }
+        )
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "queued"
+
+    def test_download_large_extent(
+        self,
+        api,
+        tmp_path,
+        batch_job_output_root,
+        job_registry,
+        backend_implementation,
+        time_machine,
+        zk_client,
+    ):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+
+        # Create job
+        data = api.get_process_graph_dict(
+            process_graph=self._build_process_graph(spatial_size=1)
+        )
+        res = api.post("/jobs", json=data).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        assert job_id.startswith("j-")
+
+        # Start job
+        time_machine.move_to("2020-04-20T12:02:02Z")
+        with self._submit_batch_job_mock(
+            api=api
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
+            "kafka.KafkaProducer"
+        ) as KafkaProducer:
+            api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
+
+        submit_batch_job.assert_not_called()
+        sh_batch_service.start_batch_process.assert_called_once_with(
+            "sentinel-2-l2a", "sentinel-2-l2a", *([mock.ANY] * 8)
+        )
+        KafkaProducer.return_value.send.assert_called_once_with(
+            topic="openeo-async-tasks", value=mock.ANY, headers=None
+        )
+
+        # Check status
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": None,
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:02:02Z",
+                "dependency_status": "awaiting",
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ],
+            }
+        )
+        assert job_registry.db[job_id] == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": None,
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:02:02Z",
+                "dependency_status": "awaiting",
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ],
+                "process": {
+                    "process_graph": {
+                        "loadcollection1": DictSubSet({"process_id": "load_collection"})
+                    }
+                },
+            }
+        )
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "queued"
+
+        # Poll SentinelHub batch process
+        time_machine.move_to("2020-04-20T12:03:03Z")
+        with self._submit_batch_job_mock(
+            api=api
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service:
+
+            def get_batch_process(batch_request_id: str):
+                # TODO make this more reusable
+                class BatchProcess:
+                    def status(self):
+                        return "DONE"
+
+                    def value_estimate(self):
+                        return decimal.Decimal("12.34")
+
+                return BatchProcess()
+
+            sh_batch_service.get_batch_process = get_batch_process
+
+            gps_batch_jobs: GpsBatchJobs = backend_implementation.batch_jobs
+            job_info = job_registry.db[job_id]
+            gps_batch_jobs.poll_sentinelhub_batch_processes(
+                job_info=job_info, sentinel_hub_client_alias="default"
+            )
+
+        submit_batch_job.assert_called_once()
+        self._check_submit_batch_job_cmd(
+            submit_batch_job_mock=submit_batch_job,
+            batch_job_output_root=batch_job_output_root,
+            job_id=job_id,
+            expected_dependencies='[{"source_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83", "card4l": false}]',
+        )
+
+        # Check status
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": "application_1587387643572_0842",
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:03:03Z",
+                "dependency_status": "available",
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ],
+                "dependency_usage": "4.93600000000000000000000000",
+            }
+        )
+        assert job_registry.db[job_id] == DictSubSet(
+            {
+                "job_id": job_id,
+                "user_id": TEST_USER,
+                "status": "queued",
+                "application_id": "application_1587387643572_0842",
+                "created": "2020-04-20T12:01:01Z",
+                "updated": "2020-04-20T12:03:03Z",
+                "dependency_status": "available",
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ],
+                "dependency_usage": "4.93600000000000000000000000",
+                "process": {
+                    "process_graph": {
+                        "loadcollection1": DictSubSet({"process_id": "load_collection"})
+                    }
+                },
+            }
+        )
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "queued"
+
+        # Fake update from job tracker
+        dbl_job_registry = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
+            elastic_job_registry=job_registry,
+        )
+        with dbl_job_registry as jr:
+            jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet({"status": "running"})
+        assert job_registry.db[job_id] == DictSubSet(
+            {
+                "status": "running",
+            }
+        )
+
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "running"
+
+        # Set up fake output and finish
+        job_dir = batch_job_output_root / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        job_output = job_dir / "out"
+        job_metadata = job_dir / JOB_METADATA_FILENAME
+
+        with job_output.open("wb") as f:
+            f.write(TIFF_DUMMY_DATA)
+        with job_metadata.open("w") as f:
+            metadata = api.load_json(JOB_METADATA_FILENAME)
+            json.dump(metadata, f)
+
+        with dbl_job_registry as jr:
+            jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "finished"
+
+        # Download
+        res = api.get(f"/jobs/{job_id}/results").assert_status_code(200).json
+        if api.api_version_compare.at_least("1.0.0"):
+            download_url = res["assets"]["out"]["href"]
+            assert "openEO_2017-11-21Z.tif" in res["assets"]
+            assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
+        else:
+            download_url = res["links"][0]["href"]
+
+        res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
+        assert res.status_code == 200
+        assert res.data == TIFF_DUMMY_DATA

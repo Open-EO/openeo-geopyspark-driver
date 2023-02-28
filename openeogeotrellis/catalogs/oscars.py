@@ -3,7 +3,9 @@ import re
 from typing import List
 
 import requests
-from requests.adapters import HTTPAdapter, Retry
+
+from openeo_driver.util.http import requests_with_retry
+
 
 _log = logging.getLogger(__name__)
 
@@ -46,8 +48,7 @@ class OscarsCatalogClient:
                         ('cloudCover', f'[0,{cldPrcnt}]')
                         ]
         try:
-            session = requests.Session()
-            session.mount("https://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.1)))
+            session = requests_with_retry(total=3, backoff_factor=0.1)
             response = session.get(oscars_url, params=query_params)
             response.raise_for_status()
         except requests.RequestException as e:
