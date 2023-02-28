@@ -3,12 +3,11 @@ import datetime as dt
 import json
 import logging
 import re
-import subprocess
 import sys
 import textwrap
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 from unittest import mock
 
 import kubernetes
@@ -17,7 +16,6 @@ import re_assert
 import requests_mock
 import requests_gssapi
 from openeo.util import rfc3339, url_join
-from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
@@ -29,6 +27,7 @@ from openeogeotrellis.job_tracker_v2 import (
     K8sStatusGetter,
     YarnAppReportParseException,
     YarnStatusGetter,
+    get_kerberos_auth,
 )
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import json_write
@@ -103,7 +102,7 @@ class YarnAppInfo:
         return self.set_failed()
 
     def status_rest_response(self) -> dict:
-        return fake_yarn_rest_repsonse_json(
+        return fake_yarn_rest_response_json(
             app_id=self.app_id,
             user=self.user_id,
             state=self.state,
@@ -118,7 +117,7 @@ class YarnAppInfo:
         )
 
 
-def fake_yarn_rest_repsonse_json(
+def fake_yarn_rest_response_json(
     app_id: str,
     user: str = "jenkins",
     state: str = "FINISHED",
@@ -385,7 +384,6 @@ def _extract_update_statuses_stats(caplog) -> List[dict]:
         if msg.startswith("JobTracker.update_statuses stats:")
     ]
 
-
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
@@ -394,7 +392,7 @@ class TestYarnJobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
-            app_state_getter=YarnStatusGetter(),
+            app_state_getter=YarnStatusGetter(ConfigParams().yarn_rest_api_base_url),
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
@@ -656,7 +654,6 @@ class TestYarnJobTracker:
             "job-2": DictSubSet(status="created"),
             "job-3": DictSubSet(status="running"),
         }
-
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
@@ -664,7 +661,7 @@ class TestYarnJobTracker:
                 (
                     "Failed status sync for job_id='job-2': "
                     + "unexpected YarnAppReportParseException: "
-                    + 'Response is corrupt, not valid JSON. Received following string: "C0rRup7! app-2\'"'
+                    + 'Response is corrupt, cannot parse it because a JSON dict was expected but received a string: "C0rRup7! app-2\'"'
                 ),
             )
         ]
@@ -886,7 +883,7 @@ class TestYarnJobTracker:
 
 class TestYarnStatusGetter:
     def test_parse_application_response_basic(self):
-        response = fake_yarn_rest_repsonse_json(
+        response = fake_yarn_rest_response_json(
             app_id="application_1671092799310_26739",
             state="FINISHED",
             final_status="SUCCEEDED",
@@ -906,7 +903,7 @@ class TestYarnStatusGetter:
         }
 
     def test_parse_application_response_running(self):
-        response = fake_yarn_rest_repsonse_json(
+        response = fake_yarn_rest_response_json(
             app_id="application_1671092799310_26739",
             state="RUNNING",
             final_status="UNDEFINED",
@@ -931,20 +928,7 @@ class TestYarnStatusGetter:
         with pytest.raises(YarnAppReportParseException):
             _ = YarnStatusGetter.parse_application_response(json={})
 
-    def test_get_authentication_provider_use_kerberos_on(self, monkeypatch):
-        """Simple check that the config has the desired effect: we get the expected auth object."""
-        monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "yes")
-        auth = YarnStatusGetter().get_authentication_provider()
-        assert isinstance(auth, requests_gssapi.HTTPKerberosAuth)
-
-    def test_get_authentication_provider_use_kerberos_off(self, monkeypatch):
-        """Simple check that the config has the desired effect: authentication should be None."""
-        monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "no")
-        assert YarnStatusGetter().get_authentication_provider() is None
-
-    def test_kerberos_auth_should_fail_when_there_is_no_kerberos_setup(
-        self, monkeypatch, requests_mock
-    ):
+    def test_kerberos_auth_is_actually_attempted(self, requests_mock):
         """Test that it actually attempts to do kerberos authentication.
 
         Reason to cover this case:
@@ -961,12 +945,13 @@ class TestYarnStatusGetter:
         So the test checks that the requests_gssapi.HTTPKerberosAuth actually has an effect,
         but no more than that.
         """
-        monkeypatch.setenv("YARN_AUTH_USE_KERBEROS", "yes")
 
-        status_getter = YarnStatusGetter()
+        status_getter = YarnStatusGetter(
+            ConfigParams().yarn_rest_api_base_url, get_kerberos_auth()
+        )
         app_id = "application_1671092799310_26739"
         app_url = status_getter.get_application_url(app_id)
-        response = fake_yarn_rest_repsonse_json(
+        response = fake_yarn_rest_response_json(
             app_id=app_id,
             state="RUNNING",
             final_status="UNDEFINED",
@@ -982,7 +967,7 @@ class TestYarnStatusGetter:
         # To test this, we just try to run get_job_metadata with authentication turned on,
         # but we don't have a Kerberos server in the unit test, so we expect that is raises
         # a MutualAuthenticationError.
-        with pytest.raises(requests_gssapi.MutualAuthenticationError) as result:
+        with pytest.raises(requests_gssapi.MutualAuthenticationError):
             status_getter.get_job_metadata(None, None, app_id)
 
         assert m_get.called

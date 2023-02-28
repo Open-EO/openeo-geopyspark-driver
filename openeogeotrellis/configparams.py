@@ -31,9 +31,6 @@ class ConfigParams:
         self.yarn_rest_api_base_url = env.get(
             "YARN_REST_API_BASE_URL", "https://epod-master1.vgt.vito.be:8090"
         )
-        self.yarn_auth_use_kerberos = smart_bool(
-            env.get("YARN_AUTH_USE_KERBEROS", "yes")
-        )
 
         # TODO #283 using this "is_ci_context" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         # Are we running in a unittest or continuous integration context?

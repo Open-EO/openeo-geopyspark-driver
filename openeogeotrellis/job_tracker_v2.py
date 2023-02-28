@@ -8,12 +8,9 @@ import argparse
 import collections
 import datetime as dt
 import logging
-import re
-import subprocess
 from decimal import Decimal
 from pathlib import Path
-from subprocess import CalledProcessError
-from typing import Callable, List, NamedTuple, Optional, Union
+from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 import requests_gssapi
@@ -84,54 +81,54 @@ class YarnAppReportParseException(Exception):
     pass
 
 
+def get_kerberos_auth():
+    """Small helper function to get Kerberos authentication in a consistent way."""
+    return requests_gssapi.HTTPSPNEGOAuth(
+        mutual_authentication=requests_gssapi.REQUIRED
+    )
+
+
 class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
+    def __init__(self, yarn_api_base_url: str, auth: Optional[Any] = None):
+        """Constructor for a YarnStatusGetter instance.
+
+        :param yarn_api_base_url:
+            The start of the URL for requests to the YARN REST API.
+            See also: get_application_url(...)
+
+        :param auth:
+            If specified, this is the authentication passed to requests.get(...)
+            Defaults to None, and by default no authentication will be used.
+
+            Normally we use Kerberos and then you should pass an instance of
+            requests_gssapi.HTTPSPNEGOAuth.
+
+            In general you could use any authentication that requests.get(auth=auth)
+            accepts for its auth parameter, if needed.
+            See also: https://requests.readthedocs.io/en/latest/api/#requests.request
+        """
+        self.yarn_api_base_url = yarn_api_base_url
+        self.auth = auth
+
     def get_application_url(self, application_id: str) -> str:
+        """Get the URL to get the application status from the YARN REST API.
+
+        :param application_id: The same app_id expected by get_job_metadata(...)
+
+        :return: The full URL to get the application status from YARN.
+        """
         return url_join(
-            ConfigParams().yarn_rest_api_base_url,
+            self.yarn_api_base_url,
             f"/ws/v1/cluster/apps/{application_id}",
         )
 
-    def get_authentication_provider(self):
-        auth = None
-        if ConfigParams().yarn_auth_use_kerberos:
-            # TODO: HTTPKerberosAuth is deprecated, this is a utility class for compatibility with requests_kerberos.
-            #   Find the better way to do this, using requests_gssapi directly.
-            # Have to set mutual_authentication to REQUIRED or it just skips kerberos auth it seems.
-            auth = requests_gssapi.HTTPKerberosAuth(
-                mutual_authentication=requests_gssapi.REQUIRED
-            )
-        return auth
-
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        # TODO: Are there any cases were we *do* need to provide credentials to the Kerberos authentication?
-        #   At present we are assuming there is already a Kerberos ticket because kinit was run before
-        #   the geopyspark driver process was started.
-        #   AFAIK that means we don't have to provide user & pw which is in fact the whole point.
-
         url = self.get_application_url(application_id=app_id)
-        response = requests.get(url, auth=self.get_authentication_provider())
-
-        # Handle error responses: We need the field "message" from "RemoteException"
-        # See https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/WebServicesIntro.html
-        #   specifically, the section: Response Errors
-        #
-        # Example of an error responses body:
-        # {
-        #     "RemoteException": {
-        #         "exception": "NotFoundException",
-        #         "message": "java.lang.Exception: app with id: application_1674538064532_46723 not found",
-        #         "javaClassName": "org.apache.hadoop.yarn.webapp.NotFoundException"
-        #     }
-        # }
+        response = requests.get(url, auth=self.auth)
         if response.status_code == 404:
-            remote_exc = response.json().get("RemoteException", {})
-            message = remote_exc.get(
-                "message",
-                "Unknown error. Error response did not contain the message property.",
-            )
-            raise AppNotFound(message) from None
+            raise AppNotFound(response)
         else:
             # Check if there was any other HTTP error status.
             response.raise_for_status()
@@ -146,14 +143,19 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         return rfc3339.datetime(utc_datetime)
 
     @classmethod
-    def parse_application_response(cls, json: dict) -> _JobMetadata:
-        if not json:
-            raise YarnAppReportParseException("Response is empty")
+    def parse_application_response(cls, json: Union[dict, str]) -> _JobMetadata:
+        """Parse the HTTP response body of the application status request.
 
-        # Handle a corrupt response that comes through as a string, not valid JSON.
+        :param json: The HTTP response body, which was in JSON format.
+        :raises YarnAppReportParseException: When the JSON response can not be parsed properly.
+        :return: _JobMetadata containing the info we need about the Job.
+        """
+
+        # Handle a corrupt response which would come through as a string, not valid JSON.
+        # TODO: can we handle this a better way? a string is valid JSON, but not the what we expect in a normal response.
         if isinstance(json, str):
             raise YarnAppReportParseException(
-                f"Response is corrupt, not valid JSON. Received following string: {json!r}"
+                f"Response is corrupt, cannot parse it because a JSON dict was expected but received a string: {json!r}"
             )
 
         report = json.get("app", {})
@@ -161,7 +163,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         missing_keys = [k for k in required_keys if k not in report]
         if missing_keys:
             raise YarnAppReportParseException(
-                f"JSON response is missing following required keys: {missing_keys}"
+                f"JSON response is missing following required keys: {missing_keys}, json={json}"
             )
 
         try:
@@ -174,25 +176,20 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             diagnostics = report.get("diagnostics", None)
             if job_status == JOB_STATUS.ERROR and diagnostics:
                 _log.error(
-                    f"YARN application status reports error diagnostics: diagnostics: {diagnostics}"
+                    f"YARN application status reports error diagnostics: {diagnostics}"
                 )
 
             start_time = cls._ms_epoch_to_date(report["startedTime"])
             finish_time = cls._ms_epoch_to_date(report["finishedTime"])
 
-            if not ("memorySeconds" in report or "vcoreSeconds" in report):
-                usage = None
-            else:
-                usage = {}
-                memory_seconds = report.get("memorySeconds")
-                vcore_seconds = report.get("vcoreSeconds")
-                if memory_seconds is not None:
-                    usage["memory"] = {
-                        "value": int(memory_seconds),
-                        "unit": "mb-seconds",
-                    }
-                if vcore_seconds is not None:
-                    usage["cpu"] = {"value": int(vcore_seconds), "unit": "cpu-seconds"}
+            usage = {}
+            memory_seconds = report.get("memorySeconds")
+            vcore_seconds = report.get("vcoreSeconds")
+            usage["memory"] = {
+                "value": memory_seconds,
+                "unit": "mb-seconds",
+            }
+            usage["cpu"] = {"value": vcore_seconds, "unit": "cpu-seconds"}
 
             return _JobMetadata(
                 status=job_status,
@@ -545,7 +542,9 @@ class CliApp:
                     # TODO: eliminate (need for) auto-detection.
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
-                    app_state_getter = YarnStatusGetter()
+                    app_state_getter = YarnStatusGetter(
+                        ConfigParams().yarn_rest_api_base_url, get_kerberos_auth()
+                    )
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()
                 else:
