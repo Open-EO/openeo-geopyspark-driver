@@ -86,6 +86,7 @@ setup(
         'hvac==1.0.2',
         "pyarrow>=1.0.0",  # For pyspark.pandas
         "requests-gssapi>=1.2.3",  # For Kerberos authentication
+        "attrs>=22.1.0",
     ],
     extras_require={
         "dev": tests_require,
