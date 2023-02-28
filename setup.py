@@ -85,6 +85,7 @@ setup(
         'boto3==1.16.25',
         'hvac==1.0.2',
         "pyarrow>=1.0.0",  # For pyspark.pandas
+        "attrs>=22.1.0",
     ],
     extras_require={
         "dev": tests_require,
