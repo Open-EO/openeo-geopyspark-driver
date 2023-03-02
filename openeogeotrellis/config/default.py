@@ -53,5 +53,6 @@ oidc_providers = [
 ]
 
 config = GpsBackendConfig(
+    id="default",
     oidc_providers=oidc_providers,
 )

@@ -1,6 +1,7 @@
-import pathlib
 import textwrap
 from pathlib import Path
+
+import attrs
 import pytest
 
 from openeogeotrellis.config import (
@@ -15,8 +16,10 @@ SIMPLE_CONFIG = """
     """
 
 CUSTOM_CONFIG = """
+    import attrs
     from openeogeotrellis.config import GpsBackendConfig
 
+    @attrs.frozen
     class CustomConfig(GpsBackendConfig):
         id: str = "{id}"
 
@@ -43,6 +46,15 @@ class TestGpsBackendConfig:
         config_path = get_config_file(tmp_path=tmp_path, content=SIMPLE_CONFIG)
         config = GpsBackendConfig.from_py_file(path_type(config_path))
         assert isinstance(config, GpsBackendConfig)
+
+    def test_immutability(self):
+        config = GpsBackendConfig(id="foo")
+        assert config.id == "foo"
+        with pytest.raises(attrs.exceptions.FrozenInstanceError):
+            config.id = "bar"
+        with pytest.raises(attrs.exceptions.FrozenInstanceError):
+            config.oidc_providers = []
+        assert config.id == "foo"
 
 
 class TestGetGpsBackendConfig:
