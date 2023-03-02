@@ -2,7 +2,7 @@ import importlib.resources
 import logging
 import os
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional
 
 import attrs
 from openeo_driver.users.oidc import OidcProvider
@@ -14,7 +14,7 @@ class ConfigException(ValueError):
     pass
 
 
-@attrs.define
+@attrs.frozen
 class GpsBackendConfig:
     """
     Configuration for GeoPySpark backend.
@@ -23,6 +23,9 @@ class GpsBackendConfig:
     """
 
     # TODO: move base class implementation to openeo-python-driver?
+
+    # identifier for this config
+    id: Optional[str] = None
 
     oidc_providers: List[OidcProvider] = attrs.Factory(list)
 
