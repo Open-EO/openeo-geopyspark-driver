@@ -6,7 +6,7 @@ import tempfile
 import textwrap
 import zipfile
 from pathlib import Path
-from unittest import skip
+from unittest import skip, mock
 
 import pytest
 import rasterio
@@ -21,8 +21,6 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeoV2,
 )
 
-
-@skip
 @pytest.mark.parametrize(
     [
         "spatial_extent",
@@ -115,23 +113,32 @@ def test_creodias_s1_backscatter(
     @param expected_shape:
     @return:
     """
+    # Provide test Sentinel-1 and DEM data.
+    symlinks = {
+        "./data/s1backscatter_orfeo/Sentinel-1/zeebrugge_2020_06_06.SAFE": [
+            "/eodata/Sentinel-1/SAR/GRD/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.SAFE",
+            "/eodata/Sentinel-1/SAR/GRD/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_0FCC.SAFE",
+        ],
+        "./data/s1backscatter_orfeo/Sentinel-1/laroche_2020_07_29.SAFE": [
+            "/eodata/Sentinel-1/SAR/GRD/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.SAFE",
+            "/eodata/Sentinel-1/SAR/GRD/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E424.SAFE",
+        ],
+        "./data/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif": [
+            "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+        ],
+        "./data/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif": [
+            "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif"
+        ],
+    }
+    for dest_path, source_paths in symlinks.items():
+        dest_path = Path(__file__).parent.parent / dest_path
+        assert dest_path.exists()
+        for source_path in source_paths:
+            source_path = Path(source_path)
+            if not source_path.exists():
+                source_path.parent.mkdir(parents=True, exist_ok=True)
+                source_path.symlink_to(dest_path, target_is_directory=True)
 
-    basePath = Path("/eodata/Sentinel-1/SAR/GRD/2020/06/06")
-    extract_product(
-        "/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.zip",
-        str(basePath)
-    )
-    fast24_variant = (basePath / "S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_0FCC.SAFE")
-    if not fast24_variant.exists():
-        fast24_variant.symlink_to(basePath / "S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.SAFE", target_is_directory=True)
-    basePath = Path("/eodata/Sentinel-1/SAR/GRD/2020/07/29")
-    extract_product(
-        "/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.zip",
-        str(basePath)
-    )
-    fast24_variant = (basePath / "S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E424.SAFE")
-    if not fast24_variant.exists():
-        fast24_variant.symlink_to(basePath / "S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.SAFE", target_is_directory=True)
     from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
     catalog = GeoPySparkLayerCatalog(all_metadata=[{
         "id": "Creodias-S1-Backscatter",
@@ -154,16 +161,15 @@ def test_creodias_s1_backscatter(
     )
     datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 
+    # Compare actual with the expected result.
     filename = tmp_path / "s1backscatter.tiff"
     datacube.save_result(filename, format="GTiff")
-
     from urllib.request import urlretrieve
     expected_result = None
     expected_path = tmp_path / "expected.tiff"
     urlretrieve(ref_path, expected_path)
     with rasterio.open(expected_path) as ds_ref:
         expected_result = ds_ref.read()
-
     with rasterio.open(filename) as ds:
         actual_result = ds.read()
         assert actual_result.shape == expected_shape
@@ -289,75 +295,53 @@ def test_creodias_dem_subset_geotiff(bbox, bbox_epsg):
         (
             (5.1, 51.2, 6.5, 51.3),
             4326,
-            {
-                "Copernicus_DSM_COG_10_N51_00_E006_00_DEM.tif": "Copernicus_DSM_COG_10_N51_00_E006_00_DEM/Copernicus_DSM_COG_10_N51_00_E006_00_DEM.tif",
-                "Copernicus_DSM_COG_10_N51_00_E005_00_DEM.tif": "Copernicus_DSM_COG_10_N51_00_E005_00_DEM/Copernicus_DSM_COG_10_N51_00_E005_00_DEM.tif",
-            },
+            [
+                "Copernicus_DSM_COG_10_N51_00_E006_00_DEM",
+                "Copernicus_DSM_COG_10_N51_00_E005_00_DEM",
+            ],
         ),
         (
             (-1.1, -0.9, 0.1, 1.1),
             4326,
-            {
-                "Copernicus_DSM_COG_10_N00_00_E000_00_DEM.tif": "Copernicus_DSM_COG_10_N00_00_E000_00_DEM/Copernicus_DSM_COG_10_N00_00_E000_00_DEM.tif",
-                "Copernicus_DSM_COG_10_N00_00_W001_00_DEM.tif": "Copernicus_DSM_COG_10_N00_00_W001_00_DEM/Copernicus_DSM_COG_10_N00_00_W001_00_DEM.tif",
-                "Copernicus_DSM_COG_10_S01_00_W001_00_DEM.tif": "Copernicus_DSM_COG_10_S01_00_W001_00_DEM/Copernicus_DSM_COG_10_S01_00_W001_00_DEM.tif",
-                "Copernicus_DSM_COG_10_N01_00_W001_00_DEM.tif": "Copernicus_DSM_COG_10_N01_00_W001_00_DEM/Copernicus_DSM_COG_10_N01_00_W001_00_DEM.tif",
-                "Copernicus_DSM_COG_10_S01_00_W002_00_DEM.tif": "Copernicus_DSM_COG_10_S01_00_W002_00_DEM/Copernicus_DSM_COG_10_S01_00_W002_00_DEM.tif",
-                "Copernicus_DSM_COG_10_N01_00_E000_00_DEM.tif": "Copernicus_DSM_COG_10_N01_00_E000_00_DEM/Copernicus_DSM_COG_10_N01_00_E000_00_DEM.tif",
-                "Copernicus_DSM_COG_10_N01_00_W002_00_DEM.tif": "Copernicus_DSM_COG_10_N01_00_W002_00_DEM/Copernicus_DSM_COG_10_N01_00_W002_00_DEM.tif",
-                "Copernicus_DSM_COG_10_S01_00_E000_00_DEM.tif": "Copernicus_DSM_COG_10_S01_00_E000_00_DEM/Copernicus_DSM_COG_10_S01_00_E000_00_DEM.tif",
-                "Copernicus_DSM_COG_10_N00_00_W002_00_DEM.tif": "Copernicus_DSM_COG_10_N00_00_W002_00_DEM/Copernicus_DSM_COG_10_N00_00_W002_00_DEM.tif",
-            },
+            [
+                "Copernicus_DSM_COG_10_N00_00_E000_00_DEM",
+                "Copernicus_DSM_COG_10_N00_00_W001_00_DEM",
+                "Copernicus_DSM_COG_10_S01_00_W001_00_DEM",
+                "Copernicus_DSM_COG_10_N01_00_W001_00_DEM",
+                "Copernicus_DSM_COG_10_S01_00_W002_00_DEM",
+                "Copernicus_DSM_COG_10_N01_00_E000_00_DEM",
+                "Copernicus_DSM_COG_10_N01_00_W002_00_DEM",
+                "Copernicus_DSM_COG_10_S01_00_E000_00_DEM",
+                "Copernicus_DSM_COG_10_N00_00_W002_00_DEM",
+            ],
         ),
         (
             (506986, 5672070, 534857, 5683305),
             32631,
-            {
-                "Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif": "Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif",
-            },
+            [
+                "Copernicus_DSM_COG_10_N51_00_E003_00_DEM",
+            ],
         ),
     ],
 )
 def test_creodias_dem_subset_copernicus30_geotiff(bbox, bbox_epsg, expected_symlinks):
-    import shapely
-    import math
-    import pyproj
-
-    # Create a temp source directory and fill it with empty files.
-    source_dir = tempfile.TemporaryDirectory(suffix="-copernicus30")
-    bbox_lonlat: shapely.geometry.Polygon = shapely.ops.transform(
-        pyproj.Transformer.from_crs(
-            crs_from=bbox_epsg, crs_to=4326, always_xy=True
-        ).transform,
-        shapely.geometry.box(*bbox),
-    )
-    (minx, miny, maxx, maxy) = bbox_lonlat.bounds
-    for lat in range(math.floor(miny) - 5, math.ceil(maxy) + 5):
-        for lon in range(math.floor(minx) - 5, math.ceil(maxx) + 5):
-            lat_char = "N" if lat >= 0 else "S"
-            lon_char = "E" if lon >= 0 else "W"
-            tile_name = f"Copernicus_DSM_COG_10_{lat_char}{abs(lat):02d}_00_{lon_char}{abs(lon):03d}_00_DEM"
-            tile_dir = Path(source_dir.name) / tile_name
-            tile_dir.mkdir(parents=True, exist_ok=True)
-            tile_file = tile_dir / f"{tile_name}.tif"
-            tile_file.touch()
-
-    # Create the symlinks
-    symlinks = {}
-    with S1BackscatterOrfeo._creodias_dem_subset_copernicus30_geotiff(
-        bbox=bbox, bbox_epsg=bbox_epsg, copernicus_root=Path(source_dir.name)
-    ) as temp_dir:
-        temp_dir = Path(temp_dir)
-        for path in temp_dir.glob("**/*"):
-            relative = path.relative_to(temp_dir)
-            if path.is_symlink():
-                symlinks[str(relative)] = str(
-                    Path(os.readlink(path)).relative_to(source_dir.name)
-                )
-            else:
-                raise ValueError(path)
-    assert symlinks == expected_symlinks
-
+    source_dir = "/some_dir"
+    symlinks = []
+    with mock.patch("pathlib.Path.exists", return_value=True):
+        with S1BackscatterOrfeo._creodias_dem_subset_copernicus30_geotiff(
+            bbox=bbox, bbox_epsg=bbox_epsg, copernicus_root=Path(source_dir)
+        ) as temp_dir:
+            temp_dir = Path(temp_dir)
+            for path in temp_dir.glob("**/*"):
+                if path.is_symlink():
+                    relative_path = str(Path(os.readlink(path)).relative_to(source_dir))
+                    symlinks.append(relative_path)
+                else:
+                    raise ValueError(path)
+    # Compare the symlinks with the expected ones.
+    for i, expected_symlink in enumerate(expected_symlinks):
+        expected_symlinks[i] = str(Path(expected_symlink, expected_symlink + ".tif"))
+    assert set(expected_symlinks) == set(symlinks)
 
 @pytest.mark.parametrize(["bbox", "bbox_epsg", "expected"], [
     ((3.1, 51.2, 3.5, 51.3), 4326, {"N51E003.hgt"}),

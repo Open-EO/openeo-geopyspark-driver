@@ -86,6 +86,7 @@ setup(
         'hvac==1.0.2',
         "pyarrow>=1.0.0",  # For pyspark.pandas
         "gdal==3.4.*",
+        "attrs>=22.1.0",
     ],
     extras_require={
         "dev": tests_require,

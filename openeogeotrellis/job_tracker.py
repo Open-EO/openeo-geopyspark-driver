@@ -118,19 +118,6 @@ class JobTracker:
 
                                 new_status = k8s_state_to_openeo_job_status(state)
 
-                                registry.patch(job_id, user_id,
-                                               status=new_status,
-                                               started=start_time,
-                                               finished=finish_time)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from K8s"):
-                                    if self._elastic_job_registry:
-                                        self._elastic_job_registry.set_status(
-                                            job_id=job_id,
-                                            status=new_status,
-                                            started=start_time,
-                                            finished=finish_time,
-                                        )
-
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
                                               (job_id, current_status, new_status), extra={'job_id': job_id})
@@ -145,8 +132,24 @@ class JobTracker:
                                         result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
 
-                                    registry.mark_done(job_id, user_id)
-                                    _log.info("marked %s as done" % job_id, extra={'job_id': job_id})
+                                registry.patch(
+                                    job_id=job_id,
+                                    user_id=user_id,
+                                    status=new_status,
+                                    started=start_time,
+                                    finished=finish_time,
+                                )
+                                with ElasticJobRegistry.just_log_errors(
+                                    f"job_tracker {new_status=} from K8s"
+                                ):
+                                    if self._elastic_job_registry:
+                                        self._elastic_job_registry.set_status(
+                                            job_id=job_id,
+                                            status=new_status,
+                                            started=start_time,
+                                            finished=finish_time,
+                                        )
+
                             else:
                                 state, final_state, start_time, finish_time, aggregate_resource_allocation =\
                                     JobTracker._yarn_status(application_id)
@@ -157,25 +160,6 @@ class JobTracker:
                                 new_status = yarn_state_to_openeo_job_status(
                                     state, final_state
                                 )
-
-                                registry.patch(job_id, user_id,
-                                               status=new_status,
-                                               started=JobTracker._to_serializable_datetime(start_time),
-                                               finished=JobTracker._to_serializable_datetime(finish_time),
-                                               memory_time_megabyte_seconds=memory_time_megabyte_seconds,
-                                               cpu_time_seconds=cpu_time_seconds)
-                                with ElasticJobRegistry.just_log_errors(f"job_tracker {new_status=} from YARN"):
-                                    if self._elastic_job_registry:
-                                        self._elastic_job_registry.set_status(
-                                            job_id=job_id,
-                                            status=new_status,
-                                            started=JobTracker._to_serializable_datetime(
-                                                start_time
-                                            ),
-                                            finished=JobTracker._to_serializable_datetime(
-                                                finish_time
-                                            ),
-                                    )
 
                                 if current_status != new_status:
                                     _log.info("changed job %s status from %s to %s" %
@@ -237,8 +221,7 @@ class JobTracker:
                                         async_task.schedule_delete_batch_process_dependency_sources(
                                             job_id, user_id, dependency_sources)
 
-                                    registry.mark_done(job_id, user_id)
-
+                                    # TODO: is this ETL related logging still necessary?
                                     _log.info("marked %s as done" % job_id, extra={
                                         'job_id': job_id,
                                         'area': result_metadata.get('area'),
@@ -247,6 +230,35 @@ class JobTracker:
                                         'sentinelhub': float(Decimal(sentinelhub_processing_units) +
                                                              sentinelhub_batch_processing_units)
                                     })
+
+                                registry.patch(
+                                    job_id=job_id,
+                                    user_id=user_id,
+                                    status=new_status,
+                                    started=JobTracker._to_serializable_datetime(
+                                        start_time
+                                    ),
+                                    finished=JobTracker._to_serializable_datetime(
+                                        finish_time
+                                    ),
+                                    memory_time_megabyte_seconds=memory_time_megabyte_seconds,
+                                    cpu_time_seconds=cpu_time_seconds,
+                                )
+                                with ElasticJobRegistry.just_log_errors(
+                                    f"job_tracker {new_status=} from YARN"
+                                ):
+                                    if self._elastic_job_registry:
+                                        self._elastic_job_registry.set_status(
+                                            job_id=job_id,
+                                            status=new_status,
+                                            started=JobTracker._to_serializable_datetime(
+                                                start_time
+                                            ),
+                                            finished=JobTracker._to_serializable_datetime(
+                                                finish_time
+                                            ),
+                                        )
+
                         except UnknownYarnApplicationException:
                             # TODO eliminate this whole try-except (but not now to keep diff simple)
                             raise
