@@ -97,10 +97,6 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
-        if spatial_extent["crs"] != "EPSG:4326":
-            spatial_extent = reproject_bounding_box(
-                spatial_extent, from_crs=None, to_crs="EPSG:4326"
-            )
         bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in bbox):
             polygon = Polygon.from_bounds(*bbox)
@@ -141,6 +137,14 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
 
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
+
+    if bbox:
+        # Reproject the spatial extent if it is not in lat-lon / WGS84.
+        if spatial_extent["crs"] != "EPSG:4326":
+            spatial_extent = reproject_bounding_box(
+                spatial_extent, from_crs=None, to_crs="EPSG:4326"
+            )
+            bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     # TODO: dedicated type?
     # TODO: match STAC format?

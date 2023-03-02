@@ -91,6 +91,42 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
     }
     assert metadata == expected
 
+
+def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326():
+    tracer = DryRunDataTracer()
+    cube = tracer.load_collection(
+        collection_id="Sentinel2",
+        arguments={
+            "temporal_extent": ["2020-02-02", "2020-03-03"],
+        },
+    )
+    # Convert coords to Belgian lambert 2008
+    x1, y1 = 624112.728540544, 687814.368911342
+    x2, y2 = 693347.444114525, 799212.044310798
+    cube = cube.filter_bbox(west=x1, south=y1, east=x2, north=y2, crs="EPSG:3812")
+    cube.resample_spatial(resolution=0, projection=3812)
+
+    metadata = extract_result_metadata(tracer)
+    expected = {
+        "bbox": [
+            approx(4, abs=0.01),
+            approx(51, abs=0.01),
+            approx(5, abs=0.01),
+            approx(52, abs=0.01),
+        ],
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": ((((x1, y1), (x1, y2), (x2, y2), (x2, y1), (x1, y1)),)),
+        },
+        "area": {"value": approx(7725459381.443416, 0.01), "unit": "square meter"},
+        "start_datetime": "2020-02-02T00:00:00Z",
+        "end_datetime": "2020-03-03T00:00:00Z",
+        "links": [],
+    }
+
+    assert metadata == expected
+
+
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 def test_run_job(evaluate, tmp_path):
     cube_mock = MagicMock()
@@ -211,5 +247,3 @@ def test_convert_job_metadatafile_outputs_to_s3_urls(tmp_path):
 
     assert converted_metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
     assert converted_metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
-
-
