@@ -143,14 +143,14 @@ def test_run_job(evaluate, tmp_path):
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     cube_mock = MagicMock()
-    # TODO: the virtual rasters test data is going to be replaced.
-    #   Add a DEM to the test data repo or get data another way.
-    first_asset_path = str(
-        get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    first_asset = str(
+        get_test_data_file(
+            "s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+        )
     )
     asset_meta = {
-        first_asset_path: {
-            "href": first_asset_path,
+        first_asset: {
+            "href": first_asset,
             "roles": "data",
         },
         # The second file does not exist on the filesystem.
@@ -191,12 +191,12 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     metadata_result = read_json(tmp_path / "metadata.json")
     assert metadata_result == {
         "assets": {
-            first_asset_path: {
-                "href": first_asset_path,
+            first_asset: {
+                "href": first_asset,
                 "roles": "data",
-                "proj:bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+                "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
-                "proj:shape": [17788, 14400],
+                "proj:shape": [720, 1188],
             },
             "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
         },
@@ -251,23 +251,23 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """
     cube_mock = MagicMock()
 
-    # TODO: the virtual rasters test data is going to be replaced.
-    #   Add a DEM to the test data repo or get data another way.
-    first_asset_path = str(
-        get_test_data_file("orfeo_dem/copernicus-dem-30m-unittest.vrt")
+    first_asset_path = get_test_data_file(
+        "s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
+    first_asset = str(first_asset_path)
     # For the second file: use a copy of the first file  (in the temp dir) so we know
     # that GDAL will find exactly the same metadata under a different asset path.
-    second_asset_path = str(tmp_path / "copy_copernicus-dem-30m-unittest.vrt")
+    second_asset_path = tmp_path / first_asset_path.name
+    second_asset = str(second_asset_path)
     shutil.copyfile(first_asset_path, second_asset_path)
     asset_meta = {
-        first_asset_path: {
-            "href": first_asset_path,
+        first_asset: {
+            "href": first_asset,
             "roles": "data",
         },
         # use same file twice to simulate the same CRS and bbox
-        second_asset_path: {
-            "href": second_asset_path,
+        second_asset: {
+            "href": second_asset,
             "roles": "data",
         },
     }
@@ -305,21 +305,21 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     metadata_result = read_json(tmp_path / "metadata.json")
     assert metadata_result == {
         "assets": {
-            first_asset_path: {
-                "href": first_asset_path,
+            first_asset: {
+                "href": first_asset,
                 "roles": "data",
                 # Projection extension metadata should not be here, but higher up.
             },
-            second_asset_path: {
-                "href": second_asset_path,
+            second_asset: {
+                "href": second_asset,
                 "roles": "data",
                 # Idem: projection extension metadata should not be here, but higher up.
             },
         },
-        "bbox": [1.9997917, 49.0001389, 8.9996991, 53.0001389],
+        "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
         "end_datetime": None,
         "epsg": 4326,
-        "proj:shape": [17788, 14400],
+        "proj:shape": [720, 1188],
         "geometry": None,
         "area": None,
         "unique_process_ids": ["discard_result"],
