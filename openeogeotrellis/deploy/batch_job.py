@@ -151,6 +151,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     return {
         'geometry': geometry,
         'bbox': bbox,
+        # 'proj:bbox': proj_bbox,
         'area': {'value': area, 'unit': 'square meter'} if area else None,
         'start_datetime': start_date,
         'end_datetime': end_date,
