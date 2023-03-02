@@ -33,6 +33,11 @@ def get_config_file(
 
 
 class TestGpsBackendConfig:
+    def test_all_defaults(self):
+        """Test that config can be created without arguments: everything has default value"""
+        config = GpsBackendConfig()
+        assert isinstance(config, GpsBackendConfig)
+
     @pytest.mark.parametrize("path_type", [str, Path])
     def test_from_py_file_defaults(self, tmp_path, path_type):
         config_path = get_config_file(tmp_path=tmp_path, content=SIMPLE_CONFIG)
