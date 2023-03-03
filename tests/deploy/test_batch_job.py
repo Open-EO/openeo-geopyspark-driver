@@ -96,17 +96,25 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
 @pytest.mark.parametrize(
     ["crs_epsg", "west", "south", "east", "north"],
     [
+        # BBoxes below correspond to lat-long from 4E 51N to 5E 52N.
         # Belgian Lambert 2008
         (3812, 624112.728540544, 687814.368911342, 693347.444114525, 799212.044310798),
-        # UTM Zone 31?
+        # ETRS89 / UTM zone 31N (N-E)
         (3043, 570168.861511006, 5650300.78652147, 637294.365895774, 5762926.81279022),
-        # Amersfoort / RD New
+        # Netherlands, Amersfoort / RD New
         (28992, 57624.6287650174, 335406.866285557, 128410.08537081, 445806.50883315),
     ],
 )
 def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
     crs_epsg, west, south, east, north
 ):
+    """When the raster has a different CRS then EPSG:4326 (WGS), then extract_result_metadata
+    should convert the bounding box to WGS.
+
+    We give it a few cubes in a different CRS with a bounding box that should correspond to
+    lat long coordinate from 4E 51N to 5E 52N, give or take a small margin
+    (floating point rounding errors and some imperfections in CRS conversions).
+    """
     tracer = DryRunDataTracer()
     cube = tracer.load_collection(
         collection_id="Sentinel2",
@@ -114,10 +122,6 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
             "temporal_extent": ["2020-02-02", "2020-03-03"],
         },
     )
-    # Convert coords to Belgian lambert 2008
-    # "EPSG:3812"
-    # west, south = 624112.728540544, 687814.368911342
-    # east, north = 693347.444114525, 799212.044310798
     cube = cube.filter_bbox(
         west=west, south=south, east=east, north=north, crs=crs_epsg
     )
@@ -133,6 +137,7 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
         approx(52, 0.01),
     ]
     assert metadata["bbox"] == expected_bbox
+
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 def test_run_job(evaluate, tmp_path):
