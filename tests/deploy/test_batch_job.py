@@ -111,9 +111,10 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
     """When the raster has a different CRS then EPSG:4326 (WGS), then extract_result_metadata
     should convert the bounding box to WGS.
 
-    We give it a few cubes in a different CRS with a bounding box that should correspond to
-    lat long coordinate from 4E 51N to 5E 52N, give or take a small margin
-    (floating point rounding errors and some imperfections in CRS conversions).
+    We give it a few data cubes in a projected CRS with a bounding box that should
+    correspond to lat long coordinates from 4E 51N to 5E 52N, give or take a small
+    margin, which is needed for floating point rounding errors and some small
+    differences you can get with CRS conversions.
     """
     tracer = DryRunDataTracer()
     cube = tracer.load_collection(
