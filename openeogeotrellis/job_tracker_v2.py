@@ -125,7 +125,14 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         else:
             # Check if there was any other HTTP error status.
             response.raise_for_status()
-            return self.parse_application_response(json=response.json())
+            # Handle a corrupt response that is not a dict (most likely a string).
+            json = response.json()
+            if not isinstance(json, dict):
+                raise YarnAppReportParseException(
+                    "Cannot parse response body: expecting a JSON dict but body contains "
+                    + f"a value of type {type(json)}, value={json!r} Response body={response.text!r}"
+                )
+            return self.parse_application_response(json=json)
 
     @staticmethod
     def _ms_epoch_to_date(epoch_millis: int) -> Union[str, None]:
@@ -136,20 +143,13 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         return rfc3339.datetime(utc_datetime)
 
     @classmethod
-    def parse_application_response(cls, json: Union[dict, str]) -> _JobMetadata:
+    def parse_application_response(cls, json: dict) -> _JobMetadata:
         """Parse the HTTP response body of the application status request.
 
         :param json: The HTTP response body, which was in JSON format.
         :raises YarnAppReportParseException: When the JSON response can not be parsed properly.
         :return: _JobMetadata containing the info we need about the Job.
         """
-
-        # Handle a corrupt response which would come through as a string, not valid JSON.
-        # TODO: can we handle this a better way? a string is valid JSON, but not the what we expect in a normal response.
-        if isinstance(json, str):
-            raise YarnAppReportParseException(
-                f"Response is corrupt, cannot parse it because a JSON dict was expected but received a string: {json!r}"
-            )
 
         report = json.get("app", {})
         required_keys = ["state", "finalStatus", "startedTime", "finishedTime"]

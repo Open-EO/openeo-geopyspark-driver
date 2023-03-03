@@ -223,24 +223,26 @@ class YarnMock:
                 context.status_code = 200
                 app_id = str(request.url).split("/")[-1]
                 if app_id in self.corrupt_app_ids:
-                    return f"C0rRup7! {app_id}'"
+                    return f'"C0rRup7! {app_id}"'
                 elif app_id in self.apps:
-                    return self.apps[app_id].status_rest_response()
+                    return json.dumps(self.apps[app_id].status_rest_response())
                 elif app_id in self.failed_yarn_launch_app_ids:
-                    return self.apps[app_id].status_rest_response()
+                    return json.dumps(self.apps[app_id].status_rest_response())
                 else:
                     context.status_code = 404
-                    return {
-                        "RemoteException": {
-                            "exception": "BadRequestException",
-                            "message": f"java.lang.IllegalArgumentException: Invalid ApplicationId: {app_id}",
-                            "javaClassName": "org.apache.hadoop.yarn.webapp.BadRequestException",
+                    return json.dumps(
+                        {
+                            "RemoteException": {
+                                "exception": "BadRequestException",
+                                "message": f"java.lang.IllegalArgumentException: Invalid ApplicationId: {app_id}",
+                                "javaClassName": "org.apache.hadoop.yarn.webapp.BadRequestException",
+                            }
                         }
-                    }
+                    )
 
             requests_mocker.get(
                 url_matcher,
-                json=response_call_back,
+                text=response_call_back,
             )
 
             yield
@@ -661,7 +663,8 @@ class TestYarnJobTracker:
                 (
                     "Failed status sync for job_id='job-2': "
                     + "unexpected YarnAppReportParseException: "
-                    + 'Response is corrupt, cannot parse it because a JSON dict was expected but received a string: "C0rRup7! app-2\'"'
+                    + "Cannot parse response body: expecting a JSON dict but body contains "
+                    + "a value of type <class 'str'>, value='C0rRup7! app-2' Response body='\"C0rRup7! app-2\"'"
                 ),
             )
         ]
@@ -927,6 +930,32 @@ class TestYarnStatusGetter:
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
             _ = YarnStatusGetter.parse_application_response(json={})
+
+    def test_response_is_not_valid_json(self, requests_mock):
+        status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
+        app_id = "app_123"
+        app_url = status_getter.get_application_url(app_id)
+        m_get = requests_mock.get(
+            app_url, text="Bad response, not valid JSON without quotes"
+        )
+
+        with pytest.raises(json.JSONDecodeError):
+            status_getter.get_job_metadata(None, None, app_id=app_id)
+
+        assert m_get.called
+
+    def test_response_is_not_dict(self, requests_mock):
+        status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
+        app_id = "app_123"
+        app_url = status_getter.get_application_url(app_id)
+        m_get = requests_mock.get(
+            app_url, text='"Bad response: is JSON but not a dict"'
+        )
+
+        with pytest.raises(YarnAppReportParseException):
+            status_getter.get_job_metadata(None, None, app_id=app_id)
+
+        assert m_get.called
 
 
 class TestK8sJobTracker:
