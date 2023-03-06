@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
-import requests_gssapi
+
+# We only need requests_gssapi for Yarn, which uses Kereberos authentication.
+try:
+    import requests_gssapi
+except ImportError:
+    requests_gssapi = None
 
 from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
