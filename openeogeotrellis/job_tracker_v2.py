@@ -132,7 +132,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
                     "Cannot parse response body: expecting a JSON dict but body contains "
                     + f"a value of type {type(json)}, value={json!r} Response body={response.text!r}"
                 )
-            return self.parse_application_response(json=json)
+            return self.parse_application_response(data=json)
 
     @staticmethod
     def _ms_epoch_to_date(epoch_millis: int) -> Union[str, None]:
@@ -143,20 +143,20 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         return rfc3339.datetime(utc_datetime)
 
     @classmethod
-    def parse_application_response(cls, json: dict) -> _JobMetadata:
+    def parse_application_response(cls, data: dict) -> _JobMetadata:
         """Parse the HTTP response body of the application status request.
 
-        :param json: The HTTP response body, which was in JSON format.
+        :param data: The data in the HTTP response body, which was in JSON format.
         :raises YarnAppReportParseException: When the JSON response can not be parsed properly.
         :return: _JobMetadata containing the info we need about the Job.
         """
 
-        report = json.get("app", {})
+        report = data.get("app", {})
         required_keys = ["state", "finalStatus", "startedTime", "finishedTime"]
         missing_keys = [k for k in required_keys if k not in report]
         if missing_keys:
             raise YarnAppReportParseException(
-                f"JSON response is missing following required keys: {missing_keys}, json={json}"
+                f"JSON response is missing following required keys: {missing_keys}, json={data}"
             )
 
         try:

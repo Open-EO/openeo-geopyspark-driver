@@ -896,7 +896,7 @@ class TestYarnStatusGetter:
             vcore_seconds=2265,
         )
 
-        job_metadata = YarnStatusGetter.parse_application_response(json=response)
+        job_metadata = YarnStatusGetter.parse_application_response(data=response)
         assert job_metadata.status == "finished"
         assert job_metadata.start_time == "2023-01-06T16:14:32Z"
         assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
@@ -918,7 +918,7 @@ class TestYarnStatusGetter:
             diagnostics="",
         )
 
-        job_metadata = YarnStatusGetter.parse_application_response(json=response)
+        job_metadata = YarnStatusGetter.parse_application_response(data=response)
         assert job_metadata.status == "running"
         assert job_metadata.start_time == "2023-01-06T16:14:32Z"
         assert job_metadata.finish_time is None
@@ -929,7 +929,7 @@ class TestYarnStatusGetter:
 
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
-            _ = YarnStatusGetter.parse_application_response(json={})
+            YarnStatusGetter.parse_application_response(data={})
 
     def test_response_is_not_valid_json(self, requests_mock):
         status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
