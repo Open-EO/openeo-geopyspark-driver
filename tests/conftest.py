@@ -102,7 +102,6 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set(key='spark.driver.memory', value='2G')
     conf.set(key='spark.executor.memory', value='2G')
     conf.set('spark.ui.enabled', False)
-    conf.set('spark.driver.extraJavaOptions', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009')
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
