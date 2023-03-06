@@ -92,5 +92,7 @@ setup(
         "k8s": [
             "kubernetes",
         ],
+        "yarn": [
+        ],
     },
 )
