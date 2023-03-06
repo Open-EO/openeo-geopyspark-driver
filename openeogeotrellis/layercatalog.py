@@ -21,6 +21,7 @@ from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
 from shapely.geometry import box
 
@@ -777,7 +778,8 @@ def get_layer_catalog(
 
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
-                    sh_collections_resp = requests.get(sh_stac_endpoint)
+                    sh_collections_session = requests_with_retry()
+                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint)
                     sh_collections_resp.raise_for_status()
                     sh_collection_metadatas = {
                         c["id"]: requests.get(c["link"]).json()
