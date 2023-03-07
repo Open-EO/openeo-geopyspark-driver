@@ -95,13 +95,18 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc
     ])
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
+    # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
+    # Therefor, keep track of the CRS of the bbox so we can convert it to EPSG:4326
+    # at the end, if we received any other CRS.
+    bbox_crs = None
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
-        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        bbox_crs = spatial_extent["crs"]
+        bbox = tuple(spatial_extent[b] for b in ["west", "south", "east", "north"])
         if all(b is not None for b in bbox):
             polygon = Polygon.from_bounds(*bbox)
             geometry = mapping(polygon)
-            area = area_in_square_meters(polygon, spatial_extent["crs"])
+            area = area_in_square_meters(polygon, bbox_crs)
         else:
             bbox = None
             geometry = None
@@ -120,6 +125,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
         agg_geometry = aggregate_spatial_geometries[0]
         if isinstance(agg_geometry, BaseGeometry):
+            # We only allow EPSG:4326 for the BaseGeometry case.
+            bbox_crs = "EPSG:4326"
             bbox = agg_geometry.bounds
             geometry = mapping(agg_geometry)
             area = area_in_square_meters(agg_geometry, "EPSG:4326")
@@ -128,23 +135,43 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
             area = agg_geometry.area
+            bbox_crs = agg_geometry.crs
         elif isinstance(agg_geometry, DriverVectorCube):
             bbox = agg_geometry.get_bounding_box()
             geometry = agg_geometry.get_bounding_box_geojson()
             area = agg_geometry.get_bounding_box_area()
+            bbox_crs = agg_geometry.get_crs()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
 
+    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
     if bbox:
-        # Reproject the spatial extent if it is not in lat-lon / WGS84.
-        if spatial_extent["crs"] != "EPSG:4326":
-            spatial_extent = reproject_bounding_box(
-                spatial_extent, from_crs=None, to_crs="EPSG:4326"
+        # Note that if the bbox comes from the aggregate_spatial_geometries,
+        # then we may get a pyproy CRS object instead of an EPSG code.
+        # That's fine. In that case we can simply go ahead with the reprojection.
+        # If the CRS happens to be EPSG:4326 after all then it will be a no-operation.
+        # Checking for all possible variants of pyproj CRS objects that are actually
+        # all the exact same EPSG:4326 CRS is difficult, and doesn't really add anything.
+        if bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
+            if aggregate_spatial_geometries:
+                new_spatial_extent = {
+                    "west": bbox[0],
+                    "south": bbox[1],
+                    "east": bbox[2],
+                    "north": bbox[3],
+                    "crs": bbox_crs,
+                }
+            else:
+                new_spatial_extent = spatial_extent
+            new_spatial_extent = reproject_bounding_box(
+                new_spatial_extent, from_crs=None, to_crs="EPSG:4326"
             )
-            bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+            bbox = tuple(
+                new_spatial_extent[b] for b in ["west", "south", "east", "north"]
+            )
 
     # TODO: dedicated type?
     # TODO: match STAC format?
