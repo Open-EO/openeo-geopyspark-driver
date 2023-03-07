@@ -1,0 +1,129 @@
+{
+  "synthesis": {
+    "name": "*",
+    "osDescription": {
+      "ShortName": "Collections",
+      "LongName": "All Collections",
+      "Description": "Search on all collections",
+      "Tags": "",
+      "Developer": "CloudFerro Sp. z o.o.",
+      "Contact": "info@creodias.eu",
+      "Query": "TBD",
+      "Attribution": "CREODIAS, Copyright 2019, All Rights Reserved; ESA, Copyright 2019, All Rights Reserved; EUMETSAT, Copyright 2019, All Rights Reserve; NASA, Copyright 2019, All Rights Reserved; USGS, Copyright 2019, All Rights Reserved"
+    }
+  },
+  "collections": [
+    {
+      "name": "Sentinel1",
+      "status": "public",
+      "owner": "indexer",
+      "model": "RestoModel_Sentinel1",
+      "license": {
+        "licenseId": "unlicensed",
+        "hasToBeSigned": "never",
+        "grantedCountries": null,
+        "grantedOrganizationCountries": null,
+        "grantedFlags": null,
+        "viewService": "public",
+        "signatureQuota": -1,
+        "description": {
+          "shortName": "No license"
+        }
+      },
+      "osDescription": {
+        "ShortName": "Sentinel-1",
+        "LongName": "Sentinel-1 Collection",
+        "Description": "Sentinel-1 Collection",
+        "Tags": "esa sentinel sentinel1 s1 radar",
+        "Developer": "CloudFerro Sp. z o.o.",
+        "Contact": "info@creodias.eu",
+        "Query": "TBD",
+        "Attribution": "CREODIAS, Copyright 2019, All Rights Reserved; ESA. Copyright 2019, All Rights Reserved"
+      }
+    },
+    {
+      "name": "Sentinel2",
+      "status": "public",
+      "owner": "indexer",
+      "model": "RestoModel_Sentinel2",
+      "license": {
+        "licenseId": "unlicensed",
+        "hasToBeSigned": "never",
+        "grantedCountries": null,
+        "grantedOrganizationCountries": null,
+        "grantedFlags": null,
+        "viewService": "public",
+        "signatureQuota": -1,
+        "description": {
+          "shortName": "No license"
+        }
+      },
+      "osDescription": {
+        "ShortName": "Sentinel-2",
+        "LongName": "Sentinel-2 Collection",
+        "Description": "Sentinel-2 Collection",
+        "Tags": "esa sentinel sentinel2 s2",
+        "Developer": "CloudFerro Sp. z o.o.",
+        "Contact": "info@creodias.eu",
+        "Query": "TBD",
+        "Attribution": "CREODIAS, Copyright 2019, All Rights Reserved; ESA. Copyright 2019, All Rights Reserved"
+      }
+    },
+    {
+      "name": "Sentinel3",
+      "status": "public",
+      "owner": "indexer",
+      "model": "RestoModel_Sentinel",
+      "license": {
+        "licenseId": "unlicensed",
+        "hasToBeSigned": "never",
+        "grantedCountries": null,
+        "grantedOrganizationCountries": null,
+        "grantedFlags": null,
+        "viewService": "public",
+        "signatureQuota": -1,
+        "description": {
+          "shortName": "No license"
+        }
+      },
+      "osDescription": {
+        "ShortName": "Sentinel-3",
+        "LongName": "Sentinel3",
+        "Description": "Sentinel3 Collection",
+        "Tags": "Sentinel3",
+        "Developer": "CloudFerro Sp. z o.o.",
+        "Contact": "info@creodias.eu",
+        "Query": "TBD",
+        "Attribution": "CREODIAS, Copyright 2019, All Rights Reserved; ESA, Copyright 2019, All Rights Reserved; EUMETSAT, Copyright 2019, All Rights Reserved"
+      }
+    },
+    {
+      "name": "Sentinel5P",
+      "status": "public",
+      "owner": "indexer",
+      "model": "RestoModel_Sentinel",
+      "license": {
+        "licenseId": "unlicensed",
+        "hasToBeSigned": "never",
+        "grantedCountries": null,
+        "grantedOrganizationCountries": null,
+        "grantedFlags": null,
+        "viewService": "public",
+        "signatureQuota": -1,
+        "description": {
+          "shortName": "No license"
+        }
+      },
+      "osDescription": {
+        "ShortName": "Sentinel-5P",
+        "LongName": "Sentinel-5P Collection",
+        "Description": "Sentinel-5P Collection",
+        "Tags": "Sentinel5P TROPOMI ESA",
+        "Developer": "CloudFerro Sp. z o.o.",
+        "Contact": "info@creodias.eu",
+        "Query": "Poland 2018",
+        "Attribution": "CREODIAS, Copyright 2019, All Rights Reserved; ESA. Copyright 2019, All Rights Reserved"
+      }
+    }
+  ]
+}
