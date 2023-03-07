@@ -1621,7 +1621,7 @@ class GeopysparkDataCube(DriverDataCube):
                         return assets
                     else:
                         if tile_grid:
-                            tiles = self._save_stitched_tile_grid(max_level, filename, tile_grid, crop_bounds,
+                            tiles = self._save_stitched_tile_grid(max_level, str(save_filename), tile_grid, crop_bounds,
                                                                   zlevel=zlevel, filename_prefix=filename_prefix)
 
                             # noinspection PyProtectedMember
@@ -1633,20 +1633,16 @@ class GeopysparkDataCube(DriverDataCube):
                                 "roles": ["data"]
                             } for tile in tiles}
                         else:
-                            originalName = pathlib.Path(filename)
+                            outputPaths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(max_level.srdd.rdd(),band_count,str(save_filename),zlevel,get_jvm().scala.Option.apply(crop_extent),gtiff_options)
+                            return {str(pathlib.Path(resultfile).name): {
+                                "href": str(resultfile),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"],
+                                'bands': bands,
+                                'nodata': nodata,
+                                'datetime': None
+                            } for resultfile in outputPaths}
 
-                            filePath = originalName.parent / ("openEO.tif" if originalName.name == "out" else originalName.name)
-                            get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(max_level.srdd.rdd(),band_count,str(filePath),zlevel,get_jvm().scala.Option.apply(crop_extent),gtiff_options)
-                            return {
-                                str(filePath.name): {
-                                    "href": str(filePath),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    'bands': bands,
-                                    'nodata': nodata,
-                                    'datetime': None
-                                }
-                            }
             else:
                 if not filename.endswith(".png"):
                     filename = filename + ".png"
