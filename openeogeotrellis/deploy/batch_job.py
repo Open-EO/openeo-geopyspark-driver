@@ -310,17 +310,10 @@ def _extract_projection_extension_metadata(asset_path: str) -> dict:
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = info.get("coordinateSystem", {}).get("wkt")
-    if m := re.search('ID\["EPSG"\,(\d*)\]', crs_as_wkt):
-        epsg_str = m.group(1)
-        try:
-            epsg = int(epsg_str)
-        except:
-            logger.error(
-                f"Could not convert epsg code top int: epsg_str={epsg_str}"
-                + "WKT for CRS: {crs_as_wkt}"
-            )
-        else:
-            proj_metadata["proj:epsg"] = epsg
+    if crs_as_wkt:
+        crs_id = extract_crs_epsg_code_from_wkt_string(crs_as_wkt)
+        if crs_id:
+            proj_metadata["proj:epsg"] = crs_id
 
     # Size of the pixels
     proj_metadata["proj:shape"] = info["size"]
@@ -337,6 +330,34 @@ def _extract_projection_extension_metadata(asset_path: str) -> dict:
         proj_metadata["proj:bbox"] = [*lole, *upri]
 
     return proj_metadata
+
+
+def extract_crs_epsg_code_from_wkt_string(crs_as_wkt: str) -> str:
+    """Extract the EPSG code from a WKT string that represents a CRS."""
+
+    # Find the last line, searching backward and skipping any empty lines at the end.
+    lines = crs_as_wkt.split("\n")
+    for i in range(len(lines) - 1, 0, -1):
+        crs_id_line = lines[i].strip()
+        if crs_id_line:
+            break
+
+    m = re.search('ID\["EPSG"\,(\d*)\]\]', crs_id_line)
+    if not m:
+        # The CRS ID wasn't there.
+        return None
+
+    crs_id = m.group(1)
+    try:
+        epsg_id = int(crs_id)
+        return epsg_id
+    except:
+        logger.error(
+            f"Could not convert epsg code to int: epsg_str={epsg_str}"
+            + "WKT for CRS: {crs_as_wkt}"
+        )
+        raise
+
 
 def _get_tracker(tracker_id=""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)

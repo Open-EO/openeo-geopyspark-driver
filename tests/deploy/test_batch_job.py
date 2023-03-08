@@ -7,6 +7,7 @@ from unittest import mock
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
 from shapely.geometry import shape
+from osgeo import gdal
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -16,6 +17,7 @@ from openeogeotrellis.deploy.batch_job import (
     run_job, _get_tracker,
     _convert_asset_outputs_to_s3_urls,
     _convert_job_metadatafile_outputs_to_s3_urls,
+    extract_crs_epsg_code_from_wkt_string,
 )
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis._version import __version__
@@ -357,6 +359,221 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         },
     }
     t.setGlobalTracking(False)
+
+
+def reproject_raster_file(
+    source_path: str, destination_path: str, dest_crs: str, width: int, height: int
+):
+    """Use the equavalent of the gdalwarp utility to reproject a raster file to a new CRS
+
+    :param source_path: Path to the source raster file.
+    :param destination_path: Path to the destination file.
+    :param dest_crs: Which Coordinate Reference System to convert to.
+    :param width:
+        Width of the output raster in pixels.
+        Reprojection may get a different size than the source raster had.
+        In order to get the raster shape you need you have to give gdal.Warp the width and heigth.
+    :param height:
+        Height of the output raster in pixels.
+        Same remark as for `width`: need to specify output raster's width and height.
+    """
+    opts = gdal.WarpOptions(dstSRS=dest_crs, width=width, height=height)
+    gdal.Warp(
+        destNameOrDestDS=destination_path, srcDSOrSrcDSTab=source_path, options=opts
+    )
+
+
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
+    evaluate, tmp_path
+):
+    """When there are two raster assets with the same projection metadata, it should put
+    those metadata at the level of the item instead of the individual bands.
+    """
+    cube_mock = MagicMock()
+
+    first_asset_path = get_test_data_file(
+        "s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+    )
+    first_asset = str(first_asset_path)
+
+    # For the second file: use a copy of the first file  (in the temp dir) so we know
+    # that GDAL will find exactly the same metadata under a different asset path.
+    second_asset_path = tmp_path / first_asset_path.name
+    (second_asset) = str(second_asset_path)
+    reproject_raster_file(
+        source_path=first_asset,
+        destination_path=second_asset,
+        dest_crs="EPSG:3812",
+        width=720,
+        height=1188,
+    )
+
+    asset_meta = {
+        first_asset: {
+            "href": first_asset,
+            "roles": "data",
+        },
+        # use same file twice to simulate the same CRS and bbox
+        second_asset: {
+            "href": second_asset,
+            "roles": "data",
+        },
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": {
+            first_asset: {
+                "href": first_asset,
+                "roles": "data",
+                "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
+                "proj:epsg": 4326,
+                "proj:shape": [720, 1188],
+            },
+            second_asset: {
+                "href": second_asset,
+                "roles": "data",
+                "proj:bbox": [723413.644, 577049.010, 745443.909, 614102.693],
+                "proj:epsg": 3812,
+                "proj:shape": [720, 1188],
+            },
+        },
+        "bbox": None,
+        "end_datetime": None,
+        "epsg": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
+def test_extract_projection_extension_metadata():
+    import textwrap
+
+    crs_wkt_string = textwrap.dedent(
+        """
+        PROJCRS["ETRS89 / Belgian Lambert 2008",
+            BASEGEOGCRS["ETRS89",
+                ENSEMBLE["European Terrestrial Reference System 1989 ensemble",
+                    MEMBER["European Terrestrial Reference Frame 1989"],
+                    MEMBER["European Terrestrial Reference Frame 1990"],
+                    MEMBER["European Terrestrial Reference Frame 1991"],
+                    MEMBER["European Terrestrial Reference Frame 1992"],
+                    MEMBER["European Terrestrial Reference Frame 1993"],
+                    MEMBER["European Terrestrial Reference Frame 1994"],
+                    MEMBER["European Terrestrial Reference Frame 1996"],
+                    MEMBER["European Terrestrial Reference Frame 1997"],
+                    MEMBER["European Terrestrial Reference Frame 2000"],
+                    MEMBER["European Terrestrial Reference Frame 2005"],
+                    MEMBER["European Terrestrial Reference Frame 2014"],
+                    ELLIPSOID["GRS 1980",6378137,298.257222101,
+                        LENGTHUNIT["metre",1]],
+                    ENSEMBLEACCURACY[0.1]],
+                PRIMEM["Greenwich",0,
+                    ANGLEUNIT["degree",0.0174532925199433]],
+                ID["EPSG",4258]],
+            CONVERSION["Belgian Lambert 2008",
+                METHOD["Lambert Conic Conformal (2SP)",
+                    ID["EPSG",9802]],
+                PARAMETER["Latitude of false origin",50.797815,
+                    ANGLEUNIT["degree",0.0174532925199433],
+                    ID["EPSG",8821]],
+                PARAMETER["Longitude of false origin",4.35921583333333,
+                    ANGLEUNIT["degree",0.0174532925199433],
+                    ID["EPSG",8822]],
+                PARAMETER["Latitude of 1st standard parallel",49.8333333333333,
+                    ANGLEUNIT["degree",0.0174532925199433],
+                    ID["EPSG",8823]],
+                PARAMETER["Latitude of 2nd standard parallel",51.1666666666667,
+                    ANGLEUNIT["degree",0.0174532925199433],
+                    ID["EPSG",8824]],
+                PARAMETER["Easting at false origin",649328,
+                    LENGTHUNIT["metre",1],
+                    ID["EPSG",8826]],
+                PARAMETER["Northing at false origin",665262,
+                    LENGTHUNIT["metre",1],
+                    ID["EPSG",8827]]],
+            CS[Cartesian,2],
+                AXIS["easting (X)",east,
+                    ORDER[1],
+                    LENGTHUNIT["metre",1]],
+                AXIS["northing (Y)",north,
+                    ORDER[2],
+                    LENGTHUNIT["metre",1]],
+            USAGE[
+                SCOPE["Engineering survey, topographic mapping."],
+                AREA["Belgium - onshore."],
+                BBOX[49.5,2.5,51.51,6.4]],
+            ID["EPSG",3812]]
+        """
+    )
+
+    crs_id = extract_crs_epsg_code_from_wkt_string(crs_wkt_string)
+    assert crs_id == 3812
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
