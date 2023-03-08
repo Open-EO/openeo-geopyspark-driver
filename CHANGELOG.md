@@ -13,17 +13,17 @@ without compromising stable operations.
 
 ## 2023-03-08 (0.9.3a1)
 
-<small>Build `20230307-1166`, with components:
+Build `20230307-1166`, with components:
 `openeo-geopyspark-0.9.3a1.dev20230307+1073`, `openeo_driver-0.37.0a1.dev20230307+441`,
-`openeo-0.15.0`, `geotrellis-extensions-static-2.3.0_2.12-SNAPSHOT-5822561`</small>
+`openeo-0.15.0`, `geotrellis-extensions-static-2.3.0_2.12-SNAPSHOT-5822561`
 
 ### Feature
 - Add "filename_prefix" to format_options.
 
 
-## 2023-02-27 (0.9.3a1)
+## 2023-02-27 (0.7.0a1)
 
-<small>Build `20230221-1118`</small>
+Build `20230221-1118`
 
 Note: this deploy was rolled back to previous build `20230117-966` the same day.
 
@@ -38,7 +38,7 @@ Note: this deploy was rolled back to previous build `20230117-966` the same day.
 
 ## 2023-02-07 (0.6.7a1)
 
-<small>Build `20230117-966`</small>
+Build `20230117-966`
 
 - Added initial support for the `inspect` process. It can be used on datacubes and in callbacks.
 - The size of a single chunk is now automatically increased for larger jobs, to improve IO performance.
