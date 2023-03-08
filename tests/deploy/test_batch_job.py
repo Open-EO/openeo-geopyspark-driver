@@ -147,7 +147,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     cube_mock = MagicMock()
     first_asset = str(
         get_test_data_file(
-            "s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+            "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
         )
     )
     asset_meta = {
@@ -254,7 +254,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     cube_mock = MagicMock()
 
     first_asset_path = get_test_data_file(
-        "s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
     first_asset = str(first_asset_path)
     # For the second file: use a copy of the first file  (in the temp dir) so we know
@@ -393,7 +393,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     cube_mock = MagicMock()
 
     first_asset_path = get_test_data_file(
-        "s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
     first_asset = str(first_asset_path)
 
