@@ -181,7 +181,8 @@ def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(
     # Create a BaseGeometry (in memory) for the spatial aggregation.
     #
     # We only accept EPSG:4326 for an aggregate_spatial with a BaseGeometry,
-    # i.e. a geometry from shapely. Therefor we don't convert this one to crs_epsg.
+    # i.e. a geometry from shapely. Therefore we don't convert this geometry
+    # to crs_epsg.
     #
     # To keep the bbox numbers sensible we create a rectangular polygon that is
     # slightly smaller than the BBox in filter_bbox above, so that they will stay
@@ -249,7 +250,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
     #
     # Create a geojson file for the spatial aggregation with a delayed vector file.
-    # GeoJSON is always in lat-long.
+    # GeoJSON is always in lat-long, so we don't reproject this geometry.
     #
     # To keep the bbox numbers sensible we create a rectangular polygon that is
     # slightly smaller than the BBox in filter_bbox above, so that they will stay

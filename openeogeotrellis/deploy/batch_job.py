@@ -96,7 +96,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     ])
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
-    # Therefor, keep track of the CRS of the bbox so we can convert it to EPSG:4326
+    # Therefore, keep track of the CRS of the bbox so we can convert it to EPSG:4326
     # at the end, if we received any other CRS.
     bbox_crs = None
     if(len(extents) > 0):
@@ -149,12 +149,12 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
 
     # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
     if bbox:
-        # Note that if the bbox comes from the aggregate_spatial_geometries,
-        # then we may get a pyproy CRS object instead of an EPSG code.
-        # That's fine. In that case we can simply go ahead with the reprojection.
+        # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
+        # get a pyproy CRS object instead of an EPSG code.That's fine. In that case we
+        # can simply go ahead with the reprojection.
         # If the CRS happens to be EPSG:4326 after all then it will be a no-operation.
-        # Checking for all possible variants of pyproj CRS objects that are actually
-        # all the exact same EPSG:4326 CRS is difficult, and doesn't really add anything.
+        # It is difficult to list and check all possible variants of pyproj CRS objects
+        # that are actually all the exact same EPSG:4326 CRS, and it isn't really necessary.
         if bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
             if aggregate_spatial_geometries:
                 new_spatial_extent = {
