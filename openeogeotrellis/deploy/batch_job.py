@@ -562,7 +562,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
-        geojsons = (mapping(geometry) for geometry in result.geometries)
+        geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
         result = JSONResult(geojsons)
 
     if isinstance(result, DriverDataCube):

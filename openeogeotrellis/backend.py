@@ -436,6 +436,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
                             "default": None
                         },
+                        "filename_prefix": {
+                            "type": "string",
+                            "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
+                        },
                     },
                 },
                 "PNG": {
