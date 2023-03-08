@@ -334,6 +334,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         catalog = get_layer_catalog(vault)
 
         jvm = get_jvm()
+
         conf = SparkContext.getOrCreate().getConf()
         principal = conf.get("spark.yarn.principal", conf.get("spark.kerberos.principal"))
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
