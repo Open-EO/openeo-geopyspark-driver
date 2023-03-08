@@ -152,7 +152,9 @@ class TestDoubleJobRegistry:
             "parent_id": None,
         }
 
-    def test_create_job_just_log_errors(self, double_jr, zk_client, memory_jr, caplog):
+    def test_create_job_just_log_errors(
+        self, double_jr, zk_client, memory_jr, caplog, monkeypatch
+    ):
         """Check `_just_log_errors` + "job_id" extra feature with broken memory_jr"""
 
         class Formatter:
@@ -162,7 +164,7 @@ class TestDoubleJobRegistry:
                 job_id = getattr(record, "job_id", None)
                 return f"[{job_id}] {record.levelname} {record.message}"
 
-        caplog.handler.setFormatter(Formatter())
+        monkeypatch.setattr(caplog.handler, "formatter", Formatter())
 
         with mock.patch.object(
             memory_jr, "create_job", side_effect=RuntimeError("Nope!")
