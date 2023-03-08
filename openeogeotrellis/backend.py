@@ -334,7 +334,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         catalog = get_layer_catalog(vault)
 
         jvm = get_jvm()
-
         conf = SparkContext.getOrCreate().getConf()
         principal = conf.get("spark.yarn.principal", conf.get("spark.kerberos.principal"))
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
@@ -435,6 +434,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": ["object", "null"],
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
                             "default": None
+                        },
+                        "filename_prefix": {
+                            "type": "string",
+                            "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
                         },
                     },
                 },

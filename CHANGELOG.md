@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 2023-03-08
+### Feature
+- Add "filename_prefix" to format_options.
+
 ## 2023-02-27 (0.6.7a1)
 - GeoParquet support to allow loading large vector files
 - Improved specific log messages 
