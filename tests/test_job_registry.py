@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from unittest import mock
 
@@ -149,6 +151,31 @@ class TestDoubleJobRegistry:
             "job_options": None,
             "parent_id": None,
         }
+
+    def test_create_job_just_log_errors(self, double_jr, zk_client, memory_jr, caplog):
+        """Check `_just_log_errors` + "job_id" extra feature with broken memory_jr"""
+
+        class Formatter:
+            """Custom formatter to include "job_id" extra"""
+
+            def format(self, record: logging.LogRecord):
+                job_id = getattr(record, "job_id", None)
+                return f"[{job_id}] {record.levelname} {record.message}"
+
+        caplog.handler.setFormatter(Formatter())
+
+        with mock.patch.object(
+            memory_jr, "create_job", side_effect=RuntimeError("Nope!")
+        ):
+            with double_jr:
+                double_jr.create_job(
+                    job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
+                )
+        zk_result = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123")
+        assert zk_result == DictSubSet({"job_id": "j-123"})
+        assert memory_jr.db == {}
+        expected = "[j-123] WARNING In context 'DoubleJobRegistry.create_job': caught RuntimeError('Nope!')\n"
+        assert caplog.text == expected
 
     def test_get_job(self, double_jr, caplog):
         with double_jr:
