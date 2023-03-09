@@ -1,0 +1,146 @@
+{
+  "description":"\/data\/MTDA\/BIOPAR\/BioPar_LC100_V1_CONTINENTS\/NETCDF\/COV-GRASSLAND\/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1\/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1.nc",
+  "driverShortName":"netCDF",
+  "driverLongName":"Network Common Data Format",
+  "files":[
+    "\/data\/MTDA\/BIOPAR\/BioPar_LC100_V1_CONTINENTS\/NETCDF\/COV-GRASSLAND\/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1\/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1.nc"
+  ],
+  "size":[
+    90720,
+    80640
+  ],
+  "coordinateSystem":{
+    "wkt":"GEOGCS[\"WGS 84\",\n    DATUM[\"WGS_1984\",\n        SPHEROID[\"WGS 84\",6378137,298.257223563,\n            AUTHORITY[\"EPSG\",\"7030\"]],\n        AUTHORITY[\"EPSG\",\"6326\"]],\n    PRIMEM[\"Greenwich\",0],\n    UNIT[\"degree\",0.0174532925199433],\n    AUTHORITY[\"EPSG\",\"4326\"]]"
+  },
+  "geoTransform":[
+    -30.0004960317460316,
+    0.0009920634920635,
+    0.0,
+    45.0004960317460245,
+    0.0,
+    -0.0009920634920635
+  ],
+  "metadata":{
+    "":{
+      "Band1#flag_meanings":"sea",
+      "Band1#flag_values":"200",
+      "Band1#grid_mapping":"crs",
+      "Band1#long_name":"%cover fraction grassland",
+      "Band1#standard_name":"COV-GRASSLAND",
+      "Band1#valid_range":"{0,255}",
+      "Band1#_FillValue":"-1",
+      "Band1#_Unsigned":"true",
+      "crs#GeoTransform":"-30.00049603174603 0.0009920634920634909 0 45.00049603174603 0 -0.0009920634920634909 ",
+      "crs#grid_mapping_name":"latitude_longitude",
+      "crs#inverse_flattening":"298.257223563",
+      "crs#longitude_of_prime_meridian":"0",
+      "crs#semi_major_axis":"6378137",
+      "crs#spatial_ref":"GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433],AUTHORITY[\"EPSG\",\"4326\"]]",
+      "lat#long_name":"latitude",
+      "lat#standard_name":"latitude",
+      "lat#units":"degrees_north",
+      "lon#long_name":"longitude",
+      "lon#standard_name":"longitude",
+      "lon#units":"degrees_east",
+      "NC_GLOBAL#Conventions":"CF-1.5",
+      "NC_GLOBAL#GDAL":"GDAL 1.11.4, released 2016\/01\/25",
+      "NC_GLOBAL#GDAL_archive_facility":"VITO NV",
+      "NC_GLOBAL#GDAL_AREA_OR_POINT":"Area",
+      "NC_GLOBAL#GDAL_copyright":"Copernicus Service information 2017",
+      "NC_GLOBAL#GDAL_creator":"Dr. Marcel Buchhorn (VITO)",
+      "NC_GLOBAL#GDAL_file_creation":"Sun Jun 25 19:17:50 2017",
+      "NC_GLOBAL#GDAL_history":"2017-07-31 Processing Line LC100",
+      "NC_GLOBAL#GDAL_identifier":"urn:cgls:continents:lc100-cov-grassland_v1_100m_netcdf:lc100-COV-GRASSLAND_201501010000_AFRI_PROBAV_V1.0.1",
+      "NC_GLOBAL#GDAL_institution":"VITO NV",
+      "NC_GLOBAL#GDAL_long_name":"Land Cover",
+      "NC_GLOBAL#GDAL_NODATA_value":"255",
+      "NC_GLOBAL#GDAL_orbit_type":"LEO",
+      "NC_GLOBAL#GDAL_parent_identifier":"urn:cgls:continents:lc100-cov-grassland_v1_100m_netcdf",
+      "NC_GLOBAL#GDAL_platform":"Proba-V",
+      "NC_GLOBAL#GDAL_processing_level":"L4",
+      "NC_GLOBAL#GDAL_processing_mode":"Offline",
+      "NC_GLOBAL#GDAL_product_version":"1.0.1",
+      "NC_GLOBAL#GDAL_references":"http:\/\/land.copernicus.eu\/global\/products\/lc",
+      "NC_GLOBAL#GDAL_sensor":"VEGETATION",
+      "NC_GLOBAL#GDAL_source":"Derived from 100m EO satellite imagery",
+      "NC_GLOBAL#GDAL_time_coverage_end":"2016-03-31T23:59:59Z",
+      "NC_GLOBAL#GDAL_time_coverage_start":"2014-10-01T00:00:00Z",
+      "NC_GLOBAL#GDAL_title":"Dynamic Land Cover Map 100m AFRI 2015-01-01T00:00:00Z",
+      "NC_GLOBAL#history":"Mon Jul 31 11:58:55 2017: GDAL CreateCopy( \/data\/mep_cg1\/Africa_RC4_June2017\/distribution\/1.0.1\/nc\/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1.nc, ... )"
+    }
+  },
+  "cornerCoordinates":{
+    "upperLeft":[
+      -30.000496,
+      45.000496
+    ],
+    "lowerLeft":[
+      -30.000496,
+      -34.999504
+    ],
+    "lowerRight":[
+      59.999504,
+      -34.999504
+    ],
+    "upperRight":[
+      59.999504,
+      45.000496
+    ],
+    "center":[
+      14.999504,
+      5.000496
+    ]
+  },
+  "wgs84Extent":{
+    "type":"Polygon",
+    "coordinates":[
+      [
+        [
+          -30.000496,
+          45.000496
+        ],
+        [
+          -30.000496,
+          -34.999504
+        ],
+        [
+          59.999504,
+          -34.999504
+        ],
+        [
+          59.999504,
+          45.000496
+        ],
+        [
+          -30.000496,
+          45.000496
+        ]
+      ]
+    ]
+  },
+  "bands":[
+    {
+      "band":1,
+      "block":[
+        90720,
+        1
+      ],
+      "type":"Byte",
+      "colorInterpretation":"Undefined",
+      "noDataValue":255.0,
+      "metadata":{
+        "":{
+          "flag_meanings":"sea",
+          "flag_values":"200",
+          "grid_mapping":"crs",
+          "long_name":"%cover fraction grassland",
+          "NETCDF_VARNAME":"Band1",
+          "standard_name":"COV-GRASSLAND",
+          "valid_range":"{0,255}",
+          "_FillValue":"-1",
+          "_Unsigned":"true"
+        }
+      }
+    }
+  ]
+}

@@ -1,9 +1,11 @@
 import json
 import shutil
+import textwrap
 from mock import MagicMock
 from pathlib import Path
 from unittest import mock
 
+import pytest
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
 from shapely.geometry import shape
@@ -17,7 +19,10 @@ from openeogeotrellis.deploy.batch_job import (
     run_job, _get_tracker,
     _convert_asset_outputs_to_s3_urls,
     _convert_job_metadatafile_outputs_to_s3_urls,
+    read_projection_extension_metadata,
+    parse_projection_extension_metadata,
     extract_crs_epsg_code_from_wkt_string,
+    _get_projection_extension_metadata,
 )
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis._version import __version__
@@ -512,8 +517,6 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
 
 
 def test_extract_projection_extension_metadata():
-    import textwrap
-
     crs_wkt_string = textwrap.dedent(
         """
         PROJCRS["ETRS89 / Belgian Lambert 2008",
@@ -574,6 +577,101 @@ def test_extract_projection_extension_metadata():
 
     crs_id = extract_crs_epsg_code_from_wkt_string(crs_wkt_string)
     assert crs_id == 3812
+
+
+@pytest.mark.parametrize(
+    ["json_file", "expected_metadata"],
+    [
+        (
+            "gdalinfo-output/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1.nc.json",
+            {
+                "proj:bbox": [-30.000496, -34.999504, 59.999504, 45.000496],
+                "proj:shape": [90720, 80640],
+            },
+        ),
+        (
+            "gdalinfo-output/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc.json",
+            {"proj:bbox": [-0.2, -90.2, 359.8, 90.2], "proj:shape": [900, 451]},
+        ),
+    ],
+)
+def test_get_projection_extension_metadata(json_file, expected_metadata):
+    json_path = get_test_data_file(json_file)
+
+    with open(json_path, "rt") as f_in:
+        gdal_info = json.load(f_in)
+
+    proj_metadata = _get_projection_extension_metadata(gdal_info)
+
+    assert proj_metadata == expected_metadata
+
+
+@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+def test_parse_projection_extension_metadata(mock_read_gdal_info):
+    json_dir = get_test_data_file(
+        "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
+    )
+    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+    nc_json_path = (
+        json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc.json"
+    )
+
+    def read_json_file(netcdf_uri: str) -> dict:
+        if netcdf_uri == str(netcdf_path):
+            # json_path = netcdf_uri + ".json"
+            json_path = nc_json_path
+        else:
+            parts = netcdf_uri.split(":")
+            band = parts[-1]
+            # strip off the surrounding double quotes from the filename
+            filename = parts[1][1:-1]
+            json_path = json_dir / f"{filename}.{band}.json"
+        with open(json_path, "rt") as f:
+            return json.load(f)
+
+    mock_read_gdal_info.side_effect = read_json_file
+    with open(nc_json_path, "rt") as f_in:
+        gdal_info = json.load(f_in)
+
+    proj_metadata = parse_projection_extension_metadata(gdal_info)
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert proj_metadata == expected_metadata
+
+
+@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+def test_read_projection_extension_metadata(mock_read_gdal_info):
+    json_dir = get_test_data_file(
+        "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
+    )
+    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+
+    def read_json_file(netcdf_uri: str) -> dict:
+        if netcdf_uri == str(netcdf_path):
+            json_path = netcdf_uri + ".json"
+        else:
+            parts = netcdf_uri.split(":")
+            band = parts[-1]
+            # strip off the surrounding double quotes from the filename
+            filename = parts[1][1:-1]
+            json_path = json_dir / f"{filename}.{band}.json"
+        with open(json_path, "rt") as f:
+            return json.load(f)
+
+    mock_read_gdal_info.side_effect = read_json_file
+
+    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert proj_metadata == expected_metadata
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:

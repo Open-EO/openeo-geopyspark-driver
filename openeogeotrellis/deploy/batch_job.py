@@ -217,9 +217,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                         "Can not read asset's projection extension metadata, asset file not found: {asset_path}"
                     )
                 else:
-                    asset_proj_metadata = _extract_projection_extension_metadata(
-                        asset_path
-                    )
+                    asset_proj_metadata = read_projection_extension_metadata(asset_path)
                     # If gdal could not extract the projection metadata from the file (The file is corrupt perhaps?).
                     if asset_proj_metadata:
                         projection_metadata[asset_path] = asset_proj_metadata
@@ -273,7 +271,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def _extract_projection_extension_metadata(asset_path: str) -> dict:
+def read_projection_extension_metadata(asset_path: str) -> dict:
     """Get the projection metadata for the file in asset_path.
 
     :param asset_path: path to the asset file to read.
@@ -296,11 +294,18 @@ def _extract_projection_extension_metadata(asset_path: str) -> dict:
     in the key "stac" of the dictionary it returns.
     """
     # Make gdal raise exception, otherwise it just writes errors on stdout.
-    gdal.UseExceptions()
-    proj_metadata = {}
 
+    gdal_info = read_gdal_info(asset_path)
+    if not gdal_info:
+        return None
+    return parse_projection_extension_metadata(gdal_info)
+
+
+def read_gdal_info(asset_path: str) -> dict:
+    """Get the JSON output from gdal.Info (equivalent to the gdalinfo CLI tool)"""
+    gdal.UseExceptions()
     try:
-        info = gdal.Info(asset_path, options=gdal.InfoOptions(format="json"))
+        return gdal.Info(asset_path, options=gdal.InfoOptions(format="json"))
     except Exception as exc:
         logger.warning(
             "Could not get projection extension metadata, "
@@ -308,21 +313,38 @@ def _extract_projection_extension_metadata(asset_path: str) -> dict:
         )
         return None
 
+
+def parse_projection_extension_metadata(gdal_info: dict) -> dict:
+    """Parse the JSON output from gdal.Info"""
+    proj_info = _process_gdalinfo_subdatasets(gdal_info)
+    if proj_info:
+        return proj_info
+    else:
+        return _get_projection_extension_metadata(gdal_info)
+
+
+def _get_projection_extension_metadata(gdal_info: dict) -> dict:
+    """Helper function that parses gdal.Info output without processing subdatasets."""
+    proj_metadata = {}
+
+    # Size of the pixels
+    proj_metadata["proj:shape"] = gdal_info["size"]
+
     # Extract the EPSG code from the WKT string
-    crs_as_wkt = info.get("coordinateSystem", {}).get("wkt")
+    crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
     if crs_as_wkt:
         crs_id = extract_crs_epsg_code_from_wkt_string(crs_as_wkt)
         if crs_id:
             proj_metadata["proj:epsg"] = crs_id
 
     # Size of the pixels
-    proj_metadata["proj:shape"] = info["size"]
+    proj_metadata["proj:shape"] = gdal_info["size"]
 
     # convert cornerCoordinates to proj:bbox format specified in
     # https://github.com/stac-extensions/projection
     # TODO: do we need to also handle 3D bboxes, i.e. the elevation bounds, if present?
-    if "cornerCoordinates" in info:
-        corner_coords = info.get("cornerCoordinates")
+    if "cornerCoordinates" in gdal_info:
+        corner_coords = gdal_info.get("cornerCoordinates")
         # TODO: check if this way to combine the corners also handles 3D bounding boxes correctly.
         #   Need a correct example to test with.
         lole = corner_coords["lowerLeft"]
@@ -333,7 +355,11 @@ def _extract_projection_extension_metadata(asset_path: str) -> dict:
 
 
 def extract_crs_epsg_code_from_wkt_string(crs_as_wkt: str) -> str:
-    """Extract the EPSG code from a WKT string that represents a CRS."""
+    """Extract the EPSG code from a WKT string that represents a CRS.
+
+    :param crs_as_wkt: the WKT2 string that describes the Coordinate Reference System.
+    :return: the EPSG code for the CRS, as an integer.
+    """
 
     # Find the last line, searching backward and skipping any empty lines at the end.
     lines = crs_as_wkt.split("\n")
@@ -349,14 +375,52 @@ def extract_crs_epsg_code_from_wkt_string(crs_as_wkt: str) -> str:
 
     crs_id = m.group(1)
     try:
-        epsg_id = int(crs_id)
-        return epsg_id
-    except:
+        return int(crs_id)
+    except ValueError as exc:
         logger.error(
-            f"Could not convert epsg code to int: epsg_str={epsg_str}"
-            + "WKT for CRS: {crs_as_wkt}"
+            f"Could not convert epsg code to int: epsg_str={crs_id} "
+            + f"crs_id_line={crs_id_line}, WKT for CRS: {crs_as_wkt}, exception: {exc}"
         )
         raise
+
+
+def _process_gdalinfo_subdatasets(gdal_info: dict) -> dict:
+    """Read and process the gdal.Info for each subdataset, if subdatasets are present."""
+
+    # TODO: might be better to separate out this check whether we need to process it.
+    #   That would give cleaner logic, and no need to return None here.
+
+    # netcdf files list their bands under SUBDATASETS and more info can be
+    # retrieved with a second gdal.Info() query.
+    if gdal_info.get("driverShortName") != "netCDF":
+        return None
+    if "SUBDATASETS" not in gdal_info.get("metadata", {}):
+        return None
+
+    sub_datasets = {}
+    for key, sub_ds in gdal_info["metadata"]["SUBDATASETS"].items():
+        if key.endswith("_NAME"):
+            split_sub_ds = sub_ds.split(":")
+            uri = "NETCDF:" + ":".join(split_sub_ds[1:])
+            sub_ds_gdal_info = gdal_info = read_gdal_info(uri)
+            sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
+            sub_datasets[uri] = sub_ds_md
+
+    def property_same_value(prop_name, metadata):
+        values = {tuple(m[prop_name]) for m in metadata.values()}
+        return values.pop() if len(values) == 1 else None
+
+    proj_info = {}
+    if shape := property_same_value("proj:shape", sub_datasets):
+        proj_info["proj:shape"] = list(shape)
+    if bbox := property_same_value("proj:bbox", sub_datasets):
+        proj_info["proj:bbox"] = list(bbox)
+
+    epsg_codes = {m["proj:epsg"] for m in sub_datasets.values()}
+    if len(epsg_codes) == 1:
+        proj_info["proj:epsg"] = epsg_codes.pop()
+
+    return proj_info
 
 
 def _get_tracker(tracker_id=""):
