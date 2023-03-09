@@ -16,7 +16,7 @@ from subprocess import CalledProcessError
 from typing import Callable, List, NamedTuple, Optional, Union
 
 import requests
-from openeo.util import TimingLogger, repr_truncate, rfc3339, url_join, deep_get
+from openeo.util import TimingLogger, repr_truncate, Rfc3339, rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import get_logging_config, setup_logging
@@ -293,8 +293,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
-            start_time = rfc3339.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
-            finish_time = rfc3339.parse_datetime(metadata["status"]["terminationTime"])
+            datetime_formatter = Rfc3339(propagate_none=True)
+            start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
+            finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
         else:
             _log.warning("No K8s app status found, assuming new app")
             app_state = K8S_SPARK_APP_STATE.NEW
@@ -502,23 +503,19 @@ class JobTracker:
                     job_id, user_id, dependency_sources
                 )
 
-            # Note: setting the status is already done with a `patch` higher,
-            #       but we do it here again with `set_status` for the "auto_mark_done" feature
-            zk_job_registry.set_status(
-                job_id=job_id, user_id=user_id, status=job_metadata.status, auto_mark_done=True
-            )
-
             job_costs = self._job_costs_calculator.calculate_costs(job_info, job_metadata, result_metadata)
 
             # TODO: skip patching the job znode and read from this file directly?
             zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
 
+        datetime_formatter = Rfc3339(propagate_none=True)
+
         zk_job_registry.patch(
             job_id=job_id,
             user_id=user_id,
             status=job_metadata.status,
-            started=rfc3339.datetime(job_metadata.start_time),
-            finished=rfc3339.datetime(job_metadata.finish_time),
+            started=datetime_formatter.datetime(job_metadata.start_time),
+            finished=datetime_formatter.datetime(job_metadata.finish_time),
             usage=job_metadata.usage.to_dict(),
         )
         with ElasticJobRegistry.just_log_errors(
@@ -528,8 +525,8 @@ class JobTracker:
                 self._elastic_job_registry.set_status(
                     job_id=job_id,
                     status=job_metadata.status,
-                    started=rfc3339.datetime(job_metadata.start_time),
-                    finished=rfc3339.datetime(job_metadata.finish_time),
+                    started=datetime_formatter.datetime(job_metadata.start_time),
+                    finished=datetime_formatter.datetime(job_metadata.finish_time),
                     # TODO: also record usage data
                 )
 

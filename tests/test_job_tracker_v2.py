@@ -721,12 +721,10 @@ class TestYarnStatusGetter:
         )
         job_metadata = YarnStatusGetter().parse_application_report(report=report)
         assert job_metadata.status == "finished"
-        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
-        assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
-        assert job_metadata.usage == {
-            "cpu": {"unit": "cpu-seconds", "value": 2265},
-            "memory": {"unit": "mb-seconds", "value": 5116996},
-        }
+        assert job_metadata.start_time == dt.datetime(2023, 1, 6, 16, 14, 32, 793000)
+        assert job_metadata.finish_time == dt.datetime(2023, 1, 6, 16, 19, 3, 245000)
+        assert job_metadata.usage.cpu_seconds == 2265
+        assert job_metadata.usage.mb_seconds == 5116996
 
     def test_parse_application_report_running(self):
         report = textwrap.dedent(
@@ -744,12 +742,10 @@ class TestYarnStatusGetter:
         )
         job_metadata = YarnStatusGetter().parse_application_report(report=report)
         assert job_metadata.status == "running"
-        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.start_time == dt.datetime(2023, 1, 6, 16, 14, 32, 793000)
         assert job_metadata.finish_time is None
-        assert job_metadata.usage == {
-            "cpu": {"unit": "cpu-seconds", "value": 46964},
-            "memory": {"unit": "mb-seconds", "value": 96183879},
-        }
+        assert job_metadata.usage.cpu_seconds == 46964
+        assert job_metadata.usage.mb_seconds == 96183879
 
     def test_parse_application_report_empty(self):
         with pytest.raises(YarnAppReportParseException):
@@ -898,8 +894,8 @@ class TestK8sJobTracker:
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
                 "usage": {
-                    "cpu": {"unit": "cpu-hours", "value": 2.34},
-                    "memory": {"unit": "mb-hours", "value": 5.678},
+                    "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
+                    "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                 },
             }
         )
