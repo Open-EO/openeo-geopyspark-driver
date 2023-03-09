@@ -558,13 +558,13 @@ class CliApp:
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
-                etl_api = EtlApi(ConfigParams().etl_api)
-                etl_api_access_token = get_etl_api_access_token(args.principal, args.keytab)
+
+                requests_session = requests_with_retry(total=3, backoff_factor=2)
+                etl_api_access_token = get_etl_api_access_token(args.principal, args.keytab, requests_session)
+                etl_api = EtlApi(ConfigParams().etl_api, requests_session)
 
                 # Elastic Job Registry (EJR)
-                elastic_job_registry = get_elastic_job_registry(
-                    requests_session=requests_with_retry(total=3, backoff_factor=2)
-                )
+                elastic_job_registry = get_elastic_job_registry(requests_session)
 
                 # YARN or Kubernetes?
                 app_cluster = args.app_cluster

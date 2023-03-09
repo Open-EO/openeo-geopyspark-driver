@@ -23,18 +23,9 @@ class ETL_API_STATE:
 
 
 class EtlApi:
-    def __init__(self, endpoint: str):
+    def __init__(self, endpoint: str, requests_session: Optional[requests.Session] = None):
         self._endpoint = endpoint
-        self._session = requests.session()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        self.close()
-
-    def close(self):
-        self._session.close()
+        self._session = requests_session or requests.Session()
 
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
