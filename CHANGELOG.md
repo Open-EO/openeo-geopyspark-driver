@@ -10,20 +10,36 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+
 ## 2023-03-08 (0.9.3a1)
+
+Build `20230307-1166`, with components:
+`openeo-geopyspark-0.9.3a1.dev20230307+1073`, `openeo_driver-0.37.0a1.dev20230307+441`,
+`openeo-0.15.0`, `geotrellis-extensions-static-2.3.0_2.12-SNAPSHOT-5822561`
+
 ### Feature
 - Add "filename_prefix" to format_options.
 
-## 2023-02-27 (0.9.3a1)
+
+## 2023-02-27 (0.7.0a1)
+
+Build `20230221-1118`
+
+Note: this deploy was rolled back to previous build `20230117-966` the same day.
+
 - GeoParquet support to allow loading large vector files
-- Improved specific log messages 
+- Improved specific log messages
 - Better support for multiple filter_spatial prcesses in same process graph (https://github.com/Open-EO/openeo-geopyspark-driver/issues/147)
 - Bugfix for sampling sentinelhub based collections (https://github.com/Open-EO/openeo-geopyspark-driver/issues/279)
 - vector_buffer: Throw an error when a negative buffer size resuls in invalid geometries (https://github.com/Open-EO/openeo-python-driver/issues/164)
 - batch jobs now also report usage of credits (https://github.com/Open-EO/openeo-geopyspark-driver/issues/272)
 - non-utm collections should now have a better alignment to the original rasters, if the process graph does not apply an explicit resampling (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69)
 
+
 ## 2023-02-07 (0.6.7a1)
+
+Build `20230117-966`
+
 - Added initial support for the `inspect` process. It can be used on datacubes and in callbacks.
 - The size of a single chunk is now automatically increased for larger jobs, to improve IO performance.
 - resample_cube_spatial is no longer needed in all cases when using `merge_cubes`or `mask`
@@ -60,7 +76,7 @@ without compromising stable operations.
 ## 2022-05-04 (0.6.3a1)
 
 - Enable JSON logging from batch_job.py (and inject user_id/job_id)
-- New processes: 
+- New processes:
   - predict_catboost (not-standard)
   - predict_random_forest
   - fit_class_random_forest
@@ -74,7 +90,7 @@ without compromising stable operations.
 ## 2022-04-07 (0.6.2a1)
 
 - EP-4012: implement collection source selection based on product availability (e.g. collection "SENTINEL2_L2A"
-  "forwards" to "TERRASCOPE_S2_TOC_V2" when possible, but falls back to "SENTINEL2_L2A_SENTINELHUB" 
+  "forwards" to "TERRASCOPE_S2_TOC_V2" when possible, but falls back to "SENTINEL2_L2A_SENTINELHUB"
   when there are missing products for the selected spatiotemporal extent.
 
 ## 2021-11-17
@@ -93,8 +109,8 @@ without compromising stable operations.
 
 ### Changed
 
-- Add support for `openeo.udf` based UDFs and keep backward compatibility with `openeo_udf` based UDFs 
-  (EP-3856, [#78](https://github.com/Open-EO/openeo-geopyspark-driver/issues/78), 
+- Add support for `openeo.udf` based UDFs and keep backward compatibility with `openeo_udf` based UDFs
+  (EP-3856, [#78](https://github.com/Open-EO/openeo-geopyspark-driver/issues/78),
   [#93](https://github.com/Open-EO/openeo-geopyspark-driver/issues/93))
 
 
@@ -123,7 +139,7 @@ Support reading Copernicus Global Land NetCDF files.
 
 Support the Sentinelhub batch process API to generate Sentinel-1 backscatter data.
 
-The atmospheric_correction process can now apply iCor on SentinelHub layers.  
+The atmospheric_correction process can now apply iCor on SentinelHub layers.
 
 ## 2021-01-25
 ### Feature
@@ -131,7 +147,7 @@ The atmospheric_correction process can now apply iCor on SentinelHub layers.
 
 ## 2020-12-06
 ### Performance
-Performance improvement for requests with small spatial extents. The backend was loading too much tile metadata. 
+Performance improvement for requests with small spatial extents. The backend was loading too much tile metadata.
 
 ## 2020-11-11
 ### Feature
@@ -155,8 +171,6 @@ Geotiff (GTiff) output format is faster to generate, and works for larger areas.
 
 ### Compatibility
 Copernicus projections stored in UTM are now also processed and returned in UTM, as opposed to web mercator.
-This affects processing parameters that depend on a specific projection, like the size of pixels in map units. 
+This affects processing parameters that depend on a specific projection, like the size of pixels in map units.
 
 This change also improves memory usage and performance for a number of layers.
-
-

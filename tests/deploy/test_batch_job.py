@@ -115,7 +115,8 @@ def test_run_job(evaluate, tmp_path):
     t.add(PU_COUNTER, 1.4)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
-    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    ProductIdAndUrl = get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.ProductIdAndUrl
+    t.addInputProductsWithUrls("other_collectionName", [ProductIdAndUrl("p4", "http://myproduct4")])
     t.add(PU_COUNTER, 0.4)
 
     run_job(
@@ -134,7 +135,7 @@ def test_run_job(evaluate, tmp_path):
                                'area': None,
                                'unique_process_ids': ['discard_result'],
                                'instruments': [],
-                               'links': [{'href': 'http://myproduct4', 'rel': 'derived_from', 'title': 'Derived from http://myproduct4'},
+                               'links': [{'href': 'http://myproduct4', 'rel': 'derived_from', 'title': 'Derived from p4'},
                                          {'href': 'http://myproduct1', 'rel': 'derived_from', 'title': 'Derived from http://myproduct1'},
                                          {'href': 'http://myproduct2', 'rel': 'derived_from', 'title': 'Derived from http://myproduct2'},
                                          {'href': 'http://myproduct3', 'rel': 'derived_from', 'title': 'Derived from http://myproduct3'}],

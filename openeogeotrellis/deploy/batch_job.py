@@ -444,7 +444,7 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         all_links = None
         if links is not None:
             all_links = list(chain(*links.values()))
-            all_links = [ {"href":link, "rel":"derived_from", "title":f"Derived from {link}"} for link in all_links]
+            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
 
         return dict_no_none(usage=usage,links=all_links)
 
