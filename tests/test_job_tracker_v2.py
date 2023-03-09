@@ -24,6 +24,7 @@ from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_jo
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
+    JobCostsCalculator,
     JobTracker,
     K8sStatusGetter,
     YarnAppReportParseException,
@@ -271,6 +272,13 @@ def elastic_job_registry() -> InMemoryJobRegistry:
     return InMemoryJobRegistry()
 
 
+@pytest.fixture
+def job_costs_calculator() -> JobCostsCalculator:
+    calculator_mock = mock.Mock(JobCostsCalculator)
+    calculator_mock.calculate_costs.return_value = 129.95
+    return calculator_mock
+
+
 DUMMY_PG_1 = {
     "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}
 }
@@ -288,7 +296,7 @@ def _extract_update_statuses_stats(caplog) -> List[dict]:
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
-        self, zk_job_registry, elastic_job_registry, batch_job_output_root
+        self, zk_job_registry, elastic_job_registry, batch_job_output_root, job_costs_calculator
     ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
@@ -297,6 +305,7 @@ class TestYarnJobTracker:
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
+            job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
         )
@@ -310,6 +319,7 @@ class TestYarnJobTracker:
         elastic_job_registry,
         caplog,
         time_machine,
+        job_costs_calculator,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -436,6 +446,7 @@ class TestYarnJobTracker:
                     "cpu": {"unit": "cpu-seconds", "value": 32},
                     "memory": {"unit": "mb-seconds", "value": 1234},
                 },
+                "costs": 129.95
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
@@ -447,6 +458,19 @@ class TestYarnJobTracker:
                 "finished": "2022-12-14T12:04:40Z",
             }
         )
+
+        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+        assert len(calculate_costs_calls) == 1
+        (job_info, job_metadata, result_metadata), _ = calculate_costs_calls[0]
+
+        assert job_info == DictSubSet({'job_id': job_id})
+        assert job_metadata.app_state == 'FINISHED'
+        assert job_metadata.status == 'finished'
+        assert job_metadata.start_time == dt.datetime(2022, 12, 14, 12, 3, 30)
+        assert job_metadata.finish_time == dt.datetime(2022, 12, 14, 12, 4, 40)
+        assert job_metadata.usage.cpu_seconds == 32
+        assert job_metadata.usage.mb_seconds == 1234
+        assert result_metadata == {'foo': "bar"}
 
         assert caplog.record_tuples == []
 
@@ -776,6 +800,7 @@ class TestK8sJobTracker:
         batch_job_output_root,
         k8s_mock,
         kubecost_url,
+        job_costs_calculator
     ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
@@ -784,6 +809,7 @@ class TestK8sJobTracker:
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
+            job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
         )
@@ -797,6 +823,7 @@ class TestK8sJobTracker:
         caplog,
         time_machine,
         k8s_mock,
+        job_costs_calculator,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -902,6 +929,7 @@ class TestK8sJobTracker:
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                 },
+                "costs": 129.95
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
@@ -914,6 +942,19 @@ class TestK8sJobTracker:
                 # TODO: usage tracking (cpu, memory)
             }
         )
+
+        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+        assert len(calculate_costs_calls) == 1
+        (job_info, job_metadata, result_metadata), _ = calculate_costs_calls[0]
+
+        assert job_info == DictSubSet({'job_id': job_id})
+        assert job_metadata.app_state == 'COMPLETED'
+        assert job_metadata.status == 'finished'
+        assert job_metadata.start_time == dt.datetime(2022, 12, 14, 12, 1, 10)
+        assert job_metadata.finish_time == dt.datetime(2022, 12, 14, 12, 3, 30)
+        assert job_metadata.usage.cpu_seconds == pytest.approx(2.34 * 3600, rel=0.001)
+        assert job_metadata.usage.mb_seconds == pytest.approx(5.678 * 3600, rel=0.001)
+        assert result_metadata == {'foo': "bar"}
 
         assert caplog.record_tuples == []
 
