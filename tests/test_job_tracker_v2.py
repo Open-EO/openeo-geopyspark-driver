@@ -431,7 +431,11 @@ class TestYarnJobTracker:
             {
                 "status": "finished",
                 "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
+                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?,
+                "usage": {
+                    "cpu": {"unit": "cpu-seconds", "value": 32},
+                    "memory": {"unit": "mb-seconds", "value": 1234},
+                },
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
