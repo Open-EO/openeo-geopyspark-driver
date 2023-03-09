@@ -21,6 +21,7 @@ from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
 from shapely.geometry import box
 
@@ -277,21 +278,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             else:
                 return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
-        def s3_pyramid():
-            endpoint = layer_source_info['endpoint']
-            region = layer_source_info['region']
-            bucket_name = layer_source_info['bucket_name']
-            nonlocal still_needs_band_filter
-            still_needs_band_filter = bool(band_indices)
-            return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
-                .pyramid_seq(extent, srs, from_date, to_date)
-
-        def s3_jp2_pyramid():
-            endpoint = layer_source_info['endpoint']
-            region = layer_source_info['region']
-
-            return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_s2_pyramid():
             def pyramid_factory(
@@ -601,11 +587,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return create_pyramid(factory)
 
         logger.info("loading pyramid {s}".format(s=layer_source_type))
-        if layer_source_type == 's3':
-            pyramid = s3_pyramid()
-        elif layer_source_type == 's3-jp2':
-            pyramid = s3_jp2_pyramid()
-        elif layer_source_type == 'file-s2':
+
+        if layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'file-probav':
             pyramid = file_probav_pyramid()
@@ -795,7 +778,8 @@ def get_layer_catalog(
 
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
-                    sh_collections_resp = requests.get(sh_stac_endpoint)
+                    sh_collections_session = requests_with_retry()
+                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint)
                     sh_collections_resp.raise_for_status()
                     sh_collection_metadatas = {
                         c["id"]: requests.get(c["link"]).json()

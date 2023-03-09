@@ -17,7 +17,8 @@ from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.vault import Vault
 
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
-    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc
+    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc, \
+    imagecollection_with_two_bands_spatial_only
 from .data import get_test_data_file, TEST_DATA_ROOT
 
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
@@ -63,13 +64,10 @@ def _ensure_geopyspark(out: TerminalReporter):
 def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
     out.write_line("[conftest.py] Setting up local Spark")
-
     master_str = "local[2]"
 
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable
-    # Set other environment variables required by tests.
-    os.environ["OPENEO_S1BACKSCATTER_DEM_DIR"] = str(TEST_DATA_ROOT / "orfeo_dem")
 
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
