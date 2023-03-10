@@ -102,7 +102,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
         bbox_crs = spatial_extent["crs"]
-        bbox = tuple(spatial_extent[b] for b in ["west", "south", "east", "north"])
+        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in bbox):
             polygon = Polygon.from_bounds(*bbox)
             geometry = mapping(polygon)
@@ -144,6 +144,11 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
+        # The aggregation geometries return tuples for their bounding box.
+        # Keep the end result consistent and convert it to a list.
+        if isinstance(bbox, tuple):
+            bbox = [*bbox]
+
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
 
@@ -169,9 +174,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             new_spatial_extent = reproject_bounding_box(
                 new_spatial_extent, from_crs=None, to_crs="EPSG:4326"
             )
-            bbox = tuple(
-                new_spatial_extent[b] for b in ["west", "south", "east", "north"]
-            )
+            bbox = [new_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     # TODO: dedicated type?
     # TODO: match STAC format?

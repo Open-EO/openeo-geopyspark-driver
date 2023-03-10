@@ -32,7 +32,7 @@ def test_extract_result_metadata():
 
     metadata = extract_result_metadata(tracer)
     expected = {
-        "bbox": (4, 51, 5, 52),
+        "bbox": [4, 51, 5, 52],
         "geometry": {"type": "Polygon", "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),)},
         "area": {"value": approx(7725459381.443416, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
@@ -54,7 +54,7 @@ def test_extract_result_metadata_aggregate_spatial():
 
     metadata = extract_result_metadata(tracer)
     expected = {
-        "bbox": (5.0, 5.0, 45.0, 40.0),
+        "bbox": [5.0, 5.0, 45.0, 40.0],
         "geometry": {
             'type': 'MultiPolygon',
             'coordinates': [
@@ -81,7 +81,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
 
     metadata = extract_result_metadata(tracer)
     expected = {
-        "bbox": (5.0, 5.0, 45.0, 40.0),
+        "bbox": [5.0, 5.0, 45.0, 40.0],
         "geometry": {
             'type': 'Polygon',
             'coordinates': (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
@@ -132,12 +132,12 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
     metadata = extract_result_metadata(tracer)
 
     # Allow a 1% margin in the approximate comparison of the BBox
-    expected_bbox = (
+    expected_bbox = [
         approx(4, 0.01),
         approx(51, 0.01),
         approx(5, 0.01),
         approx(52, 0.01),
-    )
+    ]
     assert metadata["bbox"] == expected_bbox
 
     assert metadata["area"] == {
@@ -208,12 +208,12 @@ def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(
 
     metadata = extract_result_metadata(tracer)
     # Allow a 1% margin in the approximate comparison of the BBox
-    expected_bbox = (
+    expected_bbox = [
         approx(aggrgeo_west_latlon, 0.01),
         approx(aggrgeo_south_latlon, 0.01),
         approx(aggrgeo_east_latlon, 0.01),
         approx(aggrgeo_north_latlon, 0.01),
-    )
+    ]
     assert metadata["bbox"] == expected_bbox
     assert metadata["area"] == {
         "value": approx(6763173869883.0, 1.0),
@@ -283,12 +283,12 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
     metadata = extract_result_metadata(tracer)
     # Allow a 1% margin in the approximate comparison of the BBox
-    expected_bbox = (
+    expected_bbox = [
         approx(aggrgeo_west_latlon, 0.01),
         approx(aggrgeo_south_latlon, 0.01),
         approx(aggrgeo_east_latlon, 0.01),
         approx(aggrgeo_north_latlon, 0.01),
-    )
+    ]
     assert metadata["bbox"] == expected_bbox
     assert metadata["area"] == {
         "value": approx(6763173869883.0, 1.0),
