@@ -493,9 +493,7 @@ def temp_csv_dir(message: str = "n/a") -> str:
         logger.warning(
             f"Got permission error while setting up temp dir: {str(temp_dir)}, but will try to continue."
         )
-    logger.info(
-        f"Created temp csv dir {temp_dir!r} (on {socket.gethostname()}): {message}"
-    )
+    logger.info(f"Created temp csv dir {temp_dir!r}: {message}")
     return temp_dir
 
 

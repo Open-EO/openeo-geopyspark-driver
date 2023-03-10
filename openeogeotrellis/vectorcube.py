@@ -65,7 +65,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
         output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
         with TimingLogger(logger=_log, title=f"Dump {processed_df=} to {output_dir=}"):
-            processed_df.to_csv(output_dir)
+            processed_df.to_csv(f"file://{output_dir}")
 
         # Read CSV result(s) as a single pandas DataFrame
         # TODO: make "feature_index" the real index, instead of generic autoincrement index?
