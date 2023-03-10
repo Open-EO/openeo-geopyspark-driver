@@ -267,7 +267,7 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         all_links = None
         if links is not None:
             all_links = list(chain(*links.values()))
-            all_links = [ {"href":link, "rel":"derived_from", "title":f"Derived from {link}"} for link in all_links]
+            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
 
         return dict_no_none(usage=usage,links=all_links)
 
@@ -449,7 +449,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
-        geojsons = (mapping(geometry) for geometry in result.geometries)
+        geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
         result = JSONResult(geojsons)
 
     if isinstance(result, DriverDataCube):

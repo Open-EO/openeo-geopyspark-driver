@@ -135,8 +135,8 @@ class S1BackscatterOrfeo:
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
         attributeValues = {
-            "productType": "GRD",
-            "sensorMode": "IW",
+            "productType": "IW_GRDH_1S",
+            "polarisation": "VV+VH",#default to avoid unexpected results
             "processingLevel": "LEVEL1",
         }
         # Additional query values for orbit filtering

@@ -75,9 +75,6 @@ def test_credentials_oidc(api):
                             "id": "egi",
                             "issuer": "https://aai.egi.eu/auth/realms/egi/",
                             "scopes": ListSubSet(["openid"]),
-                            "default_clients": [
-                                DictSubSet({"id": "vito-default-client"})
-                            ],
                         }
                     )
                 ]
