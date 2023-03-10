@@ -22,6 +22,7 @@ from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
+from openeogeotrellis.job_costs_calculator import CostsDetails
 from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
     JobCostsCalculator,
@@ -461,16 +462,23 @@ class TestYarnJobTracker:
 
         calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
         assert len(calculate_costs_calls) == 1
-        (job_info, job_metadata, result_metadata), _ = calculate_costs_calls[0]
+        costs_details: CostsDetails
+        (costs_details,), _ = calculate_costs_calls[0]
 
-        assert job_info == DictSubSet({'job_id': job_id})
-        assert job_metadata.app_state == 'FINISHED'
-        assert job_metadata.status == 'finished'
-        assert job_metadata.start_time == dt.datetime(2022, 12, 14, 12, 3, 30)
-        assert job_metadata.finish_time == dt.datetime(2022, 12, 14, 12, 4, 40)
-        assert job_metadata.usage.cpu_seconds == 32
-        assert job_metadata.usage.mb_seconds == 1234
-        assert result_metadata == {'foo': "bar"}
+        assert costs_details == CostsDetails(
+            job_id=job_id,
+            user_id=user_id,
+            execution_id=yarn_app.app_id,
+            app_state='FINISHED',
+            area_square_meters=None,
+            job_title=None,
+            start_time=dt.datetime(2022, 12, 14, 12, 3, 30),
+            finish_time=dt.datetime(2022, 12, 14, 12, 4, 40),
+            cpu_seconds=32,
+            mb_seconds=1234,
+            sentinelhub_processing_units=0.0,
+            unique_process_ids=[]
+        )
 
         assert caplog.record_tuples == []
 
@@ -945,16 +953,23 @@ class TestK8sJobTracker:
 
         calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
         assert len(calculate_costs_calls) == 1
-        (job_info, job_metadata, result_metadata), _ = calculate_costs_calls[0]
+        costs_details: CostsDetails
+        (costs_details,), _ = calculate_costs_calls[0]
 
-        assert job_info == DictSubSet({'job_id': job_id})
-        assert job_metadata.app_state == 'COMPLETED'
-        assert job_metadata.status == 'finished'
-        assert job_metadata.start_time == dt.datetime(2022, 12, 14, 12, 1, 10)
-        assert job_metadata.finish_time == dt.datetime(2022, 12, 14, 12, 3, 30)
-        assert job_metadata.usage.cpu_seconds == pytest.approx(2.34 * 3600, rel=0.001)
-        assert job_metadata.usage.mb_seconds == pytest.approx(5.678 * 3600, rel=0.001)
-        assert result_metadata == {'foo': "bar"}
+        assert costs_details == CostsDetails(
+            job_id=job_id,
+            user_id=user_id,
+            execution_id=kube_app.app_id,
+            app_state='COMPLETED',
+            area_square_meters=None,
+            job_title=None,
+            start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
+            finish_time=dt.datetime(2022, 12, 14, 12, 3, 30),
+            cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
+            mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
+            sentinelhub_processing_units=0.0,
+            unique_process_ids=[]
+        )
 
         assert caplog.record_tuples == []
 

@@ -78,8 +78,8 @@ class EtlApi:
         return self._retry(send_request)
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
-                        started_ms: float, finished_ms: float, process_id: str, square_meters: float,
-                        access_token: str) -> float:
+                        started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
+                        square_meters: Optional[float], access_token: str) -> float:
         billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
                                       "mean", "aggregate_spatial", "discard_result", "filter_temporal",
                                       "load_collection", "reduce_dimension", "apply_dimension", "not", "max", "or",
@@ -100,8 +100,10 @@ class EtlApi:
             'jobStart': started_ms,
             'jobFinish': finished_ms,
             'service': process_id,
-            'area': {'value': square_meters, 'unit': 'square_meter'}
         }
+
+        if square_meters is not None:
+            data['area'] = {'value': square_meters, 'unit': 'square_meter'}
 
         def send_request():
             with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
