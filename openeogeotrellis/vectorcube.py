@@ -8,6 +8,7 @@ import pyspark.pandas
 
 import openeo.udf
 import openeo.udf.run_code
+from openeo.util import TimingLogger
 from openeo_driver.datacube import SupportsRunUdf
 from openeo_driver.save_result import AggregatePolygonResultCSV, JSONResult
 from openeogeotrellis.utils import temp_csv_dir
@@ -63,7 +64,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         processed_df = csv_df.groupby("feature_index").apply(callback).reset_index()
 
         output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
-        processed_df.to_csv(output_dir)
+        with TimingLogger(logger=_log, title=f"Dump {processed_df=} to {output_dir=}"):
+            processed_df.to_csv(f"file://{output_dir}")
 
         # Read CSV result(s) as a single pandas DataFrame
         # TODO: make "feature_index" the real index, instead of generic autoincrement index?
@@ -189,4 +191,3 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             return processed
 
         return callback
-

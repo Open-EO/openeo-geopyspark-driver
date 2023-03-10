@@ -20,6 +20,9 @@ Build `20230307-1166`, with components:
 ### Feature
 - Add "filename_prefix" to format_options.
 
+### Bugfix
+- Area returned by job metadata is now calculated using WGS84 ellipsoid (https://github.com/Open-EO/openeo-python-driver/issues/144)
+
 
 ## 2023-02-27 (0.7.0a1)
 
