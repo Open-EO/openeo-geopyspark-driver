@@ -123,35 +123,34 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
 
         sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info) or Decimal("0.0"))
 
-        with self._etl_api as etl_api:
-            resource_costs_in_credits = etl_api.log_resource_usage(
-                batch_job_id=job_id,
-                title=job_title,
-                execution_id=application_id,
-                user_id=user_id,
-                started_ms=started_ms,
-                finished_ms=finished_ms,
-                state=self.etl_api_state(job_metadata.app_state),
-                status='UNDEFINED',  # TODO: map as well? it's just for reporting
-                cpu_seconds=cpu_seconds,
-                mb_seconds=mb_seconds,
-                duration_ms=duration_ms,
-                sentinel_hub_processing_units=sentinelhub_processing_units + sentinelhub_batch_processing_units,
-                access_token=self._etl_api_access_token
-            )
+        resource_costs_in_credits = self._etl_api.log_resource_usage(
+            batch_job_id=job_id,
+            title=job_title,
+            execution_id=application_id,
+            user_id=user_id,
+            started_ms=started_ms,
+            finished_ms=finished_ms,
+            state=self.etl_api_state(job_metadata.app_state),
+            status='UNDEFINED',  # TODO: map as well? it's just for reporting
+            cpu_seconds=cpu_seconds,
+            mb_seconds=mb_seconds,
+            duration_ms=duration_ms,
+            sentinel_hub_processing_units=sentinelhub_processing_units + sentinelhub_batch_processing_units,
+            access_token=self._etl_api_access_token
+        )
 
-            area = deep_get(result_metadata, 'area', 'value', default=None)
+        area = deep_get(result_metadata, 'area', 'value', default=None)
 
-            added_value_costs_in_credits = sum(etl_api.log_added_value(
-                batch_job_id=job_id,
-                title=job_title,
-                application_id=application_id,
-                user_id=user_id,
-                started_ms=started_ms,
-                finished_ms=finished_ms,
-                process_id=process_id,
-                square_meters=float(area) if area is not None else 0.0,
-                access_token=self._etl_api_access_token) for process_id in unique_process_ids)
+        added_value_costs_in_credits = sum(self._etl_api.log_added_value(
+            batch_job_id=job_id,
+            title=job_title,
+            execution_id=application_id,
+            user_id=user_id,
+            started_ms=started_ms,
+            finished_ms=finished_ms,
+            process_id=process_id,
+            square_meters=float(area) if area is not None else 0.0,
+            access_token=self._etl_api_access_token) for process_id in unique_process_ids)
 
         return resource_costs_in_credits + added_value_costs_in_credits
 

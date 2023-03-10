@@ -77,7 +77,7 @@ class EtlApi:
 
         return self._retry(send_request)
 
-    def log_added_value(self, batch_job_id: str, title: Optional[str], application_id: str, user_id: str,
+    def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: float, finished_ms: float, process_id: str, square_meters: float,
                         access_token: str) -> float:
         billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
@@ -93,7 +93,7 @@ class EtlApi:
         data = {
             'jobId': batch_job_id,
             'jobName': title,
-            'executionId': application_id,
+            'executionId': execution_id,
             'userId': user_id,
             'sourceId': SOURCE_ID,
             'orchestrator': ORCHESTRATOR,

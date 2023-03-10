@@ -198,7 +198,7 @@ class JobTracker:
                                     added_value_costs_in_credits = sum(self._etl_api.log_added_value(
                                         batch_job_id=job_id,
                                         title=job_title,
-                                        application_id=application_id,
+                                        execution_id=application_id,
                                         user_id=user_id,
                                         started_ms=float(start_time),
                                         finished_ms=float(finish_time),
