@@ -25,7 +25,6 @@ from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis.integrations.etl_api import EtlApi
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
-    k8s_job_name,
     k8s_state_to_openeo_job_status, K8S_SPARK_APP_STATE,
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
@@ -114,7 +113,7 @@ class JobTracker:
                         try:
                             if self._kube_mode:
                                 from openeogeotrellis.utils import s3_client, download_s3_dir
-                                state, start_time, finish_time = JobTracker._kube_status(job_id, user_id)
+                                state, start_time, finish_time = JobTracker._kube_status(application_id)
 
                                 new_status = k8s_state_to_openeo_job_status(state)
 
@@ -127,7 +126,7 @@ class JobTracker:
                                     #  credentials conflict.
 
                                     result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
-                                    usage = self.get_kube_usage(job_id, user_id)
+                                    usage = self.get_kube_usage(job_id, application_id)
                                     if usage is not None:
                                         result_metadata["usage"] = usage
                                     registry.patch(job_id, user_id, **result_metadata)
@@ -281,12 +280,12 @@ class JobTracker:
                                     job_id=job_id, status=JOB_STATUS.ERROR
                                 )
 
-    def get_kube_usage(self, job_id, user_id) -> Union[dict, None]:
+    def get_kube_usage(self, job_id, application_id) -> Union[dict, None]:
         try:
             url = url_join(self._KUBECOST_URL, "/model/allocation")
             namespace = "spark-jobs"
             window = "5d"
-            pod = k8s_job_name(job_id=job_id, user_id=user_id) + "*"
+            pod = application_id + "*"
             params = (
                 ('aggregate', 'namespace'),
                 ('filterNamespaces', namespace),
@@ -318,14 +317,14 @@ class JobTracker:
             _log.error(f"error while handling creo usage", exc_info=True, extra={'job_id': job_id})
 
     @staticmethod
-    def _kube_status(job_id: str, user_id: str) -> '_KubeStatus':
+    def _kube_status(application_id: str) -> '_KubeStatus':
         api_instance = kube_client()
         status = api_instance.get_namespaced_custom_object(
             group="sparkoperator.k8s.io",
             version="v1beta2",
             namespace="spark-jobs",
             plural="sparkapplications",
-            name=k8s_job_name(job_id=job_id, user_id=user_id),
+            name=application_id,
         )
         if 'status' in status:
             return JobTracker._KubeStatus(
