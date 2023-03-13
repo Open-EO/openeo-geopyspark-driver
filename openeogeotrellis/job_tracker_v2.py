@@ -31,7 +31,6 @@ from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import (
     K8S_SPARK_APP_STATE,
-    k8s_job_name,
     k8s_state_to_openeo_job_status,
     kube_client,
 )
@@ -211,8 +210,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         self._kubecost_url = kubecost_url or "http://kubecost.kube-dev.vgt.vito.be/"
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        job_status = self._get_job_status(job_id=job_id, user_id=user_id)
-        usage = self._get_usage(job_id=job_id, user_id=user_id)
+        job_status = self._get_job_status(app_id)
+        usage = self._get_usage(job_id, app_id)
         return _JobMetadata(
             status=job_status.status,
             start_time=job_status.start_time,
@@ -220,7 +219,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             usage=usage,
         )
 
-    def _get_job_status(self, job_id: str, user_id: str) -> _JobMetadata:
+    def _get_job_status(self, application_id: str) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
@@ -229,7 +228,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 version="v1beta2",
                 namespace="spark-jobs",
                 plural="sparkapplications",
-                name=k8s_job_name(job_id=job_id, user_id=user_id),
+                name=application_id,
             )
         except kubernetes.client.exceptions.ApiException as e:
             if e.status == 404:
@@ -251,12 +250,12 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             status=job_status, start_time=start_time, finish_time=finish_time
         )
 
-    def _get_usage(self, job_id: str, user_id: str) -> Union[dict, None]:
+    def _get_usage(self, job_id: str, application_id: str) -> Union[dict, None]:
         try:
             url = url_join(self._kubecost_url, "/model/allocation")
             namespace = "spark-jobs"
             window = "5d"
-            pod = k8s_job_name(job_id=job_id, user_id=user_id) + "*"
+            pod = application_id + "*"
             params = (
                 ("aggregate", "namespace"),
                 ("filterNamespaces", namespace),

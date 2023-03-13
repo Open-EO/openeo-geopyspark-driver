@@ -115,18 +115,18 @@ def test_creodias_s1_backscatter(
     """
     # Provide test Sentinel-1 and DEM data.
     symlinks = {
-        "./data/s1backscatter_orfeo/Sentinel-1/zeebrugge_2020_06_06.SAFE": [
+        "./data/binary/s1backscatter_orfeo/Sentinel-1/zeebrugge_2020_06_06.SAFE": [
             "/eodata/Sentinel-1/SAR/GRD/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_4C69.SAFE",
             "/eodata/Sentinel-1/SAR/GRD/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_0FCC.SAFE",
         ],
-        "./data/s1backscatter_orfeo/Sentinel-1/laroche_2020_07_29.SAFE": [
+        "./data/binary/s1backscatter_orfeo/Sentinel-1/laroche_2020_07_29.SAFE": [
             "/eodata/Sentinel-1/SAR/GRD/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.SAFE",
             "/eodata/Sentinel-1/SAR/GRD/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E424.SAFE",
         ],
-        "./data/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif": [
+        "./data/binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif": [
             "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
         ],
-        "./data/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif": [
+        "./data/binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif": [
             "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif"
         ],
     }

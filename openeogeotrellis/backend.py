@@ -436,6 +436,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
                             "default": None
                         },
+                        "filename_prefix": {
+                            "type": "string",
+                            "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
+                        },
                     },
                 },
                 "PNG": {
@@ -1418,8 +1423,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 jinja_template = Environment(
                     loader=FileSystemLoader(jinja_dir)
                 ).from_string(open(jinja_path).read())
+
+                spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+
                 rendered = jinja_template.render(
-                    job_name=k8s_job_name(job_id=job_id, user_id=user_id),
+                    job_name=spark_app_id,
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
@@ -1463,7 +1471,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
-                    spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
@@ -2146,7 +2153,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 version = "v1beta2"
                 namespace = "spark-jobs"
                 plural = "sparkapplications"
-                name = k8s_job_name(job_id=job_id, user_id=user_id)
+                name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
                 delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(
