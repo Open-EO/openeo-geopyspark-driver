@@ -506,10 +506,14 @@ class DoubleJobRegistry:
             self.zk_job_registry = None
             self._lock.release()
 
-    def _just_log_errors(self, name: str):
+    def _just_log_errors(
+        self, name: str, job_id: Optional[str] = None, extra: Optional[dict] = None
+    ):
         """Context manager to just log exceptions"""
+        if job_id:
+            extra = dict(extra or {}, job_id=job_id)
         return just_log_exceptions(
-            log=self._log.warning, name=f"DoubleJobRegistry.{name}"
+            log=self._log.warning, name=f"DoubleJobRegistry.{name}", extra=extra
         )
 
     def create_job(
@@ -534,7 +538,7 @@ class DoubleJobRegistry:
             description=description,
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("create_job"):
+            with self._just_log_errors("create_job", job_id=job_id):
                 self.elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
@@ -549,7 +553,7 @@ class DoubleJobRegistry:
     def get_job(self, job_id: str, user_id: str) -> dict:
         job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job"):
+            with self._just_log_errors("get_job", job_id=job_id):
                 # For now: compare job metadata between Zk and EJR
                 job_ejr = self.elastic_job_registry.get_job(job_id=job_id)
                 for f in ["status", "created"]:
@@ -562,7 +566,7 @@ class DoubleJobRegistry:
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
         self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_status"):
+            with self._just_log_errors("set_status", job_id=job_id):
                 self.elastic_job_registry.set_status(job_id=job_id, status=status)
 
     def delete(self, job_id: str, user_id: str) -> None:
@@ -578,7 +582,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, dependencies=dependencies
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependencies"):
+            with self._just_log_errors("set_dependencies", job_id=job_id):
                 self.elastic_job_registry.set_dependencies(
                     job_id=job_id, dependencies=dependencies
                 )
@@ -586,7 +590,7 @@ class DoubleJobRegistry:
     def remove_dependencies(self, job_id: str, user_id: str):
         self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("remove_dependencies"):
+            with self._just_log_errors("remove_dependencies", job_id=job_id):
                 self.elastic_job_registry.remove_dependencies(job_id=job_id)
 
     def set_dependency_status(
@@ -596,7 +600,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, dependency_status=dependency_status
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_status"):
+            with self._just_log_errors("set_dependency_status", job_id=job_id):
                 self.elastic_job_registry.set_dependency_status(
                     job_id=job_id, dependency_status=dependency_status
                 )
@@ -608,7 +612,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, processing_units=dependency_usage
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_usage"):
+            with self._just_log_errors("set_dependency_usage", job_id=job_id):
                 self.elastic_job_registry.set_dependency_usage(
                     job_id=job_id, dependency_usage=dependency_usage
                 )
@@ -619,7 +623,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, proxy_user=proxy_user
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_proxy_user"):
+            with self._just_log_errors("set_proxy_user", job_id=job_id):
                 self.elastic_job_registry.set_proxy_user(
                     job_id=job_id, proxy_user=proxy_user
                 )
@@ -631,7 +635,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, application_id=application_id
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_application_id"):
+            with self._just_log_errors("set_application_id", job_id=job_id):
                 self.elastic_job_registry.set_application_id(
                     job_id=job_id, application_id=application_id
                 )

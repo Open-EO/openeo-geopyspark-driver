@@ -2,6 +2,8 @@ import collections
 import collections.abc
 import contextlib
 import datetime
+import socket
+
 import grp
 import json
 import logging
@@ -488,7 +490,9 @@ def temp_csv_dir(message: str = "n/a") -> str:
     try:
         os.chmod(temp_dir, 0o777)
     except PermissionError as e:
-        logger.warning(f"Got permission error while setting up temp dir: {str(temp_dir)}, but will try to continue.")
+        logger.warning(
+            f"Got permission error while setting up temp dir: {str(temp_dir)}, but will try to continue."
+        )
     logger.info(f"Created temp csv dir {temp_dir!r}: {message}")
     return temp_dir
 

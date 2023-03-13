@@ -1,17 +1,17 @@
 
 
-# Using `run_udf` on a vector cube data
+# Using `run_udf` on a vector cube data cube
 
 The openEO process `run_udf` is typically used on raster data cubes
-in "callback" of a process like `reduce_dimension`, `apply_dimension`, ...
-where the UDF operates on raster data,
+in the "callback" of a process like `reduce_dimension`, `apply_dimension`, ...
+where the UDF operates on a slice of raster data,
 provided in some kind of multidimensional array format (like numpy, Xarray, pandas, ...).
 
 The VITO/Terrascope openEO back-end also adds _experimental_ support
 to use `run_udf` directly on a vector cube, e.g. to filter,
 transform, enrich, postprocess the vector data.
 In the original implementation (which is still the default),
-the back-end calls UDF with the whole vector data as input.
+the back-end calls the UDF with the _whole_ vector data set as input.
 This was fine as proof of concept, but did not scale well
 for large vector cubes as there was no way to leverage parallelization.
 
@@ -24,8 +24,8 @@ to allow parallelized execution of the UDF logic.
 The user-provided UDF is expected to work at the level of single geometries
 and must follow the UDF signatures described below.
 
-In the examples below, we will assume to apply `run_udf` on the result
-of the `aggregat_spatial` process.
+In the examples below, we will assume to apply the `run_udf` process
+on the result of the `aggregate_spatial` process.
 For example, something like this:
 
 ```python
@@ -55,7 +55,7 @@ For example, when using synchronous execution/download:
 ```
 
 
-### Simple Pandas DataFrame mode with `udf_apply_feature_dataframe`
+### Simple "Pandas DataFrame" mode with `udf_apply_feature_dataframe`
 
 This mode can be enabled by defining your UDF entry point function as `udf_apply_feature_dataframe`,
 which will be given a pandas DataFrame,
@@ -91,7 +91,7 @@ Depending on your use case, you can return different values:
       [1, 123.456],
       ...
     ],
-    ... 
+    ...
   }
   ```
 
@@ -113,9 +113,9 @@ Depending on your use case, you can return different values:
         series.index = series.index.strftime("%Y-%m-%d")
         return series
     ```
-  
+
   The resulting output data structure will list the calculated values per geometry
-  as follows:  
+  as follows:
 
   ```json
   {
@@ -125,7 +125,7 @@ Depending on your use case, you can return different values:
       [1, 1.3, 0.3, 2.3],
       ...
     ],
-    ... 
+    ...
   }
   ```
 
@@ -135,7 +135,7 @@ Depending on your use case, you can return different values:
   def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.DataFrame:
       return df + 1000
   ```
-  
+
   The resulting output data structure will encode the preserved time dimension
   and band dimension as follows:
 
@@ -149,14 +149,14 @@ Depending on your use case, you can return different values:
       [1, "2021-01-12T00:00:00.000Z", 1000.3, 1000.9, 1001.6],
       ...
     ],
-    ... 
+    ...
   }
   ```
 
 
 ### Classic `UdfData` mode with `udf_apply_udf_data`
 
-This mode is more cumbersome to work with, 
+This mode is more cumbersome to work with,
 because there is more unpacking and packing boilerplate code
 necessary.
 
