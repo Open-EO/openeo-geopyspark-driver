@@ -26,6 +26,7 @@ def truncate_user_id_k8s(user_id: str) -> str:
 
 
 def k8s_job_name(job_id: str, user_id: str) -> str:
+    # TODO: shouldn't this be unique, like a YARN application ID, so that it resembles an "attempt" (think: restarting an OpenEO batch job)?
     user_id_truncated = truncate_user_id_k8s(user_id)
     job_id_truncated = truncate_job_id_k8s(job_id)
     return "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated)
