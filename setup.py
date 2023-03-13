@@ -93,6 +93,7 @@ setup(
             "kubernetes",
         ],
         "yarn": [
+            "requests-gssapi>=1.2.3",  # For Kerberos authentication
         ],
     },
 )
