@@ -8,14 +8,18 @@ import argparse
 import collections
 import datetime as dt
 import logging
-import re
-import subprocess
 from decimal import Decimal
 from pathlib import Path
-from subprocess import CalledProcessError
-from typing import Callable, List, NamedTuple, Optional, Union
+from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
+
+# We only need requests_gssapi for Yarn, which uses Kereberos authentication.
+try:
+    import requests_gssapi
+except ImportError:
+    requests_gssapi = None
+
 from openeo.util import TimingLogger, repr_truncate, Rfc3339, rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
@@ -102,42 +106,101 @@ class YarnAppReportParseException(Exception):
 class YarnStatusGetter(JobMetadataGetterInterface):
     """YARN app status getter"""
 
+    def __init__(self, yarn_api_base_url: str, auth: Optional[Any] = None):
+        """Constructor for a YarnStatusGetter instance.
+
+        :param yarn_api_base_url:
+            The start of the URL for requests to the YARN REST API.
+            See also: get_application_url(...)
+
+        :param auth:
+            If specified, this is the authentication passed to requests.get(...)
+            Defaults to None, and by default no authentication will be used.
+
+            Normally we use Kerberos and then you should pass an instance of
+            requests_gssapi.HTTPSPNEGOAuth.
+
+            In general you could use any authentication that requests.get(auth=auth)
+            accepts for its auth parameter, if needed.
+            See also: https://requests.readthedocs.io/en/latest/api/#requests.request
+        """
+        self.yarn_api_base_url = yarn_api_base_url
+        self.auth = auth
+
+    def get_application_url(self, application_id: str) -> str:
+        """Get the URL to get the application status from the YARN REST API.
+
+        :param application_id: The same app_id expected by get_job_metadata(...)
+
+        :return: The full URL to get the application status from YARN.
+        """
+        return url_join(
+            self.yarn_api_base_url,
+            f"/ws/v1/cluster/apps/{application_id}",
+        )
+
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        try:
-            command = ["yarn", "application", "-status", app_id]
-            with TimingLogger(f"Running {command}", logger=_log.debug):
-                application_report = subprocess.check_output(
-                    command, stderr=subprocess.PIPE
-                ).decode("utf-8")
-        except CalledProcessError as e:
-            stdout = e.stdout.decode()
-            if "doesn't exist in RM or Timeline Server" in stdout:
-                raise AppNotFound(stdout) from None
-            else:
-                raise
-        return self.parse_application_report(application_report)
+        url = self.get_application_url(application_id=app_id)
+        response = requests.get(url, auth=self.auth)
+        if response.status_code == 404:
+            raise AppNotFound(response)
+        else:
+            # Check if there was any other HTTP error status.
+            response.raise_for_status()
+            # Handle a corrupt response that is not a dict (most likely a string).
+            json = response.json()
+            if not isinstance(json, dict):
+                raise YarnAppReportParseException(
+                    "Cannot parse response body: expecting a JSON dict but body contains "
+                    + f"a value of type {type(json)}, value={json!r} Response body={response.text!r}"
+                )
+            return self.parse_application_response(data=json)
 
-    def parse_application_report(self, report: str) -> _JobMetadata:
-        try:
-            props = dict(re.findall(r"^\t(.+?) : (.+)$", report, flags=re.MULTILINE))
+    @staticmethod
+    def _ms_epoch_to_date(epoch_millis: int) -> Union[dt.datetime, None]:
+        """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
+        if epoch_millis == 0:
+            return None
+        return dt.datetime.utcfromtimestamp(epoch_millis / 1000)
 
-            state = props["State"]
-            job_status = yarn_state_to_openeo_job_status(
-                state=state, final_state=props["Final-State"]
+    @classmethod
+    def parse_application_response(cls, data: dict) -> _JobMetadata:
+        """Parse the HTTP response body of the application status request.
+
+        :param data: The data in the HTTP response body, which was in JSON format.
+        :raises YarnAppReportParseException: When the JSON response can not be parsed properly.
+        :return: _JobMetadata containing the info we need about the Job.
+        """
+
+        report = data.get("app", {})
+        required_keys = ["state", "finalStatus", "startedTime", "finishedTime"]
+        missing_keys = [k for k in required_keys if k not in report]
+        if missing_keys:
+            raise YarnAppReportParseException(
+                f"JSON response is missing following required keys: {missing_keys}, json={data}"
             )
 
-            def ms_epoch_to_date(epoch_millis: str) -> Union[dt.datetime, None]:
-                """Parse millisecond timestamp from app report and return as rfc3339 date (or None)"""
-                if epoch_millis == "0":
-                    return None
-                return dt.datetime.utcfromtimestamp(int(epoch_millis) / 1000)
+        try:
+            state = report["state"]
+            job_status = yarn_state_to_openeo_job_status(
+                state=state, final_state=report["finalStatus"]
+            )
+            # Log the diagnostics if there was an error.
+            # In particular, sometimes YARN can't launch the container and then the
+            # field 'diagnostics' provides more info why this failed.
+            diagnostics = report.get("diagnostics", None)
+            if job_status == JOB_STATUS.ERROR and diagnostics:
+                _log.error(
+                    f"YARN application status reports error diagnostics: {diagnostics}"
+                )
 
-            start_time = ms_epoch_to_date(props["Start-Time"])
-            finish_time = ms_epoch_to_date(props["Finish-Time"])
+            start_time = cls._ms_epoch_to_date(report["startedTime"])
+            finish_time = cls._ms_epoch_to_date(report["finishedTime"])
 
-            allocation = props["Aggregate Resource Allocation"]
-            match = re.fullmatch(r"^(\d+) MB-seconds, (\d+) vcore-seconds$", allocation)
-            usage = _Usage(cpu_seconds=int(match.group(2)), mb_seconds=int(match.group(1))) if match else None
+            memory_seconds = report.get("memorySeconds")
+            vcore_seconds = report.get("vcoreSeconds")
+            usage = (_Usage(cpu_seconds=vcore_seconds, mb_seconds=memory_seconds)
+                     if vcore_seconds is not None and memory_seconds is not None else None)
 
             return _JobMetadata(
                 app_state=state,
@@ -497,7 +560,12 @@ class CliApp:
                     # TODO: eliminate (need for) auto-detection.
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
-                    app_state_getter = YarnStatusGetter()
+                    app_state_getter = YarnStatusGetter(
+                        yarn_api_base_url=ConfigParams().yarn_rest_api_base_url,
+                        auth=requests_gssapi.HTTPSPNEGOAuth(
+                            mutual_authentication=requests_gssapi.REQUIRED
+                        ),
+                    )
                     job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()

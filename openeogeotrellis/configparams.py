@@ -28,6 +28,10 @@ class ConfigParams:
             "epod-master1.vgt.vito.be:6668,epod-master2.vgt.vito.be:6668,epod-master3.vgt.vito.be:6668",
         )
 
+        self.yarn_rest_api_base_url = env.get(
+            "YARN_REST_API_BASE_URL", "https://epod-master1.vgt.vito.be:8090"
+        )
+
         # TODO #283 using this "is_ci_context" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         # Are we running in a unittest or continuous integration context?
         self.is_ci_context = any(v in env for v in ['PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])
