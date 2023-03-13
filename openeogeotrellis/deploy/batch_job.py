@@ -284,6 +284,9 @@ def read_projection_extension_metadata(asset_path: str) -> dict:
         - "proj:shape" The pixel size of the asset.
         - "proj:bbox"  The bounding box expressed in the asset CRS.
 
+        When a field can not be found in the metadata that gdal.Info extracted,
+        we leave out that field.
+
         Note that these dictionary keys in the return value *do* include the colon to be
         in line with the names in stac-extensions.
 
@@ -302,21 +305,39 @@ def read_projection_extension_metadata(asset_path: str) -> dict:
     return parse_projection_extension_metadata(gdal_info)
 
 
-def read_gdal_info(asset_path: str) -> dict:
+def read_gdal_info(asset_uri: str) -> dict:
     """Get the JSON output from gdal.Info for the file in asset_path
 
     This is equivalent to running the CLI tool called `gdalinfo`.
 
-    :param asset_path: Path to the asset file.
+    :param asset_uri:
+        Path to the asset file or URI to a subdataset in the file.
+
+        If it is a netCDF file, we may get URIs of the format below, to access
+        the subdatasets. See also: https://gdal.org/drivers/raster/netcdf.html
+
+        NETCDF:"<regular path to netCDF file:>":<band name>
+
+        For example:
+        NETCDF:"/data/path/to/somefile.nc":B01
+
     :return: Dictionary that contains the output from `gdal.Info()`.
     """
+
+    # By default gdal does not raise exceptions but returns error codes and prints
+    # error info on stdout. We don't want that. At the least it should go to the logs.
+    # See https://gdal.org/api/python_gotchas.html
     gdal.UseExceptions()
+
     try:
-        return gdal.Info(asset_path, options=gdal.InfoOptions(format="json"))
+        return gdal.Info(asset_uri, options=gdal.InfoOptions(format="json"))
     except Exception as exc:
+        # TODO: Specific exception type(s) would be better but Wasn't able to find what
+        #   specific exceptions gdal.Info might raise.
         logger.warning(
             "Could not get projection extension metadata, "
-            + f"gdal.Info failed for following asset: {asset_path}. File is probably not a raster"
+            + f"gdal.Info failed for following asset: {asset_uri}. File is probably not a raster."
+            + f"Exception from GDAL: {exc}"
         )
         return None
 
@@ -328,6 +349,8 @@ def parse_projection_extension_metadata(gdal_info: dict) -> dict:
     :return: Dictionary containing the info for the STAC extension for projections.
     """
 
+    # If there are subdatasets then the final answer comes from the subdatasets.
+    # Otherwise we get it from the file directly.
     proj_info = _process_gdalinfo_for_netcdf_subdatasets(gdal_info)
     if proj_info:
         return proj_info
@@ -344,9 +367,12 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
         This dictionary contains the following fields, as described in stac-extensions,
         see: https://github.com/stac-extensions/projection
 
-        - "proj:epsg"  The EPSG code of the CRS.
-        - "proj:shape" The pixel size of the asset.
-        - "proj:bbox"  The bounding box expressed in the asset CRS.
+        - "proj:epsg"  The EPSG code of the CRS, if available.
+        - "proj:shape" The pixel size of the asset, if available.
+        - "proj:bbox"  The bounding box expressed in the asset CRS, if available.
+
+        When a field can not be found in the metadata that gdal.Info extracted,
+        we leave out that field.
 
         Note that these dictionary keys in the return value *do* include the colon to be
         in line with the names in stac-extensions.
@@ -413,6 +439,10 @@ def extract_crs_epsg_code_from_wkt_string(crs_as_wkt: str) -> str:
 def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
     """Read and process the gdal.Info for each subdataset, if subdatasets are present.
 
+    This function only supports subdatasets in netCDF files.
+    For other formats that may have subdatasets, such as HDF5, the subdatasets
+    will not be processed.
+
     :param gdal_info: Dictionary that contains the output from gdal.Info.
 
     :return: Dictionary containing the info for the STAC extension for projections,
@@ -435,8 +465,11 @@ def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
     # TODO: might be better to separate out this check whether we need to process it.
     #   That would give cleaner logic, and no need to return None here.
 
-    # netcdf files list their bands under SUBDATASETS and more info can be
+    # NetCDF files list their bands under SUBDATASETS and more info can be
     # retrieved with a second gdal.Info() query.
+    # This function only supports subdatasets in netCDF.
+    # For other formats that have subdatasets, such as HDF5, the subdatasets
+    # will not be processed.
     if gdal_info.get("driverShortName") != "netCDF":
         return None
     if "SUBDATASETS" not in gdal_info.get("metadata", {}):
@@ -450,26 +483,19 @@ def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
             sub_datasets[sub_ds_uri] = sub_ds_md
 
     proj_info = {}
-    shapes = {tuple(md["proj:shape"]) for md in sub_datasets.values()}
+    shapes = {
+        tuple(md["proj:shape"]) for md in sub_datasets.values() if "proj:shape" in md
+    }
     if len(shapes) == 1:
         proj_info["proj:shape"] = list(shapes.pop())
 
-    bboxes = {tuple(md["proj:bbox"]) for md in sub_datasets.values()}
+    bboxes = {
+        tuple(md["proj:bbox"]) for md in sub_datasets.values() if "proj:bbox" in md
+    }
     if len(bboxes) == 1:
         proj_info["proj:bbox"] = list(bboxes.pop())
 
-    # TODO: can we generalize this function so we can use it in all six similar cases?
-    #   Right now it isn't general enough to justify the harder to read version below.
-    # def property_same_value(prop_name, metadata):
-    #     values = {tuple(m[prop_name]) for m in metadata.values()}
-    #     return values.pop() if len(values) == 1 else None
-
-    # if shape := property_same_value("proj:shape", sub_datasets):
-    #     proj_info["proj:shape"] = list(shape)
-    # if bbox := property_same_value("proj:bbox", sub_datasets):
-    #     proj_info["proj:bbox"] = list(bbox)
-
-    epsg_codes = {m["proj:epsg"] for m in sub_datasets.values()}
+    epsg_codes = {md["proj:epsg"] for md in sub_datasets.values() if "proj:epsg" in md}
     if len(epsg_codes) == 1:
         proj_info["proj:epsg"] = epsg_codes.pop()
 

@@ -675,6 +675,36 @@ def test_read_projection_extension_metadata(mock_read_gdal_info):
     assert proj_metadata == expected_metadata
 
 
+def test_read_projection_extension_metadata_from_multiband_netcdf_file():
+    netcdf_path = get_test_data_file(
+        "binary/stac_proj_extension/netcdf/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+    )
+
+    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert proj_metadata == expected_metadata
+
+
+def test_read_projection_extension_metadata_from_singleband_netcdf_file():
+    netcdf_path = get_test_data_file(
+        "binary/stac_proj_extension/netcdf/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc"
+    )
+
+    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        # "proj:epsg": 32631,
+        "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
+        "proj:shape": [900, 451],
+    }
+    assert proj_metadata == expected_metadata
+
+
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
     """Helper function to create test data."""
 
