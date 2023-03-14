@@ -14,7 +14,7 @@ without compromising stable operations.
 
 - Fix "Permission denied" issue with `run_udf` usage on vector date cube
   ([#367](https://github.com/Open-EO/openeo-geopyspark-driver/issues/367))
-
+- Add projection extension metadata to batch job results ([openeo-geotrellis-extensions/#72](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/72))
 
 ## 2023-03-08 (0.9.3a1)
 
