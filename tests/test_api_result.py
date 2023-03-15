@@ -2220,6 +2220,7 @@ class TestVectorCubeRunUdf:
 
 # noinspection PyUnusedLocal
 def test_proces_graph(api100, tmp_path):
+    # define some variables so we can paste unmodified JSON here:
     true = True
     false = False
     null = None
@@ -2306,6 +2307,7 @@ def test_proces_graph(api100, tmp_path):
         }
     })
     path = tmp_path / f"response_{id(response)}.nc"
-    # will be all transparent pixels, but should not crash
+    # will be all transparent pixels, but should not give the following error:
+    # 'Server error: Cannot create a polygon with exterior with fewer than 4 points: LINEARRING EMPTY'
     with path.open(mode="wb") as f:
         f.write(response.data)
