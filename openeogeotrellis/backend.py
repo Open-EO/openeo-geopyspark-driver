@@ -817,25 +817,43 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return SingleNodeUDFProcessGraphVisitor().accept_process_graph(process_graph)
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
-    def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
-        if isinstance(error, Py4JJavaError):
+    def summarize_exception(self, error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+        return self.summarize_exception_static(error, width)
+
+    @staticmethod
+    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+        if "Container killed on request. Exit code is 143" in str(error):
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+
+        elif isinstance(error, Py4JJavaError):
             java_exception = error.java_exception
 
             while java_exception.getCause() is not None and java_exception != java_exception.getCause():
                 java_exception = java_exception.getCause()
 
             java_exception_class_name = java_exception.getClass().getName()
-            java_exception_message = java_exception.getMessage()
+            java_exception_message = repr_truncate(java_exception.getMessage(), width=width)
 
             no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in java_exception_message)
 
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
-            summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
+            if no_data_found:
+                summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
+            elif "SparkException" in java_exception_class_name:
+                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
+                if udf_stacktrace:
+                    summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                else:
+                    summary = f"Exception during Spark execution: {java_exception_message}"
+            else:
+                summary = java_exception_message
+        else:
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = repr_truncate(error, width=width)
 
-            return ErrorSummary(error, is_client_error, summary)
-
-        return error
+        return ErrorSummary(error, is_client_error, summary)
 
     @staticmethod
     def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
@@ -849,30 +867,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if match:
             return match.group(1).rstrip()
         return None
-
-    @staticmethod
-    def summarize_batch_job_exception(e: Exception, width=1000) -> str:
-        if "Container killed on request. Exit code is 143" in str(e):
-            return "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
-
-        if isinstance(e, Py4JJavaError):
-            java_exception = e.java_exception
-            if "SparkException" in java_exception.getClass().getName():
-
-                # Could maybe make this a while loop like in 'summarize_exception'
-                if java_exception.getCause() is not None:
-                    java_exception = java_exception.getCause()
-
-                exception_message = str(java_exception.getMessage())
-
-                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(exception_message)
-                exception_message = udf_stacktrace or exception_message
-
-                return f"Your openEO batch job failed during Spark execution: {repr_truncate(exception_message, width=width)}"
-            else:
-                return f"Your openEO batch job failed: {repr_truncate(str(java_exception.getMessage()), width=width)}"
-        else:
-            return f"Your openEO batch job failed: {repr_truncate(e, width=width)}"
 
     def changelog(self) -> Union[str, Path]:
         roots = []
