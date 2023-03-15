@@ -75,11 +75,8 @@ from openeogeotrellis.job_registry import (
     zk_job_info_to_metadata,
     DoubleJobRegistry,
 )
-from openeogeotrellis.layercatalog import (
-    get_layer_catalog,
-    check_missing_products,
-    GeoPySparkLayerCatalog,
-)
+from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
+                                           is_layer_too_large, )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.sentinel_hub.batchprocessing import (
@@ -896,10 +893,10 @@ class GpsProcessing(ConcreteProcessing):
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
                 metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
+                temporal_extent = constraints.get("temporal_extent")
+                spatial_extent = constraints.get("spatial_extent")
 
                 if metadata.get("_vito", "data_source", "check_missing_products", default=None):
-                    temporal_extent = constraints.get("temporal_extent")
-                    spatial_extent = constraints.get("spatial_extent")
                     properties = constraints.get("properties", {})
                     if temporal_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
@@ -920,6 +917,25 @@ class GpsProcessing(ConcreteProcessing):
                                 "code": "MissingProduct",
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
+
+                cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
+                cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                bands = constraints.get("bands", [])
+                geometries = constraints.get("aggregate_spatial", {}).get("geometries")
+                if geometries is None:
+                    geometries = constraints.get("filter_spatial", {}).get("geometries")
+                if is_layer_too_large(
+                    spatial_extent=spatial_extent,
+                    geometries=geometries,
+                    temporal_extent=temporal_extent,
+                    nr_bands=len(bands),
+                    cell_width=cell_width,
+                    cell_height=cell_height
+                ):
+                    yield {
+                        "code": "LayerTooLarge",
+                        "message": "Layer is too large to be processed."
+                    }
 
 
 def get_elastic_job_registry(
