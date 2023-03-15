@@ -35,7 +35,7 @@ from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get
+from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -836,6 +836,43 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return ErrorSummary(error, is_client_error, summary)
 
         return error
+
+    @staticmethod
+    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+        """
+        Select all lines a bit under 'run_udf_code'.
+        This is what interests the user
+        """
+        regex = re.compile(r" in run_udf_code\n.*\n((.|\n)*)", re.MULTILINE)
+
+        match = regex.search(full_stacktrace)
+        if match:
+            return match.group(1).rstrip()
+        return None
+
+    @staticmethod
+    def summarize_batch_job_exception(e: Exception, width=1000) -> str:
+        if "Container killed on request. Exit code is 143" in str(e):
+            return "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+
+        if isinstance(e, Py4JJavaError):
+            java_exception = e.java_exception
+            if "SparkException" in java_exception.getClass().getName():
+
+                # Could maybe make this a while loop like in 'summarize_exception'
+                if java_exception.getCause() is not None:
+                    java_exception = java_exception.getCause()
+
+                exception_message = str(java_exception.getMessage())
+
+                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(exception_message)
+                exception_message = udf_stacktrace or exception_message
+
+                return f"Your openEO batch job failed during Spark execution: {repr_truncate(exception_message, width=width)}"
+            else:
+                return f"Your openEO batch job failed: {repr_truncate(str(java_exception.getMessage()), width=width)}"
+        else:
+            return f"Your openEO batch job failed: {repr_truncate(e, width=width)}"
 
     def changelog(self) -> Union[str, Path]:
         roots = []

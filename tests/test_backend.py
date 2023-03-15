@@ -5,7 +5,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing
+from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
 
 def test_extract_application_id():
     yarn_log = """
@@ -217,3 +217,35 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
     assert len(errors) == 1
     assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extract_udf_stacktrace(tmp_path):
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""
+    Traceback (most recent call last):
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+ process()
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+ serializer.dump_stream(out_iter, outfile)
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+ for obj in iterator:
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 52, in memory_logging_wrapper
+ return function(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+ return _FUNCTION_POINTERS[key](*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 701, in tile_function
+ result_data = run_udf_code(code=udf_code, data=data)
+ File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+ func(data)
+ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user
+""")
+    assert summarized == """ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user"""
