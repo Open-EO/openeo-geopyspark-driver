@@ -2,12 +2,12 @@
 apiVersion: "sparkoperator.k8s.io/v1beta2"
 kind: SparkApplication
 metadata:
-{% block metadata %}
+{%- block metadata %}
   name: {{ job_name }}
   namespace: spark-jobs
-{% endblock %}
+{%- endblock %}
 spec:
-{% block spec_options %}
+{%- block spec_options %}
   type: Python
   pythonVersion: "3"
   mode: cluster
@@ -15,9 +15,9 @@ spec:
   imagePullPolicy: Always
   timeToLiveSeconds: 604800
   mainApplicationFile: local:///opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py
-{% endblock %}
+{%- endblock %}
   arguments:
-{% block arguments %}
+{%- block arguments %}
     - "{{ job_specification }}"
     - "{{ output_dir }}"
     - "{{ output_file }}"
@@ -27,16 +27,16 @@ spec:
     - "{{ dependencies }}"
     - "{{ user_id }}"
     - "{{ max_soft_errors_ratio }}"
-{% endblock %}
+{%- endblock %}
   dynamicAllocation:
-{% block dynamicAllocation %}
+{%- block dynamicAllocation %}
     enabled: true
     initialExecutors: 2
     minExecutors: 2
     maxExecutors: {{ max_executors }}
-{% endblock %}
+{%- endblock %}
   sparkConf:
-{% block sparkConf %}
+{%- block sparkConf %}
     "spark.network.timeout": "300s"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
@@ -68,18 +68,18 @@ spec:
     "spark.kubernetes.allocation.maxPendingPods": "8"
     "spark.task.cpus": "{{ task_cpus }}"
     "spark.archives": "{{ archives }}"
-{% endblock %}
+{%- endblock %}
   sparkVersion: "3.2.0"
   restartPolicy:
-{% block restartPolicy %}
+{%- block restartPolicy %}
     type: OnFailure
     onFailureRetries: 0
     onFailureRetryInterval: 10
     onSubmissionFailureRetries: 5
     onSubmissionFailureRetryInterval: 20
-{% endblock %}
+{%- endblock %}
   volumes:
-{% block volumes %}
+{%- block volumes %}
 {%- if datashim %}
     - name: "eodata"
       persistentVolumeClaim:
@@ -106,37 +106,37 @@ spec:
     - name: "http-credentials-configmap"
       configMap:
         name: "http-credentials"
-{% endblock %}
+{%- endblock %}
   driver:
-{% block driver_options %}
+{%- block driver_options %}
     cores: {{ driver_cores }}
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j.configuration=file:/opt/log4j.properties -Dlog4j.debug=true -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
     memory: "{{ driver_memory }}"
     serviceAccount: openeo
-{% endblock %}
+{%- endblock %}
     initContainers:
 {%- if mount_tmp %}
-{% block driver_initContainers %}
+{%- block driver_initContainers %}
       - name: init-tmp-dir
         image: busybox:1.28
         command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
-{% endblock %}
+{%- endblock %}
     lifecycle:
-{% block driver_lifecycle %}
+{%- block driver_lifecycle %}
       preStop:
         exec:
           command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id_short }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
-{% endblock %}
+{%- endblock %}
 {%- endif %}
     podSecurityContext:
-{% block driver_podSecurityContext %}
+{%- block driver_podSecurityContext %}
       fsGroup: 18585
-{% endblock %}
+{%- endblock %}
     envVars:
-{% block driver_envVars %}
+{%- block driver_envVars %}
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
       OPENEO_USER_ID: {{ user_id }}
       OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
@@ -162,14 +162,14 @@ spec:
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
       PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
-{% endblock %}
+{%- endblock %}
     labels:
-{% block driver_labels %}
+{%- block driver_labels %}
       version: 3.2.0
       name: {{ job_id_short }}-driver
-{% endblock %}
+{%- endblock %}
     volumeMounts:
-{% block driver_volumeMounts %}
+{%- block driver_volumeMounts %}
       - name: "eodata"
         mountPath: "/eodata"
       - name: "shared-pod-volume"
@@ -181,9 +181,9 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
 {%- endif %}
-{% endblock %}
+{%- endblock %}
   executor:
-{% block executor_options %}
+{%- block executor_options %}
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
     cores: {{ executor_cores }}
@@ -191,24 +191,24 @@ spec:
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
     javaOptions: "-Dlog4j.configuration=file:/opt/log4j.properties -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
-{% endblock %}
+{%- endblock %}
 {%- if mount_tmp %}
     initContainers:
-{% block executor_initContainers %}
+{%- block executor_initContainers %}
       - name: init-tmp-dir
         image: busybox:1.28
         command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
         volumeMounts:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
-{% endblock %}
+{%- endblock %}
 {%- endif %}
     podSecurityContext:
-{% block executor_podSecurityContext %}
+{%- block executor_podSecurityContext %}
       fsGroup: 18585
-{% endblock %}
+{%- endblock %}
     envVars:
-{% block executor_envVars %}
+{%- block executor_envVars %}
       OPENEO_BATCH_JOB_ID: {{ job_id_full }}
       OPENEO_USER_ID: {{ user_id }}
       OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
@@ -237,13 +237,13 @@ spec:
       PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib64/python3.8/site-packages/"
       VSI_CACHE: "TRUE"
       CPL_DEBUG: "OFF"
-{% endblock %}
+{%- endblock %}
     labels:
-{% block executor_labels %}
+{%- block executor_labels %}
       version: 3.2.0
-{% endblock %}
+{%- endblock %}
     volumeMounts:
-{% block executor_volumeMounts %}
+{%- block executor_volumeMounts %}
       - name: "eodata"
         mountPath: "/eodata"
       - name: "shared-pod-volume"
@@ -255,21 +255,21 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
 {%- endif %}
-{% endblock %}
+{%- endblock %}
   deps:
-{% block deps %}
+{%- block deps %}
     jars:
       - 'local:///opt/geotrellis-extensions-static.jar'
       - 'local:///opt/geotrellis-backend-assembly-static.jar'
       - 'local:///opt/openeo-logging-static.jar'
     files:
       - 'local:///opt/layercatalog.json'
-{% endblock %}
+{%- endblock %}
   monitoring:
-{% block monitoring %}
+{%- block monitoring %}
     exposeDriverMetrics: true
     exposeExecutorMetrics: true
     prometheus:
       jmxExporterJar: "/opt/jmx_prometheus_javaagent-0.13.0.jar"
       port: 8090
-{% endblock %}
+{%- endblock %}
