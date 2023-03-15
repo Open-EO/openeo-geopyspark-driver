@@ -135,33 +135,58 @@ spec:
 {%- block driver_podSecurityContext %}
       fsGroup: 18585
 {%- endblock %}
-    envVars:
-{%- block driver_envVars %}
-      OPENEO_BATCH_JOB_ID: {{ job_id_full }}
-      OPENEO_USER_ID: {{ user_id }}
-      OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
-      OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
-      KUBE: "true"
-      AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
-      AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
-      AWS_S3_ENDPOINT: "{{aws_endpoint}}"
-      AWS_DEFAULT_REGION: "{{aws_region}}"
-      AWS_REGION: "{{aws_region}}"
-      AWS_HTTPS: "NO"
-      AWS_VIRTUAL_HOSTING: "FALSE"
-      AWS_DIRECT: "TRUE"
-      SWIFT_URL: {{ swift_url }}
-      SWIFT_BUCKET: {{ swift_bucket }}
-      ZOOKEEPERNODES: {{ zookeeper_nodes }}
-      OPENEO_S1BACKSCATTER_ELEV_GEOID: "/opt/openeo-vito-aux-data/egm96.tif"
-      OTB_HOME: "/usr"
-      OTB_APPLICATION_PATH: "/usr/lib/otb/applications"
-      GDAL_NUM_THREADS: "2"
-      GDAL_CACHEMAX: "200"
-      GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
-      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
-      PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
-      VSI_CACHE: "TRUE"
+    env:
+{%- block driver_env %}
+      - name: OPENEO_BATCH_JOB_ID
+        value: {{ job_id_full }}
+      - name: OPENEO_USER_ID
+        value: {{ user_id }}
+      - name: OPENEO_LOGGING_THRESHOLD
+        value: {{ logging_threshold }}
+      - name: OPENEO_CATALOG_FILES
+        value: "/opt/layercatalog.json"
+      - name: KUBE
+        value: "true"
+      - name: AWS_ACCESS_KEY_ID
+        value: {{ aws_access_key_id }}
+      - name: AWS_SECRET_ACCESS_KEY
+        value: {{ aws_secret_access_key }}
+      - name: AWS_S3_ENDPOINT
+        value: "{{aws_endpoint}}"
+      - name: AWS_DEFAULT_REGION
+        value: "{{aws_region}}"
+      - name: AWS_REGION
+        value: "{{aws_region}}"
+      - name: AWS_HTTPS
+        value: "NO"
+      - name: AWS_VIRTUAL_HOSTING
+        value: "FALSE"
+      - name: AWS_DIRECT
+        value: "TRUE"
+      - name: SWIFT_URL
+        value: {{ swift_url }}
+      - name: SWIFT_BUCKET
+        value: {{ swift_bucket }}
+      - name: ZOOKEEPERNODES
+        value: {{ zookeeper_nodes }}
+      - name: OPENEO_S1BACKSCATTER_ELEV_GEOID
+        value: "/opt/openeo-vito-aux-data/egm96.tif"
+      - name: OTB_HOME
+        value: "/usr"
+      - name: OTB_APPLICATION_PATH
+        value: "/usr/lib/otb/applications"
+      - name: GDAL_NUM_THREADS
+        value: "2"
+      - name: GDAL_CACHEMAX
+        value: "200"
+      - name: GDAL_DISABLE_READDIR_ON_OPEN
+        value: "EMPTY_DIR"
+      - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
+        value: "YES"
+      - name: PYTHONPATH
+        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
+      - name: VSI_CACHE
+        value: "TRUE"
 {%- endblock %}
     labels:
 {%- block driver_labels %}
@@ -207,36 +232,64 @@ spec:
 {%- block executor_podSecurityContext %}
       fsGroup: 18585
 {%- endblock %}
-    envVars:
-{%- block executor_envVars %}
-      OPENEO_BATCH_JOB_ID: {{ job_id_full }}
-      OPENEO_USER_ID: {{ user_id }}
-      OPENEO_LOGGING_THRESHOLD: {{ logging_threshold }}
-      SPARK_USER: "spark"
-      OPENEO_CATALOG_FILES: "/opt/layercatalog.json"
-      KUBE: "true"
-      AWS_ACCESS_KEY_ID: {{ aws_access_key_id }}
-      AWS_SECRET_ACCESS_KEY: {{ aws_secret_access_key }}
-      AWS_S3_ENDPOINT: "{{aws_endpoint}}"
-      AWS_DEFAULT_REGION: "{{aws_region}}"
-      AWS_REGION: "{{aws_region}}"
-      AWS_HTTPS: "NO"
-      AWS_VIRTUAL_HOSTING: "FALSE"
-      AWS_DIRECT: "TRUE"
-      SWIFT_URL: {{ swift_url }}
-      SWIFT_BUCKET: {{ swift_bucket }}
-      ZOOKEEPERNODES: {{ zookeeper_nodes }}
-      OPENEO_S1BACKSCATTER_ELEV_GEOID: "/opt/openeo-vito-aux-data/egm96.tif"
-      OTB_HOME: "/usr"
-      OTB_APPLICATION_PATH: "/usr/lib/otb/applications"
-      GDAL_NUM_THREADS: "2"
-      GDAL_CACHEMAX: "200"
-      GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
-      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
-      PYTHON_MAX_MEMORY: "{{ python_max_memory }}"
-      PYTHONPATH: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib64/python3.8/site-packages/"
-      VSI_CACHE: "TRUE"
-      CPL_DEBUG: "OFF"
+    env:
+{%- block executor_env %}
+      - name: OPENEO_BATCH_JOB_ID
+        value: {{ job_id_full }}
+      - name: OPENEO_USER_ID
+        value: {{ user_id }}
+      - name: OPENEO_LOGGING_THRESHOLD
+        value: {{ logging_threshold }}
+      - name: OPENEO_CATALOG_FILES
+        value: "/opt/layercatalog.json"
+      - name: KUBE
+        value: "true"
+      - name: AWS_ACCESS_KEY_ID
+        value: {{ aws_access_key_id }}
+      - name: AWS_SECRET_ACCESS_KEY
+        value: {{ aws_secret_access_key }}
+      - name: AWS_S3_ENDPOINT
+        value: "{{aws_endpoint}}"
+      - name: AWS_DEFAULT_REGION
+        value: "{{aws_region}}"
+      - name: AWS_REGION
+        value: "{{aws_region}}"
+      - name: AWS_HTTPS
+        value: "NO"
+      - name: AWS_VIRTUAL_HOSTING
+        value: "FALSE"
+      - name: AWS_DIRECT
+        value: "TRUE"
+      - name: SWIFT_URL
+        value: {{ swift_url }}
+      - name: SWIFT_BUCKET
+        value: {{ swift_bucket }}
+      - name: ZOOKEEPERNODES
+        value: {{ zookeeper_nodes }}
+      - name: OPENEO_S1BACKSCATTER_ELEV_GEOID
+        value: "/opt/openeo-vito-aux-data/egm96.tif"
+      - name: OTB_HOME
+        value: "/usr"
+      - name: OTB_APPLICATION_PATH
+        value: "/usr/lib/otb/applications"
+      - name: GDAL_NUM_THREADS
+        value: "2"
+      - name: GDAL_CACHEMAX
+        value: "200"
+      - name: GDAL_DISABLE_READDIR_ON_OPEN
+        value: "EMPTY_DIR"
+      - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
+        value: "YES"
+      - name: PYTHONPATH
+        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
+      - name: VSI_CACHE
+        value: "TRUE"
+      - name: SPARK_USER
+        value: "spark"
+      - name: PYTHON_MAX_MEMORY
+        value: "{{ python_max_memory }}"
+      - name: CPL_DEBUG
+        value: "OFF"
 {%- endblock %}
     labels:
 {%- block executor_labels %}
