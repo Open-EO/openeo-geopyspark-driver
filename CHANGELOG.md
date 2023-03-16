@@ -10,6 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## [Unreleased]
+
+- Fix "Permission denied" issue with `run_udf` usage on vector date cube
+  ([#367](https://github.com/Open-EO/openeo-geopyspark-driver/issues/367))
+
 
 ## 2023-03-08 (0.9.3a1)
 
@@ -22,7 +27,6 @@ Build `20230307-1166`, with components:
 
 ### Bugfix
 - Area returned by job metadata is now calculated using WGS84 ellipsoid (https://github.com/Open-EO/openeo-python-driver/issues/144)
-
 
 ## 2023-02-27 (0.7.0a1)
 

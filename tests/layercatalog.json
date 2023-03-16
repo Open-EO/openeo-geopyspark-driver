@@ -791,8 +791,8 @@
       "temporal": {"interval": [["2010-12-12", null]]}
     },
     "cube:dimensions": {
-      "x": {"type": "spatial", "axis": "x", "step": 0.002777777777777778},
-      "y": {"type": "spatial", "axis": "y", "step": 0.002777777777777778},
+      "x": {"type": "spatial", "axis": "x", "step": 0.0002777777777777778},
+      "y": {"type": "spatial", "axis": "y", "step": 0.0002777777777777778},
       "t": {"type": "temporal"},
       "bands": {
         "type": "bands",

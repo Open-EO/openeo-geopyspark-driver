@@ -1,5 +1,11 @@
-from openeogeotrellis.backend import GpsBatchJobs
+import shapely
 
+from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
+from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.utils import EvalEnv
+
+from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing
 
 def test_extract_application_id():
     yarn_log = """
@@ -120,3 +126,94 @@ def test_get_submit_py_files_empty(tmp_path):
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": ""}
     py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
     assert py_files == ""
+
+
+def test_extra_validation_layer_too_large_drivervectorcube(backend_implementation):
+    processing = GpsProcessing()
+    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": DriverVectorCube.from_geojson(polygon),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    assert len(errors) == 2
+    assert errors[0]['code'] == "LayerTooLarge"
+    assert errors[1]['code'] == "LayerTooLarge"
+
+
+def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
+    processing = GpsProcessing()
+    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id2 = "load_collection", ("AGERA5", None)
+    polygon1 = {"type": "Polygon", "coordinates": [[(0, 0), (300, 500), (800, 200), (0, 0)]]}
+    polygon2 = {"type": "Polygon", "coordinates": [[(0, 0), (pow(10,9), 0), (0, pow(10,9)), (pow(10,9), pow(10,9))]]}
+    geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": DelayedVector.from_json_dict(polygon1),
+            },
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": DelayedVector.from_json_dict(geom_coll),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
+    processing = GpsProcessing()
+    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id2 = "load_collection", ("AGERA5", None)
+    polygon1 = shapely.geometry.Polygon([(0, 0), (pow(10,6), 0), (0, pow(10,6)), (pow(10,6), pow(10,6))])
+    polygon2 = shapely.geometry.Polygon([(pow(10,6), pow(10,6)), (pow(10,6), pow(10,9)), (pow(10,9), pow(10,6)), (pow(10,9), pow(10,9))])
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": shapely.geometry.MultiPolygon([polygon1]),
+            },
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": shapely.geometry.GeometryCollection([polygon1, polygon2]),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "LayerTooLarge"
