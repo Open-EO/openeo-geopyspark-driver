@@ -515,9 +515,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
                                                  projected_polygons_native_crs.crs(), from_date, to_date,
                                                  shub_band_names, unflattened_metadata_properties,
-                                                 datacubeParams) if single_level
+                                                 datacubeParams, correlation_id) if single_level
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
-                                                     unflattened_metadata_properties))
+                                                     unflattened_metadata_properties, correlation_id))
 
         def creo_pyramid():
             mission = layer_source_info['mission']

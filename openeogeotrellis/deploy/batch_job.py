@@ -389,7 +389,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
         backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
     logger.info(f"Using backend implementation {backend_implementation}")
-    correlation_id = generate_unique_id(prefix="c")
+    correlation_id = OPENEO_BATCH_JOB_ID
     logger.info(f"Correlation id: {correlation_id}")
     env_values = {
         'version': api_version or "1.0.0",

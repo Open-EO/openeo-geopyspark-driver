@@ -866,12 +866,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return user
 
-    def after_request(self):
+    def after_request(self, request_id: str):
         sc = SparkContext.getOrCreate()
         jvm = sc._gateway.jvm
 
         for mdc_key in [jvm.org.openeo.logging.JsonLayout.RequestId(), jvm.org.openeo.logging.JsonLayout.UserId()]:
             mdc_remove(sc, jvm, mdc_key)
+
+        jvm.org.openeo.geotrelliscommon.ScopedMetadataTracker.remove(request_id)
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self.batch_jobs.set_default_sentinel_hub_credentials(client_id, client_secret)
