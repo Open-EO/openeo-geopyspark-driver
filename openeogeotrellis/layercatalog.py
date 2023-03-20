@@ -177,12 +177,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
         south = spatial_extent.get("south", None)
-        srs = spatial_extent.get("crs", None)
+        srs = spatial_extent.get("crs", 'EPSG:4326')
         if isinstance(srs, int):
             srs = 'EPSG:%s' % str(srs)
-        if srs is None:
-            srs = 'EPSG:4326'
-
 
         correlation_id = env.get(CORRELATION_ID, '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
@@ -965,6 +962,8 @@ def is_layer_too_large(
         nr_bands: int,
         cell_width: float,
         cell_height: float,
+        native_crs: str,
+        resample_params: dict,
         threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS
 ):
     """
@@ -977,12 +976,38 @@ def is_layer_too_large(
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
+    :param native_crs: Native CRS of the layer.
+    :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
 
     :return: True if the layer exceeds the threshold number of pixels.
     """
     from_date, to_date = temporal_extent
     days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    srs = spatial_extent.get("crs", 'EPSG:4326')
+    if isinstance(srs, int):
+        srs = 'EPSG:%s' % str(srs)
+
+    # Resampling process overwrites native_crs and resolution from metadata.
+    resample_target_crs = resample_params.get("target_crs", None)
+    if resample_target_crs:
+        native_crs = resample_target_crs
+    resample_target_resolution = resample_params.get("resolution", None)
+    if resample_target_resolution:
+        cell_width, cell_height = resample_target_resolution
+
+    # Reproject.
+    if isinstance(native_crs, dict):
+        native_crs = native_crs.get("id", {}).get("code", None)
+    if native_crs is None:
+        raise InternalException("No native CRS found during is_layer_too_large check.")
+    if native_crs == "Auto42001":
+        west, south = spatial_extent["west"], spatial_extent["south"]
+        east, north = spatial_extent["east"], spatial_extent["north"]
+        native_crs = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
+    if srs != native_crs:
+        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=native_crs)
+
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
     if (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands > threshold_pixels:
@@ -997,6 +1022,12 @@ def is_layer_too_large(
                 geometries_area = calculate_rough_area([geometries])
             else:
                 raise TypeError(f'Unsupported geometry type: {type(geometries)}')
+            if native_crs != 'EPSG:4326':
+                # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
+                cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
+                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
+                cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
+                cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             if geometries_area / (cell_width * cell_height) * days * nr_bands <= threshold_pixels:
                 return False
         return True

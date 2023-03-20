@@ -951,6 +951,14 @@ class GpsProcessing(ConcreteProcessing):
 
                 cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
                 cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
+                if isinstance(native_crs, dict):
+                    native_crs = native_crs.get("id", {}).get("code", None)
+                if not isinstance(native_crs, str):
+                    yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
+                                                                  f"collection {collection_id!r}"}
+                    continue
+
                 bands = constraints.get("bands", [])
                 geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                 if geometries is None:
@@ -961,7 +969,9 @@ class GpsProcessing(ConcreteProcessing):
                     temporal_extent=temporal_extent,
                     nr_bands=len(bands),
                     cell_width=cell_width,
-                    cell_height=cell_height
+                    cell_height=cell_height,
+                    native_crs=native_crs,
+                    resample_params=constraints.get("resample", {}),
                 ):
                     yield {
                         "code": "LayerTooLarge",

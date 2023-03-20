@@ -130,14 +130,13 @@ def test_get_submit_py_files_empty(tmp_path):
 
 def test_extra_validation_layer_too_large_drivervectorcube(backend_implementation):
     processing = GpsProcessing()
-    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
     source_id2 = "load_collection", ("COPERNICUS_30", None)
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
     env_source_constraints = [
         (source_id1, {
-            "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "temporal_extent": ["2019-01-01", "2019-01-03"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929, "crs": "EPSG:32632"},
             "bands": ["B01", "B02", "B03"],
         }),
         (source_id2, {
@@ -150,7 +149,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
         }),
     ]
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
-    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 2
     assert errors[0]['code'] == "LayerTooLarge"
     assert errors[1]['code'] == "LayerTooLarge"
@@ -158,16 +157,15 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
-    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("AGERA5", None)
-    polygon1 = {"type": "Polygon", "coordinates": [[(0, 0), (300, 500), (800, 200), (0, 0)]]}
-    polygon2 = {"type": "Polygon", "coordinates": [[(0, 0), (pow(10,9), 0), (0, pow(10,9)), (pow(10,9), pow(10,9))]]}
+    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (10.0, 0.0), (0.0, 10.0), (10.0, 10.0)]]}
+    polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["B01", "B02", "B03"],
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(polygon1),
@@ -175,7 +173,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["B01", "B02", "B03"],
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(geom_coll),
@@ -183,22 +181,21 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         }),
     ]
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
-    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
     assert errors[0]['code'] == "LayerTooLarge"
 
 
 def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
     processing = GpsProcessing()
-    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("AGERA5", None)
-    polygon1 = shapely.geometry.Polygon([(0, 0), (pow(10,6), 0), (0, pow(10,6)), (pow(10,6), pow(10,6))])
-    polygon2 = shapely.geometry.Polygon([(pow(10,6), pow(10,6)), (pow(10,6), pow(10,9)), (pow(10,9), pow(10,6)), (pow(10,9), pow(10,9))])
+    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    polygon1 = shapely.geometry.Polygon([(0, 0), (10, 0), (0, 10), (10, 10)])
+    polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["B01", "B02", "B03"],
             "aggregate_spatial": {
                 "geometries": shapely.geometry.MultiPolygon([polygon1]),
@@ -206,7 +203,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
-            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["B01", "B02", "B03"],
             "aggregate_spatial": {
                 "geometries": shapely.geometry.GeometryCollection([polygon1, polygon2]),
@@ -214,9 +211,110 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         }),
     ]
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
-    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
     assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
+    # The user can specify their own CRS in load_collection.
+    # Here: The native crs of AGERA5 is LatLon but the user specifies a spatial_extent in EPSG:3035.
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("AGERA5", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 5000000.0, "west": 420000.0, "north": 5110000.0, "east": 430000.0, "crs": "EPSG:3035"},
+            "bands": ["wind-speed"],
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 0
+
+
+def test_extra_validation_layer_too_large_utm_zones(backend_implementation):
+    # For layers with Auto42001 as crs, the input bbox first needs to converted to the right UTM zone
+    # before estimating the number of pixels.
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("SENTINEL1_GAMMA0_SENTINELHUB", None)
+    polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0, 'crs': 'EPSG:4326'},
+            "bands": ["VV", "VH"],
+            "aggregate_spatial": {
+                "geometries": DelayedVector.from_json_dict(polygon),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extra_validation_layer_too_large_resample_spatial(backend_implementation):
+    # When resample_spatial or resample_cube_spatial is used, the resolution and crs of the layer is changed.
+    # So that needs to be taken into account when estimating the number of pixels.
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("SENTINEL1_GAMMA0_SENTINELHUB", None)
+    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0, 'crs': 'EPSG:4326'},
+            "bands": ["B01", "B02", "B03", "B04", "B05"],
+            "resample": {
+                "target_crs": "EPSG:4326",
+                "resolution": [10.0, 10.0],
+                "method": "near",
+            },
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0, 'crs': 'EPSG:4326'},
+            "bands": ["VV", "VH"],
+            "aggregate_spatial": {
+                "geometries": DelayedVector.from_json_dict(polygon),
+            },
+            "resample": {
+                "target_crs": "EPSG:3035",
+                "resolution": [1000.0, 1000.0],
+                "method": "near",
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 0
+
+
+def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_implementation):
+    # Resample spatial with Auto42001 as target projection.
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 60.0, 'crs': 'EPSG:4326'},
+            "bands": ["B01", "B02", "B03"],
+            "resample": {
+                "target_crs": {
+                    "id": {
+                        "code": "Auto42001"
+                    }
+                },
+                "resolution": [1000.0, 1000.0],
+                "method": "near",
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 0
 
 
 def test_extract_udf_stacktrace_1():
