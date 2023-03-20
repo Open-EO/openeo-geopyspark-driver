@@ -817,8 +817,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return SingleNodeUDFProcessGraphVisitor().accept_process_graph(process_graph)
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
-    def summarize_exception(self, error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
-        return self.summarize_exception_static(error, width)
+    def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
+        return self.summarize_exception_static(error, 2000)
 
     @staticmethod
     def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
