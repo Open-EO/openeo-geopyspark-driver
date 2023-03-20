@@ -96,26 +96,21 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     ])
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
-    # Therefore, keep track of the CRS of the bbox so we can convert it to EPSG:4326
-    # at the end, if we received any other CRS.
+    # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
     bbox_crs = None
+    bbox = None
+    spatial_extent = None
+    geometry = None
+    area = None
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
         bbox_crs = spatial_extent["crs"]
-        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
-        if all(b is not None for b in bbox):
+        temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        if all(b is not None for b in temp_bbox):
+            bbox = temp_bbox  # Only set bbox once we are sure we have all the info
             polygon = Polygon.from_bounds(*bbox)
             geometry = mapping(polygon)
             area = area_in_square_meters(polygon, bbox_crs)
-        else:
-            bbox = None
-            geometry = None
-            area = None
-    else:
-        bbox = None
-        geometry = None
-        area = None
-
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -125,11 +120,15 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
         agg_geometry = aggregate_spatial_geometries[0]
         if isinstance(agg_geometry, BaseGeometry):
-            # We only allow EPSG:4326 for the BaseGeometry case.
+            # We only allow EPSG:4326 for the BaseGeometry case to keep things simple
+            # and prevent complicated problems with CRS transformations.
+            # The aggregation geometry comes from Shapely, but Shapely itself does not
+            # support coordinate system transformations.
+            # See also: https://shapely.readthedocs.io/en/stable/manual.html#coordinate-systems
             bbox_crs = "EPSG:4326"
             bbox = agg_geometry.bounds
             geometry = mapping(agg_geometry)
-            area = area_in_square_meters(agg_geometry, "EPSG:4326")
+            area = area_in_square_meters(agg_geometry, bbox_crs)
         elif isinstance(agg_geometry, DelayedVector):
             bbox = agg_geometry.bounds
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
@@ -153,16 +152,33 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     links = [link for k, v in links.items() for link in v]
 
     # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
-    if bbox:
+    if bbox and bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
         # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
-        # get a pyproy CRS object instead of an EPSG code.That's fine. In that case we
-        # can simply go ahead with the reprojection.
-        # If the CRS happens to be EPSG:4326 after all then it will be a no-operation.
-        # It is difficult to list and check all possible variants of pyproj CRS objects
-        # that are actually all the exact same EPSG:4326 CRS, and it isn't really necessary.
-        if bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
+        # get a pyproy CRS object instead of an EPSG code. In that case it is OK to
+        # just do the reprojection, even if it is already EPSG:4326. That's just a no-op.
+        # In constrast, handling all possible variants of pyproj CRS objects that are actually
+        # all the exact same EPSG:4326 CRS, is complex and unnecessary.
+
+        if not spatial_extent and not aggregate_spatial_geometries:
+            # This situation should *only* happen if we have introduced a bug in the
+            # code above. => want to know, log error, but don't block the user.
+            # The bbox will be wrong but at least the user will have their result.
+            #
+            # If there were no spatial extents at all, and also no spatial aggregation,
+            # then bbox should *always* be None. So we shouldn't have reached this branch.
+            logger.error(
+                "Can not determine CRS to reproject the bounding box to EPSG:4326: "
+                + "bbox has a value but the other variables needed to find the CRS "
+                + "are missing. We need spatial_extent or aggregate_spatial_geometries. "
+                + "If both are None or empty, then bbox should have been None. So this is a bug. "
+                + f"{bbox=}, {spatial_extent=}, {aggregate_spatial_geometries=}, "
+                + f"{source_constraints=}, {extents=} "
+            )
+        else:
+            latlon_spatial_extent = None
             if aggregate_spatial_geometries:
-                new_spatial_extent = {
+                # In this case bbox came from the spatial aggregation geometry.
+                latlon_spatial_extent = {
                     "west": bbox[0],
                     "south": bbox[1],
                     "east": bbox[2],
@@ -170,11 +186,15 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
                     "crs": bbox_crs,
                 }
             else:
-                new_spatial_extent = spatial_extent
-            new_spatial_extent = reproject_bounding_box(
-                new_spatial_extent, from_crs=None, to_crs="EPSG:4326"
+                # no spatial aggregation => bbox came from the union of spatial extents.
+                latlon_spatial_extent = spatial_extent
+
+            latlon_spatial_extent = reproject_bounding_box(
+                latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
             )
-            bbox = [new_spatial_extent[b] for b in ["west", "south", "east", "north"]]
+            bbox = [
+                latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]
+            ]
 
     # TODO: dedicated type?
     # TODO: match STAC format?
