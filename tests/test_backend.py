@@ -1,5 +1,11 @@
-from openeogeotrellis.backend import GpsBatchJobs
+import shapely
 
+from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
+from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.utils import EvalEnv
+
+from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
 
 def test_extract_application_id():
     yarn_log = """
@@ -120,3 +126,182 @@ def test_get_submit_py_files_empty(tmp_path):
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": ""}
     py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
     assert py_files == ""
+
+
+def test_extra_validation_layer_too_large_drivervectorcube(backend_implementation):
+    processing = GpsProcessing()
+    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": DriverVectorCube.from_geojson(polygon),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    assert len(errors) == 2
+    assert errors[0]['code'] == "LayerTooLarge"
+    assert errors[1]['code'] == "LayerTooLarge"
+
+
+def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
+    processing = GpsProcessing()
+    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id2 = "load_collection", ("AGERA5", None)
+    polygon1 = {"type": "Polygon", "coordinates": [[(0, 0), (300, 500), (800, 200), (0, 0)]]}
+    polygon2 = {"type": "Polygon", "coordinates": [[(0, 0), (pow(10,9), 0), (0, pow(10,9)), (pow(10,9), pow(10,9))]]}
+    geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": DelayedVector.from_json_dict(polygon1),
+            },
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": DelayedVector.from_json_dict(geom_coll),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
+    processing = GpsProcessing()
+    pg = {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id2 = "load_collection", ("AGERA5", None)
+    polygon1 = shapely.geometry.Polygon([(0, 0), (pow(10,6), 0), (0, pow(10,6)), (pow(10,6), pow(10,6))])
+    polygon2 = shapely.geometry.Polygon([(pow(10,6), pow(10,6)), (pow(10,6), pow(10,9)), (pow(10,9), pow(10,6)), (pow(10,9), pow(10,9))])
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": shapely.geometry.MultiPolygon([polygon1]),
+            },
+        }),
+        (source_id2, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929},
+            "bands": ["B01", "B02", "B03"],
+            "aggregate_spatial": {
+                "geometries": shapely.geometry.GeometryCollection([polygon1, polygon2]),
+            },
+        }),
+    ]
+    env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extract_udf_stacktrace_1():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""
+    Traceback (most recent call last):
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+ process()
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+ serializer.dump_stream(out_iter, outfile)
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+ for obj in iterator:
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 52, in memory_logging_wrapper
+ return function(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+ return _FUNCTION_POINTERS[key](*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 701, in tile_function
+ result_data = run_udf_code(code=udf_code, data=data)
+ File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+ func(data)
+ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user
+""")
+    assert summarized == """ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user"""
+
+
+def test_extract_udf_stacktrace_2():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""Traceback (most recent call last):
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+    process()
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+    for obj in iterator:
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 49, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 519, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 175, in run_udf_code
+    result_cube = func(data.get_datacube_list()[0], data.user_context)
+  File "<string>", line 156, in apply_datacube
+TypeError: inspect() got multiple values for argument 'data'
+""")
+    assert summarized == """  File "<string>", line 156, in apply_datacube
+TypeError: inspect() got multiple values for argument 'data'"""
+
+
+def test_extract_udf_stacktrace_no_udf():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+    process()
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+    for obj in iterator:
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/util.py", line 362, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 794, in process_product
+    dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 258, in _get_dem_dir_context
+    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 664, in _creodias_dem_subset_srtm_hgt_unzip
+    with zipfile.ZipFile(zip_filename, 'r') as z:
+  File "/usr/lib64/python3.8/zipfile.py", line 1251, in __init__
+    self.fp = io.open(file, filemode)
+FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1/dem/N64E024.SRTMGL1.hgt.zip'
+""")
+    assert summarized is None

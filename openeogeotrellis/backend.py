@@ -35,7 +35,7 @@ from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get
+from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -75,11 +75,8 @@ from openeogeotrellis.job_registry import (
     zk_job_info_to_metadata,
     DoubleJobRegistry,
 )
-from openeogeotrellis.layercatalog import (
-    get_layer_catalog,
-    check_missing_products,
-    GeoPySparkLayerCatalog,
-)
+from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
+                                           is_layer_too_large, )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.sentinel_hub.batchprocessing import (
@@ -821,24 +818,55 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
     def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
-        if isinstance(error, Py4JJavaError):
+        return self.summarize_exception_static(error, 2000)
+
+    @staticmethod
+    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+        if "Container killed on request. Exit code is 143" in str(error):
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+
+        elif isinstance(error, Py4JJavaError):
             java_exception = error.java_exception
 
             while java_exception.getCause() is not None and java_exception != java_exception.getCause():
                 java_exception = java_exception.getCause()
 
             java_exception_class_name = java_exception.getClass().getName()
-            java_exception_message = java_exception.getMessage()
+            java_exception_message = repr_truncate(java_exception.getMessage(), width=width)
 
             no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in java_exception_message)
 
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
-            summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
+            if no_data_found:
+                summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
+            elif "SparkException" in java_exception_class_name:
+                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
+                if udf_stacktrace:
+                    summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                else:
+                    summary = f"Exception during Spark execution: {java_exception_message}"
+            else:
+                summary = java_exception_message
+        else:
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = repr_truncate(error, width=width)
 
-            return ErrorSummary(error, is_client_error, summary)
+        return ErrorSummary(error, is_client_error, summary)
 
-        return error
+    @staticmethod
+    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+        """
+        Select all lines a bit under 'run_udf_code'.
+        This is what interests the user
+        """
+        regex = re.compile(r" in run_udf_code\n.*\n((.|\n)*)", re.MULTILINE)
+
+        match = regex.search(full_stacktrace)
+        if match:
+            return match.group(1).rstrip()
+        return None
 
     def changelog(self) -> Union[str, Path]:
         roots = []
@@ -896,10 +924,10 @@ class GpsProcessing(ConcreteProcessing):
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
                 metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
+                temporal_extent = constraints.get("temporal_extent")
+                spatial_extent = constraints.get("spatial_extent")
 
                 if metadata.get("_vito", "data_source", "check_missing_products", default=None):
-                    temporal_extent = constraints.get("temporal_extent")
-                    spatial_extent = constraints.get("spatial_extent")
                     properties = constraints.get("properties", {})
                     if temporal_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
@@ -920,6 +948,25 @@ class GpsProcessing(ConcreteProcessing):
                                 "code": "MissingProduct",
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
+
+                cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
+                cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                bands = constraints.get("bands", [])
+                geometries = constraints.get("aggregate_spatial", {}).get("geometries")
+                if geometries is None:
+                    geometries = constraints.get("filter_spatial", {}).get("geometries")
+                if is_layer_too_large(
+                    spatial_extent=spatial_extent,
+                    geometries=geometries,
+                    temporal_extent=temporal_extent,
+                    nr_bands=len(bands),
+                    cell_width=cell_width,
+                    cell_height=cell_height
+                ):
+                    yield {
+                        "code": "LayerTooLarge",
+                        "message": "Layer is too large to be processed."
+                    }
 
 
 def get_elastic_job_registry(

@@ -16,6 +16,8 @@ from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
@@ -23,7 +25,8 @@ from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
-from shapely.geometry import box
+from shapely.geometry import box, GeometryCollection
+from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
@@ -33,7 +36,8 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
-from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
+from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
+    calculate_rough_area
 from openeogeotrellis.vault import Vault
 
 VAULT_TOKEN = 'vault_token'
@@ -52,6 +56,7 @@ WHITELIST = [
     REQUIRE_BOUNDS,
     CORRELATION_ID
 ]
+LARGE_LAYER_THRESHOLD_IN_PIXELS = 100 * pow(10, 9)
 
 logger = logging.getLogger(__name__)
 
@@ -951,3 +956,48 @@ def check_missing_products(
             f"check_missing_products ({method}) on {collection_metadata.get('id')} detected {len(missing)} missing products."
         )
         return missing
+
+
+def is_layer_too_large(
+        spatial_extent: dict,
+        geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
+        temporal_extent: Tuple[str, str],
+        nr_bands: int,
+        cell_width: float,
+        cell_height: float,
+        threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS
+):
+    """
+    Estimates the number of pixels that will be required to load this layer
+    and returns True if it exceeds the threshold.
+
+    :param spatial_extent: Requested spatial extent.
+    :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
+    :param temporal_extent: Requested temporal extent (in isoformat).
+    :param nr_bands: Requested number of bands.
+    :param cell_width: Width of the cells/pixels.
+    :param cell_height: Height of the cells/pixels.
+    :param threshold_pixels: Threshold in pixels.
+
+    :return: True if the layer exceeds the threshold number of pixels.
+    """
+    from_date, to_date = temporal_extent
+    days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+    bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+    if (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands > threshold_pixels:
+        if geometries and not isinstance(geometries, dict):
+            # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
+            # For performance, we estimate the area using a simple bounding box around each polygon.
+            if isinstance(geometries, DriverVectorCube):
+                geometries_area = calculate_rough_area([geometries.to_multipolygon()])
+            elif isinstance(geometries, DelayedVector):
+                geometries_area = calculate_rough_area(geometries.geometries)
+            elif isinstance(geometries, BaseGeometry):
+                geometries_area = calculate_rough_area([geometries])
+            else:
+                raise TypeError(f'Unsupported geometry type: {type(geometries)}')
+            if geometries_area / (cell_width * cell_height) * days * nr_bands <= threshold_pixels:
+                return False
+        return True
+    return False
