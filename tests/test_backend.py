@@ -5,7 +5,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing
+from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
 
 def test_extract_application_id():
     yarn_log = """
@@ -217,3 +217,91 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     errors = list(processing.extra_validation(pg, env, None, env_source_constraints))
     assert len(errors) == 1
     assert errors[0]['code'] == "LayerTooLarge"
+
+
+def test_extract_udf_stacktrace_1():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""
+    Traceback (most recent call last):
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+ process()
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+ serializer.dump_stream(out_iter, outfile)
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+ for obj in iterator:
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 52, in memory_logging_wrapper
+ return function(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+ return _FUNCTION_POINTERS[key](*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 701, in tile_function
+ result_data = run_udf_code(code=udf_code, data=data)
+ File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+ func(data)
+ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user
+""")
+    assert summarized == """ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user"""
+
+
+def test_extract_udf_stacktrace_2():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""Traceback (most recent call last):
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+    process()
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+    for obj in iterator:
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 49, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 519, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 175, in run_udf_code
+    result_cube = func(data.get_datacube_list()[0], data.user_context)
+  File "<string>", line 156, in apply_datacube
+TypeError: inspect() got multiple values for argument 'data'
+""")
+    assert summarized == """  File "<string>", line 156, in apply_datacube
+TypeError: inspect() got multiple values for argument 'data'"""
+
+
+def test_extract_udf_stacktrace_no_udf():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+    process()
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+    for obj in iterator:
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/util.py", line 362, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 794, in process_product
+    dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 258, in _get_dem_dir_context
+    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 664, in _creodias_dem_subset_srtm_hgt_unzip
+    with zipfile.ZipFile(zip_filename, 'r') as z:
+  File "/usr/lib64/python3.8/zipfile.py", line 1251, in __init__
+    self.fp = io.open(file, filemode)
+FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1/dem/N64E024.SRTMGL1.hgt.zip'
+""")
+    assert summarized is None
