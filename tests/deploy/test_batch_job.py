@@ -21,7 +21,6 @@ from openeogeotrellis.deploy.batch_job import (
     _convert_job_metadatafile_outputs_to_s3_urls,
     read_projection_extension_metadata,
     parse_projection_extension_metadata,
-    extract_crs_epsg_code_from_wkt_string,
     _get_projection_extension_metadata,
 )
 from openeogeotrellis.utils import get_jvm
@@ -517,75 +516,13 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     t.setGlobalTracking(False)
 
 
-def test_extract_projection_extension_metadata():
-    crs_wkt_string = textwrap.dedent(
-        """
-        PROJCRS["ETRS89 / Belgian Lambert 2008",
-            BASEGEOGCRS["ETRS89",
-                ENSEMBLE["European Terrestrial Reference System 1989 ensemble",
-                    MEMBER["European Terrestrial Reference Frame 1989"],
-                    MEMBER["European Terrestrial Reference Frame 1990"],
-                    MEMBER["European Terrestrial Reference Frame 1991"],
-                    MEMBER["European Terrestrial Reference Frame 1992"],
-                    MEMBER["European Terrestrial Reference Frame 1993"],
-                    MEMBER["European Terrestrial Reference Frame 1994"],
-                    MEMBER["European Terrestrial Reference Frame 1996"],
-                    MEMBER["European Terrestrial Reference Frame 1997"],
-                    MEMBER["European Terrestrial Reference Frame 2000"],
-                    MEMBER["European Terrestrial Reference Frame 2005"],
-                    MEMBER["European Terrestrial Reference Frame 2014"],
-                    ELLIPSOID["GRS 1980",6378137,298.257222101,
-                        LENGTHUNIT["metre",1]],
-                    ENSEMBLEACCURACY[0.1]],
-                PRIMEM["Greenwich",0,
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                ID["EPSG",4258]],
-            CONVERSION["Belgian Lambert 2008",
-                METHOD["Lambert Conic Conformal (2SP)",
-                    ID["EPSG",9802]],
-                PARAMETER["Latitude of false origin",50.797815,
-                    ANGLEUNIT["degree",0.0174532925199433],
-                    ID["EPSG",8821]],
-                PARAMETER["Longitude of false origin",4.35921583333333,
-                    ANGLEUNIT["degree",0.0174532925199433],
-                    ID["EPSG",8822]],
-                PARAMETER["Latitude of 1st standard parallel",49.8333333333333,
-                    ANGLEUNIT["degree",0.0174532925199433],
-                    ID["EPSG",8823]],
-                PARAMETER["Latitude of 2nd standard parallel",51.1666666666667,
-                    ANGLEUNIT["degree",0.0174532925199433],
-                    ID["EPSG",8824]],
-                PARAMETER["Easting at false origin",649328,
-                    LENGTHUNIT["metre",1],
-                    ID["EPSG",8826]],
-                PARAMETER["Northing at false origin",665262,
-                    LENGTHUNIT["metre",1],
-                    ID["EPSG",8827]]],
-            CS[Cartesian,2],
-                AXIS["easting (X)",east,
-                    ORDER[1],
-                    LENGTHUNIT["metre",1]],
-                AXIS["northing (Y)",north,
-                    ORDER[2],
-                    LENGTHUNIT["metre",1]],
-            USAGE[
-                SCOPE["Engineering survey, topographic mapping."],
-                AREA["Belgium - onshore."],
-                BBOX[49.5,2.5,51.51,6.4]],
-            ID["EPSG",3812]]
-        """
-    )
-
-    crs_id = extract_crs_epsg_code_from_wkt_string(crs_wkt_string)
-    assert crs_id == 3812
-
-
 @pytest.mark.parametrize(
     ["json_file", "expected_metadata"],
     [
         (
             "gdalinfo-output/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1.nc.json",
             {
+                "proj:epsg": 4326,
                 "proj:bbox": [-30.000496, -34.999504, 59.999504, 45.000496],
                 "proj:shape": [90720, 80640],
             },

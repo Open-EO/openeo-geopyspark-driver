@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 from osgeo import gdal
+import pyproj
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -385,7 +386,7 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
     if crs_as_wkt:
-        crs_id = extract_crs_epsg_code_from_wkt_string(crs_as_wkt)
+        crs_id = pyproj.CRS.from_wkt(crs_as_wkt).to_epsg()
         if crs_id:
             proj_metadata["proj:epsg"] = crs_id
 
@@ -404,36 +405,6 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
         proj_metadata["proj:bbox"] = [*lole, *upri]
 
     return proj_metadata
-
-
-def extract_crs_epsg_code_from_wkt_string(crs_as_wkt: str) -> str:
-    """Extract the EPSG code from a WKT string that represents a CRS.
-
-    :param crs_as_wkt: the WKT2 string that describes the Coordinate Reference System.
-    :return: the EPSG code for the CRS, as an integer.
-    """
-
-    # Find the last line, searching backward and skipping any empty lines at the end.
-    lines = crs_as_wkt.split("\n")
-    for i in range(len(lines) - 1, 0, -1):
-        crs_id_line = lines[i].strip()
-        if crs_id_line:
-            break
-
-    m = re.search('ID\["EPSG"\,(\d*)\]\]', crs_id_line)
-    if not m:
-        # The CRS ID wasn't there.
-        return None
-
-    crs_id = m.group(1)
-    try:
-        return int(crs_id)
-    except ValueError as exc:
-        logger.error(
-            f"Could not convert epsg code to int: epsg_str={crs_id} "
-            + f"crs_id_line={crs_id_line}, WKT for CRS: {crs_as_wkt}, exception: {exc}"
-        )
-        raise
 
 
 def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
