@@ -21,6 +21,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeoV2,
 )
 
+@skip("https://catalogue.dataspace.copernicus.eu is down")
 @pytest.mark.parametrize(
     [
         "spatial_extent",
