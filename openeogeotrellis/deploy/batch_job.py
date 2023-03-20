@@ -99,7 +99,6 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
     bbox_crs = None
     bbox = None
-    spatial_extent = None
     geometry = None
     area = None
     if(len(extents) > 0):
@@ -158,43 +157,17 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         # just do the reprojection, even if it is already EPSG:4326. That's just a no-op.
         # In constrast, handling all possible variants of pyproj CRS objects that are actually
         # all the exact same EPSG:4326 CRS, is complex and unnecessary.
-
-        if not spatial_extent and not aggregate_spatial_geometries:
-            # This situation should *only* happen if we have introduced a bug in the
-            # code above. => want to know, log error, but don't block the user.
-            # The bbox will be wrong but at least the user will have their result.
-            #
-            # If there were no spatial extents at all, and also no spatial aggregation,
-            # then bbox should *always* be None. So we shouldn't have reached this branch.
-            logger.error(
-                "Can not determine CRS to reproject the bounding box to EPSG:4326: "
-                + "bbox has a value but the other variables needed to find the CRS "
-                + "are missing. We need spatial_extent or aggregate_spatial_geometries. "
-                + "If both are None or empty, then bbox should have been None. So this is a bug. "
-                + f"{bbox=}, {spatial_extent=}, {aggregate_spatial_geometries=}, "
-                + f"{source_constraints=}, {extents=} "
-            )
-        else:
-            latlon_spatial_extent = None
-            if aggregate_spatial_geometries:
-                # In this case bbox came from the spatial aggregation geometry.
-                latlon_spatial_extent = {
-                    "west": bbox[0],
-                    "south": bbox[1],
-                    "east": bbox[2],
-                    "north": bbox[3],
-                    "crs": bbox_crs,
-                }
-            else:
-                # no spatial aggregation => bbox came from the union of spatial extents.
-                latlon_spatial_extent = spatial_extent
-
-            latlon_spatial_extent = reproject_bounding_box(
-                latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
-            )
-            bbox = [
-                latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]
-            ]
+        latlon_spatial_extent = {
+            "west": bbox[0],
+            "south": bbox[1],
+            "east": bbox[2],
+            "north": bbox[3],
+            "crs": bbox_crs,
+        }
+        latlon_spatial_extent = reproject_bounding_box(
+            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
+        )
+        bbox = [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     # TODO: dedicated type?
     # TODO: match STAC format?
