@@ -354,8 +354,8 @@ def main(argv: List[str]) -> None:
                 run_driver()
 
     except Exception as e:
-        message = GeoPySparkBackendImplementation.summarize_exception(e)
-        user_facing_logger.exception("OpenEO batch job failed: " + message)
+        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
 
         raise
 
