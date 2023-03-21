@@ -16,12 +16,12 @@ pythonPipeline {
   extra_env_variables = ['JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.0.9-2.el8_5.x86_64']
   python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
-  downstream_job = 'openEO/openeo-integrationtests-spark331'
+  downstream_job = 'openEO/openeo-integrationtests'
   wheel_repo = 'python-openeo'
   wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
   extras_require = 'dev'
-  upload_dev_wheels = true
+  upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
   custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.3.1'
