@@ -232,7 +232,7 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         all_links = None
         if links is not None:
             all_links = list(chain(*links.values()))
-            all_links = [ {"href":link, "rel":"derived_from", "title":f"Derived from {link}"} for link in all_links]
+            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
 
         return dict_no_none(usage=usage,links=all_links)
 
@@ -320,8 +320,8 @@ def main(argv: List[str]) -> None:
             vault_token = _get_vault_token(sc.getConf())
 
             kerberos(principal, key_tab)
-            
-            def run_driver(): 
+
+            def run_driver():
                 run_job(
                     job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
                     api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
@@ -329,7 +329,7 @@ def main(argv: List[str]) -> None:
                     default_sentinel_hub_credentials=default_sentinel_hub_credentials,
                     sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
                 )
-            
+
             if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
                 # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
                 driver_profile = BasicProfiler(sc)
@@ -354,22 +354,8 @@ def main(argv: List[str]) -> None:
                 run_driver()
 
     except Exception as e:
-        if isinstance(e, Py4JJavaError):
-            java_exception = e.java_exception
-            if "SparkException" in java_exception.getClass().getName():
-                message = f"Your openEO batch job failed during Spark execution: {repr_truncate(str(java_exception.getMessage()), width=200)}"
-                if java_exception.getCause() is not None:
-                    message = f"Your openEO batch job failed during Spark execution: {repr_truncate(str(java_exception.getCause().getMessage()), width=200)}"
-            else:
-                message = f"Your openEO batch job failed: {repr_truncate(str(java_exception.getMessage()), width=200)}"
-        else:
-            message = f"Your openEO batch job failed: {repr_truncate(e, width=200)}"
-
-        if "Container killed on request. Exit code is 143" in str(e):
-            message = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
-
-        if message is not None:
-            user_facing_logger.exception(message)
+        message = GeoPySparkBackendImplementation.summarize_exception(e)
+        user_facing_logger.exception("OpenEO batch job failed: " + message)
 
         raise
 
@@ -414,7 +400,7 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
     if isinstance(result, DelayedVector):
-        geojsons = (mapping(geometry) for geometry in result.geometries)
+        geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
         result = JSONResult(geojsons)
 
     if isinstance(result, DriverDataCube):

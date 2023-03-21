@@ -52,8 +52,8 @@ setup(
     setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
-        "openeo>=0.15.0a2.dev",
-        "openeo_driver>=0.35.3.dev",
+        "openeo>=0.15.0",
+        "openeo_driver>=0.37.1.dev",
         'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
@@ -88,11 +88,15 @@ setup(
         'boto3==1.16.25',
         'hvac==1.0.2',
         "pyarrow>=1.0.0",  # For pyspark.pandas
+        "attrs>=22.1.0",
     ],
     extras_require={
         "dev": tests_require,
         "k8s": [
             "kubernetes",
+        ],
+        "yarn": [
+            "requests-gssapi>=1.2.3",  # For Kerberos authentication
         ],
     },
 )

@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from kazoo.client import KazooClient
+from typing import Optional
 
 _log = logging.getLogger(__name__)
 
@@ -14,11 +15,11 @@ class Traefik:
 
     def proxy_service(self, service_id, host, port) -> None:
         """
-        Routes requests to a dynamically created service.
+        Routes requests to a dynamically created secondary service.
 
-        Creates a backend, a backend server and a frontend rule specifically for this service.
+        Creates a service, a server and a router rule specifically for this service.
 
-        :param service_id: the services's unique ID, typically a UUID
+        :param service_id: the secondary services's unique ID, typically a UUID
         :param host: the host the service runs on, typically myself
         :param port: the port the service runs on, typically random
         """
@@ -39,28 +40,26 @@ class Traefik:
 
         self._trigger_configuration_update()
 
-    def add_load_balanced_server(self, cluster_id, server_id, host, port, environment) -> None:
+    def add_load_balanced_server(self, cluster_id, server_id, host, port, rule, health_check: Optional[str]) -> None:
         """
-        Adds a server to a particular load-balanced cluster.
+        Adds an HTTP server to a particular load-balanced cluster (a "service" in Traefik parlance). Requests will be
+        routed to this cluster if they match the specified router rule.
 
-        Always creates a backend server; the backend and frontend are created only if they don't already exist.
+        Creates a service, a router rule that routes to this service and a server to be part of this service. More
+        correctly, it will update existing services/routers/servers because they are all identified by particular IDs.
 
-        :param cluster_id: identifies the cluster, e.g. "openeo-prod" or "0"
-        :param server_id: uniquely identifies the server, e.g. a UUID or even "192.168.207.194:40661"
-        :param host: hostname or IP of the server
-        :param port: the port the service runs on
+        :param cluster_id: uniquely identifies the load-balanced cluster of servers, e.g. "openeo-prod"
+        :param server_id: uniquely identifies the server, e.g. "epod-openeo-1.vgt.vito.be"
+        :param host: hostname or IP of the HTTP server, e.g. "192.168.207.60"
+        :param port: port of the HTTP server, e.g. 43845
+        :param rule: the router rule, e.g. "Host(`openeo.vito.be`)"
+        :param health_check: path to perform a health check, e.g. "/openeo/1.0/health"
         """
-
-        if environment == 'prod':
-            match_openeo = "Host(`openeo.vgt.vito.be`,`openeo.vito.be`) && " \
-                           "PathPrefix(`/openeo`,`/.well-known/openeo`)"
-        else:
-            match_openeo = "Host(`openeo-dev.vgt.vito.be`,`openeo-dev.vito.be`) && " \
-                           "PathPrefix(`/openeo`,`/.well-known/openeo`)"
 
         self._create_tservice_server(tservice_id=cluster_id, server_id=server_id, host=host, port=port)
-        self._setup_load_balancer_health_check(tservice_id=cluster_id)
-        self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, matcher=match_openeo, priority=100)
+        if health_check:
+            self._setup_load_balancer_health_check(tservice_id=cluster_id, path=health_check)
+        self._create_router_rule(router_id=cluster_id, tservice_id=cluster_id, rule=rule, priority=100)
 
         self._trigger_configuration_update()
 
@@ -89,28 +88,25 @@ class Traefik:
         tservice_key = self._tservice_key(tservice_id)
         url_key = f"{tservice_key}/loadBalancer/servers/{server_id}/url"
         url = f"http://{host}:{port}"
-        _log.info(f"Create service {url_key}: {url}")
+        _log.info(f"Create server {url_key}: {url}")
         self._zk_merge(url_key, url.encode())
 
-    def _setup_load_balancer_health_check(self, tservice_id: str):
+    def _setup_load_balancer_health_check(self, tservice_id: str, path: str):
         tservice_key = self._tservice_key(tservice_id)
         _log.info(f"Setup loadBalancer healthCheck for {tservice_key}")
-        self._zk_merge(
-            f"{tservice_key}/loadBalancer/healthCheck/path",
-            b"/openeo/1.0/health?mode=jvm&from=TraefikLoadBalancer"
-        )
+        self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/path", path.encode())
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/interval", b"60s")
         # TODO: very liberal timeout for now
         self._zk_merge(f"{tservice_key}/loadBalancer/healthCheck/timeout", b"20s")
 
-    def _create_router_rule(self, router_id, tservice_id, matcher, priority: int, *middleware_ids):
+    def _create_router_rule(self, router_id, tservice_id, rule, priority: int, *middleware_ids):
         router_key = self._router_key(router_id)
         _log.info(f"Create router rule for {router_key}")
 
         self._zk_merge(f"{router_key}/entrypoints", b"web")
         self._zk_merge(f"{router_key}/service", tservice_id.encode())
         self._zk_merge(f"{router_key}/priority", str(priority).encode())
-        self._zk_merge(f"{router_key}/rule", matcher.encode())
+        self._zk_merge(f"{router_key}/rule", rule.encode())
 
         for i, middleware_id in enumerate(middleware_ids):
             self._zk_merge(f"{router_key}/middlewares/{i}", middleware_id.encode())

@@ -35,7 +35,7 @@ from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get
+from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -56,6 +56,7 @@ from openeo_driver.util.logging import (
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
+from openeogeotrellis.config import gps_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
@@ -74,11 +75,8 @@ from openeogeotrellis.job_registry import (
     zk_job_info_to_metadata,
     DoubleJobRegistry,
 )
-from openeogeotrellis.layercatalog import (
-    get_layer_catalog,
-    check_missing_products,
-    GeoPySparkLayerCatalog,
-)
+from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
+                                           is_layer_too_large, )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.sentinel_hub.batchprocessing import (
@@ -384,50 +382,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return res
 
     def oidc_providers(self) -> List[OidcProvider]:
-        # TODO Move these providers to config or bootstrap script?
-        default_client_egi = {
-            "id": "vito-default-client",
-            "grant_types": [
-                "authorization_code+pkce",
-                "urn:ietf:params:oauth:grant-type:device_code+pkce",
-                "refresh_token",
-            ],
-            "redirect_urls": [
-                "https://editor.openeo.org",
-                "http://localhost:1410/",
-            ]
-        }
-        return [
-            OidcProvider(
-                id="egi",
-                issuer="https://aai.egi.eu/auth/realms/egi/",
-                scopes=[
-                    "openid", "email",
-                    "eduperson_entitlement",
-                    "eduperson_scoped_affiliation",
-                ],
-                title="EGI Check-in",
-                default_clients=[default_client_egi],
-            ),
-            # TODO: provide only one EGI Check-in variation? Or only include EGI Check-in dev instance on openeo-dev?
-            OidcProvider(
-                id="egi-dev",
-                issuer="https://aai-dev.egi.eu/auth/realms/egi",
-                scopes=[
-                    "openid", "email",
-                    "eduperson_entitlement",
-                    "eduperson_scoped_affiliation",
-                ],
-                title="EGI Check-in (dev)",
-                default_clients=[default_client_egi],
-            ),
-            OidcProvider(
-                id="keycloak",
-                issuer="https://sso.vgt.vito.be/auth/realms/terrascope",
-                scopes=["openid", "email"],
-                title="VITO Keycloak",
-            ),
-        ]
+        return gps_backend_config().oidc_providers
 
     def file_formats(self) -> dict:
         return {
@@ -477,6 +432,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": ["object", "null"],
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
                             "default": None
+                        },
+                        "filename_prefix": {
+                            "type": "string",
+                            "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
                         },
                     },
                 },
@@ -684,7 +644,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 bbox = job_info.bbox
                 if not (isinstance(bbox, list) and len(bbox) == 4):
                     raise InternalException(
-                        message=f"Expected bbox list from job info in load_result but got: {bbox!r}"
+                        message=f"load_result with job {job_id} expects bbox list but got: {bbox!r}"
                     )
                 return [bbox[0], bbox[1], bbox[2], bbox[3]], job_info.epsg
 
@@ -858,24 +818,55 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
     def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
-        if isinstance(error, Py4JJavaError):
+        return self.summarize_exception_static(error, 2000)
+
+    @staticmethod
+    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+        if "Container killed on request. Exit code is 143" in str(error):
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+
+        elif isinstance(error, Py4JJavaError):
             java_exception = error.java_exception
 
             while java_exception.getCause() is not None and java_exception != java_exception.getCause():
                 java_exception = java_exception.getCause()
 
             java_exception_class_name = java_exception.getClass().getName()
-            java_exception_message = java_exception.getMessage()
+            java_exception_message = repr_truncate(java_exception.getMessage(), width=width)
 
             no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in java_exception_message)
 
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
-            summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
+            if no_data_found:
+                summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
+            elif "SparkException" in java_exception_class_name:
+                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
+                if udf_stacktrace:
+                    summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                else:
+                    summary = f"Exception during Spark execution: {java_exception_message}"
+            else:
+                summary = java_exception_message
+        else:
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = repr_truncate(error, width=width)
 
-            return ErrorSummary(error, is_client_error, summary)
+        return ErrorSummary(error, is_client_error, summary)
 
-        return error
+    @staticmethod
+    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+        """
+        Select all lines a bit under 'run_udf_code'.
+        This is what interests the user
+        """
+        regex = re.compile(r" in run_udf_code\n.*\n((.|\n)*)", re.MULTILINE)
+
+        match = regex.search(full_stacktrace)
+        if match:
+            return match.group(1).rstrip()
+        return None
 
     def changelog(self) -> Union[str, Path]:
         roots = []
@@ -933,10 +924,10 @@ class GpsProcessing(ConcreteProcessing):
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
                 metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
+                temporal_extent = constraints.get("temporal_extent")
+                spatial_extent = constraints.get("spatial_extent")
 
                 if metadata.get("_vito", "data_source", "check_missing_products", default=None):
-                    temporal_extent = constraints.get("temporal_extent")
-                    spatial_extent = constraints.get("spatial_extent")
                     properties = constraints.get("properties", {})
                     if temporal_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
@@ -958,16 +949,48 @@ class GpsProcessing(ConcreteProcessing):
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
 
+                cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
+                cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
+                if isinstance(native_crs, dict):
+                    native_crs = native_crs.get("id", {}).get("code", None)
+                if not isinstance(native_crs, str):
+                    yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
+                                                                  f"collection {collection_id!r}"}
+                    continue
 
-def get_elastic_job_registry() -> Optional[ElasticJobRegistry]:
+                bands = constraints.get("bands", [])
+                geometries = constraints.get("aggregate_spatial", {}).get("geometries")
+                if geometries is None:
+                    geometries = constraints.get("filter_spatial", {}).get("geometries")
+                if is_layer_too_large(
+                    spatial_extent=spatial_extent,
+                    geometries=geometries,
+                    temporal_extent=temporal_extent,
+                    nr_bands=len(bands),
+                    cell_width=cell_width,
+                    cell_height=cell_height,
+                    native_crs=native_crs,
+                    resample_params=constraints.get("resample", {}),
+                ):
+                    yield {
+                        "code": "LayerTooLarge",
+                        "message": "Layer is too large to be processed."
+                    }
+
+
+def get_elastic_job_registry(
+    requests_session: Optional[requests.Session] = None,
+) -> Optional[ElasticJobRegistry]:
     """Build ElasticJobRegistry instance from config and vault"""
     with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
         config = ConfigParams()
         job_registry = ElasticJobRegistry(
             api_url=config.ejr_api,
             backend_id=config.ejr_backend_id,
+            session=requests_session,
         )
-        vault = Vault(config.vault_addr)
+        vault = Vault(config.vault_addr, requests_session=requests_session)
         ejr_creds = vault.get_elastic_job_registry_credentials()
         job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
         job_registry.health_check(log=True)
@@ -1457,8 +1480,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 jinja_template = Environment(
                     loader=FileSystemLoader(jinja_dir)
                 ).from_string(open(jinja_path).read())
+
+                spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+
                 rendered = jinja_template.render(
-                    job_name=k8s_job_name(job_id=job_id, user_id=user_id),
+                    job_name=spark_app_id,
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
@@ -1502,7 +1528,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
-                    spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
@@ -2185,7 +2210,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 version = "v1beta2"
                 namespace = "spark-jobs"
                 plural = "sparkapplications"
-                name = k8s_job_name(job_id=job_id, user_id=user_id)
+                name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
                 delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(

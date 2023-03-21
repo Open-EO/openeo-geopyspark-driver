@@ -30,6 +30,7 @@ from openeo_driver.testing import (
     DictSubSet,
     TEST_USER_BEARER_TOKEN,
     ApiTester,
+    ListSubSet,
 )
 from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
@@ -61,6 +62,25 @@ def test_file_formats(api100):
 def test_health_default(api, path, expected):
     resp = api.get(path).assert_status_code(200)
     assert resp.json == expected
+
+
+def test_credentials_oidc(api):
+    resp = api.get("/credentials/oidc").assert_status_code(200)
+    assert resp.json == DictSubSet(
+        {
+            "providers": ListSubSet(
+                [
+                    DictSubSet(
+                        {
+                            "id": "egi",
+                            "issuer": "https://aai.egi.eu/auth/realms/egi/",
+                            "scopes": ListSubSet(["openid"]),
+                        }
+                    )
+                ]
+            )
+        }
+    )
 
 
 class TestCollections:

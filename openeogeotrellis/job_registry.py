@@ -96,16 +96,14 @@ class ZkJobRegistry:
         self, job_id: str, user_id: str, status: str, auto_mark_done: bool = True
     ) -> None:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
-
-        self.patch(job_id, user_id, status=status, updated=rfc3339.utcnow())
+        self.patch(
+            job_id,
+            user_id,
+            status=status,
+            updated=rfc3339.utcnow(),
+            auto_mark_done=auto_mark_done,
+        )
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
-
-        if auto_mark_done and status in {
-            JOB_STATUS.FINISHED,
-            JOB_STATUS.ERROR,
-            JOB_STATUS.CANCELED,
-        }:
-            self.mark_done(job_id=job_id, user_id=user_id)
 
     def set_dependency_status(self, job_id: str, user_id: str, dependency_status: str) -> None:
         self.patch(job_id, user_id, dependency_status=dependency_status)
@@ -125,16 +123,24 @@ class ZkJobRegistry:
     def remove_dependencies(self, job_id: str, user_id: str):
         self.patch(job_id, user_id, dependencies=None, dependency_status=None)
 
-    def patch(self, job_id: str, user_id: str, **kwargs) -> None:
+    def patch(
+        self, job_id: str, user_id: str, auto_mark_done: bool = True, **kwargs
+    ) -> None:
         """Partially updates a registered batch job."""
         # TODO make this a private method to have cleaner API
+        # TODO: is there still need to have `auto_mark_done` as public argument?
         job_info, version = self._read(job_id, user_id)
         self._update({**job_info, **kwargs}, version)
 
-    def mark_done(self, job_id: str, user_id: str) -> None:
-        """Marks a job as done (not to be tracked anymore)."""
-        # TODO: possible to make this a private method (as implementation detail)?
+        if auto_mark_done and kwargs.get("status") in {
+            JOB_STATUS.FINISHED,
+            JOB_STATUS.ERROR,
+            JOB_STATUS.CANCELED,
+        }:
+            self._mark_done(job_id=job_id, user_id=user_id)
 
+    def _mark_done(self, job_id: str, user_id: str) -> None:
+        """Marks a job as done (not to be tracked anymore)."""
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id)
 
@@ -147,8 +153,11 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
+        _log.info(f"Marked {job_id} as done", extra={"job_id": job_id})
+
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         """Marks as job as ongoing (to be tracked)."""
+        # TODO: can this method be made private or removed completely?
 
         # FIXME: can be done in a transaction
         job_info, version = self._read(job_id, user_id, include_done=True)
@@ -497,10 +506,14 @@ class DoubleJobRegistry:
             self.zk_job_registry = None
             self._lock.release()
 
-    def _just_log_errors(self, name: str):
+    def _just_log_errors(
+        self, name: str, job_id: Optional[str] = None, extra: Optional[dict] = None
+    ):
         """Context manager to just log exceptions"""
+        if job_id:
+            extra = dict(extra or {}, job_id=job_id)
         return just_log_exceptions(
-            log=self._log.warning, name=f"DoubleJobRegistry.{name}"
+            log=self._log.warning, name=f"DoubleJobRegistry.{name}", extra=extra
         )
 
     def create_job(
@@ -525,7 +538,7 @@ class DoubleJobRegistry:
             description=description,
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("create_job"):
+            with self._just_log_errors("create_job", job_id=job_id):
                 self.elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
@@ -540,7 +553,7 @@ class DoubleJobRegistry:
     def get_job(self, job_id: str, user_id: str) -> dict:
         job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job"):
+            with self._just_log_errors("get_job", job_id=job_id):
                 # For now: compare job metadata between Zk and EJR
                 job_ejr = self.elastic_job_registry.get_job(job_id=job_id)
                 for f in ["status", "created"]:
@@ -553,7 +566,7 @@ class DoubleJobRegistry:
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
         self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_status"):
+            with self._just_log_errors("set_status", job_id=job_id):
                 self.elastic_job_registry.set_status(job_id=job_id, status=status)
 
     def delete(self, job_id: str, user_id: str) -> None:
@@ -569,7 +582,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, dependencies=dependencies
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependencies"):
+            with self._just_log_errors("set_dependencies", job_id=job_id):
                 self.elastic_job_registry.set_dependencies(
                     job_id=job_id, dependencies=dependencies
                 )
@@ -577,7 +590,7 @@ class DoubleJobRegistry:
     def remove_dependencies(self, job_id: str, user_id: str):
         self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("remove_dependencies"):
+            with self._just_log_errors("remove_dependencies", job_id=job_id):
                 self.elastic_job_registry.remove_dependencies(job_id=job_id)
 
     def set_dependency_status(
@@ -587,7 +600,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, dependency_status=dependency_status
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_status"):
+            with self._just_log_errors("set_dependency_status", job_id=job_id):
                 self.elastic_job_registry.set_dependency_status(
                     job_id=job_id, dependency_status=dependency_status
                 )
@@ -599,7 +612,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, processing_units=dependency_usage
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_usage"):
+            with self._just_log_errors("set_dependency_usage", job_id=job_id):
                 self.elastic_job_registry.set_dependency_usage(
                     job_id=job_id, dependency_usage=dependency_usage
                 )
@@ -610,7 +623,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, proxy_user=proxy_user
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_proxy_user"):
+            with self._just_log_errors("set_proxy_user", job_id=job_id):
                 self.elastic_job_registry.set_proxy_user(
                     job_id=job_id, proxy_user=proxy_user
                 )
@@ -622,7 +635,7 @@ class DoubleJobRegistry:
             job_id=job_id, user_id=user_id, application_id=application_id
         )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_application_id"):
+            with self._just_log_errors("set_application_id", job_id=job_id):
                 self.elastic_job_registry.set_application_id(
                     job_id=job_id, application_id=application_id
                 )

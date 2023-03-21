@@ -16,13 +16,17 @@ from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
 from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
-from shapely.geometry import box
+from shapely.geometry import box, GeometryCollection
+from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
@@ -32,7 +36,8 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
-from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent
+from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
+    calculate_rough_area
 from openeogeotrellis.vault import Vault
 
 VAULT_TOKEN = 'vault_token'
@@ -51,6 +56,7 @@ WHITELIST = [
     REQUIRE_BOUNDS,
     CORRELATION_ID
 ]
+LARGE_LAYER_THRESHOLD_IN_PIXELS = 100 * pow(10, 9)
 
 logger = logging.getLogger(__name__)
 
@@ -171,12 +177,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
         south = spatial_extent.get("south", None)
-        srs = spatial_extent.get("crs", None)
+        srs = spatial_extent.get("crs", 'EPSG:4326')
         if isinstance(srs, int):
             srs = 'EPSG:%s' % str(srs)
-        if srs is None:
-            srs = 'EPSG:4326'
-
 
         correlation_id = env.get(CORRELATION_ID, '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
@@ -277,21 +280,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             else:
                 return pyramidFactory.pyramid_seq(accumulo_layer_name, extent, srs, from_date, to_date)
 
-        def s3_pyramid():
-            endpoint = layer_source_info['endpoint']
-            region = layer_source_info['region']
-            bucket_name = layer_source_info['bucket_name']
-            nonlocal still_needs_band_filter
-            still_needs_band_filter = bool(band_indices)
-            return jvm.org.openeo.geotrelliss3.PyramidFactory(endpoint, region, bucket_name) \
-                .pyramid_seq(extent, srs, from_date, to_date)
-
-        def s3_jp2_pyramid():
-            endpoint = layer_source_info['endpoint']
-            region = layer_source_info['region']
-
-            return jvm.org.openeo.geotrelliss3.Jp2PyramidFactory(endpoint, region) \
-                .pyramid_seq(extent, srs, from_date, to_date, band_indices)
 
         def file_s2_pyramid():
             def pyramid_factory(
@@ -601,11 +589,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             return create_pyramid(factory)
 
         logger.info("loading pyramid {s}".format(s=layer_source_type))
-        if layer_source_type == 's3':
-            pyramid = s3_pyramid()
-        elif layer_source_type == 's3-jp2':
-            pyramid = s3_jp2_pyramid()
-        elif layer_source_type == 'file-s2':
+
+        if layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'file-probav':
             pyramid = file_probav_pyramid()
@@ -795,7 +780,8 @@ def get_layer_catalog(
 
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
-                    sh_collections_resp = requests.get(sh_stac_endpoint)
+                    sh_collections_session = requests_with_retry()
+                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint)
                     sh_collections_resp.raise_for_status()
                     sh_collection_metadatas = {
                         c["id"]: requests.get(c["link"]).json()
@@ -967,3 +953,82 @@ def check_missing_products(
             f"check_missing_products ({method}) on {collection_metadata.get('id')} detected {len(missing)} missing products."
         )
         return missing
+
+
+def is_layer_too_large(
+        spatial_extent: dict,
+        geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
+        temporal_extent: Tuple[str, str],
+        nr_bands: int,
+        cell_width: float,
+        cell_height: float,
+        native_crs: str,
+        resample_params: dict,
+        threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS
+):
+    """
+    Estimates the number of pixels that will be required to load this layer
+    and returns True if it exceeds the threshold.
+
+    :param spatial_extent: Requested spatial extent.
+    :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
+    :param temporal_extent: Requested temporal extent (in isoformat).
+    :param nr_bands: Requested number of bands.
+    :param cell_width: Width of the cells/pixels.
+    :param cell_height: Height of the cells/pixels.
+    :param native_crs: Native CRS of the layer.
+    :param resample_params: Resampling parameters.
+    :param threshold_pixels: Threshold in pixels.
+
+    :return: True if the layer exceeds the threshold number of pixels.
+    """
+    from_date, to_date = temporal_extent
+    days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    srs = spatial_extent.get("crs", 'EPSG:4326')
+    if isinstance(srs, int):
+        srs = 'EPSG:%s' % str(srs)
+
+    # Resampling process overwrites native_crs and resolution from metadata.
+    resample_target_crs = resample_params.get("target_crs", None)
+    if resample_target_crs:
+        native_crs = resample_target_crs
+    resample_target_resolution = resample_params.get("resolution", None)
+    if resample_target_resolution:
+        cell_width, cell_height = resample_target_resolution
+
+    # Reproject.
+    if isinstance(native_crs, dict):
+        native_crs = native_crs.get("id", {}).get("code", None)
+    if native_crs is None:
+        raise InternalException("No native CRS found during is_layer_too_large check.")
+    if native_crs == "Auto42001":
+        west, south = spatial_extent["west"], spatial_extent["south"]
+        east, north = spatial_extent["east"], spatial_extent["north"]
+        native_crs = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
+    if srs != native_crs:
+        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=native_crs)
+
+    bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+    bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+    if (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands > threshold_pixels:
+        if geometries and not isinstance(geometries, dict):
+            # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
+            # For performance, we estimate the area using a simple bounding box around each polygon.
+            if isinstance(geometries, DriverVectorCube):
+                geometries_area = calculate_rough_area([geometries.to_multipolygon()])
+            elif isinstance(geometries, DelayedVector):
+                geometries_area = calculate_rough_area(geometries.geometries)
+            elif isinstance(geometries, BaseGeometry):
+                geometries_area = calculate_rough_area([geometries])
+            else:
+                raise TypeError(f'Unsupported geometry type: {type(geometries)}')
+            if native_crs != 'EPSG:4326':
+                # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
+                cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
+                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
+                cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
+                cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
+            if geometries_area / (cell_width * cell_height) * days * nr_bands <= threshold_pixels:
+                return False
+        return True
+    return False

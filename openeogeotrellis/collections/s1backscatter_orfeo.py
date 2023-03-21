@@ -103,6 +103,7 @@ class S1BackscatterOrfeo:
     """
 
     _DEFAULT_TILE_SIZE = 256
+    _COPERNICUS_DEM_ROOT = "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/"
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
@@ -134,8 +135,8 @@ class S1BackscatterOrfeo:
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
         attributeValues = {
-            "productType": "GRD",
-            "sensorMode": "IW",
+            "productType": "IW_GRDH_1S",
+            "polarisation": "VV+VH",#default to avoid unexpected results
             "processingLevel": "LEVEL1",
         }
         # Additional query values for orbit filtering
@@ -277,7 +278,7 @@ class S1BackscatterOrfeo:
                         extent["ymax"],
                     ),
                     bbox_epsg=epsg,
-                    copernicus_root="/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/",
+                    copernicus_root=S1BackscatterOrfeo._COPERNICUS_DEM_ROOT,
                 )
             )
         elif elevation_model in ["off"]:
