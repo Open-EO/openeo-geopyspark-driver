@@ -329,7 +329,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
     """
 
-    # By default gdal does not raise exceptions but returns error codes and prints
+    # By default, gdal does not raise exceptions but returns error codes and prints
     # error info on stdout. We don't want that. At the least it should go to the logs.
     # See https://gdal.org/api/python_gotchas.html
     gdal.UseExceptions()
@@ -358,7 +358,7 @@ def parse_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetada
     """
 
     # If there are subdatasets then the final answer comes from the subdatasets.
-    # Otherwise we get it from the file directly.
+    # Otherwise, we get it from the file directly.
     proj_info = _process_gdalinfo_for_netcdf_subdatasets(gdal_info)
     if proj_info:
         return proj_info
@@ -438,8 +438,8 @@ def _process_gdalinfo_for_netcdf_subdatasets(
 
         At present, when it is a netCDF file that does have subdatasets
         (bands, basically), then we only return the aforementioned fields from
-        the subdatasets when all of the subdatasets have the same value for that
-        field. It the metadata differs between bands, then the field is left out.
+        the subdatasets when all the subdatasets have the same value for that
+        field. If the metadata differs between bands, then the field is left out.
 
         Storing the info of each individual band would be possible in the STAC
         standard, but we have not implemented at the moment in this function.
