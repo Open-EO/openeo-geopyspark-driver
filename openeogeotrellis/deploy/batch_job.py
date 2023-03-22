@@ -6,7 +6,7 @@ import stat
 import sys
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 from osgeo import gdal
@@ -263,12 +263,29 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def read_projection_extension_metadata(asset_path: str) -> Optional[dict]:
+GDALInfo = Dict[str, Any]
+"""Output from GDAL.Info.
+
+Type alias used as a helper type for the read projection metadata functions.
+"""
+
+
+ProjectionMetadata = Dict[str, Any]
+"""Projection metadata retrieved about the raster file, compatible with STAC.
+
+Type alias used as a helper type for the read projection metadata functions.
+"""
+
+
+def read_projection_extension_metadata(asset_path: str) -> Optional[ProjectionMetadata]:
     """Get the projection metadata for the file in asset_path.
 
     :param asset_path: path to the asset file to read.
 
-    :return: dictionary containing the info for the STAC extension for projections.
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
+
         This dictionary contains the following fields, as described in stac-extensions,
         see: https://github.com/stac-extensions/projection
 
@@ -289,15 +306,10 @@ def read_projection_extension_metadata(asset_path: str) -> Optional[dict]:
     and in that version the gdal.Info function include these properties directly
     in the key "stac" of the dictionary it returns.
     """
-    # Make gdal raise exception, otherwise it just writes errors on stdout.
-
-    gdal_info = read_gdal_info(asset_path)
-    if not gdal_info:
-        return None
-    return parse_projection_extension_metadata(gdal_info)
+    return parse_projection_extension_metadata(read_gdal_info(asset_path))
 
 
-def read_gdal_info(asset_uri: str) -> Optional[dict]:
+def read_gdal_info(asset_uri: str) -> GDALInfo:
     """Get the JSON output from gdal.Info for the file in asset_path
 
     This is equivalent to running the CLI tool called `gdalinfo`.
@@ -313,7 +325,8 @@ def read_gdal_info(asset_uri: str) -> Optional[dict]:
         For example:
         NETCDF:"/data/path/to/somefile.nc":B01
 
-    :return: Dictionary that contains the output from `gdal.Info()`.
+    :return:
+        GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
     """
 
     # By default gdal does not raise exceptions but returns error codes and prints
@@ -332,14 +345,16 @@ def read_gdal_info(asset_uri: str) -> Optional[dict]:
             + "Either file does not exist or else it is probably not a raster."
             + f"Exception from GDAL: {exc}"
         )
-        return None
+        return {}
 
 
-def parse_projection_extension_metadata(gdal_info: dict) -> dict:
+def parse_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
     """Parse the JSON output from gdal.Info.
 
     :param gdal_info: Dictionary that contains the output from `gdal.Info()`.
-    :return: Dictionary containing the info for the STAC extension for projections.
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
     """
 
     # If there are subdatasets then the final answer comes from the subdatasets.
@@ -351,12 +366,15 @@ def parse_projection_extension_metadata(gdal_info: dict) -> dict:
         return _get_projection_extension_metadata(gdal_info)
 
 
-def _get_projection_extension_metadata(gdal_info: dict) -> dict:
+def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
     """Helper function that parses gdal.Info output without processing subdatasets.
 
     :param gdal_info: Dictionary that contains the output from gdal.Info.
 
-    :return: Dictionary containing the info for the STAC extension for projections.
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
+
         This dictionary contains the following fields, as described in stac-extensions,
         see: https://github.com/stac-extensions/projection
 
@@ -387,7 +405,7 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
     # https://github.com/stac-extensions/projection
     # TODO: do we need to also handle 3D bboxes, i.e. the elevation bounds, if present?
     if "cornerCoordinates" in gdal_info:
-        corner_coords = gdal_info.get("cornerCoordinates")
+        corner_coords: dict = gdal_info["cornerCoordinates"]
         # TODO: check if this way to combine the corners also handles 3D bounding boxes correctly.
         #   Need a correct example to test with.
         lole = corner_coords["lowerLeft"]
@@ -397,7 +415,9 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
     return proj_metadata
 
 
-def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> Optional[dict]:
+def _process_gdalinfo_for_netcdf_subdatasets(
+    gdal_info: GDALInfo,
+) -> ProjectionMetadata:
     """Read and process the gdal.Info for each subdataset, if subdatasets are present.
 
     This function only supports subdatasets in netCDF files.
@@ -406,8 +426,10 @@ def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> Optional[dict]:
 
     :param gdal_info: Dictionary that contains the output from gdal.Info.
 
-    :return: Dictionary containing the info for the STAC extension for projections,
-        same as what `_get_projection_extension_metadata` returns.
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections, the same type and information as what
+        `_get_projection_extension_metadata` returns.
 
         Specifically:
         - "proj:epsg"  The EPSG code of the CRS.
@@ -432,9 +454,9 @@ def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> Optional[dict]:
     # For other formats that have subdatasets, such as HDF5, the subdatasets
     # will not be processed.
     if gdal_info.get("driverShortName") != "netCDF":
-        return None
+        return {}
     if "SUBDATASETS" not in gdal_info.get("metadata", {}):
-        return None
+        return {}
 
     sub_datasets = {}
     for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
