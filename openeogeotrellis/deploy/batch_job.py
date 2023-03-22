@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 import shutil
 import stat
 import sys
@@ -184,8 +183,8 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         instruments = []
 
     if not isinstance(result, NullResult):
-        if asset_metadata == None:
-            #old approach: need to construct metadata ourselves, from inspecting SaveResult
+        if asset_metadata is None:
+            # Old approach: need to construct metadata ourselves, from inspecting SaveResult
             metadata['assets'] = {
                 output_file.name: {
                     'bands': bands,
@@ -197,68 +196,60 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             # New approach: SaveResult has generated metadata already for us
 
             # Add the projection extension metadata.
-            # When the projection metadata is the same for all assets, then set it at the item level only.
-            # This makes it easier to read, so we see at a glance that all bands have the same proj metadata.
+            # When the projection metadata is the same for all assets, then set it at
+            # the item level only. This makes it easier to read, so we see at a glance
+            # that all bands have the same proj metadata.
             projection_metadata = {}
 
-            # We also check whether any asset file was missing or its projection metadata could not be read.
-            # In that case we never write the projection metadata at the item level.
-            missing_files_or_projection_md = False
+            # We also check whether any asset file was missing or its projection
+            # metadata could not be read. In that case we never write the projection
+            # metadata at the item level.
+            is_projection_md_missing = False
 
             for asset_path in asset_metadata.keys():
-                if not Path(asset_path).exists():
-                    # Path should exist so log an error.
-                    # We should only have missing files during unit tests that don't actually use files.
-                    # However, if this happens in production we should see it in the logs.
-                    #
-                    # Also note: As soon as any file is missing we can't really have the same CRS and
-                    # BBox for all assets anymore.
-                    missing_files_or_projection_md = True
-                    logger.error(
-                        "Can not read asset's projection extension metadata, asset file not found: {asset_path}"
-                    )
+                asset_proj_metadata = read_projection_extension_metadata(asset_path)
+                # If gdal could not extract the projection metadata from the file
+                # (The file is corrupt perhaps?).
+                if asset_proj_metadata:
+                    projection_metadata[asset_path] = asset_proj_metadata
                 else:
-                    asset_proj_metadata = read_projection_extension_metadata(asset_path)
-                    # If gdal could not extract the projection metadata from the file (The file is corrupt perhaps?).
-                    if asset_proj_metadata:
-                        projection_metadata[asset_path] = asset_proj_metadata
-                    else:
-                        missing_files_or_projection_md = True
-                        logger.error(
-                            "Could not get projection extension metadata for following asset file: {asset_path}"
-                        )
+                    is_projection_md_missing = True
+                    logger.warning(
+                        "Could not get projection extension metadata for following asset file: {asset_path}"
+                    )
 
-            same_epsg_all_assets = False
-            same_bbox_all_assets = False
-            same_shapes_all_assets = False
-            if not missing_files_or_projection_md:
-                epsgs = {m["proj:epsg"] for m in projection_metadata.values()}
-                same_epsg_all_assets = len(epsgs) == 1
+            epsgs = {m["proj:epsg"] for m in projection_metadata.values()}
+            same_epsg_all_assets = len(epsgs) == 1
 
-                bboxs = {tuple(m["proj:bbox"]) for m in projection_metadata.values()}
-                same_bbox_all_assets = len(bboxs) == 1
+            bboxes = {tuple(m["proj:bbox"]) for m in projection_metadata.values()}
+            same_bbox_all_assets = len(bboxes) == 1
 
-                shapes = {tuple(m["proj:shape"]) for m in projection_metadata.values()}
-                same_shapes_all_assets = len(shapes) == 1
+            shapes = {tuple(m["proj:shape"]) for m in projection_metadata.values()}
+            same_shapes_all_assets = len(shapes) == 1
 
-            if same_epsg_all_assets and same_bbox_all_assets and same_shapes_all_assets:
-                # TODO: Should we overwrite existing values for epsg and bbox, or keep what is already there?
+            assets_have_same_proj_md = not is_projection_md_missing and all(
+                [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
+            )
+            if assets_have_same_proj_md:
+                # TODO: Should we overwrite existing values for epsg and bbox, or keep
+                #   what is already there?
                 if not epsg and not metadata.get("epsg"):
                     epsg = epsgs.pop()
                 if not metadata.get("bbox"):
-                    metadata["bbox"] = list(bboxs.pop())
+                    metadata["bbox"] = list(bboxes.pop())
                 metadata["proj:shape"] = list(shapes.pop())
             else:
+                # Each asset has its different projection metadata so set it per asset.
                 for asset_path, proj_md in projection_metadata.items():
                     asset_metadata[asset_path].update(proj_md)
 
             metadata["assets"] = asset_metadata
 
-    metadata['epsg'] = epsg
-    metadata['instruments'] = instruments
-    metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
-    metadata['processing:software'] = 'openeo-geotrellis-' + __version__
-    metadata['unique_process_ids'] = list(unique_process_ids)
+    metadata["epsg"] = epsg
+    metadata["instruments"] = instruments
+    metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
+    metadata["processing:software"] = "openeo-geotrellis-" + __version__
+    metadata["unique_process_ids"] = list(unique_process_ids)
     metadata = {**metadata, **_get_tracker_metadata("")}
 
     if ml_model_metadata is not None:
@@ -272,7 +263,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
-def read_projection_extension_metadata(asset_path: str) -> dict:
+def read_projection_extension_metadata(asset_path: str) -> Optional[dict]:
     """Get the projection metadata for the file in asset_path.
 
     :param asset_path: path to the asset file to read.
@@ -306,7 +297,7 @@ def read_projection_extension_metadata(asset_path: str) -> dict:
     return parse_projection_extension_metadata(gdal_info)
 
 
-def read_gdal_info(asset_uri: str) -> dict:
+def read_gdal_info(asset_uri: str) -> Optional[dict]:
     """Get the JSON output from gdal.Info for the file in asset_path
 
     This is equivalent to running the CLI tool called `gdalinfo`.
@@ -337,7 +328,8 @@ def read_gdal_info(asset_uri: str) -> dict:
         #   specific exceptions gdal.Info might raise.
         logger.warning(
             "Could not get projection extension metadata, "
-            + f"gdal.Info failed for following asset: {asset_uri}. File is probably not a raster."
+            + f"gdal.Info failed for following asset: {asset_uri}. "
+            + "Either file does not exist or else it is probably not a raster."
             + f"Exception from GDAL: {exc}"
         )
         return None
@@ -381,7 +373,8 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
     proj_metadata = {}
 
     # Size of the pixels
-    proj_metadata["proj:shape"] = gdal_info["size"]
+    if shape := gdal_info.get("size"):
+        proj_metadata["proj:shape"] = shape
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
@@ -389,9 +382,6 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
         crs_id = pyproj.CRS.from_wkt(crs_as_wkt).to_epsg()
         if crs_id:
             proj_metadata["proj:epsg"] = crs_id
-
-    # Size of the pixels
-    proj_metadata["proj:shape"] = gdal_info["size"]
 
     # convert cornerCoordinates to proj:bbox format specified in
     # https://github.com/stac-extensions/projection
@@ -407,7 +397,7 @@ def _get_projection_extension_metadata(gdal_info: dict) -> dict:
     return proj_metadata
 
 
-def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
+def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> Optional[dict]:
     """Read and process the gdal.Info for each subdataset, if subdatasets are present.
 
     This function only supports subdatasets in netCDF files.
@@ -449,7 +439,7 @@ def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
     sub_datasets = {}
     for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
         if key.endswith("_NAME"):
-            sub_ds_gdal_info = gdal_info = read_gdal_info(sub_ds_uri)
+            sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
             sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
             sub_datasets[sub_ds_uri] = sub_ds_md
 
@@ -475,6 +465,7 @@ def _process_gdalinfo_for_netcdf_subdatasets(gdal_info: dict) -> dict:
 
 def _get_tracker(tracker_id=""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
+
 
 def _get_tracker_metadata(tracker_id="") -> dict:
     tracker = _get_tracker(tracker_id)
