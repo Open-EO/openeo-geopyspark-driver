@@ -1,0 +1,21 @@
+<Configuration>
+    <!-- Used by batch_job.py to output logs in the Java implementation (e.g. ComputeStatsGeotrellisAdapter). -->
+    <Appenders>
+        <Console name="stdout" target="SYSTEM_OUT">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+        </Console>
+        <File name="file" fileName="${sys:spark.yarn.app.container.log.dir}/openeo.log">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+        </File>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.apache.spark" level="error"/>
+        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
+        <Logger name="org.apache.zookeeper" level="warn"/>
+        <Logger name="org.apache.curator" level="warn"/>
+        <Root level="${sys:openeo.logging.threshold}">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
+        </Root>
+    </Loggers>
+</Configuration>

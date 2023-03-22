@@ -24,7 +24,7 @@ pythonPipeline {
   upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.2.0'
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.3.1'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]

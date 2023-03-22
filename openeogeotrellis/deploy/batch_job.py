@@ -385,8 +385,8 @@ def main(argv: List[str]) -> None:
                 run_driver()
 
     except Exception as e:
-        message = GeoPySparkBackendImplementation.summarize_exception(e)
-        user_facing_logger.exception("OpenEO batch job failed: " + message)
+        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
 
         raise
 
@@ -399,7 +399,9 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
 
-    backend_implementation = GeoPySparkBackendImplementation()
+    backend_implementation = GeoPySparkBackendImplementation(
+        use_job_registry=False,
+    )
 
     if default_sentinel_hub_credentials is not None:
         backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)

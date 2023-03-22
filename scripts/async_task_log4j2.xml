@@ -1,0 +1,20 @@
+<Configuration>
+    <Appenders>
+        <Console name="stdout" target="SYSTEM_OUT">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+        </Console>
+        <RollingFile name="rolling_file" fileName="logs/async_task_java.log" filePattern="logs/async_task_java.log.%i">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+            <SizeBasedTriggeringPolicy size="10 MB"/>
+            <DefaultRolloverStrategy max="1"/>
+        </RollingFile>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.openeo.geotrellissentinelhub" level="debug"/>
+        <Logger name="com.sksamuel.elastic4s" level="warn"/>
+        <Root level="info">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="rolling_file"/>
+        </Root>
+    </Loggers>
+</Configuration>
