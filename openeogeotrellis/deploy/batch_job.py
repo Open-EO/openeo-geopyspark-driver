@@ -145,7 +145,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         # The aggregation geometries return tuples for their bounding box.
         # Keep the end result consistent and convert it to a list.
         if isinstance(bbox, tuple):
-            bbox = [*bbox]
+            bbox = list(bbox)
 
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]

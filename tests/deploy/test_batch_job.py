@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
-from shapely.geometry import mapping, shape, Polygon
+from shapely.geometry import box, mapping, shape, Polygon
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -195,14 +195,11 @@ def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(
     aggrgeo_east_latlon = 4.8
     aggrgeo_south_latlon = 51.2
     aggrgeo_north_latlon = 51.8
-    geometries_lat_lon = Polygon(
-        (
-            (aggrgeo_west_latlon, aggrgeo_south_latlon),
-            (aggrgeo_west_latlon, aggrgeo_north_latlon),
-            (aggrgeo_east_latlon, aggrgeo_north_latlon),
-            (aggrgeo_east_latlon, aggrgeo_south_latlon),
-            (aggrgeo_west_latlon, aggrgeo_south_latlon),
-        )
+    geometries_lat_lon = box(
+        aggrgeo_west_latlon,
+        aggrgeo_south_latlon,
+        aggrgeo_east_latlon,
+        aggrgeo_north_latlon,
     )
     cube = cube.aggregate_spatial(geometries=geometries_lat_lon, reducer="mean")
 
@@ -263,20 +260,16 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
     aggrgeo_east_latlon = 4.8
     aggrgeo_south_latlon = 51.2
     aggrgeo_north_latlon = 51.8
-    geometries_lat_lon = Polygon(
-        (
-            (aggrgeo_west_latlon, aggrgeo_south_latlon),
-            (aggrgeo_west_latlon, aggrgeo_north_latlon),
-            (aggrgeo_east_latlon, aggrgeo_north_latlon),
-            (aggrgeo_east_latlon, aggrgeo_south_latlon),
-            (aggrgeo_west_latlon, aggrgeo_south_latlon),
-        )
+    geometries_lat_lon = box(
+        aggrgeo_west_latlon,
+        aggrgeo_south_latlon,
+        aggrgeo_east_latlon,
+        aggrgeo_north_latlon,
     )
     # Geojson should always be lat-long, so we don't reproject the the delayed vector file.
     delayed_vector_file = tmp_path / "delayed_vector_polygon.geojson"
     geo_json_data = mapping(geometries_lat_lon)
-    with open(delayed_vector_file, "wt") as f:
-        f.writelines(json.dumps(geo_json_data))
+    delayed_vector_file.write_text(json.dumps(geo_json_data))
 
     geometries = DelayedVector(str(delayed_vector_file))
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
