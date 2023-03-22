@@ -829,6 +829,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         elif isinstance(error, Py4JJavaError):
             java_exception = error.java_exception
 
+            java_exception_class_name = java_exception.getClass().getName()
+            is_spark_exception = "SparkException" in java_exception_class_name
             while java_exception.getCause() is not None and java_exception != java_exception.getCause():
                 java_exception = java_exception.getCause()
 
@@ -841,7 +843,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
             if no_data_found:
                 summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
-            elif "SparkException" in java_exception_class_name:
+            elif is_spark_exception:
                 udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
                 if udf_stacktrace:
                     summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
