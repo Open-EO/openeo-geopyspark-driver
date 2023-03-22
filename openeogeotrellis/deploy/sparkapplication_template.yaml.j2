@@ -124,13 +124,13 @@ spec:
           - name: "spark-local-dir-1"
             mountPath: "/spark_tmp"
 {%- endblock %}
-    lifecycle:
+{%- endif %}
 {%- block driver_lifecycle %}
+    lifecycle:
       preStop:
         exec:
           command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id_short }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
 {%- endblock %}
-{%- endif %}
     podSecurityContext:
 {%- block driver_podSecurityContext %}
       fsGroup: 18585
