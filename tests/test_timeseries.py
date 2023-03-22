@@ -13,6 +13,8 @@ from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
 
+from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.save_result import AggregatePolygonResultCSV, AggregatePolygonResult
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from .data import get_test_data_file
@@ -185,6 +187,52 @@ def test_zonal_statistics(imagecollection_with_two_bands_and_one_date):
             "values": [2.0]
         },
     }
+
+
+def get_near_and_far_polygon_geometry_collection():
+    polygon1 = Polygon(shell=[
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0)
+    ])
+
+    # This polygon falls out of the range of 'imagecollection_with_two_bands_and_one_date'
+    polygon2 = Polygon(shell=[
+        (990.0, 990.0),
+        (991.0, 990.0),
+        (991.0, 991.0),
+        (990.0, 991.0),
+        (990.0, 990.0)
+    ])
+    return GeometryCollection([polygon1, MultiPolygon([polygon2])])
+
+
+@pytest.mark.parametrize(["get_regions"], [
+    [get_near_and_far_polygon_geometry_collection],
+    [lambda: DelayedVector(str(get_test_data_file("geometries/near_and_far_polygon.geojson")))],
+    [lambda: DriverVectorCube.from_fiona([str(get_test_data_file("geometries/near_and_far_polygon.geojson"))], None, {})],
+])
+def test_aggregate_spatial_last_polygon_empty(get_regions, imagecollection_with_two_bands_and_one_date):
+    regions = get_regions()
+
+    result = imagecollection_with_two_bands_and_one_date.aggregate_spatial(regions, {
+        "mean1": {
+            "process_id": "mean",
+            "arguments": {
+                "data": {
+                    "from_parameter": "data"
+                }
+            },
+            "result": True
+        }
+    })
+    assert isinstance(result, AggregatePolygonResultCSV)
+    assert result.get_data() == {
+        "2017-09-25T11:37:00Z": [[1.0, 2.0], [pytest.approx(np.nan, nan_ok=True), pytest.approx(np.nan, nan_ok=True)]]
+    }
+
 
 def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_three_dates):
 

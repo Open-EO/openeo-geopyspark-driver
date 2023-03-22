@@ -35,7 +35,7 @@ from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate
+from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate, str_truncate
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -829,11 +829,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         elif isinstance(error, Py4JJavaError):
             java_exception = error.java_exception
 
+            java_exception_class_name = java_exception.getClass().getName()
+            is_spark_exception = "SparkException" in java_exception_class_name
             while java_exception.getCause() is not None and java_exception != java_exception.getCause():
                 java_exception = java_exception.getCause()
 
             java_exception_class_name = java_exception.getClass().getName()
-            java_exception_message = repr_truncate(java_exception.getMessage(), width=width)
+            java_exception_message = java_exception.getMessage()
 
             no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in java_exception_message)
@@ -841,7 +843,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
             if no_data_found:
                 summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
-            elif "SparkException" in java_exception_class_name:
+            elif is_spark_exception:
                 udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
                 if udf_stacktrace:
                     summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
@@ -849,6 +851,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = f"Exception during Spark execution: {java_exception_message}"
             else:
                 summary = java_exception_message
+            summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
             summary = repr_truncate(error, width=width)
@@ -951,6 +954,16 @@ class GpsProcessing(ConcreteProcessing):
 
                 cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
                 cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
+                if isinstance(native_crs, dict):
+                    native_crs = native_crs.get("id", {}).get("code", None)
+                if isinstance(native_crs, int):
+                    native_crs = f"EPSG:{native_crs}"
+                if not isinstance(native_crs, str):
+                    yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
+                                                                  f"collection {collection_id!r}"}
+                    continue
+
                 bands = constraints.get("bands", [])
                 geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                 if geometries is None:
@@ -961,7 +974,9 @@ class GpsProcessing(ConcreteProcessing):
                     temporal_extent=temporal_extent,
                     nr_bands=len(bands),
                     cell_width=cell_width,
-                    cell_height=cell_height
+                    cell_height=cell_height,
+                    native_crs=native_crs,
+                    resample_params=constraints.get("resample", {}),
                 ):
                     yield {
                         "code": "LayerTooLarge",

@@ -1,0 +1,14 @@
+<Configuration>
+    <!-- Used by submit_batch_job.sh to make sure spark-submit outputs the batch job application ID so it can be parsed
+    by our application. -->
+    <Appenders>
+        <Console name="console" target="SYSTEM_ERR">
+            <PatternLayout pattern="%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="console"/>
+        </Root>
+    </Loggers>
+</Configuration>
