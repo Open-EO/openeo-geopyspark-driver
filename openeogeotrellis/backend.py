@@ -954,6 +954,8 @@ class GpsProcessing(ConcreteProcessing):
                 native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)
+                if isinstance(native_crs, int):
+                    native_crs = f"EPSG:{native_crs}"
                 if not isinstance(native_crs, str):
                     yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
                                                                   f"collection {collection_id!r}"}
