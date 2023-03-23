@@ -612,7 +612,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             def load_spatial_bounds_from_job_results():
                 overall_spatial_extent = job_results.extent.spatial.bboxes[0]
                 best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
-                return reproject(overall_spatial_extent, 4326, best_epsg), best_epsg
+                return overall_spatial_extent, best_epsg
 
             load_spatial_bounds = load_spatial_bounds_from_job_results
 
