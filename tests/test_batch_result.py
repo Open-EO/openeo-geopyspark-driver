@@ -1,11 +1,13 @@
 import json
+import pytest
+import xarray
+from openeo.metadata import Band
 from pathlib import Path
 
-import xarray
-import pytest
-
-from openeo.metadata import Band
-from openeogeotrellis.deploy.batch_job import extract_result_metadata,run_job
+from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
+from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.utils import EvalEnv
+from openeogeotrellis.deploy.batch_job import run_job, extract_result_metadata
 
 
 def test_png_export(tmp_path):
@@ -205,3 +207,135 @@ def test_ep3874_filter_spatial(prefix, tmp_path):
         print(da['Flat:2'])
 
 
+def test_aggregate_spatial_area_result(tmp_path):
+    pg = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                    "bands": ["Flat:2"]
+                },
+            },
+            "aggregatespatial1": {
+                "arguments": {
+                    "data": {
+                        "from_node": "loadcollection1"
+                    },
+                    "geometries": {
+                        "crs": {
+                            "properties": {
+                                "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+                            },
+                            "type": "name"
+                        },
+                        "features": [{
+                            "geometry": {
+                                "coordinates": [
+                                    [[5.075427149289014, 51.19258173530002], [5.076317642681958, 51.19305912348515],
+                                        [5.075430319510139, 51.19388497600461], [5.074314520559944, 51.193407596375614],
+                                        [5.075427149289014, 51.19258173530002]]],
+                                "type": "Polygon"
+                            },
+                            "properties": {
+                                "Name": "Polygon",
+                                "description": None,
+                                "tessellate": 1
+                            },
+                            "type": "Feature"
+                        }],
+                        "name": "Daft Logic Google Maps Area Calculator Tool",
+                        "type": "FeatureCollection"
+                    },
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    }
+                                },
+                                "process_id": "mean",
+                                "result": True
+                            }
+                        }
+                    }
+                },
+                "process_id": "aggregate_spatial",
+            },
+            "saveresult1": {
+              "arguments": {
+                "data": {
+                  "from_node": "aggregatespatial1"
+                },
+                "format": "JSON",
+                "options": {}
+              },
+              "process_id": "save_result",
+              "result": True
+            }
+        }
+    }
+    metadata_file = tmp_path / "metadata.json"
+    run_job(pg, output_file=tmp_path / "out", metadata_file=metadata_file,
+            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+    assert metadata["area"]["value"] == 10155.607958197594
+    assert metadata["area"]["unit"] == "square meter"
+
+
+def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
+    dry_run_tracer = DryRunDataTracer()
+    dry_run_env = EvalEnv({
+        ENV_DRY_RUN_TRACER: dry_run_tracer,
+        "backend_implementation": backend_implementation,
+        "version": "1.0.0"
+    })
+    pg = {
+        'loadcollection1': {
+            'process_id': 'load_collection',
+            'arguments': {
+                'bands': ['B04'],
+                'id': 'TERRASCOPE_S2_TOC_V2',
+                'spatial_extent': None,
+                'temporal_extent': ['2020-05-01', '2020-06-01']
+            }
+        },
+        'readvector1': {
+            'process_id': 'read_vector',
+            'arguments': {
+                'filename': 'https://artifactory.vgt.vito.be/testdata-public/parcels/test_10.geojson'
+            }
+        },
+        'aggregatespatial1': {
+            'process_id': 'aggregate_spatial',
+            'arguments': {
+                'data': {
+                    'from_node': 'loadcollection1'
+                },
+                'geometries': {
+                    'from_node': 'readvector1'
+                },
+                'reducer': {
+                    'process_graph': {
+                        'mean1': {
+                            'process_id': 'mean',
+                            'arguments': {
+                                'data': {
+                                    'from_parameter': 'data'
+                                }
+                            },
+                            'result': True
+                        }
+                    }
+                }
+            },
+            'result': True
+        }
+    }
+    evaluate(pg, env = dry_run_env)
+    metadata = extract_result_metadata(dry_run_tracer)
+    assert metadata["area"]["value"] == 187056.07523286293
+    assert metadata["area"]["unit"] == "square meter"

@@ -5,26 +5,24 @@ import shutil
 import stat
 import sys
 from itertools import chain
+from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-from urllib.parse import urlparse
-
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
+from typing import Dict, List, Optional, Set
+from urllib.parse import urlparse
 
-from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none, repr_truncate
 from openeo_driver import ProcessGraphDeserializer
-from openeo_driver.datacube import DriverDataCube, DriverMlModel, DriverVectorCube
+from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, MultipleFilesResult, SaveResult, NullResult, \
-    MlModelResult
+from openeo_driver.save_result import ImageCollectionResult, JSONResult, SaveResult, NullResult, MlModelResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import spatial_extent_union
-from openeo_driver.util.logging import BatchJobLoggingFilter, user_id_trim, get_logging_config, setup_logging, \
+from openeo_driver.util.logging import BatchJobLoggingFilter, get_logging_config, setup_logging, \
     LOGGING_CONTEXT_BATCH_JOB
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, temporal_extent_union, generate_unique_id
@@ -35,6 +33,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, mdc_include, to_s3_url
+
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
 
@@ -127,11 +126,11 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
-            area = agg_geometry.area
+            area = DriverVectorCube.from_fiona([agg_geometry.path], None, {}).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             bbox = agg_geometry.get_bounding_box()
             geometry = agg_geometry.get_bounding_box_geojson()
-            area = agg_geometry.get_bounding_box_area()
+            area = agg_geometry.get_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
@@ -496,7 +495,6 @@ def run_job(job_specification, output_file: Path, metadata_file: Path, api_versi
                             ml_model_metadata=ml_model_metadata)
 
     if ConfigParams().is_kube_deploy:
-        import boto3
         from openeogeotrellis.utils import s3_client
 
         _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
