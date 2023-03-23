@@ -126,7 +126,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
-            area = DriverVectorCube.from_fiona([agg_geometry.path], None, {}).get_area()
+            area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             bbox = agg_geometry.get_bounding_box()
             geometry = agg_geometry.get_bounding_box_geojson()

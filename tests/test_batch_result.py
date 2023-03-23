@@ -1,8 +1,9 @@
 import json
+from pathlib import Path
+
 import pytest
 import xarray
 from openeo.metadata import Band
-from pathlib import Path
 
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.dry_run import DryRunDataTracer
