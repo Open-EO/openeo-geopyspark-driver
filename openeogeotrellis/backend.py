@@ -968,7 +968,7 @@ class GpsProcessing(ConcreteProcessing):
                 geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                 if geometries is None:
                     geometries = constraints.get("filter_spatial", {}).get("geometries")
-                if is_layer_too_large(
+                too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
                     spatial_extent=spatial_extent,
                     geometries=geometries,
                     temporal_extent=temporal_extent,
@@ -977,10 +977,12 @@ class GpsProcessing(ConcreteProcessing):
                     cell_height=cell_height,
                     native_crs=native_crs,
                     resample_params=constraints.get("resample", {}),
-                ):
+                )
+                if too_large:
                     yield {
                         "code": "LayerTooLarge",
-                        "message": "Layer is too large to be processed."
+                        "message": f"Layer for collection {collection_id!r} is too large to process. "
+                                   f"Estimated number of pixels: {estimated_pixels}, threshold: {threshold_pixels}."
                     }
 
 

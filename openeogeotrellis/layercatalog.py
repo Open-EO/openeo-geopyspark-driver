@@ -980,7 +980,8 @@ def is_layer_too_large(
     :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
 
-    :return: True if the layer exceeds the threshold number of pixels.
+    :return: True if the layer exceeds the threshold in pixels. False otherwise.
+             Also returns the estimated number of pixels and the threshold.
     """
     from_date, to_date = temporal_extent
     days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
@@ -1010,7 +1011,8 @@ def is_layer_too_large(
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-    if (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands > threshold_pixels:
+    estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
+    if estimated_pixels > threshold_pixels:
         if geometries and not isinstance(geometries, dict):
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
             # For performance, we estimate the area using a simple bounding box around each polygon.
@@ -1028,7 +1030,8 @@ def is_layer_too_large(
                 cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
-            if geometries_area / (cell_width * cell_height) * days * nr_bands <= threshold_pixels:
-                return False
-        return True
-    return False
+            estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
+            if estimated_pixels <= threshold_pixels:
+                return False, estimated_pixels, threshold_pixels
+        return True, estimated_pixels, threshold_pixels
+    return False, estimated_pixels, threshold_pixels
