@@ -850,7 +850,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 else:
                     summary = f"Exception during Spark execution: {java_exception_message}"
             else:
-                summary = java_exception_message
+                summary = java_exception_class_name + ": " + str(java_exception_message)
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.

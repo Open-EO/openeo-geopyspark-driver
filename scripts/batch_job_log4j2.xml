@@ -11,6 +11,9 @@
     <Loggers>
         <Logger name="org.apache.spark" level="error"/>
         <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
+        <!-- Put Executor on off once TaskSetManager shows it is working fine. -->
+        <!-- <Logger name="org.apache.spark.executor.Executor" level="off" />-->
+        <Logger name="org.apache.spark.scheduler.TaskSetManager" level="warn" />
         <Logger name="org.apache.zookeeper" level="warn"/>
         <Logger name="org.apache.curator" level="warn"/>
         <Root level="${sys:openeo.logging.threshold}">
