@@ -980,9 +980,10 @@ class GpsProcessing(ConcreteProcessing):
                 )
                 if too_large:
                     yield {
-                        "code": "LayerTooLarge",
-                        "message": f"Layer for collection {collection_id!r} is too large to process. "
-                                   f"Estimated number of pixels: {estimated_pixels}, threshold: {threshold_pixels}."
+                        "code": "ExtentTooLarge",
+                        "message": f"Requested extent for collection {collection_id!r} is too large to process. "
+                                   f"Estimated number of pixels: {estimated_pixels:.2e}, "
+                                   f"threshold: {threshold_pixels:.2e}."
                     }
 
 
