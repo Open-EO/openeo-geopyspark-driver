@@ -617,9 +617,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             load_spatial_bounds = load_spatial_bounds_from_job_results
 
         else:
-            paths_with_metadata = {asset["href"]: (asset.get("datetime"), asset.get("bands", []))
-                                   for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
-                                   if asset["type"] == "image/tiff; application=geotiff"}
+            paths_with_metadata = {
+                asset["href"]: (asset.get("datetime"), asset.get("bands", []))
+                for _, asset in self.batch_jobs.get_result_assets(
+                    job_id=job_id, user_id=user_id
+                ).items()
+                if asset["type"] == "image/tiff; application=geotiff"
+            }
 
             if len(paths_with_metadata) == 0:
                 raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
@@ -2072,7 +2076,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return False
 
-    def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
+    def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
         Reads the metadata json file from the job directory
         and returns information about the output files.
