@@ -666,13 +666,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-        else:
-            band_indices = None
-
         jvm = get_jvm()
 
         pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
@@ -716,12 +709,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
-        image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
-            metadata=metadata
-        )
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
-        return image_collection.filter_bands(band_indices) if band_indices else image_collection
+        if load_params.bands:
+            cube = cube.filter_bands(load_params.bands)
+
+        return cube
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 

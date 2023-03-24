@@ -2300,7 +2300,7 @@ class TestLoadResult:
             job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
         )
 
-    def test_load_result_basic(
+    def test_load_result_job_id_basic(
         self, api100, zk_client, zk_job_registry, batch_job_output_root
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
@@ -2383,3 +2383,100 @@ class TestLoadResult:
                 ]
             ],
         )
+
+    @pytest.mark.parametrize(
+        ["load_result_kwargs", "expected"],
+        [
+            (
+                {
+                    "spatial_extent": {
+                        "west": 5.077,
+                        "south": 51.215,
+                        "east": 5.080,
+                        "north": 51.219,
+                    }
+                },
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (3, 2, 24, 46),
+                    "ts": [
+                        "2022-09-07 00:00:00",
+                        "2022-09-12 00:00:00",
+                        "2022-09-19 00:00:00",
+                    ],
+                    "bands": ["B02", "B03"],
+                    "xs": [645045.0, 645055.0, 645275.0],
+                    "ys": [5675785.0, 5675795.0, 5676235.0],
+                },
+            ),
+            (
+                {"temporal_extent": ["2022-09-10", "2022-09-15"]},
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (1, 2, 73, 92),
+                    "ts": [
+                        "2022-09-12 00:00:00",
+                    ],
+                    "bands": ["B02", "B03"],
+                    "xs": [644765.0, 644775.0, 645485.0],
+                    "ys": [5675445.0, 5675455.0, 5676355.0],
+                },
+            ),
+            (
+                {"bands": ["B03"]},
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (3, 1, 73, 92),
+                    "ts": [
+                        "2022-09-07 00:00:00",
+                        "2022-09-12 00:00:00",
+                        "2022-09-19 00:00:00",
+                    ],
+                    "bands": ["B03"],
+                    "xs": [644765.0, 644775.0, 645485.0],
+                    "ys": [5675445.0, 5675455.0, 5676355.0],
+                },
+            ),
+        ],
+    )
+    def test_load_result_job_id_filtering(
+        self,
+        api100,
+        zk_client,
+        zk_job_registry,
+        batch_job_output_root,
+        load_result_kwargs,
+        expected,
+    ):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+
+        self._setup_existing_job(
+            job_id=job_id,
+            api=api100,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry,
+        )
+
+        response = api100.check_result(
+            {
+                "lc": {
+                    "process_id": "load_result",
+                    "arguments": {"id": job_id, **load_result_kwargs},
+                },
+                "save": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                    "result": True,
+                },
+            }
+        )
+        result = response.assert_status_code(200).json
+
+        assert result["dims"] == expected["dims"]
+        assert result["attrs"]["shape"] == list(expected["shape"])
+        assert result["coords"]["t"]["data"] == expected["ts"]
+        assert result["coords"]["bands"]["data"] == expected["bands"]
+        assert result["coords"]["x"]["data"] == ListSubSet(expected["xs"])
+        assert result["coords"]["y"]["data"] == ListSubSet(expected["ys"])
+        data = np.array(result["data"])
+        assert data.shape == expected["shape"]
