@@ -1,4 +1,5 @@
 import contextlib
+import json
 import logging
 import shutil
 import textwrap
@@ -25,6 +26,7 @@ from openeo_driver.testing import (
     ApiTester,
     RegexMatcher,
     ListSubSet,
+    UrllibMocker,
 )
 from openeo_driver.util.geometry import (
     as_geojson_feature,
@@ -2255,6 +2257,11 @@ class TestLoadResult:
     def zk_job_registry(self, zk_client) -> ZkJobRegistry:
         return ZkJobRegistry(zk_client=zk_client)
 
+    @pytest.fixture
+    def urllib_mock(self) -> UrllibMocker:
+        with UrllibMocker().patch() as mocker:
+            yield mocker
+
     def _setup_existing_job(
         self,
         *,
@@ -2263,7 +2270,7 @@ class TestLoadResult:
         batch_job_output_root: Path,
         zk_job_registry: ZkJobRegistry,
         user_id=TEST_USER,
-    ):
+    ) -> Path:
         """
         Set up an exiting job, with a geopyspark-driver-style job result folder,
         (based on result files from a given job id from the test data folder),
@@ -2300,33 +2307,32 @@ class TestLoadResult:
             job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
         )
 
+        return result_dir
+
     def test_load_result_job_id_basic(
-        self, api100, zk_client, zk_job_registry, batch_job_output_root
+        self, api110, zk_client, zk_job_registry, batch_job_output_root
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
 
         self._setup_existing_job(
             job_id=job_id,
-            api=api100,
+            api=api110,
             batch_job_output_root=batch_job_output_root,
             zk_job_registry=zk_job_registry,
         )
 
-        response = api100.check_result(
-            {
-                "lc": {
-                    "process_id": "load_result",
-                    "arguments": {
-                        "id": job_id,
-                    },
-                },
-                "save": {
-                    "process_id": "save_result",
-                    "arguments": {"data": {"from_node": "lc"}, "format": "json"},
-                    "result": True,
-                },
-            }
-        )
+        process_graph = {
+            "lc": {
+                "process_id": "load_result",
+                "arguments": {"id": job_id},
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
         result = response.assert_status_code(200).json
 
         assert result == DictSubSet(
@@ -2441,7 +2447,7 @@ class TestLoadResult:
     )
     def test_load_result_job_id_filtering(
         self,
-        api100,
+        api110,
         zk_client,
         zk_job_registry,
         batch_job_output_root,
@@ -2452,24 +2458,247 @@ class TestLoadResult:
 
         self._setup_existing_job(
             job_id=job_id,
-            api=api100,
+            api=api110,
             batch_job_output_root=batch_job_output_root,
             zk_job_registry=zk_job_registry,
         )
 
-        response = api100.check_result(
+        process_graph = {
+            "lc": {
+                "process_id": "load_result",
+                "arguments": {"id": job_id, **load_result_kwargs},
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
+        result = response.assert_status_code(200).json
+
+        assert result["dims"] == expected["dims"]
+        assert result["attrs"]["shape"] == list(expected["shape"])
+        assert result["coords"]["t"]["data"] == expected["ts"]
+        assert result["coords"]["bands"]["data"] == expected["bands"]
+        assert result["coords"]["x"]["data"] == ListSubSet(expected["xs"])
+        assert result["coords"]["y"]["data"] == ListSubSet(expected["ys"])
+        data = np.array(result["data"])
+        assert data.shape == expected["shape"]
+
+    def _setup_metadata_request_mocking(
+        self,
+        job_id: str,
+        api: ApiTester,
+        results_dir: Path,
+        results_url: str,
+        urllib_mock: UrllibMocker,
+    ):
+        # Use ApiTester to easily build responses for the metadata request we have to mock
+        api.set_auth_bearer_token()
+        results_metadata = (
+            api.get(f"jobs/{job_id}/results").assert_status_code(200).json
+        )
+        urllib_mock.get(results_url, data=json.dumps(results_metadata))
+        # Mock each collection item metadata request too
+        for link in results_metadata["links"]:
+            if link["rel"] == "item":
+                path = link["href"].partition(api.url_root)[-1]
+                item_metadata = api.get(path).assert_status_code(200).json
+                # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
+                # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
+                for k in item_metadata["assets"]:
+                    item_metadata["assets"][k]["href"] = str(results_dir / k)
+                urllib_mock.get(link["href"], json.dumps(item_metadata))
+
+    def test_load_result_url_basic(
+        self,
+        api110,
+        zk_client,
+        zk_job_registry,
+        batch_job_output_root,
+        urllib_mock,
+    ):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+        results_url = f"https://foobar.test/job/{job_id}/results"
+
+        results_dir = self._setup_existing_job(
+            job_id=job_id,
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry,
+        )
+        self._setup_metadata_request_mocking(
+            job_id=job_id,
+            api=api110,
+            results_dir=results_dir,
+            results_url=results_url,
+            urllib_mock=urllib_mock,
+        )
+
+        process_graph = {
+            "lc": {
+                "process_id": "load_result",
+                "arguments": {"id": results_url},
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
+        result = response.assert_status_code(200).json
+
+        assert result == DictSubSet(
             {
-                "lc": {
-                    "process_id": "load_result",
-                    "arguments": {"id": job_id, **load_result_kwargs},
-                },
-                "save": {
-                    "process_id": "save_result",
-                    "arguments": {"data": {"from_node": "lc"}, "format": "json"},
-                    "result": True,
-                },
+                "dims": ["t", "bands", "x", "y"],
+                "attrs": DictSubSet(
+                    {
+                        "shape": [3, 2, 73, 92],
+                        "crs": RegexMatcher(".*utm.*zone=31"),
+                    }
+                ),
+                "coords": DictSubSet(
+                    {
+                        "t": {
+                            "dims": ["t"],
+                            "attrs": {"dtype": "datetime64[ns]", "shape": [3]},
+                            "data": [
+                                "2022-09-07 00:00:00",
+                                "2022-09-12 00:00:00",
+                                "2022-09-19 00:00:00",
+                            ],
+                        },
+                        "bands": {
+                            "attrs": {"dtype": "<U3", "shape": [2]},
+                            "data": ["B02", "B03"],
+                            "dims": ["bands"],
+                        },
+                        "x": {
+                            "dims": ["x"],
+                            "attrs": {"dtype": "float64", "shape": [73]},
+                            "data": ListSubSet(
+                                [644765.0, 644775.0, 644785.0, 645485.0]
+                            ),
+                        },
+                        "y": {
+                            "dims": ["y"],
+                            "attrs": {"dtype": "float64", "shape": [92]},
+                            "data": ListSubSet(
+                                [5675445.0, 5675455.0, 5675465.0, 5676355.0]
+                            ),
+                        },
+                    }
+                ),
             }
         )
+        data = np.array(result["data"])
+        assert data.shape == (3, 2, 73, 92)
+        assert_equal(
+            data[:1, :2, :3, :4],
+            [
+                [
+                    [[584, 587, 592, 579], [580, 604, 604, 560], [610, 592, 611, 592]],
+                    [[588, 593, 572, 560], [565, 574, 580, 566], [576, 572, 590, 568]],
+                ]
+            ],
+        )
+
+    @pytest.mark.parametrize(
+        ["load_result_kwargs", "expected"],
+        [
+            (
+                {
+                    "spatial_extent": {
+                        "west": 5.077,
+                        "south": 51.215,
+                        "east": 5.080,
+                        "north": 51.219,
+                    }
+                },
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (3, 2, 24, 46),
+                    "ts": [
+                        "2022-09-07 00:00:00",
+                        "2022-09-12 00:00:00",
+                        "2022-09-19 00:00:00",
+                    ],
+                    "bands": ["B02", "B03"],
+                    "xs": [645045.0, 645055.0, 645275.0],
+                    "ys": [5675785.0, 5675795.0, 5676235.0],
+                },
+            ),
+            (
+                {"temporal_extent": ["2022-09-10", "2022-09-15"]},
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (1, 2, 73, 92),
+                    "ts": [
+                        "2022-09-12 00:00:00",
+                    ],
+                    "bands": ["B02", "B03"],
+                    "xs": [644765.0, 644775.0, 645485.0],
+                    "ys": [5675445.0, 5675455.0, 5676355.0],
+                },
+            ),
+            (
+                {"bands": ["B03"]},
+                {
+                    "dims": ["t", "bands", "x", "y"],
+                    "shape": (3, 1, 73, 92),
+                    "ts": [
+                        "2022-09-07 00:00:00",
+                        "2022-09-12 00:00:00",
+                        "2022-09-19 00:00:00",
+                    ],
+                    "bands": ["B03"],
+                    "xs": [644765.0, 644775.0, 645485.0],
+                    "ys": [5675445.0, 5675455.0, 5676355.0],
+                },
+            ),
+        ],
+    )
+    def test_load_result_url_filtering(
+        self,
+        api110,
+        zk_client,
+        zk_job_registry,
+        batch_job_output_root,
+        urllib_mock,
+        load_result_kwargs,
+        expected,
+    ):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+        results_url = f"https://foobar.test/job/{job_id}/results"
+
+        results_dir = self._setup_existing_job(
+            job_id=job_id,
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry,
+        )
+        self._setup_metadata_request_mocking(
+            job_id=job_id,
+            api=api110,
+            results_dir=results_dir,
+            results_url=results_url,
+            urllib_mock=urllib_mock,
+        )
+
+        process_graph = {
+            "lc": {
+                "process_id": "load_result",
+                "arguments": {"id": results_url, **load_result_kwargs},
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
         result = response.assert_status_code(200).json
 
         assert result["dims"] == expected["dims"]
