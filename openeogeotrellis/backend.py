@@ -30,7 +30,7 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
-from pystac import Collection
+import pystac
 from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
@@ -49,6 +49,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
@@ -564,34 +565,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
-        spatial_extent = load_params.spatial_extent
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        crs = spatial_extent.get("crs", None)
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
+        requested_bbox = BoundingBox.from_dict_or_none(
+            load_params.spatial_extent, default_crs="EPSG:4326"
+        )
+        logger.info(f"{requested_bbox=}")
 
         if job_id.startswith("http://") or job_id.startswith("https://"):
             job_results_canonical_url = job_id
-            job_results = Collection.from_file(href=job_results_canonical_url)
-
-            def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
-                from pyproj import Transformer
-                transform = Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
-                xmin, ymin = transform(xx=bbox[0], yy=bbox[1])
-                xmax, ymax = transform(xx=bbox[2], yy=bbox[3])
-                return [xmin, ymin, xmax, ymax]
+            job_results = pystac.Collection.from_file(href=job_results_canonical_url)
 
             def intersects_spatial_extent(item) -> bool:
-                if not spatial_bounds_present or item.bbox is None:
+                if not requested_bbox or item.bbox is None:
                     return True
 
-                spatial_extent_epsg4326 = reproject([west, south, east, north],
-                                                    crs_from=crs or "EPSG:4326",
-                                                    crs_to="EPSG:4326")
-
-                return Polygon.from_bounds(*spatial_extent_epsg4326).intersects(Polygon.from_bounds(*item.bbox))
+                requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
+                return requested_bbox_lonlat.as_polygon().intersects(
+                    Polygon.from_bounds(*item.bbox)
+                )
 
             uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
                                                               asset.extra_fields.get("eo:bands", []))
@@ -601,6 +591,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                   if asset.media_type == "image/tiff; application=geotiff"}
 
             timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
+            logger.info(f"{len(uris_with_metadata)=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in uris_with_metadata.values())
@@ -609,12 +600,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
-            def load_spatial_bounds_from_job_results():
-                overall_spatial_extent = job_results.extent.spatial.bboxes[0]
-                best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
-                return overall_spatial_extent, best_epsg
-
-            load_spatial_bounds = load_spatial_bounds_from_job_results
+            job_results_bbox = BoundingBox.from_wsen_tuple(
+                    job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
+                )
+            # TODO: this assumes that job result data is gridded in best UTM already?
+            job_results_epsg = job_results_bbox.best_utm()
+            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         else:
             paths_with_metadata = {
@@ -624,6 +615,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 ).items()
                 if asset["type"] == "image/tiff; application=geotiff"
             }
+            logger.info(f"{paths_with_metadata=}")
 
             if len(paths_with_metadata) == 0:
                 raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
@@ -635,6 +627,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     status_code=400)
 
             timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
+            logger.info(f"{timestamped_uris=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
@@ -643,16 +636,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
-            def load_spatial_bounds_from_job_info():
-                job_info = self.batch_jobs.get_job_info(job_id, user_id)
-                bbox = job_info.bbox
-                if not (isinstance(bbox, list) and len(bbox) == 4):
-                    raise InternalException(
-                        message=f"load_result with job {job_id} expects bbox list but got: {bbox!r}"
-                    )
-                return [bbox[0], bbox[1], bbox[2], bbox[3]], job_info.epsg
-
-            load_spatial_bounds = load_spatial_bounds_from_job_info
+            job_info = self.batch_jobs.get_job_info(job_id, user_id)
+            job_results_bbox = BoundingBox.from_wsen_tuple(
+                job_info.bbox, crs="EPSG:4326"
+            )
+            job_results_epsg = job_info.epsg
+            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -673,17 +662,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if single_level:
-            existing_bbox, existing_epsg = load_spatial_bounds()
+            target_bbox = requested_bbox or job_results_bbox
+            logger.info(f"{target_bbox=}")
 
-            if spatial_bounds_present:
-                extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-            else:
-                extent = jvm.geotrellis.vector.Extent(*[float(value) for value in existing_bbox])
-                crs = "EPSG:4326"
+            extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+            extent_crs = target_bbox.crs
 
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
-            projected_polygons = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
-                                  .reproject(projected_polygons, existing_epsg))
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+                extent, target_bbox.crs
+            )
+            projected_polygons = getattr(
+                getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
+            ).reproject(projected_polygons, job_results_epsg)
 
             metadata_properties = None
             correlation_id = None
@@ -693,13 +683,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
                                                    correlation_id, data_cube_parameters)
         else:
-            extent = (jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-                      if spatial_bounds_present else None)
+            if requested_bbox:
+                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
+                extent_crs = requested_bbox.crs
+            else:
+                extent = extent_crs = None
 
-            pyramid = pyramid_factory.pyramid_seq(extent, crs, from_date, to_date)
+            pyramid = pyramid_factory.pyramid_seq(
+                extent, extent_crs, from_date, to_date
+            )
 
-        metadata = metadata.filter_bbox(west=extent.xmin(), south=extent.ymin(), east=extent.xmax(),
-                                        north=extent.ymax(), crs=crs)
+        metadata = metadata.filter_bbox(
+            west=extent.xmin(),
+            south=extent.ymin(),
+            east=extent.xmax(),
+            north=extent.ymax(),
+            crs=extent_crs,
+        )
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
