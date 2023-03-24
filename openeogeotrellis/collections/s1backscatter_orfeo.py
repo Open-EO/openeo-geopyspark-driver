@@ -149,9 +149,11 @@ class S1BackscatterOrfeo:
         if "polarization" in extra_properties:
             #british vs US English Sentinelhub + STAC use US variant!!
             attributeValues["polarisation"] = extra_properties["polarization"]
-
-        file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory.creo(
-            collection_id, [], attributeValues, correlation_id
+        opensearch_client = self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
+            "https://finder.creodias.eu/oldresto", False, "", [], ""
+        )
+        file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
+            opensearch_client, collection_id, [], attributeValues, correlation_id
         )
         feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
