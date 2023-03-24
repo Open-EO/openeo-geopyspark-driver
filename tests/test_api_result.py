@@ -1,8 +1,9 @@
 import contextlib
-import functools
 import logging
+import shutil
 import textwrap
-from typing import List, Union, Sequence, Tuple
+from pathlib import Path
+from typing import List, Union, Sequence
 
 import mock
 import numpy as np
@@ -14,9 +15,24 @@ from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 
 import openeo
 import openeo.processes
-from openeo_driver.testing import TEST_USER, ApiResponse, DictSubSet, IgnoreOrder
-from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
-from openeogeotrellis.testing import random_name
+from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.testing import (
+    TEST_USER,
+    ApiResponse,
+    DictSubSet,
+    IgnoreOrder,
+    load_json,
+    ApiTester,
+    RegexMatcher,
+    ListSubSet,
+)
+from openeo_driver.util.geometry import (
+    as_geojson_feature,
+    as_geojson_feature_collection,
+)
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.testing import random_name, KazooClientMock
 from openeogeotrellis.utils import (
     UtcNowClock,
     drop_empty_from_aggregate_polygon_result,
@@ -2224,3 +2240,146 @@ class TestVectorCubeRunUdf:
 
     # TODO test that df index is timestamp
     # TODO: test that creates new series/dataframe with band stats
+
+
+class TestLoadResult:
+    @pytest.fixture
+    def zk_client(self) -> KazooClientMock:
+        zk_client = KazooClientMock()
+        with mock.patch(
+            "openeogeotrellis.job_registry.KazooClient", return_value=zk_client
+        ):
+            yield zk_client
+
+    @pytest.fixture
+    def zk_job_registry(self, zk_client) -> ZkJobRegistry:
+        return ZkJobRegistry(zk_client=zk_client)
+
+    def _setup_existing_job(
+        self,
+        *,
+        job_id: str,
+        api: ApiTester,
+        batch_job_output_root: Path,
+        zk_job_registry: ZkJobRegistry,
+        user_id=TEST_USER,
+    ):
+        """
+        Set up an exiting job, with a geopyspark-driver-style job result folder,
+        (based on result files from a given job id from the test data folder),
+        and metadata in job registry.
+        """
+        source_result_dir = api.data_path(f"binary/jobs/{job_id}")
+        result_dir = batch_job_output_root / job_id
+        _log.info(f"Copy {source_result_dir=} to {result_dir=}")
+        shutil.copytree(src=source_result_dir, dst=result_dir)
+
+        # Rewrite paths in job_metadata.json
+        job_metadata_file = result_dir / JOB_METADATA_FILENAME
+        _log.info(f"Rewriting asset paths in {job_metadata_file=}")
+        job_metadata_file.write_text(
+            job_metadata_file.read_text(encoding="utf-8").replace(
+                "/data/projects/OpenEO", str(batch_job_output_root)
+            )
+        )
+
+        # Register metadata in job registry too
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.1.0",
+            specification=load_json(result_dir / "process_graph.json"),
+        )
+        job_metadata = load_json(job_metadata_file)
+        zk_job_registry.patch(
+            job_id=job_id,
+            user_id=user_id,
+            **{k: job_metadata[k] for k in ["bbox", "epsg"]},
+        )
+        zk_job_registry.set_status(
+            job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
+        )
+
+    def test_load_result_basic(
+        self, api100, zk_client, zk_job_registry, batch_job_output_root
+    ):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+
+        self._setup_existing_job(
+            job_id=job_id,
+            api=api100,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry,
+        )
+
+        response = api100.check_result(
+            {
+                "lc": {
+                    "process_id": "load_result",
+                    "arguments": {
+                        "id": job_id,
+                    },
+                },
+                "save": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "lc"}, "format": "json"},
+                    "result": True,
+                },
+            }
+        )
+        result = response.assert_status_code(200).json
+
+        assert result == DictSubSet(
+            {
+                "dims": ["t", "bands", "x", "y"],
+                "attrs": DictSubSet(
+                    {
+                        "shape": [3, 2, 73, 92],
+                        "crs": RegexMatcher(".*utm.*zone=31"),
+                    }
+                ),
+                "coords": DictSubSet(
+                    {
+                        "t": {
+                            "dims": ["t"],
+                            "attrs": {"dtype": "datetime64[ns]", "shape": [3]},
+                            "data": [
+                                "2022-09-07 00:00:00",
+                                "2022-09-12 00:00:00",
+                                "2022-09-19 00:00:00",
+                            ],
+                        },
+                        "bands": {
+                            "attrs": {"dtype": "<U3", "shape": [2]},
+                            "data": ["B02", "B03"],
+                            "dims": ["bands"],
+                        },
+                        "x": {
+                            "dims": ["x"],
+                            "attrs": {"dtype": "float64", "shape": [73]},
+                            "data": ListSubSet(
+                                [644765.0, 644775.0, 644785.0, 645485.0]
+                            ),
+                        },
+                        "y": {
+                            "dims": ["y"],
+                            "attrs": {"dtype": "float64", "shape": [92]},
+                            "data": ListSubSet(
+                                [5675445.0, 5675455.0, 5675465.0, 5676355.0]
+                            ),
+                        },
+                    }
+                ),
+            }
+        )
+        data = np.array(result["data"])
+        assert data.shape == (3, 2, 73, 92)
+        assert_equal(
+            data[:1, :2, :3, :4],
+            [
+                [
+                    [[584, 587, 592, 579], [580, 604, 604, 560], [610, 592, 611, 592]],
+                    [[588, 593, 572, 560], [565, 574, 580, 566], [576, 572, 590, 568]],
+                ]
+            ],
+        )
