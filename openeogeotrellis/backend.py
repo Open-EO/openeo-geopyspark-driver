@@ -612,7 +612,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             def load_spatial_bounds_from_job_results():
                 overall_spatial_extent = job_results.extent.spatial.bboxes[0]
                 best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
-                return reproject(overall_spatial_extent, 4326, best_epsg), best_epsg
+                return overall_spatial_extent, best_epsg
 
             load_spatial_bounds = load_spatial_bounds_from_job_results
 
@@ -850,7 +850,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 else:
                     summary = f"Exception during Spark execution: {java_exception_message}"
             else:
-                summary = java_exception_message
+                summary = java_exception_class_name + ": " + str(java_exception_message)
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
@@ -968,7 +968,7 @@ class GpsProcessing(ConcreteProcessing):
                 geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                 if geometries is None:
                     geometries = constraints.get("filter_spatial", {}).get("geometries")
-                if is_layer_too_large(
+                too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
                     spatial_extent=spatial_extent,
                     geometries=geometries,
                     temporal_extent=temporal_extent,
@@ -977,10 +977,13 @@ class GpsProcessing(ConcreteProcessing):
                     cell_height=cell_height,
                     native_crs=native_crs,
                     resample_params=constraints.get("resample", {}),
-                ):
+                )
+                if too_large:
                     yield {
-                        "code": "LayerTooLarge",
-                        "message": "Layer is too large to be processed."
+                        "code": "ExtentTooLarge",
+                        "message": f"Requested extent for collection {collection_id!r} is too large to process. "
+                                   f"Estimated number of pixels: {estimated_pixels:.2e}, "
+                                   f"threshold: {threshold_pixels:.2e}."
                     }
 
 
