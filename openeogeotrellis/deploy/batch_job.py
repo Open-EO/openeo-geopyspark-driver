@@ -291,72 +291,66 @@ def main(argv: List[str]) -> None:
     logger.info("Using temp dir {t}".format(t=temp_dir))
     os.environ["TMPDIR"] = str(temp_dir)
 
-    try:
-        if ConfigParams().is_kube_deploy:
-            from openeogeotrellis.utils import s3_client
+    if ConfigParams().is_kube_deploy:
+        from openeogeotrellis.utils import s3_client
 
-            bucket = os.environ.get('SWIFT_BUCKET')
-            s3_instance = s3_client()
+        bucket = os.environ.get('SWIFT_BUCKET')
+        s3_instance = s3_client()
 
-            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+        s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
 
 
-        job_specification = _parse(job_specification_file)
-        load_custom_processes()
+    job_specification = _parse(job_specification_file)
+    load_custom_processes()
 
-        conf = (SparkConf()
-                .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
-                .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
+    conf = (SparkConf()
+            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
+            .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
-        with SparkContext(conf=conf) as sc:
-            _setup_java_logging(sc, user_id)
+    with SparkContext(conf=conf) as sc:
+        _setup_java_logging(sc, user_id)
 
-            principal = sc.getConf().get("spark.yarn.principal")
-            key_tab = sc.getConf().get("spark.yarn.keytab")
+        principal = sc.getConf().get("spark.yarn.principal")
+        key_tab = sc.getConf().get("spark.yarn.keytab")
 
-            default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
-            vault_token = _get_vault_token(sc.getConf())
+        default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
+        vault_token = _get_vault_token(sc.getConf())
 
-            kerberos(principal, key_tab)
+        kerberos(principal, key_tab)
 
-            def run_driver():
-                run_job(
-                    job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
-                    api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio,
-                    default_sentinel_hub_credentials=default_sentinel_hub_credentials,
-                    sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
-                )
+        def run_driver():
+            run_job(
+                job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
+                api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
+                max_soft_errors_ratio=max_soft_errors_ratio,
+                default_sentinel_hub_credentials=default_sentinel_hub_credentials,
+                sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
+            )
 
-            if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
-                # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
-                driver_profile = BasicProfiler(sc)
-                driver_profile.profile(run_driver)
-                # running the driver code and adding driver's profiling results as "RDD==-1"
-                sc.profiler_collector.add_profiler(-1, driver_profile)
-                # collect profiles into a zip file
-                profile_dumps_dir = job_dir / 'profile_dumps'
-                sc.dump_profiles(profile_dumps_dir)
+        if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
+            # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
+            driver_profile = BasicProfiler(sc)
+            driver_profile.profile(run_driver)
+            # running the driver code and adding driver's profiling results as "RDD==-1"
+            sc.profiler_collector.add_profiler(-1, driver_profile)
+            # collect profiles into a zip file
+            profile_dumps_dir = job_dir / 'profile_dumps'
+            sc.dump_profiles(profile_dumps_dir)
 
-                profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
-                                                  root_dir=profile_dumps_dir)
-                add_permissions(Path(profile_zip), stat.S_IWGRP)
+            profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
+                                              root_dir=profile_dumps_dir)
+            add_permissions(Path(profile_zip), stat.S_IWGRP)
 
-                shutil.rmtree(profile_dumps_dir,
-                              onerror=lambda func, path, exc_info:
-                              logger.warning(f"could not recursively delete {profile_dumps_dir}: {func} {path} failed",
-                                             exc_info=exc_info))
+            shutil.rmtree(profile_dumps_dir,
+                          onerror=lambda func, path, exc_info:
+                          logger.warning(f"could not recursively delete {profile_dumps_dir}: {func} {path} failed",
+                                         exc_info=exc_info))
 
-                logger.info("Saved profiling info to: " + profile_zip)
-            else:
-                run_driver()
+            logger.info("Saved profiling info to: " + profile_zip)
+        else:
+            run_driver()
 
-    except Exception as e:
-        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
-
-        raise
 
 
 @log_memory
@@ -557,7 +551,14 @@ if __name__ == '__main__':
     setup_logging(get_logging_config(
         root_handlers=["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
         context=LOGGING_CONTEXT_BATCH_JOB,
-        root_level=OPENEO_LOGGING_THRESHOLD))
+        root_level=OPENEO_LOGGING_THRESHOLD),
+        capture_unhandled_exceptions=False,  # not needed anymore, as we have a try catch around everything
+    )
 
-    with TimingLogger("batch_job.py main", logger=logger):
-        main(sys.argv)
+    try:
+        with TimingLogger("batch_job.py main", logger=logger):
+            main(sys.argv)
+    except Exception as e:
+        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
+        raise
