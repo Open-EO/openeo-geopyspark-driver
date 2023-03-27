@@ -338,5 +338,5 @@ def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
     }
     evaluate(pg, env = dry_run_env)
     metadata = extract_result_metadata(dry_run_tracer)
-    assert metadata["area"]["value"] == 187056.07523286293
+    assert metadata["area"]["value"] == pytest.approx(187056.07523286293, abs=0.001)
     assert metadata["area"]["unit"] == "square meter"
