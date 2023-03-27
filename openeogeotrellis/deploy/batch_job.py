@@ -30,7 +30,7 @@ from openeo_driver.save_result import (
     MlModelResult,
 )
 from openeo_driver.users import User
-from openeo_driver.util.geometry import spatial_extent_union
+from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
 from openeo_driver.util.logging import (
     BatchJobLoggingFilter,
     get_logging_config,
@@ -107,22 +107,21 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc
     ])
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
+    # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
+    # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
+    bbox_crs = None
+    bbox = None
+    geometry = None
+    area = None
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
-        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
-        if all(b is not None for b in bbox):
+        bbox_crs = spatial_extent["crs"]
+        temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        if all(b is not None for b in temp_bbox):
+            bbox = temp_bbox  # Only set bbox once we are sure we have all the info
             polygon = Polygon.from_bounds(*bbox)
             geometry = mapping(polygon)
-            area = area_in_square_meters(polygon, spatial_extent["crs"])
-        else:
-            bbox = None
-            geometry = None
-            area = None
-    else:
-        bbox = None
-        geometry = None
-        area = None
-
+            area = area_in_square_meters(polygon, bbox_crs)
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -132,23 +131,55 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
         agg_geometry = aggregate_spatial_geometries[0]
         if isinstance(agg_geometry, BaseGeometry):
+            # We only allow EPSG:4326 for the BaseGeometry case to keep things simple
+            # and prevent complicated problems with CRS transformations.
+            # The aggregation geometry comes from Shapely, but Shapely itself does not
+            # support coordinate system transformations.
+            # See also: https://shapely.readthedocs.io/en/stable/manual.html#coordinate-systems
+            bbox_crs = "EPSG:4326"
             bbox = agg_geometry.bounds
             geometry = mapping(agg_geometry)
-            area = area_in_square_meters(agg_geometry, "EPSG:4326")
+            area = area_in_square_meters(agg_geometry, bbox_crs)
         elif isinstance(agg_geometry, DelayedVector):
             bbox = agg_geometry.bounds
+            bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             bbox = agg_geometry.get_bounding_box()
+            bbox_crs = agg_geometry.get_crs()
             geometry = agg_geometry.get_bounding_box_geojson()
             area = agg_geometry.get_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
+        # The aggregation geometries return tuples for their bounding box.
+        # Keep the end result consistent and convert it to a list.
+        if isinstance(bbox, tuple):
+            bbox = list(bbox)
+
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
+
+    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
+    if bbox and bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
+        # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
+        # get a pyproy CRS object instead of an EPSG code. In that case it is OK to
+        # just do the reprojection, even if it is already EPSG:4326. That's just a no-op.
+        # In constrast, handling all possible variants of pyproj CRS objects that are actually
+        # all the exact same EPSG:4326 CRS, is complex and unnecessary.
+        latlon_spatial_extent = {
+            "west": bbox[0],
+            "south": bbox[1],
+            "east": bbox[2],
+            "north": bbox[3],
+            "crs": bbox_crs,
+        }
+        latlon_spatial_extent = reproject_bounding_box(
+            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
+        )
+        bbox = [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     # TODO: dedicated type?
     # TODO: match STAC format?
