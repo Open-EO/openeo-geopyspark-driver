@@ -1,12 +1,16 @@
 import json
+import shutil
+import textwrap
 from mock import MagicMock
 from pathlib import Path
 from unittest import mock
 
 import pytest
+import pytest
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
 from shapely.geometry import box, mapping, shape, Polygon
+from osgeo import gdal
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -17,6 +21,9 @@ from openeogeotrellis.deploy.batch_job import (
     run_job, _get_tracker,
     _convert_asset_outputs_to_s3_urls,
     _convert_job_metadatafile_outputs_to_s3_urls,
+    read_projection_extension_metadata,
+    parse_projection_extension_metadata,
+    _get_projection_extension_metadata,
 )
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis._version import __version__
@@ -336,6 +343,501 @@ def test_run_job(evaluate, tmp_path):
                                                          'value': 1.7999999999999998}}
                                }
     t.setGlobalTracking(False)
+
+
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
+    cube_mock = MagicMock()
+    first_asset = str(
+        get_test_data_file(
+            "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+        )
+    )
+    asset_meta = {
+        first_asset: {
+            "href": first_asset,
+            "roles": "data",
+        },
+        # The second file does not exist on the filesystem.
+        # This triggers that the projection extension metadata is put on the
+        # bands, for the remaining assets (Here there is only 1 other asset off course).
+        "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
+    }
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": {
+            first_asset: {
+                "href": first_asset,
+                "roles": "data",
+                "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
+                "proj:epsg": 4326,
+                "proj:shape": [720, 1188],
+            },
+            "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
+        },
+        "bbox": None,
+        "end_datetime": None,
+        "epsg": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(
+    evaluate, tmp_path
+):
+    """When there are two raster assets with the same projection metadata, it should put
+    those metadata at the level of the item instead of the individual bands.
+    """
+    cube_mock = MagicMock()
+
+    first_asset_path = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+    )
+    first_asset = str(first_asset_path)
+    # For the second file: use a copy of the first file  (in the temp dir) so we know
+    # that GDAL will find exactly the same metadata under a different asset path.
+    second_asset_path = tmp_path / first_asset_path.name
+    second_asset = str(second_asset_path)
+    shutil.copyfile(first_asset_path, second_asset_path)
+    asset_meta = {
+        first_asset: {
+            "href": first_asset,
+            "roles": "data",
+        },
+        # use same file twice to simulate the same CRS and bbox
+        second_asset: {
+            "href": second_asset,
+            "roles": "data",
+        },
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": {
+            first_asset: {
+                "href": first_asset,
+                "roles": "data",
+                # Projection extension metadata should not be here, but higher up.
+            },
+            second_asset: {
+                "href": second_asset,
+                "roles": "data",
+                # Idem: projection extension metadata should not be here, but higher up.
+            },
+        },
+        "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
+        "end_datetime": None,
+        "epsg": 4326,
+        "proj:shape": [720, 1188],
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
+def reproject_raster_file(
+    source_path: str, destination_path: str, dest_crs: str, width: int, height: int
+):
+    """Use the equavalent of the gdalwarp utility to reproject a raster file to a new CRS
+
+    :param source_path: Path to the source raster file.
+    :param destination_path: Path to the destination file.
+    :param dest_crs: Which Coordinate Reference System to convert to.
+    :param width:
+        Width of the output raster in pixels.
+        Reprojection may get a different size than the source raster had.
+        In order to get the raster shape you need you have to give gdal.Warp the width and heigth.
+    :param height:
+        Height of the output raster in pixels.
+        Same remark as for `width`: need to specify output raster's width and height.
+    """
+    opts = gdal.WarpOptions(dstSRS=dest_crs, width=width, height=height)
+    gdal.Warp(
+        destNameOrDestDS=destination_path, srcDSOrSrcDSTab=source_path, options=opts
+    )
+
+
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
+    evaluate, tmp_path
+):
+    """When there are two raster assets with the same projection metadata, it should put
+    those metadata at the level of the item instead of the individual bands.
+    """
+    cube_mock = MagicMock()
+
+    first_asset_path = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+    )
+    first_asset = str(first_asset_path)
+
+    # For the second file: use a copy of the first file  (in the temp dir) so we know
+    # that GDAL will find exactly the same metadata under a different asset path.
+    second_asset_path = tmp_path / first_asset_path.name
+    (second_asset) = str(second_asset_path)
+    reproject_raster_file(
+        source_path=first_asset,
+        destination_path=second_asset,
+        dest_crs="EPSG:3812",
+        width=720,
+        height=1188,
+    )
+
+    asset_meta = {
+        first_asset: {
+            "href": first_asset,
+            "roles": "data",
+        },
+        # use same file twice to simulate the same CRS and bbox
+        second_asset: {
+            "href": second_asset,
+            "roles": "data",
+        },
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": {
+            first_asset: {
+                "href": first_asset,
+                "roles": "data",
+                "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
+                "proj:epsg": 4326,
+                "proj:shape": [720, 1188],
+            },
+            second_asset: {
+                "href": second_asset,
+                "roles": "data",
+                "proj:bbox": [723413.644, 577049.010, 745443.909, 614102.693],
+                "proj:epsg": 3812,
+                "proj:shape": [720, 1188],
+            },
+        },
+        "bbox": None,
+        "end_datetime": None,
+        "epsg": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
+@pytest.mark.parametrize(
+    ["json_file", "expected_metadata"],
+    [
+        (
+            "gdalinfo-output/c_gls_LC100-COV-GRASSLAND_201501010000_AFRI_PROBAV_1.0.1.nc.json",
+            {
+                "proj:epsg": 4326,
+                "proj:bbox": [-30.000496, -34.999504, 59.999504, 45.000496],
+                "proj:shape": [90720, 80640],
+            },
+        ),
+        (
+            "gdalinfo-output/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc.json",
+            {"proj:bbox": [-0.2, -90.2, 359.8, 90.2], "proj:shape": [900, 451]},
+        ),
+    ],
+)
+def test_get_projection_extension_metadata(json_file, expected_metadata):
+    json_path = get_test_data_file(json_file)
+
+    with open(json_path, "rt") as f_in:
+        gdal_info = json.load(f_in)
+
+    proj_metadata = _get_projection_extension_metadata(gdal_info)
+
+    assert proj_metadata == expected_metadata
+
+
+@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+def test_parse_projection_extension_metadata(mock_read_gdal_info):
+    json_dir = get_test_data_file(
+        "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
+    )
+    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+    nc_json_path = (
+        json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc.json"
+    )
+
+    def read_json_file(netcdf_uri: str) -> dict:
+        if netcdf_uri == str(netcdf_path):
+            # json_path = netcdf_uri + ".json"
+            json_path = nc_json_path
+        else:
+            parts = netcdf_uri.split(":")
+            band = parts[-1]
+            # strip off the surrounding double quotes from the filename
+            filename = parts[1][1:-1]
+            json_path = json_dir / f"{filename}.{band}.json"
+        with open(json_path, "rt") as f:
+            return json.load(f)
+
+    mock_read_gdal_info.side_effect = read_json_file
+    with open(nc_json_path, "rt") as f_in:
+        gdal_info = json.load(f_in)
+
+    proj_metadata = parse_projection_extension_metadata(gdal_info)
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert proj_metadata == expected_metadata
+
+
+@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+def test_read_projection_extension_metadata(mock_read_gdal_info):
+    json_dir = get_test_data_file(
+        "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
+    )
+    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+
+    def read_json_file(netcdf_uri: str) -> dict:
+        if netcdf_uri == str(netcdf_path):
+            json_path = netcdf_uri + ".json"
+        else:
+            parts = netcdf_uri.split(":")
+            band = parts[-1]
+            # strip off the surrounding double quotes from the filename
+            filename = parts[1][1:-1]
+            json_path = json_dir / f"{filename}.{band}.json"
+        with open(json_path, "rt") as f:
+            return json.load(f)
+
+    mock_read_gdal_info.side_effect = read_json_file
+
+    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert proj_metadata == expected_metadata
+
+
+def test_read_projection_extension_metadata_from_multiband_netcdf_file():
+    netcdf_path = get_test_data_file(
+        "binary/stac_proj_extension/netcdf/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+    )
+
+    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert proj_metadata == expected_metadata
+
+
+def test_read_projection_extension_metadata_from_singleband_netcdf_file():
+    netcdf_path = get_test_data_file(
+        "binary/stac_proj_extension/netcdf/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc"
+    )
+
+    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        # "proj:epsg": 32631,
+        "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
+        "proj:shape": [900, 451],
+    }
+    assert proj_metadata == expected_metadata
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:

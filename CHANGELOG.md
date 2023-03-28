@@ -12,11 +12,16 @@ without compromising stable operations.
 
 ## [Unreleased]
 
+### Bugfix
 - Fix "Permission denied" issue with `run_udf` usage on vector date cube
   ([#367](https://github.com/Open-EO/openeo-geopyspark-driver/issues/367))
+- Fix: Extent in STAC result metadata should be lat lon ([#321](https://github.com/Open-EO/openeo-geopyspark-driver/issues/321))
+
+### Changed
 - /validation now detects if the amount of pixels that will be processed is too large
   ([#320](https://github.com/Open-EO/openeo-geopyspark-driver/issues/320))
-  
+- Add projection extension metadata to batch job results ([openeo-geotrellis-extensions/#72](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/72))
+
 
 ## 2023-03-08 (0.9.3a1)
 
