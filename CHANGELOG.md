@@ -14,7 +14,9 @@ without compromising stable operations.
 
 - Fix "Permission denied" issue with `run_udf` usage on vector date cube
   ([#367](https://github.com/Open-EO/openeo-geopyspark-driver/issues/367))
-
+- /validation now detects if the amount of pixels that will be processed is too large
+  ([#320](https://github.com/Open-EO/openeo-geopyspark-driver/issues/320))
+  
 
 ## 2023-03-08 (0.9.3a1)
 
