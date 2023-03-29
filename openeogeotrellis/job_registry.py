@@ -1,6 +1,7 @@
 import datetime as dt
 import json
 import logging
+import random
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -173,17 +174,29 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
-    def get_running_jobs(self) -> List[Dict]:
+    def get_running_jobs(self, user_limit: int = 1000) -> List[Dict]:
         """Returns a list of jobs that are currently not finished (should still be tracked)."""
 
         jobs = []
 
-        with StatsReporter(name="get_running_jobs", report=_log) as stats:
+        with StatsReporter(name="get_running_jobs", report=_log) as stats, TimingLogger(
+            title="get_running_jobs", logger=_log
+        ):
             user_ids = self._zk.get_children(self._ongoing())
 
             for user_id in user_ids:
-                job_ids = self._zk.get_children(self._ongoing(user_id))
                 stats["user_id"] += 1
+                job_ids = self._zk.get_children(self._ongoing(user_id))
+
+                if len(job_ids) > user_limit:
+                    _log.warning(
+                        f"Extreme number of jobs found for {user_id=}: {len(job_ids)} > {user_limit}. "
+                        f"Taking random sample of {user_limit} items."
+                    )
+                    stats["user_limit_exceeded"] += 1
+                    stats["jobs_skipped"] += len(job_ids) - user_limit
+                    job_ids = random.sample(job_ids, user_limit)
+
                 if job_ids:
                     jobs.extend([self.get_job(job_id, user_id) for job_id in job_ids])
                     stats["user_id with jobs"] += 1
@@ -739,9 +752,9 @@ if __name__ == "__main__":
         root_path="/openeo/dev/jobs"
         # root_path="/openeo/jobs"
     ) as zk_registry:
-        # zk_registry.get_running_jobs(user_limit=10)
+        zk_registry.get_running_jobs(user_limit=10)
 
-        zk_registry.prune_empty_users(
-            dry_run=True
-            # dry_run=False
-        )
+        # zk_registry.prune_empty_users(
+        #     dry_run=True
+        #     # dry_run=False
+        # )
