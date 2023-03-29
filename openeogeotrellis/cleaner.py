@@ -1,10 +1,13 @@
 import argparse
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
+from typing import Optional, List
+
 import kazoo.client
-from py4j.java_gateway import JavaGateway, JVMView
+from py4j.java_gateway import JavaGateway, JVMView, find_jar_path
 
 import openeogeotrellis.backend
+from openeo.util import TimingLogger
 from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
@@ -13,33 +16,54 @@ logging.basicConfig(level=logging.INFO)
 openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
 kazoo.client.log.setLevel(logging.WARNING)
 
-_log = logging.getLogger(__name__)
+_log = logging.getLogger("openeogeotrellis.cleaner")
 
 
-def remove_batch_jobs_before(upper: datetime, jvm: JVMView) -> None:
-    _log.info("removing batch jobs before {d}...".format(d=upper))
-
-    # TODO: how to cope with unneeded arguments?
-    batch_jobs = GpsBatchJobs(catalog=None, jvm=jvm, principal="", key_tab="", vault=None)
-    batch_jobs.delete_jobs_before(upper)
+def remove_batch_jobs_before(
+    upper: datetime,
+    jvm: JVMView,
+    user_ids: Optional[List[str]] = None,
+    dry_run: bool = True,
+) -> None:
+    with TimingLogger(title=f"Removing batch jobs before {upper}", logger=_log):
+        # TODO: how to cope with unneeded arguments?
+        batch_jobs = GpsBatchJobs(
+            catalog=None, jvm=jvm, principal="", key_tab="", vault=None
+        )
+        batch_jobs.delete_jobs_before(upper, user_ids=user_ids, dry_run=dry_run)
 
 
 def remove_secondary_services_before(upper: datetime) -> None:
-    _log.info("removing secondary services before {d}...".format(d=upper))
-
-    secondary_services = GpsSecondaryServices(ZooKeeperServiceRegistry())
-    secondary_services.remove_services_before(upper)
+    with TimingLogger(title=f"Removing secondary services before {upper}", logger=_log):
+        secondary_services = GpsSecondaryServices(ZooKeeperServiceRegistry())
+        secondary_services.remove_services_before(upper)
 
 
 def main():
     _log.info("ConfigParams(): {c}".format(c=ConfigParams()))
 
     parser = argparse.ArgumentParser(usage="OpenEO Cleaner", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--py4j-jarpath", default="venv/share/py4j/py4j0.10.7.jar", help='Path to the Py4J jar')
+
+    default_py4j_jarpath = find_jar_path() or "venv/share/py4j/py4j0.10.7.jar"
+    parser.add_argument(
+        "--py4j-jarpath", default=default_py4j_jarpath, help="Path to the Py4J jar"
+    )
     parser.add_argument("--py4j-classpath", default="geotrellis-extensions-2.2.0-SNAPSHOT.jar",
                         help='Classpath used to launch the Java Gateway')
     parser.add_argument("--py4j-maximum-heap-size", default="1G",
                         help='Maximum heap size for the Java Gateway JVM')
+    parser.add_argument(
+        "--user",
+        action="append",
+        help="Only clean up for specified user id. Can be specified multiple times",
+    )
+    parser.add_argument(
+        "--min-age",
+        type=int,
+        default=60,
+        help="Minimum age in days for jobs to clean up",
+    )
+    parser.add_argument("--dry-run", action="store_true")
 
     args = parser.parse_args()
 
@@ -54,9 +78,17 @@ def main():
                                               javaopts=java_opts,
                                               die_on_exit=True)
 
-    max_date = datetime.today() - timedelta(days=60)
+    max_date = datetime.today() - timedelta(days=args.min_age)
+    _log.info(f"Cleaner: min age {args.min_age} days -> before {max_date}")
+    if args.user:
+        user_ids = args.user
+        _log.info(f"Cleaner: for users {user_ids}")
+    else:
+        user_ids = None
 
-    remove_batch_jobs_before(max_date, java_gateway.jvm)
+    remove_batch_jobs_before(
+        upper=max_date, jvm=java_gateway.jvm, user_ids=user_ids, dry_run=args.dry_run
+    )
     remove_secondary_services_before(max_date)
 
 

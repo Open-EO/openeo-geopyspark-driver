@@ -253,14 +253,27 @@ class ZkJobRegistry:
                 e.args += (path,)
                 raise JobNotFoundException(job_id) from e
 
-    def get_all_jobs_before(self, upper: datetime) -> List[Dict]:
-        def get_jobs_in(get_path: Callable[[Union[str, None], Union[str, None]], str]) -> List[Dict]:
-            user_ids = self._zk.get_children(get_path(None, None))
+    def get_all_jobs_before(
+        self, upper: datetime, user_ids: Optional[List[str]] = None
+    ) -> List[Dict]:
+        def get_jobs_in(
+            get_path: Callable[[Union[str, None], Union[str, None]], str],
+            user_ids: Optional[List[str]] = None,
+        ) -> List[Dict]:
+            if user_ids is None:
+                user_ids = self._zk.get_children(get_path(None, None))
 
             jobs_before = []
 
             for user_id in user_ids:
-                user_job_ids = self._zk.get_children(get_path(user_id, None))
+                path = get_path(user_id, None)
+                try:
+                    user_job_ids = self._zk.get_children(path)
+                except NoNodeError:
+                    _log.warning(
+                        f"Not found (and no children) for {user_id=} ({path=})"
+                    )
+                    continue
 
                 for job_id in user_job_ids:
                     path = get_path(user_id, job_id)
@@ -273,12 +286,19 @@ class ZkJobRegistry:
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
+                        # TODO: not all job_info data is used, just pass the necessary bits?
                         jobs_before.append(job_info)
 
             return jobs_before
 
         # note: consider ongoing as well because that's where abandoned (never started) jobs are
-        return get_jobs_in(self._ongoing) + get_jobs_in(self._done)
+        return get_jobs_in(
+            self._ongoing,
+            user_ids=user_ids,
+        ) + get_jobs_in(
+            self._done,
+            user_ids=user_ids,
+        )
 
     def _create(self, job_info: Dict, done: bool = False) -> None:
         job_id = job_info['job_id']
@@ -738,8 +758,10 @@ class DoubleJobRegistry:
 
         return jobs
 
-    def get_all_jobs_before(self, upper: dt.datetime) -> List[dict]:
-        jobs = self.zk_job_registry.get_all_jobs_before(upper=upper)
+    def get_all_jobs_before(
+        self, upper: dt.datetime, user_ids: Optional[List[str]] = None
+    ) -> List[dict]:
+        jobs = self.zk_job_registry.get_all_jobs_before(upper=upper, user_ids=user_ids)
         # TODO #236 add elastic_job_registry implementation
         self._log.warning(f"EJR TODO: get_all_jobs_before implementation")
         return jobs
