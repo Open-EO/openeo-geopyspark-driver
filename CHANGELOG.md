@@ -10,12 +10,14 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## [Unreleased]
+## 2023-03-30 (0.9.5a1)
 
 ### Bugfix
 - Fix "Permission denied" issue with `run_udf` usage on vector date cube
   ([#367](https://github.com/Open-EO/openeo-geopyspark-driver/issues/367))
 - Fix: Extent in STAC result metadata should be lat lon ([#321](https://github.com/Open-EO/openeo-geopyspark-driver/issues/321))
+- Single row/line results with SentinelHub 
+  ([#375](https://github.com/Open-EO/openeo-geopyspark-driver/issues/375))
 
 ### Changed
 - /validation now detects if the amount of pixels that will be processed is too large
