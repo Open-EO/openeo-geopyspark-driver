@@ -10,11 +10,12 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## [Unreleased]
+## 2023-03-08 (0.9.4a1)
 
 - Fix "Permission denied" issue with `run_udf` usage on vector date cube
   ([#367](https://github.com/Open-EO/openeo-geopyspark-driver/issues/367))
-
+- Single row/line results with SentinelHub 
+  ([#375](https://github.com/Open-EO/openeo-geopyspark-driver/issues/375))
 
 ## 2023-03-08 (0.9.3a1)
 
