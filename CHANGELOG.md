@@ -10,7 +10,7 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## 2023-03-30 (0.9.4a1)
+## 2023-03-30 (0.9.5a1)
 
 ### Bugfix
 - Fix "Permission denied" issue with `run_udf` usage on vector date cube
