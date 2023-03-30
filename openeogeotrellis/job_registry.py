@@ -1,21 +1,24 @@
 import datetime as dt
 import json
 import logging
+import random
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Callable, Union, Optional
 
+import kazoo
+import kazoo.exceptions
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
+from kazoo.protocol.states import ZnodeStat
 
-from openeo.util import rfc3339, dict_no_none
+from openeo.util import rfc3339, dict_no_none, TimingLogger
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import (
     JOB_STATUS,
     JobRegistryInterface,
-    ElasticJobRegistry,
     JobDict,
 )
 from openeo_driver.util.logging import just_log_exceptions
@@ -171,17 +174,29 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
-    def get_running_jobs(self) -> List[Dict]:
+    def get_running_jobs(self, user_limit: int = 1000) -> List[Dict]:
         """Returns a list of jobs that are currently not finished (should still be tracked)."""
 
         jobs = []
 
-        with StatsReporter(name="get_running_jobs", report=_log) as stats:
+        with StatsReporter(name="get_running_jobs", report=_log) as stats, TimingLogger(
+            title="get_running_jobs", logger=_log
+        ):
             user_ids = self._zk.get_children(self._ongoing())
 
             for user_id in user_ids:
-                job_ids = self._zk.get_children(self._ongoing(user_id))
                 stats["user_id"] += 1
+                job_ids = self._zk.get_children(self._ongoing(user_id))
+
+                if len(job_ids) > user_limit:
+                    _log.warning(
+                        f"Extreme number of jobs found for {user_id=}: {len(job_ids)} > {user_limit}. "
+                        f"Taking random sample of {user_limit} items."
+                    )
+                    stats["user_limit_exceeded"] += 1
+                    stats["jobs_skipped"] += len(job_ids) - user_limit
+                    job_ids = random.sample(job_ids, user_limit)
+
                 if job_ids:
                     jobs.extend([self.get_job(job_id, user_id) for job_id in job_ids])
                     stats["user_id with jobs"] += 1
@@ -238,14 +253,27 @@ class ZkJobRegistry:
                 e.args += (path,)
                 raise JobNotFoundException(job_id) from e
 
-    def get_all_jobs_before(self, upper: datetime) -> List[Dict]:
-        def get_jobs_in(get_path: Callable[[Union[str, None], Union[str, None]], str]) -> List[Dict]:
-            user_ids = self._zk.get_children(get_path(None, None))
+    def get_all_jobs_before(
+        self, upper: datetime, user_ids: Optional[List[str]] = None
+    ) -> List[Dict]:
+        def get_jobs_in(
+            get_path: Callable[[Union[str, None], Union[str, None]], str],
+            user_ids: Optional[List[str]] = None,
+        ) -> List[Dict]:
+            if user_ids is None:
+                user_ids = self._zk.get_children(get_path(None, None))
 
             jobs_before = []
 
             for user_id in user_ids:
-                user_job_ids = self._zk.get_children(get_path(user_id, None))
+                path = get_path(user_id, None)
+                try:
+                    user_job_ids = self._zk.get_children(path)
+                except NoNodeError:
+                    _log.warning(
+                        f"Not found (and no children) for {user_id=} ({path=})"
+                    )
+                    continue
 
                 for job_id in user_job_ids:
                     path = get_path(user_id, job_id)
@@ -258,12 +286,19 @@ class ZkJobRegistry:
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
+                        # TODO: not all job_info data is used, just pass the necessary bits?
                         jobs_before.append(job_info)
 
             return jobs_before
 
         # note: consider ongoing as well because that's where abandoned (never started) jobs are
-        return get_jobs_in(self._ongoing) + get_jobs_in(self._done)
+        return get_jobs_in(
+            self._ongoing,
+            user_ids=user_ids,
+        ) + get_jobs_in(
+            self._done,
+            user_ids=user_ids,
+        )
 
     def _create(self, job_info: Dict, done: bool = False) -> None:
         job_id = job_info['job_id']
@@ -321,6 +356,64 @@ class ZkJobRegistry:
             return "{r}/done/{u}".format(r=self._root, u=user_id)
 
         return "{r}/done".format(r=self._root)
+
+    def prune_empty_users(self, dry_run: bool = True):
+        """
+        Warning: this is a maintenance functionality that should be called manually in an ad-hoc way,
+        not intended to be called/triggered automatically.
+        """
+
+        with TimingLogger(title="prune_empty_users", logger=_log), StatsReporter(
+            report=_log
+        ) as stats:
+            ongoing_users = set(self._zk.get_children(self._ongoing()))
+            done_users = set(self._zk.get_children(self._done()))
+            common_users = ongoing_users.intersection(done_users)
+            all_users = ongoing_users.union(done_users)
+            _log.info(
+                f"{len(ongoing_users)=} {len(done_users)=} {len(common_users)=} {len(all_users)=}"
+            )
+
+            for user_id in all_users:
+                stats["user"] += 1
+                ongoing_path = self._ongoing(user_id=user_id)
+                done_path = self._done(user_id=user_id)
+                try:
+                    ongoing_stat: Optional[ZnodeStat] = self._zk.get(ongoing_path)[1]
+                    ongoing_count = ongoing_stat.children_count
+                except kazoo.exceptions.NoNodeError:
+                    ongoing_stat = None
+                    ongoing_count = 0
+                try:
+                    done_stat: Optional[ZnodeStat] = self._zk.get(done_path)[1]
+                    done_count = done_stat.children_count
+                except kazoo.exceptions.NoNodeError:
+                    done_stat = None
+                    done_count = 0
+
+                stats[f"user with {bool(ongoing_count)=} {bool(done_count)=}"] += 1
+                _log.debug(f"{user_id=} {ongoing_count=} {done_count=}")
+
+                if ongoing_count == 0 and done_count == 0:
+                    # For now, only prune users where both `ongoing` and `done` are empty
+                    if ongoing_stat:
+                        _log.info(f"Deleting {ongoing_path}")
+                        stats["delete"] += 1
+                        stats["delete ongoing"] += 1
+                        if not dry_run:
+                            self._zk.delete(
+                                ongoing_path,
+                                version=ongoing_stat.version,
+                                recursive=False,
+                            )
+                    if done_stat:
+                        _log.info(f"Deleting {done_path}")
+                        stats["delete"] += 1
+                        stats["delete done"] += 1
+                        if not dry_run:
+                            self._zk.delete(
+                                done_path, version=done_stat.version, recursive=False
+                            )
 
 
 def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
@@ -665,8 +758,25 @@ class DoubleJobRegistry:
 
         return jobs
 
-    def get_all_jobs_before(self, upper: dt.datetime) -> List[dict]:
-        jobs = self.zk_job_registry.get_all_jobs_before(upper=upper)
+    def get_all_jobs_before(
+        self, upper: dt.datetime, user_ids: Optional[List[str]] = None
+    ) -> List[dict]:
+        jobs = self.zk_job_registry.get_all_jobs_before(upper=upper, user_ids=user_ids)
         # TODO #236 add elastic_job_registry implementation
         self._log.warning(f"EJR TODO: get_all_jobs_before implementation")
         return jobs
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
+    with ZkJobRegistry(
+        root_path="/openeo/dev/jobs"
+        # root_path="/openeo/jobs"
+    ) as zk_registry:
+        zk_registry.get_running_jobs(user_limit=10)
+
+        # zk_registry.prune_empty_users(
+        #     dry_run=True
+        #     # dry_run=False
+        # )

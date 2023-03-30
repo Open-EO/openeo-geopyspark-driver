@@ -1,0 +1,67 @@
+{
+  "description":"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc",
+  "driverShortName":"netCDF",
+  "driverLongName":"Network Common Data Format",
+  "files":[
+    "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+  ],
+  "size":[
+    512,
+    512
+  ],
+  "metadata":{
+    "":{
+      "NC_GLOBAL#Conventions":"CF-1.9",
+      "NC_GLOBAL#institution":"openEO platform"
+    },
+    "SUBDATASETS":{
+      "SUBDATASET_1_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B01",
+      "SUBDATASET_1_DESC":"[1x233x357] B01 (16-bit integer)",
+      "SUBDATASET_2_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B02",
+      "SUBDATASET_2_DESC":"[1x233x357] B02 (16-bit integer)",
+      "SUBDATASET_3_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B03",
+      "SUBDATASET_3_DESC":"[1x233x357] B03 (16-bit integer)",
+      "SUBDATASET_4_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B04",
+      "SUBDATASET_4_DESC":"[1x233x357] B04 (16-bit integer)",
+      "SUBDATASET_5_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B05",
+      "SUBDATASET_5_DESC":"[1x233x357] B05 (16-bit integer)",
+      "SUBDATASET_6_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B06",
+      "SUBDATASET_6_DESC":"[1x233x357] B06 (16-bit integer)",
+      "SUBDATASET_7_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B07",
+      "SUBDATASET_7_DESC":"[1x233x357] B07 (16-bit integer)",
+      "SUBDATASET_8_NAME":"NETCDF:\"SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc\":B08",
+      "SUBDATASET_8_DESC":"[1x233x357] B08 (16-bit integer)"
+    }
+  },
+  "cornerCoordinates":{
+    "upperLeft":[
+      0.0,
+      0.0
+    ],
+    "lowerLeft":[
+      0.0,
+      512.0
+    ],
+    "lowerRight":[
+      512.0,
+      512.0
+    ],
+    "upperRight":[
+      512.0,
+      0.0
+    ],
+    "center":[
+      256.0,
+      256.0
+    ]
+  },
+  "extent":{
+    "type":"Polygon",
+    "coordinates":[
+      [
+      ]
+    ]
+  },
+  "bands":[
+  ]
+}
