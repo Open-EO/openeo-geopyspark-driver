@@ -77,16 +77,12 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--skip-done",
-        dest="include_done",
-        default=True,
-        action="store_false",
+        action="store_true",
         help="Don't clean up `done` jobs",
     )
     parser.add_argument(
         "--skip-ongoing",
-        dest="include_ongoing",
-        default=True,
-        action="store_false",
+        action="store_true",
         help="Don't clean up `ongoing` jobs",
     )
     parser.add_argument(
@@ -122,8 +118,8 @@ def main():
         jvm=java_gateway.jvm,
         user_ids=user_ids,
         dry_run=args.dry_run,
-        include_ongoing=args.include_ongoing,
-        include_done=args.include_done,
+        include_ongoing=not args.skip_ongoing,
+        include_done=not args.skip_done,
         user_limit=args.jobs_per_user_limit,
     )
     remove_secondary_services_before(max_date)
