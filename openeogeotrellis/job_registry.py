@@ -174,7 +174,7 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
-    def get_running_jobs(self, user_limit: int = 1000) -> List[Dict]:
+    def get_running_jobs(self, user_limit: Optional[int] = 1000) -> List[Dict]:
         """Returns a list of jobs that are currently not finished (should still be tracked)."""
 
         jobs = []
@@ -188,7 +188,7 @@ class ZkJobRegistry:
                 stats["user_id"] += 1
                 job_ids = self._zk.get_children(self._ongoing(user_id))
 
-                if len(job_ids) > user_limit:
+                if user_limit and len(job_ids) > user_limit:
                     _log.warning(
                         f"Extreme number of jobs found for {user_id=}: {len(job_ids)} > {user_limit}. "
                         f"Taking random sample of {user_limit} items."
@@ -798,7 +798,10 @@ if __name__ == "__main__":
         root_path="/openeo/dev/jobs"
         # root_path="/openeo/jobs"
     ) as zk_registry:
-        zk_registry.get_running_jobs(user_limit=10)
+        zk_registry.get_running_jobs(
+            # user_limit=1000,
+            # user_limit=None,
+        )
 
         # zk_registry.prune_empty_users(
         #     dry_run=True
