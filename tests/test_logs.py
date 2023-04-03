@@ -127,8 +127,8 @@ def test_circuit_breaker_raises_openeoapiexception(mock_search):
         list(elasticsearch_logs("job-foo", create_time=None, offset=None))
 
     expected_message = (
-        "Temporary failure while retrieving logs: Search for logs interrupted "
-        + "because it used too memory. "
-        + "Please try again and report this error if it persists. (ref: no-request)"
+        "Temporary failure while retrieving logs: Elasticsearch has interrupted "
+        + "the search request because it used too memory. Please try again later"
+        + "and report this error if it persists. (ref: no-request)"
     )
     assert raise_context.value.message == expected_message

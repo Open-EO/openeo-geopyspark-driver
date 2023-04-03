@@ -38,7 +38,7 @@ def elasticsearch_logs(
         Search only after this offset.
         If used, then this offset expects a combination of the timestamp and log.offset
         encoded as a JSON string that contains a list of the form [timestamp, log_offset]
-        where timestamp is the Unix Epoch (int) and log_offset is an integer refering to
+        where timestamp is the Unix Epoch (int) and log_offset is an integer referring to
         log.offset in Elasticsearch.
 
         For example: "[1673351608383, 102790]"
@@ -92,7 +92,6 @@ def _elasticsearch_logs(
     """
 
     req_id = FlaskRequestCorrelationIdLogging.get_request_id()
-    # log_level = log_level.upper() if log_level else None
     log_level_int = normalize_log_level(log_level)
     level_filter = None
     if log_level_int:
@@ -159,9 +158,9 @@ def _elasticsearch_logs(
                 #   https://github.com/Open-EO/openeo-python-driver/issues/170
                 if exc.status_code == 429:
                     message = (
-                        "Temporary failure while retrieving logs: Search for logs interrupted "
-                        + "because it used too memory. "
-                        + f"Please try again and report this error if it persists. (ref: {req_id})"
+                        "Temporary failure while retrieving logs: Elasticsearch has interrupted "
+                        + "the search request because it used too memory. Please try again later"
+                        + f"and report this error if it persists. (ref: {req_id})"
                     )
                     raise OpenEOApiException(status_code=429, message=message) from exc
                 else:
