@@ -305,6 +305,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
 
         def file_probav_pyramid():
+            cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
+            cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
             factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
                 opensearch_endpoint,
                 layer_source_info.get('opensearch_collection_id'),
