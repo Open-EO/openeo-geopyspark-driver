@@ -151,8 +151,8 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 2
-    assert errors[0]['code'] == "LayerTooLarge"
-    assert errors[1]['code'] == "LayerTooLarge"
+    assert errors[0]['code'] == "ExtentTooLarge"
+    assert errors[1]['code'] == "ExtentTooLarge"
 
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
@@ -183,7 +183,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
-    assert errors[0]['code'] == "LayerTooLarge"
+    assert errors[0]['code'] == "ExtentTooLarge"
 
 
 def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
@@ -213,7 +213,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
-    assert errors[0]['code'] == "LayerTooLarge"
+    assert errors[0]['code'] == "ExtentTooLarge"
 
 
 def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
@@ -252,7 +252,7 @@ def test_extra_validation_layer_too_large_utm_zones(backend_implementation):
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
-    assert errors[0]['code'] == "LayerTooLarge"
+    assert errors[0]['code'] == "ExtentTooLarge"
 
 
 def test_extra_validation_layer_too_large_resample_spatial(backend_implementation):

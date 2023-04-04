@@ -30,12 +30,19 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
-from pystac import Collection
+import pystac
 from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate, str_truncate
+from openeo.util import (
+    dict_no_none,
+    rfc3339,
+    deep_get,
+    repr_truncate,
+    str_truncate,
+    TimingLogger,
+)
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -49,6 +56,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
@@ -564,34 +572,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
-        spatial_extent = load_params.spatial_extent
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        crs = spatial_extent.get("crs", None)
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
+        requested_bbox = BoundingBox.from_dict_or_none(
+            load_params.spatial_extent, default_crs="EPSG:4326"
+        )
+        logger.info(f"{requested_bbox=}")
 
         if job_id.startswith("http://") or job_id.startswith("https://"):
             job_results_canonical_url = job_id
-            job_results = Collection.from_file(href=job_results_canonical_url)
-
-            def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
-                from pyproj import Transformer
-                transform = Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
-                xmin, ymin = transform(xx=bbox[0], yy=bbox[1])
-                xmax, ymax = transform(xx=bbox[2], yy=bbox[3])
-                return [xmin, ymin, xmax, ymax]
+            job_results = pystac.Collection.from_file(href=job_results_canonical_url)
 
             def intersects_spatial_extent(item) -> bool:
-                if not spatial_bounds_present or item.bbox is None:
+                if not requested_bbox or item.bbox is None:
                     return True
 
-                spatial_extent_epsg4326 = reproject([west, south, east, north],
-                                                    crs_from=crs or "EPSG:4326",
-                                                    crs_to="EPSG:4326")
-
-                return Polygon.from_bounds(*spatial_extent_epsg4326).intersects(Polygon.from_bounds(*item.bbox))
+                requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
+                return requested_bbox_lonlat.as_polygon().intersects(
+                    Polygon.from_bounds(*item.bbox)
+                )
 
             uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
                                                               asset.extra_fields.get("eo:bands", []))
@@ -601,6 +598,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                   if asset.media_type == "image/tiff; application=geotiff"}
 
             timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
+            logger.info(f"{len(uris_with_metadata)=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in uris_with_metadata.values())
@@ -609,17 +607,22 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
-            def load_spatial_bounds_from_job_results():
-                overall_spatial_extent = job_results.extent.spatial.bboxes[0]
-                best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
-                return overall_spatial_extent, best_epsg
-
-            load_spatial_bounds = load_spatial_bounds_from_job_results
+            job_results_bbox = BoundingBox.from_wsen_tuple(
+                    job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
+                )
+            # TODO: this assumes that job result data is gridded in best UTM already?
+            job_results_epsg = job_results_bbox.best_utm()
+            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         else:
-            paths_with_metadata = {asset["href"]: (asset.get("datetime"), asset.get("bands", []))
-                                   for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
-                                   if asset["type"] == "image/tiff; application=geotiff"}
+            paths_with_metadata = {
+                asset["href"]: (asset.get("datetime"), asset.get("bands", []))
+                for _, asset in self.batch_jobs.get_result_assets(
+                    job_id=job_id, user_id=user_id
+                ).items()
+                if asset["type"] == "image/tiff; application=geotiff"
+            }
+            logger.info(f"{paths_with_metadata=}")
 
             if len(paths_with_metadata) == 0:
                 raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
@@ -631,6 +634,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     status_code=400)
 
             timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
+            logger.info(f"{timestamped_uris=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
@@ -639,16 +643,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
-            def load_spatial_bounds_from_job_info():
-                job_info = self.batch_jobs.get_job_info(job_id, user_id)
-                bbox = job_info.bbox
-                if not (isinstance(bbox, list) and len(bbox) == 4):
-                    raise InternalException(
-                        message=f"load_result with job {job_id} expects bbox list but got: {bbox!r}"
-                    )
-                return [bbox[0], bbox[1], bbox[2], bbox[3]], job_info.epsg
-
-            load_spatial_bounds = load_spatial_bounds_from_job_info
+            job_info = self.batch_jobs.get_job_info(job_id, user_id)
+            job_results_bbox = BoundingBox.from_wsen_tuple(
+                job_info.bbox, crs="EPSG:4326"
+            )
+            job_results_epsg = job_info.epsg
+            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -662,13 +662,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-        else:
-            band_indices = None
-
         jvm = get_jvm()
 
         pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
@@ -676,17 +669,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if single_level:
-            existing_bbox, existing_epsg = load_spatial_bounds()
+            target_bbox = requested_bbox or job_results_bbox
+            logger.info(f"{target_bbox=}")
 
-            if spatial_bounds_present:
-                extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-            else:
-                extent = jvm.geotrellis.vector.Extent(*[float(value) for value in existing_bbox])
-                crs = "EPSG:4326"
+            extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+            extent_crs = target_bbox.crs
 
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
-            projected_polygons = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
-                                  .reproject(projected_polygons, existing_epsg))
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+                extent, target_bbox.crs
+            )
+            projected_polygons = getattr(
+                getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
+            ).reproject(projected_polygons, job_results_epsg)
 
             metadata_properties = None
             correlation_id = None
@@ -696,13 +690,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
                                                    correlation_id, data_cube_parameters)
         else:
-            extent = (jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-                      if spatial_bounds_present else None)
+            if requested_bbox:
+                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
+                extent_crs = requested_bbox.crs
+            else:
+                extent = extent_crs = None
 
-            pyramid = pyramid_factory.pyramid_seq(extent, crs, from_date, to_date)
+            pyramid = pyramid_factory.pyramid_seq(
+                extent, extent_crs, from_date, to_date
+            )
 
-        metadata = metadata.filter_bbox(west=extent.xmin(), south=extent.ymin(), east=extent.xmax(),
-                                        north=extent.ymax(), crs=crs)
+        metadata = metadata.filter_bbox(
+            west=extent.xmin(),
+            south=extent.ymin(),
+            east=extent.xmax(),
+            north=extent.ymax(),
+            crs=extent_crs,
+        )
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
@@ -712,12 +716,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
-        image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
-            metadata=metadata
-        )
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
-        return image_collection.filter_bands(band_indices) if band_indices else image_collection
+        if load_params.bands:
+            cube = cube.filter_bands(load_params.bands)
+
+        return cube
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
@@ -850,7 +854,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 else:
                     summary = f"Exception during Spark execution: {java_exception_message}"
             else:
-                summary = java_exception_message
+                summary = java_exception_class_name + ": " + str(java_exception_message)
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
@@ -980,9 +984,10 @@ class GpsProcessing(ConcreteProcessing):
                 )
                 if too_large:
                     yield {
-                        "code": "LayerTooLarge",
-                        "message": f"Layer for collection {collection_id!r} is too large to process. "
-                                   f"Estimated number of pixels: {estimated_pixels}, threshold: {threshold_pixels}."
+                        "code": "ExtentTooLarge",
+                        "message": f"Requested extent for collection {collection_id!r} is too large to process. "
+                                   f"Estimated number of pixels: {estimated_pixels:.2e}, "
+                                   f"threshold: {threshold_pixels:.2e}."
                     }
 
 
@@ -2071,7 +2076,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return False
 
-    def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
+    def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
         Reads the metadata json file from the job directory
         and returns information about the output files.
@@ -2360,12 +2365,42 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
-    def delete_jobs_before(self, upper: datetime) -> None:
-        with self._double_job_registry as registry:
-            jobs_before = registry.get_all_jobs_before(upper)
+    def delete_jobs_before(
+        self,
+        upper: datetime,
+        *,
+        user_ids: Optional[List[str]] = None,
+        dry_run: bool = True,
+        include_ongoing: bool = True,
+        include_done: bool = True,
+        user_limit: Optional[int] = 1000,
+    ) -> None:
+        with self._double_job_registry as registry, TimingLogger(
+            title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
+            logger=logger,
+        ):
+            jobs_before = registry.get_all_jobs_before(
+                upper,
+                user_ids=user_ids,
+                include_ongoing=include_ongoing,
+                include_done=include_done,
+                user_limit=user_limit,
+            )
+        logger.info(f"Collected {len(jobs_before)} jobs to delete")
 
-        for job_info in jobs_before:
-            self._delete_job(job_id=job_info['job_id'], user_id=job_info['user_id'], propagate_errors=True)
+        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=logger):
+
+            for job_info in jobs_before:
+                job_id = job_info["job_id"]
+                user_id = job_info["user_id"]
+                if not dry_run:
+                    logger.info(f"Deleting {job_id=} from {user_id=}")
+                    self._delete_job(
+                        job_id=job_id, user_id=user_id, propagate_errors=True
+                    )
+                else:
+                    logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
+
 
 
 class _BatchJobError(Exception):

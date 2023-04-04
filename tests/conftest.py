@@ -212,5 +212,10 @@ def api100(client) -> ApiTester:
 
 
 @pytest.fixture
+def api110(client) -> ApiTester:
+    return ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
+
+
+@pytest.fixture
 def vault() -> Vault:
     return Vault("http://example.org")

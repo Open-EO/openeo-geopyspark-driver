@@ -5,25 +5,38 @@ import shutil
 import stat
 import sys
 from itertools import chain
-from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
+from urllib.parse import urlparse
+
+import pyproj
+from osgeo import gdal
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
-from typing import Dict, List, Optional, Set
-from urllib.parse import urlparse
 
+from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import ImageCollectionResult, JSONResult, SaveResult, NullResult, MlModelResult
+from openeo_driver.save_result import (
+    ImageCollectionResult,
+    JSONResult,
+    SaveResult,
+    NullResult,
+    MlModelResult,
+)
 from openeo_driver.users import User
-from openeo_driver.util.geometry import spatial_extent_union
-from openeo_driver.util.logging import BatchJobLoggingFilter, get_logging_config, setup_logging, \
-    LOGGING_CONTEXT_BATCH_JOB
+from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
+from openeo_driver.util.logging import (
+    BatchJobLoggingFilter,
+    get_logging_config,
+    setup_logging,
+    LOGGING_CONTEXT_BATCH_JOB,
+)
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, temporal_extent_union, generate_unique_id
 from openeogeotrellis._version import __version__
@@ -94,22 +107,21 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc
     ])
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
+    # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
+    # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
+    bbox_crs = None
+    bbox = None
+    geometry = None
+    area = None
     if(len(extents) > 0):
         spatial_extent = spatial_extent_union(*extents)
-        bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
-        if all(b is not None for b in bbox):
+        bbox_crs = spatial_extent["crs"]
+        temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        if all(b is not None for b in temp_bbox):
+            bbox = temp_bbox  # Only set bbox once we are sure we have all the info
             polygon = Polygon.from_bounds(*bbox)
             geometry = mapping(polygon)
-            area = area_in_square_meters(polygon, spatial_extent["crs"])
-        else:
-            bbox = None
-            geometry = None
-            area = None
-    else:
-        bbox = None
-        geometry = None
-        area = None
-
+            area = area_in_square_meters(polygon, bbox_crs)
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -119,23 +131,55 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             logger.warning("Multiple aggregate_spatial geometries: {c}".format(c=len(aggregate_spatial_geometries)))
         agg_geometry = aggregate_spatial_geometries[0]
         if isinstance(agg_geometry, BaseGeometry):
+            # We only allow EPSG:4326 for the BaseGeometry case to keep things simple
+            # and prevent complicated problems with CRS transformations.
+            # The aggregation geometry comes from Shapely, but Shapely itself does not
+            # support coordinate system transformations.
+            # See also: https://shapely.readthedocs.io/en/stable/manual.html#coordinate-systems
+            bbox_crs = "EPSG:4326"
             bbox = agg_geometry.bounds
             geometry = mapping(agg_geometry)
-            area = area_in_square_meters(agg_geometry, "EPSG:4326")
+            area = area_in_square_meters(agg_geometry, bbox_crs)
         elif isinstance(agg_geometry, DelayedVector):
             bbox = agg_geometry.bounds
+            bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
             geometry = mapping(Polygon.from_bounds(*bbox))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             bbox = agg_geometry.get_bounding_box()
+            bbox_crs = agg_geometry.get_crs()
             geometry = agg_geometry.get_bounding_box_geojson()
             area = agg_geometry.get_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
+        # The aggregation geometries return tuples for their bounding box.
+        # Keep the end result consistent and convert it to a list.
+        if isinstance(bbox, tuple):
+            bbox = list(bbox)
+
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
+
+    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
+    if bbox and bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
+        # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
+        # get a pyproy CRS object instead of an EPSG code. In that case it is OK to
+        # just do the reprojection, even if it is already EPSG:4326. That's just a no-op.
+        # In constrast, handling all possible variants of pyproj CRS objects that are actually
+        # all the exact same EPSG:4326 CRS, is complex and unnecessary.
+        latlon_spatial_extent = {
+            "west": bbox[0],
+            "south": bbox[1],
+            "east": bbox[2],
+            "north": bbox[3],
+            "crs": bbox_crs,
+        }
+        latlon_spatial_extent = reproject_bounding_box(
+            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
+        )
+        bbox = [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     # TODO: dedicated type?
     # TODO: match STAC format?
@@ -180,8 +224,8 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         instruments = []
 
     if not isinstance(result, NullResult):
-        if asset_metadata == None:
-            #old approach: need to construct metadata ourselves, from inspecting SaveResult
+        if asset_metadata is None:
+            # Old approach: need to construct metadata ourselves, from inspecting SaveResult
             metadata['assets'] = {
                 output_file.name: {
                     'bands': bands,
@@ -190,14 +234,63 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 }
             }
         else:
-            #new approach: SaveResult has generated metadata already for us
-            metadata['assets'] = asset_metadata
+            # New approach: SaveResult has generated metadata already for us
 
-    metadata['epsg'] = epsg
-    metadata['instruments'] = instruments
-    metadata['processing:facility'] = 'VITO - SPARK'#TODO make configurable
-    metadata['processing:software'] = 'openeo-geotrellis-' + __version__
-    metadata['unique_process_ids'] = list(unique_process_ids)
+            # Add the projection extension metadata.
+            # When the projection metadata is the same for all assets, then set it at
+            # the item level only. This makes it easier to read, so we see at a glance
+            # that all bands have the same proj metadata.
+            projection_metadata = {}
+
+            # We also check whether any asset file was missing or its projection
+            # metadata could not be read. In that case we never write the projection
+            # metadata at the item level.
+            is_projection_md_missing = False
+
+            for asset_path in asset_metadata.keys():
+                asset_proj_metadata = read_projection_extension_metadata(asset_path)
+                # If gdal could not extract the projection metadata from the file
+                # (The file is corrupt perhaps?).
+                if asset_proj_metadata:
+                    projection_metadata[asset_path] = asset_proj_metadata
+                else:
+                    is_projection_md_missing = True
+                    logger.warning(
+                        "Could not get projection extension metadata for following asset file: {asset_path}"
+                    )
+
+            epsgs = {m["proj:epsg"] for m in projection_metadata.values()}
+            same_epsg_all_assets = len(epsgs) == 1
+
+            bboxes = {tuple(m["proj:bbox"]) for m in projection_metadata.values()}
+            same_bbox_all_assets = len(bboxes) == 1
+
+            shapes = {tuple(m["proj:shape"]) for m in projection_metadata.values()}
+            same_shapes_all_assets = len(shapes) == 1
+
+            assets_have_same_proj_md = not is_projection_md_missing and all(
+                [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
+            )
+            if assets_have_same_proj_md:
+                # TODO: Should we overwrite existing values for epsg and bbox, or keep
+                #   what is already there?
+                if not epsg and not metadata.get("epsg"):
+                    epsg = epsgs.pop()
+                if not metadata.get("bbox"):
+                    metadata["bbox"] = list(bboxes.pop())
+                metadata["proj:shape"] = list(shapes.pop())
+            else:
+                # Each asset has its different projection metadata so set it per asset.
+                for asset_path, proj_md in projection_metadata.items():
+                    asset_metadata[asset_path].update(proj_md)
+
+            metadata["assets"] = asset_metadata
+
+    metadata["epsg"] = epsg
+    metadata["instruments"] = instruments
+    metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
+    metadata["processing:software"] = "openeo-geotrellis-" + __version__
+    metadata["unique_process_ids"] = list(unique_process_ids)
     metadata = {**metadata, **_get_tracker_metadata("")}
 
     if ml_model_metadata is not None:
@@ -210,8 +303,232 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
 
     logger.info("wrote metadata to %s" % metadata_file)
 
+
+GDALInfo = Dict[str, Any]
+"""Output from GDAL.Info.
+
+Type alias used as a helper type for the read projection metadata functions.
+"""
+
+
+ProjectionMetadata = Dict[str, Any]
+"""Projection metadata retrieved about the raster file, compatible with STAC.
+
+Type alias used as a helper type for the read projection metadata functions.
+"""
+
+
+def read_projection_extension_metadata(asset_path: str) -> Optional[ProjectionMetadata]:
+    """Get the projection metadata for the file in asset_path.
+
+    :param asset_path: path to the asset file to read.
+
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
+
+        This dictionary contains the following fields, as described in stac-extensions,
+        see: https://github.com/stac-extensions/projection
+
+        - "proj:epsg"  The EPSG code of the CRS.
+        - "proj:shape" The pixel size of the asset.
+        - "proj:bbox"  The bounding box expressed in the asset CRS.
+
+        When a field can not be found in the metadata that gdal.Info extracted,
+        we leave out that field.
+
+        Note that these dictionary keys in the return value *do* include the colon to be
+        in line with the names in stac-extensions.
+
+    TODO: upgrade GDAL to 3.6 and use the STAC dictionary that GDAL 3.6+ returns,
+        instead of extracting it from the other output of ``gdal.Info()``.
+
+    In a future version of the GeoPySpark driver we can upgrade to GDAL v3.6
+    and in that version the gdal.Info function include these properties directly
+    in the key "stac" of the dictionary it returns.
+    """
+    return parse_projection_extension_metadata(read_gdal_info(asset_path))
+
+
+def read_gdal_info(asset_uri: str) -> GDALInfo:
+    """Get the JSON output from gdal.Info for the file in asset_path
+
+    This is equivalent to running the CLI tool called `gdalinfo`.
+
+    :param asset_uri:
+        Path to the asset file or URI to a subdataset in the file.
+
+        If it is a netCDF file, we may get URIs of the format below, to access
+        the subdatasets. See also: https://gdal.org/drivers/raster/netcdf.html
+
+        NETCDF:"<regular path to netCDF file:>":<band name>
+
+        For example:
+        NETCDF:"/data/path/to/somefile.nc":B01
+
+    :return:
+        GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
+    """
+
+    # By default, gdal does not raise exceptions but returns error codes and prints
+    # error info on stdout. We don't want that. At the least it should go to the logs.
+    # See https://gdal.org/api/python_gotchas.html
+    gdal.UseExceptions()
+
+    try:
+        return gdal.Info(asset_uri, options=gdal.InfoOptions(format="json"))
+    except Exception as exc:
+        # TODO: Specific exception type(s) would be better but Wasn't able to find what
+        #   specific exceptions gdal.Info might raise.
+        logger.warning(
+            "Could not get projection extension metadata, "
+            + f"gdal.Info failed for following asset: {asset_uri}. "
+            + "Either file does not exist or else it is probably not a raster."
+            + f"Exception from GDAL: {exc}"
+        )
+        return {}
+
+
+def parse_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
+    """Parse the JSON output from gdal.Info.
+
+    :param gdal_info: Dictionary that contains the output from `gdal.Info()`.
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
+    """
+
+    # If there are subdatasets then the final answer comes from the subdatasets.
+    # Otherwise, we get it from the file directly.
+    proj_info = _process_gdalinfo_for_netcdf_subdatasets(gdal_info)
+    if proj_info:
+        return proj_info
+    else:
+        return _get_projection_extension_metadata(gdal_info)
+
+
+def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
+    """Helper function that parses gdal.Info output without processing subdatasets.
+
+    :param gdal_info: Dictionary that contains the output from gdal.Info.
+
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
+
+        This dictionary contains the following fields, as described in stac-extensions,
+        see: https://github.com/stac-extensions/projection
+
+        - "proj:epsg"  The EPSG code of the CRS, if available.
+        - "proj:shape" The pixel size of the asset, if available.
+        - "proj:bbox"  The bounding box expressed in the asset CRS, if available.
+
+        When a field can not be found in the metadata that gdal.Info extracted,
+        we leave out that field.
+
+        Note that these dictionary keys in the return value *do* include the colon to be
+        in line with the names in stac-extensions.
+    """
+    proj_metadata = {}
+
+    # Size of the pixels
+    if shape := gdal_info.get("size"):
+        proj_metadata["proj:shape"] = shape
+
+    # Extract the EPSG code from the WKT string
+    crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
+    if crs_as_wkt:
+        crs_id = pyproj.CRS.from_wkt(crs_as_wkt).to_epsg()
+        if crs_id:
+            proj_metadata["proj:epsg"] = crs_id
+
+    # convert cornerCoordinates to proj:bbox format specified in
+    # https://github.com/stac-extensions/projection
+    # TODO: do we need to also handle 3D bboxes, i.e. the elevation bounds, if present?
+    if "cornerCoordinates" in gdal_info:
+        corner_coords: dict = gdal_info["cornerCoordinates"]
+        # TODO: check if this way to combine the corners also handles 3D bounding boxes correctly.
+        #   Need a correct example to test with.
+        lole = corner_coords["lowerLeft"]
+        upri = corner_coords["upperRight"]
+        proj_metadata["proj:bbox"] = [*lole, *upri]
+
+    return proj_metadata
+
+
+def _process_gdalinfo_for_netcdf_subdatasets(
+    gdal_info: GDALInfo,
+) -> ProjectionMetadata:
+    """Read and process the gdal.Info for each subdataset, if subdatasets are present.
+
+    This function only supports subdatasets in netCDF files.
+    For other formats that may have subdatasets, such as HDF5, the subdatasets
+    will not be processed.
+
+    :param gdal_info: Dictionary that contains the output from gdal.Info.
+
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections, the same type and information as what
+        `_get_projection_extension_metadata` returns.
+
+        Specifically:
+        - "proj:epsg"  The EPSG code of the CRS.
+        - "proj:shape" The pixel size of the asset.
+        - "proj:bbox"  The bounding box expressed in the asset CRS.
+
+        At present, when it is a netCDF file that does have subdatasets
+        (bands, basically), then we only return the aforementioned fields from
+        the subdatasets when all the subdatasets have the same value for that
+        field. If the metadata differs between bands, then the field is left out.
+
+        Storing the info of each individual band would be possible in the STAC
+        standard, but we have not implemented at the moment in this function.
+    """
+
+    # TODO: might be better to separate out this check whether we need to process it.
+    #   That would give cleaner logic, and no need to return None here.
+
+    # NetCDF files list their bands under SUBDATASETS and more info can be
+    # retrieved with a second gdal.Info() query.
+    # This function only supports subdatasets in netCDF.
+    # For other formats that have subdatasets, such as HDF5, the subdatasets
+    # will not be processed.
+    if gdal_info.get("driverShortName") != "netCDF":
+        return {}
+    if "SUBDATASETS" not in gdal_info.get("metadata", {}):
+        return {}
+
+    sub_datasets = {}
+    for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
+        if key.endswith("_NAME"):
+            sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
+            sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
+            sub_datasets[sub_ds_uri] = sub_ds_md
+
+    proj_info = {}
+    shapes = {
+        tuple(md["proj:shape"]) for md in sub_datasets.values() if "proj:shape" in md
+    }
+    if len(shapes) == 1:
+        proj_info["proj:shape"] = list(shapes.pop())
+
+    bboxes = {
+        tuple(md["proj:bbox"]) for md in sub_datasets.values() if "proj:bbox" in md
+    }
+    if len(bboxes) == 1:
+        proj_info["proj:bbox"] = list(bboxes.pop())
+
+    epsg_codes = {md["proj:epsg"] for md in sub_datasets.values() if "proj:epsg" in md}
+    if len(epsg_codes) == 1:
+        proj_info["proj:epsg"] = epsg_codes.pop()
+
+    return proj_info
+
+
 def _get_tracker(tracker_id=""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
+
 
 def _get_tracker_metadata(tracker_id="") -> dict:
     tracker = _get_tracker(tracker_id)
@@ -291,72 +608,66 @@ def main(argv: List[str]) -> None:
     logger.info("Using temp dir {t}".format(t=temp_dir))
     os.environ["TMPDIR"] = str(temp_dir)
 
-    try:
-        if ConfigParams().is_kube_deploy:
-            from openeogeotrellis.utils import s3_client
+    if ConfigParams().is_kube_deploy:
+        from openeogeotrellis.utils import s3_client
 
-            bucket = os.environ.get('SWIFT_BUCKET')
-            s3_instance = s3_client()
+        bucket = os.environ.get('SWIFT_BUCKET')
+        s3_instance = s3_client()
 
-            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+        s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
 
 
-        job_specification = _parse(job_specification_file)
-        load_custom_processes()
+    job_specification = _parse(job_specification_file)
+    load_custom_processes()
 
-        conf = (SparkConf()
-                .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
-                .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
+    conf = (SparkConf()
+            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .set(key='spark.kryo.registrator', value='geopyspark.geotools.kryo.ExpandedKryoRegistrator')
+            .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
-        with SparkContext(conf=conf) as sc:
-            _setup_java_logging(sc, user_id)
+    with SparkContext(conf=conf) as sc:
+        _setup_java_logging(sc, user_id)
 
-            principal = sc.getConf().get("spark.yarn.principal")
-            key_tab = sc.getConf().get("spark.yarn.keytab")
+        principal = sc.getConf().get("spark.yarn.principal")
+        key_tab = sc.getConf().get("spark.yarn.keytab")
 
-            default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
-            vault_token = _get_vault_token(sc.getConf())
+        default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
+        vault_token = _get_vault_token(sc.getConf())
 
-            kerberos(principal, key_tab)
+        kerberos(principal, key_tab)
 
-            def run_driver():
-                run_job(
-                    job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
-                    api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio,
-                    default_sentinel_hub_credentials=default_sentinel_hub_credentials,
-                    sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
-                )
+        def run_driver():
+            run_job(
+                job_specification=job_specification, output_file=output_file, metadata_file=metadata_file,
+                api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
+                max_soft_errors_ratio=max_soft_errors_ratio,
+                default_sentinel_hub_credentials=default_sentinel_hub_credentials,
+                sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
+            )
 
-            if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
-                # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
-                driver_profile = BasicProfiler(sc)
-                driver_profile.profile(run_driver)
-                # running the driver code and adding driver's profiling results as "RDD==-1"
-                sc.profiler_collector.add_profiler(-1, driver_profile)
-                # collect profiles into a zip file
-                profile_dumps_dir = job_dir / 'profile_dumps'
-                sc.dump_profiles(profile_dumps_dir)
+        if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
+            # Including the driver in the profiling: a bit hacky solution but spark profiler api does not allow passing args&kwargs
+            driver_profile = BasicProfiler(sc)
+            driver_profile.profile(run_driver)
+            # running the driver code and adding driver's profiling results as "RDD==-1"
+            sc.profiler_collector.add_profiler(-1, driver_profile)
+            # collect profiles into a zip file
+            profile_dumps_dir = job_dir / 'profile_dumps'
+            sc.dump_profiles(profile_dumps_dir)
 
-                profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
-                                                  root_dir=profile_dumps_dir)
-                add_permissions(Path(profile_zip), stat.S_IWGRP)
+            profile_zip = shutil.make_archive(base_name=str(profile_dumps_dir), format='gztar',
+                                              root_dir=profile_dumps_dir)
+            add_permissions(Path(profile_zip), stat.S_IWGRP)
 
-                shutil.rmtree(profile_dumps_dir,
-                              onerror=lambda func, path, exc_info:
-                              logger.warning(f"could not recursively delete {profile_dumps_dir}: {func} {path} failed",
-                                             exc_info=exc_info))
+            shutil.rmtree(profile_dumps_dir,
+                          onerror=lambda func, path, exc_info:
+                          logger.warning(f"could not recursively delete {profile_dumps_dir}: {func} {path} failed",
+                                         exc_info=exc_info))
 
-                logger.info("Saved profiling info to: " + profile_zip)
-            else:
-                run_driver()
+            logger.info("Saved profiling info to: " + profile_zip)
+        else:
+            run_driver()
 
-    except Exception as e:
-        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
-
-        raise
 
 
 @log_memory
@@ -557,7 +868,14 @@ if __name__ == '__main__':
     setup_logging(get_logging_config(
         root_handlers=["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
         context=LOGGING_CONTEXT_BATCH_JOB,
-        root_level=OPENEO_LOGGING_THRESHOLD))
+        root_level=OPENEO_LOGGING_THRESHOLD),
+        capture_unhandled_exceptions=False,  # not needed anymore, as we have a try catch around everything
+    )
 
-    with TimingLogger("batch_job.py main", logger=logger):
-        main(sys.argv)
+    try:
+        with TimingLogger("batch_job.py main", logger=logger):
+            main(sys.argv)
+    except Exception as e:
+        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
+        raise

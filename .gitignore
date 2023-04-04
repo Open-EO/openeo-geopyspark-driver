@@ -112,3 +112,6 @@ tmp*
 jars/
 /.project
 /.pydevproject
+
+# pytest basetemp root (e.g. for tmp_path fixture).
+pytest-tmp
