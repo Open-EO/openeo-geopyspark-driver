@@ -39,19 +39,20 @@ setup(
             "CHANGELOG.md",
             # TODO: make these config files real "package_data" so that they can be managed/found more easily in different contexts
             "scripts/submit_batch_job_log4j.properties",
-            "scripts/batch_job_log4j.properties",
+            "scripts/submit_batch_job_log4j2.xml",
+            "scripts/batch_job_log4j2.xml",
             "scripts/cleaner-entrypoint.sh",
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
-            "scripts/async_task_log4j.properties"
+            "scripts/async_task_log4j2.xml"
         ]),
     ],
     setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.15.0",
-        "openeo_driver>=0.37.1.dev",
-        'pyspark==3.2.2; python_version>="3.8"',
+        "openeo_driver>=0.39.1.dev",
+        'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark

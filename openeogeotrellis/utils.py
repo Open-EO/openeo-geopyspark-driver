@@ -17,7 +17,8 @@ import tempfile
 from epsel import on_first_time
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union
+from shapely.geometry.base import BaseGeometry
+from typing import Callable, Optional, Tuple, Union, Iterable
 
 import pytz
 import dateutil.parser
@@ -510,6 +511,22 @@ def json_write(
     with path.open(mode="w", encoding="utf-8") as f:
         json.dump(data, f, indent=indent)
     return path
+
+
+def calculate_rough_area(geoms: Iterable[BaseGeometry]):
+    """
+    For every geometry, roughly estimate its area using its bounding box and return their sum.
+
+    @param geoms: the geometries to estimate the area for
+    @return: the sum of the estimated areas
+    """
+    total_area = 0
+    for geom in geoms:
+        if hasattr(geom, "geoms"):
+            total_area += calculate_rough_area(geom.geoms)
+        else:
+            total_area += (geom.bounds[2] - geom.bounds[0]) * (geom.bounds[3] - geom.bounds[1])
+    return total_area
 
 
 class StatsReporter:

@@ -97,11 +97,11 @@ def test_load_file_oscars(jvm_mock, catalog):
     env = EvalEnv()
     env = env.push({"pyramid_levels": "single"})
     collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
-    assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
-    assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
+    assert(collection.metadata.spatial_dimensions[0].step == 0.0002777777777777778)
+    assert(collection.metadata.spatial_dimensions[1].step == 0.0002777777777777778)
     cellsize_call_mock = jvm_mock.geotrellis.raster.CellSize
 
-    cellsize_call_mock.assert_called_once_with(0.002777777777777778, 0.002777777777777778)
+    cellsize_call_mock.assert_called_once_with(0.0002777777777777778, 0.0002777777777777778)
 
 
 def test_load_file_oscars_resample(jvm_mock, catalog):
@@ -126,8 +126,8 @@ def test_load_file_oscars_resample(jvm_mock, catalog):
 
 
     collection = catalog.load_collection('COPERNICUS_30', load_params=load_params, env=env)
-    assert(collection.metadata.spatial_dimensions[0].step == 0.002777777777777778)
-    assert(collection.metadata.spatial_dimensions[1].step == 0.002777777777777778)
+    assert(collection.metadata.spatial_dimensions[0].step == 0.0002777777777777778)
+    assert(collection.metadata.spatial_dimensions[1].step == 0.0002777777777777778)
 
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
     cellsize_call_mock.assert_called_with(15,15)
