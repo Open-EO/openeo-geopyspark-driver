@@ -23,7 +23,6 @@ export PYARROW_IGNORE_TIMEZONE=1
 /opt/venv/bin/python -m openeogeotrellis.job_tracker --keytab "$keytab"
 
 /opt/venv/bin/python -m openeogeotrellis.job_tracker_v2 \
-  --fail-fast \
   --app-cluster yarn \
   --zk-job-registry-root-path=$batch_jobs_zookeeper_root_path \
   --keytab "$keytab"
