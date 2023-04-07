@@ -9,6 +9,7 @@ import collections
 import datetime as dt
 import logging
 from decimal import Decimal
+from os import environ
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
@@ -41,6 +42,7 @@ from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCost
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.job_tracker import get_etl_api_access_token
 from openeogeotrellis.utils import StatsReporter
+from openeogeotrellis.vault import Vault
 
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
@@ -548,7 +550,6 @@ class CliApp:
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
-                etl_api_access_token = get_etl_api_access_token(args.principal, args.keytab, requests_session)
                 etl_api = EtlApi(ConfigParams().etl_api, requests_session)
 
                 # Elastic Job Registry (EJR)
@@ -566,9 +567,18 @@ class CliApp:
                             mutual_authentication=requests_gssapi.REQUIRED
                         ),
                     )
+                    vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
+                    vault_token = vault.login_kerberos(args.principal, args.keytab)
+                    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+                    etl_api_access_token = get_etl_api_access_token(etl_api_credentials.client_id,
+                                                                    etl_api_credentials.client_secret, requests_session)
                     job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter()
+                    etl_api_client_id = environ["OPENEO_ETL_OIDC_CLIENT_ID"]
+                    etl_api_client_secret = environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
+                    etl_api_access_token = get_etl_api_access_token(etl_api_client_id, etl_api_client_secret,
+                                                                    requests_session)
                     job_costs_calculator = K8sJobCostsCalculator(etl_api, etl_api_access_token)
                 else:
                     raise ValueError(app_cluster)
