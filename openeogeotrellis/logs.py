@@ -24,7 +24,7 @@ def elasticsearch_logs(
     job_id: str,
     create_time: Optional[dt.datetime] = None,
     offset: Optional[str] = None,
-    log_level: Optional[str] = None,
+    level: Optional[str] = None,
 ) -> Iterable[dict]:
     """Retrieve a job's logs from Elasticsearch.
 
@@ -43,7 +43,7 @@ def elasticsearch_logs(
 
         For example: "[1673351608383, 102790]"
 
-    :param log_level:
+    :param level:
         Return only logs with this log level or higher.
 
     :raises OpenEOApiException:
@@ -54,7 +54,12 @@ def elasticsearch_logs(
     """
     try:
         search_after = None if offset in [None, ""] else json.loads(offset)
-        return _elasticsearch_logs(job_id, create_time, search_after, log_level)
+        return _elasticsearch_logs(
+            job_id=job_id,
+            create_time=create_time,
+            search_after=search_after,
+            level=level,
+        )
     except json.decoder.JSONDecodeError:
         raise OpenEOApiException(status_code=400, code="OffsetInvalid",
                                  message=f"The value passed for the query parameter 'offset' is invalid: {offset}")
@@ -64,7 +69,7 @@ def _elasticsearch_logs(
     job_id: str,
     create_time: Optional[dt.datetime] = None,
     search_after: Optional[list] = None,
-    log_level: Optional[str] = None,
+    level: Optional[str] = None,
 ) -> Iterable[dict]:
     """Internal helper function to retrieve a job's logs from Elasticsearch.
 
@@ -81,7 +86,7 @@ def _elasticsearch_logs(
 
         For example: [1673351608383, 102790]
 
-    :param log_level:
+    :param level:
         Return only logs with this log level or higher.
 
     :raises OpenEOApiException:
@@ -92,7 +97,7 @@ def _elasticsearch_logs(
     """
 
     req_id = FlaskRequestCorrelationIdLogging.get_request_id()
-    log_level_int = normalize_log_level(log_level)
+    log_level_int = normalize_log_level(level)
     level_filter = None
     if log_level_int:
         levels_to_include = {
@@ -125,8 +130,6 @@ def _elasticsearch_logs(
         )
     if level_filter:
         query["bool"]["filter"].append(level_filter)
-        print(f"{level_filter=}")
-        print(f"{query=}")
 
     with Elasticsearch(ES_HOSTS) as es:
         while True:
