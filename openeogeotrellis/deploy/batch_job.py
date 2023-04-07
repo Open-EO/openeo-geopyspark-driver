@@ -6,7 +6,7 @@ import stat
 import sys
 from itertools import chain
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
 
 import pyproj
@@ -248,7 +248,10 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             is_projection_md_missing = False
 
             for asset_path in asset_metadata.keys():
-                asset_proj_metadata = read_projection_extension_metadata(asset_path)
+                # Won't assume the asset path is relative to the current working directory.
+                # It should be relative to the job directory.
+                abs_asset_path = get_abs_path_of_asset(asset_path, output_file.parent)
+                asset_proj_metadata = read_projection_extension_metadata(abs_asset_path)
                 # If gdal could not extract the projection metadata from the file
                 # (The file is corrupt perhaps?).
                 if asset_proj_metadata:
@@ -259,13 +262,25 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                         "Could not get projection extension metadata for following asset file: {asset_path}"
                     )
 
-            epsgs = {m["proj:epsg"] for m in projection_metadata.values()}
+            epsgs = {
+                m.get("proj:epsg")
+                for m in projection_metadata.values()
+                if "proj:epsg" in m
+            }
             same_epsg_all_assets = len(epsgs) == 1
 
-            bboxes = {tuple(m["proj:bbox"]) for m in projection_metadata.values()}
+            bboxes = {
+                tuple(m.get("proj:bbox"))
+                for m in projection_metadata.values()
+                if "proj:bbox" in m
+            }
             same_bbox_all_assets = len(bboxes) == 1
 
-            shapes = {tuple(m["proj:shape"]) for m in projection_metadata.values()}
+            shapes = {
+                tuple(m.get("proj:shape"))
+                for m in projection_metadata.values()
+                if "proj:shape" in m
+            }
             same_shapes_all_assets = len(shapes) == 1
 
             assets_have_same_proj_md = not is_projection_md_missing and all(
@@ -304,6 +319,33 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     logger.info("wrote metadata to %s" % metadata_file)
 
 
+def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Path:
+    """Get a correct absolute path for the asset file.
+
+    A simple `Path(mypath).resolve()` is not enough, because that is based on
+    the current working directory and that is not guaranteed to be the
+    job directory.
+
+    Further, the job directory itself can also be a relative path, so we must
+    also resolve job_dir as well.
+
+    :param asset_filename:
+        The filename or partial path to an asset file. This is the dictionary
+        key for the asset name in the job's metadata
+
+    :param job_dir:
+        Path to the job directory.
+        Can be either an absolute or a relative path.
+        May come from user input on the command line, so it could be relative.
+
+    :return: the absolute path to the asset file, inside job_dir.
+    """
+    abs_asset_path = Path(asset_filename)
+    if not abs_asset_path.is_absolute():
+        abs_asset_path = Path(job_dir).resolve() / asset_filename
+    return abs_asset_path
+
+
 GDALInfo = Dict[str, Any]
 """Output from GDAL.Info.
 
@@ -318,7 +360,9 @@ Type alias used as a helper type for the read projection metadata functions.
 """
 
 
-def read_projection_extension_metadata(asset_path: str) -> Optional[ProjectionMetadata]:
+def read_projection_extension_metadata(
+    asset_path: Union[str, Path]
+) -> Optional[ProjectionMetadata]:
     """Get the projection metadata for the file in asset_path.
 
     :param asset_path: path to the asset file to read.
@@ -347,7 +391,7 @@ def read_projection_extension_metadata(asset_path: str) -> Optional[ProjectionMe
     and in that version the gdal.Info function include these properties directly
     in the key "stac" of the dictionary it returns.
     """
-    return parse_projection_extension_metadata(read_gdal_info(asset_path))
+    return parse_projection_extension_metadata(read_gdal_info(str(asset_path)))
 
 
 def read_gdal_info(asset_uri: str) -> GDALInfo:
@@ -669,11 +713,26 @@ def main(argv: List[str]) -> None:
             run_driver()
 
 
-
 @log_memory
-def run_job(job_specification, output_file: Path, metadata_file: Path, api_version, job_dir, dependencies: List[dict],
-            user_id: str = None, max_soft_errors_ratio: float = 0.0, default_sentinel_hub_credentials=None,
-            sentinel_hub_client_alias='default', vault_token: str = None):
+def run_job(
+    job_specification,
+    output_file: Union[str, Path],
+    metadata_file: Union[str, Path],
+    api_version: str,
+    job_dir: Union[str, Path],
+    dependencies: List[dict],
+    user_id: str = None,
+    max_soft_errors_ratio: float = 0.0,
+    default_sentinel_hub_credentials=None,
+    sentinel_hub_client_alias="default",
+    vault_token: str = None,
+):
+    # We actually expect type Path, but in reality paths as strings tend to
+    # slip in anyway, so we better catch them and convert them.
+    output_file = Path(output_file)
+    metadata_file = Path(metadata_file)
+    job_dir = Path(job_dir)
+
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
