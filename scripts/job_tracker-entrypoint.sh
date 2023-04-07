@@ -20,8 +20,6 @@ export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
 export ASYNC_TASK_HANDLER_ENV=$async_task_handler_env
 export PYARROW_IGNORE_TIMEZONE=1
 
-/opt/venv/bin/python -m openeogeotrellis.job_tracker --keytab "$keytab"
-
 /opt/venv/bin/python -m openeogeotrellis.job_tracker_v2 \
   --app-cluster yarn \
   --zk-job-registry-root-path=$batch_jobs_zookeeper_root_path \

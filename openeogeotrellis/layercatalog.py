@@ -141,6 +141,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
         is_utm = layer_source_info.get("is_utm", False)
+        catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -290,7 +291,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 root_path,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", [], ""
+                    opensearch_endpoint, is_utm, "", [], catalog_type
                 )
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
@@ -527,9 +528,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             data_glob = layer_source_info['data_glob']
             band_names = metadata.band_names
-
+            client_type = catalog_type if catalog_type != "" else "globspatialonly"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, None, band_names, "globspatialonly"
+                data_glob, False, None, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -549,8 +550,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
 
+            client_type = catalog_type if catalog_type != "" else "cgls"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, "cgls"
+                data_glob, False, date_regex, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -566,8 +568,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
+            client_type = catalog_type if catalog_type != "" else "agera5"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, "agera5"
+                data_glob, False, date_regex, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
