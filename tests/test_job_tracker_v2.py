@@ -866,7 +866,7 @@ class TestYarnJobTracker:
 
         diagnostics_log_records = [record for record in caplog.records if yarn_app.diagnostics in record.msg]
         assert len(diagnostics_log_records) > 0
-        assert all(r.levelname == "ERROR" and r.job_id == "john123" and r.user_id == "john"
+        assert all(r.levelname == "ERROR" and r.job_id == "job-123" and r.user_id == "john"
                    for r in diagnostics_log_records)
 
     def test_yarn_zookeeper_stats(
