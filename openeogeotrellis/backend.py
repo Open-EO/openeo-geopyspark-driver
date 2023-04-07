@@ -35,7 +35,14 @@ from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get, repr_truncate, str_truncate
+from openeo.util import (
+    dict_no_none,
+    rfc3339,
+    deep_get,
+    repr_truncate,
+    str_truncate,
+    TimingLogger,
+)
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -2367,22 +2374,39 @@ class GpsBatchJobs(backend.BatchJobs):
     def delete_jobs_before(
         self,
         upper: datetime,
+        *,
         user_ids: Optional[List[str]] = None,
         dry_run: bool = True,
+        include_ongoing: bool = True,
+        include_done: bool = True,
+        user_limit: Optional[int] = 1000,
     ) -> None:
-        with self._double_job_registry as registry:
-            jobs_before = registry.get_all_jobs_before(upper, user_ids=user_ids)
+        with self._double_job_registry as registry, TimingLogger(
+            title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
+            logger=logger,
+        ):
+            jobs_before = registry.get_all_jobs_before(
+                upper,
+                user_ids=user_ids,
+                include_ongoing=include_ongoing,
+                include_done=include_done,
+                user_limit=user_limit,
+            )
+        logger.info(f"Collected {len(jobs_before)} jobs to delete")
 
-        logger.info(f"Collected {len(jobs_before)} to delete")
+        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=logger):
 
-        for job_info in jobs_before:
-            job_id = job_info["job_id"]
-            user_id = job_info["user_id"]
-            if not dry_run:
-                logger.info(f"Deleting {job_id=} from {user_id=}")
-                self._delete_job(job_id=job_id, user_id=user_id, propagate_errors=True)
-            else:
-                logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
+            for job_info in jobs_before:
+                job_id = job_info["job_id"]
+                user_id = job_info["user_id"]
+                if not dry_run:
+                    logger.info(f"Deleting {job_id=} from {user_id=}")
+                    self._delete_job(
+                        job_id=job_id, user_id=user_id, propagate_errors=True
+                    )
+                else:
+                    logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
+
 
 
 class _BatchJobError(Exception):

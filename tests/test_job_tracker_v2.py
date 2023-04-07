@@ -20,8 +20,10 @@ from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
+from openeogeotrellis.job_costs_calculator import CostsDetails
 from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
+    JobCostsCalculator,
     JobTracker,
     K8sStatusGetter,
     YarnAppReportParseException,
@@ -371,6 +373,13 @@ def elastic_job_registry() -> InMemoryJobRegistry:
     return InMemoryJobRegistry()
 
 
+@pytest.fixture
+def job_costs_calculator() -> JobCostsCalculator:
+    calculator_mock = mock.Mock(JobCostsCalculator)
+    calculator_mock.calculate_costs.return_value = 129.95
+    return calculator_mock
+
+
 DUMMY_PG_1 = {
     "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}
 }
@@ -387,7 +396,7 @@ def _extract_update_statuses_stats(caplog) -> List[dict]:
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
-        self, zk_job_registry, elastic_job_registry, batch_job_output_root
+        self, zk_job_registry, elastic_job_registry, batch_job_output_root, job_costs_calculator
     ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
@@ -396,6 +405,7 @@ class TestYarnJobTracker:
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
+            job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
         )
@@ -409,6 +419,7 @@ class TestYarnJobTracker:
         elastic_job_registry,
         caplog,
         time_machine,
+        job_costs_calculator,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -530,7 +541,12 @@ class TestYarnJobTracker:
             {
                 "status": "finished",
                 "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
+                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?,
+                "usage": {
+                    "cpu": {"unit": "cpu-seconds", "value": 32},
+                    "memory": {"unit": "mb-seconds", "value": 1234},
+                },
+                "costs": 129.95
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
@@ -541,6 +557,26 @@ class TestYarnJobTracker:
                 "started": "2022-12-14T12:03:30Z",
                 "finished": "2022-12-14T12:04:40Z",
             }
+        )
+
+        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+        assert len(calculate_costs_calls) == 1
+        costs_details: CostsDetails
+        (costs_details,), _ = calculate_costs_calls[0]
+
+        assert costs_details == CostsDetails(
+            job_id=job_id,
+            user_id=user_id,
+            execution_id=yarn_app.app_id,
+            app_state='FINISHED',
+            area_square_meters=None,
+            job_title=None,
+            start_time=dt.datetime(2022, 12, 14, 12, 3, 30),
+            finish_time=dt.datetime(2022, 12, 14, 12, 4, 40),
+            cpu_seconds=32,
+            mb_seconds=1234,
+            sentinelhub_processing_units=0.0,
+            unique_process_ids=[]
         )
 
         assert caplog.record_tuples == []
@@ -828,6 +864,11 @@ class TestYarnJobTracker:
         # When yarn could not launch the application, then we want to see the diagnostics in the logs.
         assert yarn_app.diagnostics in caplog.text
 
+        diagnostics_log_records = [record for record in caplog.records if yarn_app.diagnostics in record.msg]
+        assert len(diagnostics_log_records) > 0
+        assert all(r.levelname == "ERROR" and r.job_id == "job-123" and r.user_id == "john"
+                   for r in diagnostics_log_records)
+
     def test_yarn_zookeeper_stats(
         self,
         zk_job_registry,
@@ -895,14 +936,12 @@ class TestYarnStatusGetter:
             vcore_seconds=2265,
         )
 
-        job_metadata = YarnStatusGetter.parse_application_response(data=response)
+        job_metadata = YarnStatusGetter.parse_application_response(data=response, job_id="j-abc123", user_id="johndoe")
         assert job_metadata.status == "finished"
-        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
-        assert job_metadata.finish_time == "2023-01-06T16:19:03Z"
-        assert job_metadata.usage == {
-            "cpu": {"unit": "cpu-seconds", "value": 2265},
-            "memory": {"unit": "mb-seconds", "value": 5116996},
-        }
+        assert job_metadata.start_time == dt.datetime(2023, 1, 6, 16, 14, 32, 793000)
+        assert job_metadata.finish_time == dt.datetime(2023, 1, 6, 16, 19, 3, 245000)
+        assert job_metadata.usage.cpu_seconds == 2265
+        assert job_metadata.usage.mb_seconds == 5116996
 
     def test_parse_application_response_running(self):
         response = fake_yarn_rest_response_json(
@@ -917,18 +956,16 @@ class TestYarnStatusGetter:
             diagnostics="",
         )
 
-        job_metadata = YarnStatusGetter.parse_application_response(data=response)
+        job_metadata = YarnStatusGetter.parse_application_response(data=response, job_id="j-abc123", user_id="johndoe")
         assert job_metadata.status == "running"
-        assert job_metadata.start_time == "2023-01-06T16:14:32Z"
+        assert job_metadata.start_time == dt.datetime(2023, 1, 6, 16, 14, 32, 793000)
         assert job_metadata.finish_time is None
-        assert job_metadata.usage == {
-            "cpu": {"unit": "cpu-seconds", "value": 46964},
-            "memory": {"unit": "mb-seconds", "value": 96183879},
-        }
+        assert job_metadata.usage.cpu_seconds == 46964
+        assert job_metadata.usage.mb_seconds == 96183879
 
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
-            YarnStatusGetter.parse_application_response(data={})
+            YarnStatusGetter.parse_application_response(data={}, job_id="j-abc123", user_id="johndoe")
 
     def test_response_is_not_valid_json(self, requests_mock):
         status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
@@ -976,6 +1013,7 @@ class TestK8sJobTracker:
         batch_job_output_root,
         k8s_mock,
         kubecost_url,
+        job_costs_calculator
     ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
@@ -984,6 +1022,7 @@ class TestK8sJobTracker:
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
+            job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
         )
@@ -997,6 +1036,7 @@ class TestK8sJobTracker:
         caplog,
         time_machine,
         k8s_mock,
+        job_costs_calculator,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -1099,9 +1139,10 @@ class TestK8sJobTracker:
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
                 "usage": {
-                    "cpu": {"unit": "cpu-hours", "value": 2.34},
-                    "memory": {"unit": "mb-hours", "value": 5.678},
+                    "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
+                    "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                 },
+                "costs": 129.95
             }
         )
         assert elastic_job_registry.db[job_id] == DictSubSet(
@@ -1113,6 +1154,26 @@ class TestK8sJobTracker:
                 "finished": "2022-12-14T12:03:30Z",
                 # TODO: usage tracking (cpu, memory)
             }
+        )
+
+        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+        assert len(calculate_costs_calls) == 1
+        costs_details: CostsDetails
+        (costs_details,), _ = calculate_costs_calls[0]
+
+        assert costs_details == CostsDetails(
+            job_id=job_id,
+            user_id=user_id,
+            execution_id=kube_app.app_id,
+            app_state='COMPLETED',
+            area_square_meters=None,
+            job_title=None,
+            start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
+            finish_time=dt.datetime(2022, 12, 14, 12, 3, 30),
+            cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
+            mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
+            sentinelhub_processing_units=0.0,
+            unique_process_ids=[]
         )
 
         assert caplog.record_tuples == []

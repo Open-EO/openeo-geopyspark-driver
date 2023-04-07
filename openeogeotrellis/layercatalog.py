@@ -141,6 +141,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
         is_utm = layer_source_info.get("is_utm", False)
+        catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -243,6 +244,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                          .reproject(projected_polygons, target_epsg_code))
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
+        opensearch_endpoint = layer_source_info.get('opensearch_endpoint', ConfigParams().default_opensearch_endpoint)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
@@ -289,7 +291,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 root_path,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", [], ""
+                    opensearch_endpoint, is_utm, "", [], catalog_type
                 )
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
@@ -302,24 +304,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             return file_pyramid(pyramid_factory)
 
-        def file_probav_pyramid():
-            opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
-                                                        ConfigParams().default_opensearch_endpoint)
 
+        def file_probav_pyramid():
             cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
             cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
-
-            factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(opensearch_endpoint, layer_source_info.get(
-                'opensearch_collection_id'), layer_source_info.get('root_path'),
-                                                                          jvm.geotrellis.raster.CellSize(cell_width,
-                                                                                                         cell_height))
-            if False:
-                return factory.datacube_seq(
-                    projected_polygons_native_crs, from_date, to_date,
-                    metadata_properties(), correlation_id, datacubeParams, band_indices
-                )
-            else:
-                return factory.pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
+            factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
+                opensearch_endpoint,
+                layer_source_info.get('opensearch_collection_id'),
+                metadata.opensearch_link_titles,
+                layer_source_info.get('root_path'),
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            )
+            return factory.pyramid_seq(extent, srs, from_date, to_date, correlation_id)
 
 
         def create_pyramid(factory):
@@ -358,14 +354,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
 
         def file_pyramid(pyramid_factory):
-            opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
-                                                        ConfigParams().default_opensearch_endpoint)
             opensearch_collection_id = layer_source_info['opensearch_collection_id']
             opensearch_link_titles = metadata.opensearch_link_titles
             root_path = layer_source_info.get('root_path',None)
-
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
-
             return create_pyramid(factory)
 
 
@@ -536,9 +528,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             data_glob = layer_source_info['data_glob']
             band_names = metadata.band_names
-
+            client_type = catalog_type if catalog_type != "" else "globspatialonly"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, None, band_names, "globspatialonly"
+                data_glob, False, None, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -558,8 +550,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
 
+            client_type = catalog_type if catalog_type != "" else "cgls"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, "cgls"
+                data_glob, False, date_regex, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -575,8 +568,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
+            client_type = catalog_type if catalog_type != "" else "agera5"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, "agera5"
+                data_glob, False, date_regex, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,

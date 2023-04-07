@@ -174,7 +174,7 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
-    def get_running_jobs(self, user_limit: int = 1000) -> List[Dict]:
+    def get_running_jobs(self, user_limit: Optional[int] = 1000) -> List[Dict]:
         """Returns a list of jobs that are currently not finished (should still be tracked)."""
 
         jobs = []
@@ -188,7 +188,7 @@ class ZkJobRegistry:
                 stats["user_id"] += 1
                 job_ids = self._zk.get_children(self._ongoing(user_id))
 
-                if len(job_ids) > user_limit:
+                if user_limit and len(job_ids) > user_limit:
                     _log.warning(
                         f"Extreme number of jobs found for {user_id=}: {len(job_ids)} > {user_limit}. "
                         f"Taking random sample of {user_limit} items."
@@ -254,7 +254,13 @@ class ZkJobRegistry:
                 raise JobNotFoundException(job_id) from e
 
     def get_all_jobs_before(
-        self, upper: datetime, user_ids: Optional[List[str]] = None
+        self,
+        upper: datetime,
+        *,
+        user_ids: Optional[List[str]] = None,
+        include_ongoing: bool = True,
+        include_done: bool = True,
+        user_limit: Optional[int] = 1000,
     ) -> List[Dict]:
         def get_jobs_in(
             get_path: Callable[[Union[str, None], Union[str, None]], str],
@@ -275,6 +281,13 @@ class ZkJobRegistry:
                     )
                     continue
 
+                if user_limit and len(user_job_ids) > user_limit:
+                    _log.warning(
+                        f"User {user_id} has excessive number of jobs: {len(user_job_ids)}. "
+                        f"Sampling down to {user_limit}."
+                    )
+                    user_job_ids = random.sample(user_job_ids, k=user_limit)
+
                 for job_id in user_job_ids:
                     path = get_path(user_id, job_id)
                     data, stat = self._zk.get(path)
@@ -291,14 +304,13 @@ class ZkJobRegistry:
 
             return jobs_before
 
-        # note: consider ongoing as well because that's where abandoned (never started) jobs are
-        return get_jobs_in(
-            self._ongoing,
-            user_ids=user_ids,
-        ) + get_jobs_in(
-            self._done,
-            user_ids=user_ids,
-        )
+        # note: By default consider ongoing as well because that's where abandoned (never started) jobs are
+        jobs = []
+        if include_ongoing:
+            jobs.extend(get_jobs_in(self._ongoing, user_ids=user_ids))
+        if include_done:
+            jobs.extend(get_jobs_in(self._done, user_ids=user_ids))
+        return jobs
 
     def _create(self, job_info: Dict, done: bool = False) -> None:
         job_id = job_info['job_id']
@@ -759,9 +771,21 @@ class DoubleJobRegistry:
         return jobs
 
     def get_all_jobs_before(
-        self, upper: dt.datetime, user_ids: Optional[List[str]] = None
+        self,
+        upper: dt.datetime,
+        *,
+        user_ids: Optional[List[str]] = None,
+        include_ongoing: bool = True,
+        include_done: bool = True,
+        user_limit: Optional[int] = 1000,
     ) -> List[dict]:
-        jobs = self.zk_job_registry.get_all_jobs_before(upper=upper, user_ids=user_ids)
+        jobs = self.zk_job_registry.get_all_jobs_before(
+            upper=upper,
+            user_ids=user_ids,
+            include_ongoing=include_ongoing,
+            include_done=include_done,
+            user_limit=user_limit,
+        )
         # TODO #236 add elastic_job_registry implementation
         self._log.warning(f"EJR TODO: get_all_jobs_before implementation")
         return jobs
@@ -774,7 +798,10 @@ if __name__ == "__main__":
         root_path="/openeo/dev/jobs"
         # root_path="/openeo/jobs"
     ) as zk_registry:
-        zk_registry.get_running_jobs(user_limit=10)
+        zk_registry.get_running_jobs(
+            # user_limit=1000,
+            # user_limit=None,
+        )
 
         # zk_registry.prune_empty_users(
         #     dry_run=True

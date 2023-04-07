@@ -22,15 +22,26 @@ _log = logging.getLogger("openeogeotrellis.cleaner")
 def remove_batch_jobs_before(
     upper: datetime,
     jvm: JVMView,
+    *,
     user_ids: Optional[List[str]] = None,
     dry_run: bool = True,
+    include_ongoing: bool = True,
+    include_done: bool = True,
+    user_limit: Optional[int] = 1000,
 ) -> None:
     with TimingLogger(title=f"Removing batch jobs before {upper}", logger=_log):
         # TODO: how to cope with unneeded arguments?
         batch_jobs = GpsBatchJobs(
             catalog=None, jvm=jvm, principal="", key_tab="", vault=None
         )
-        batch_jobs.delete_jobs_before(upper, user_ids=user_ids, dry_run=dry_run)
+        batch_jobs.delete_jobs_before(
+            upper,
+            user_ids=user_ids,
+            dry_run=dry_run,
+            include_ongoing=include_ongoing,
+            include_done=include_done,
+            user_limit=user_limit,
+        )
 
 
 def remove_secondary_services_before(upper: datetime) -> None:
@@ -64,6 +75,22 @@ def main():
         help="Minimum age in days for jobs to clean up",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--skip-done",
+        action="store_true",
+        help="Don't clean up `done` jobs",
+    )
+    parser.add_argument(
+        "--skip-ongoing",
+        action="store_true",
+        help="Don't clean up `ongoing` jobs",
+    )
+    parser.add_argument(
+        "--jobs-per-user-limit",
+        type=int,
+        default=1000,
+        help="Maximum number of jobs per user to consider for deletion. Allows keeping the overall execution time reasonable when there are users with excessive number of jobs.",
+    )
 
     args = parser.parse_args()
 
@@ -87,7 +114,13 @@ def main():
         user_ids = None
 
     remove_batch_jobs_before(
-        upper=max_date, jvm=java_gateway.jvm, user_ids=user_ids, dry_run=args.dry_run
+        upper=max_date,
+        jvm=java_gateway.jvm,
+        user_ids=user_ids,
+        dry_run=args.dry_run,
+        include_ongoing=not args.skip_ongoing,
+        include_done=not args.skip_done,
+        user_limit=args.jobs_per_user_limit,
     )
     remove_secondary_services_before(max_date)
 
