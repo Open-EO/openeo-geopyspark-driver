@@ -864,6 +864,11 @@ class TestYarnJobTracker:
         # When yarn could not launch the application, then we want to see the diagnostics in the logs.
         assert yarn_app.diagnostics in caplog.text
 
+        diagnostics_log_records = [record for record in caplog.records if yarn_app.diagnostics in record.msg]
+        assert len(diagnostics_log_records) > 0
+        assert all(r.levelname == "ERROR" and r.job_id == "john123" and r.user_id == "john"
+                   for r in diagnostics_log_records)
+
     def test_yarn_zookeeper_stats(
         self,
         zk_job_registry,
@@ -931,7 +936,7 @@ class TestYarnStatusGetter:
             vcore_seconds=2265,
         )
 
-        job_metadata = YarnStatusGetter.parse_application_response(data=response)
+        job_metadata = YarnStatusGetter.parse_application_response(data=response, job_id="j-abc123", user_id="johndoe")
         assert job_metadata.status == "finished"
         assert job_metadata.start_time == dt.datetime(2023, 1, 6, 16, 14, 32, 793000)
         assert job_metadata.finish_time == dt.datetime(2023, 1, 6, 16, 19, 3, 245000)
@@ -951,7 +956,7 @@ class TestYarnStatusGetter:
             diagnostics="",
         )
 
-        job_metadata = YarnStatusGetter.parse_application_response(data=response)
+        job_metadata = YarnStatusGetter.parse_application_response(data=response, job_id="j-abc123", user_id="johndoe")
         assert job_metadata.status == "running"
         assert job_metadata.start_time == dt.datetime(2023, 1, 6, 16, 14, 32, 793000)
         assert job_metadata.finish_time is None
@@ -960,7 +965,7 @@ class TestYarnStatusGetter:
 
     def test_parse_application_response_empty(self):
         with pytest.raises(YarnAppReportParseException):
-            YarnStatusGetter.parse_application_response(data={})
+            YarnStatusGetter.parse_application_response(data={}, job_id="j-abc123", user_id="johndoe")
 
     def test_response_is_not_valid_json(self, requests_mock):
         status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
