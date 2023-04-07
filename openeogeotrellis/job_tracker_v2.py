@@ -156,7 +156,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
                     "Cannot parse response body: expecting a JSON dict but body contains "
                     + f"a value of type {type(json)}, value={json!r} Response body={response.text!r}"
                 )
-            return self.parse_application_response(data=json)
+            return self.parse_application_response(data=json, job_id=job_id, user_id=user_id)
 
     @staticmethod
     def _ms_epoch_to_date(epoch_millis: int) -> Union[dt.datetime, None]:
@@ -166,10 +166,12 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         return dt.datetime.utcfromtimestamp(epoch_millis / 1000)
 
     @classmethod
-    def parse_application_response(cls, data: dict) -> _JobMetadata:
+    def parse_application_response(cls, data: dict, job_id: str, user_id: str) -> _JobMetadata:
         """Parse the HTTP response body of the application status request.
 
         :param data: The data in the HTTP response body, which was in JSON format.
+        :param job_id: context for the error log
+        :param user_id: context for the error log
         :raises YarnAppReportParseException: When the JSON response can not be parsed properly.
         :return: _JobMetadata containing the info we need about the Job.
         """
@@ -193,7 +195,8 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             diagnostics = report.get("diagnostics", None)
             if job_status == JOB_STATUS.ERROR and diagnostics:
                 _log.error(
-                    f"YARN application status reports error diagnostics: {diagnostics}"
+                    f"YARN application status reports error diagnostics: {diagnostics}",
+                    extra={"job_id": job_id, "user_id": user_id}
                 )
 
             start_time = cls._ms_epoch_to_date(report["startedTime"])
