@@ -349,6 +349,26 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
             elastic_job_registry = get_elastic_job_registry()
 
+        # Start persistent workers if configured.
+        persistent_worker_count = os.environ.get("PERSISTENT_WORKER_COUNT", "0")
+        try:
+            persistent_worker_count = int(persistent_worker_count)
+        except ValueError:
+            persistent_worker_count = 0
+        if persistent_worker_count != 0 and not ConfigParams().is_kube_deploy:
+            persistent_script_path = pkg_resources.resource_filename('openeogeotrellis.deploy', "submit_persistent_worker.sh")
+            for i in range(persistent_worker_count):
+                args = [
+                    persistent_script_path, str(i),
+                    principal, key_tab,
+                    GpsBatchJobs.get_submit_py_files(),
+                    "INFO"
+                ]
+                logger.info(f"Submitting persistent worker {i} with args: {args!r}")
+                output_string = subprocess.check_output(args, stderr = subprocess.STDOUT, universal_newlines = True)
+                logger.info(f"Submitted persistent worker {i}, output was: {output_string}")
+
+
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
