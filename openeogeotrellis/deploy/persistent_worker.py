@@ -18,7 +18,8 @@ if __name__ == '__main__':
         context = LOGGING_CONTEXT_BATCH_JOB, root_level = OPENEO_LOGGING_THRESHOLD), capture_unhandled_exceptions = False,
     )
 
-    base_dir = Path("/data/projects/OpenEO/persistent_workers")
+    config_params = ConfigParams()
+    base_dir = config_params.persistent_worker_dir
     shutdown_file = base_dir / "shutdown"
 
     def check_exit_file():
@@ -30,7 +31,7 @@ if __name__ == '__main__':
     threading.Thread(target=check_exit_file, daemon=True).start()
 
     while True:
-        # Search for job_<UUID>.json files without a corresponding job_<UUID>.lock file.
+        # Search for a job_<UUID>.json without a corresponding job_<UUID>.lock file.
         for job_file in base_dir.glob("job_*.json"):
             lock_file = job_file.with_suffix(".lock")
             if not os.path.exists(lock_file):
@@ -40,7 +41,6 @@ if __name__ == '__main__':
                     f.write("locked")
                 # Run the job
                 try:
-                    # Get the arguments from the job_file
                     with open(job_file, "r") as f:
                         arguments = json.load(f)
                     main(arguments)

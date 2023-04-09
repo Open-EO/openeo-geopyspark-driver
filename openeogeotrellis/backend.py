@@ -350,12 +350,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             elastic_job_registry = get_elastic_job_registry()
 
         # Start persistent workers if configured.
-        persistent_worker_count = os.environ.get("PERSISTENT_WORKER_COUNT", "0")
-        try:
-            persistent_worker_count = int(persistent_worker_count)
-        except ValueError:
-            persistent_worker_count = 0
-        if persistent_worker_count != 0 and not ConfigParams().is_kube_deploy:
+        config_params = ConfigParams()
+        persistent_worker_count = config_params.persistent_worker_count
+        if persistent_worker_count != 0 and not config_params.is_kube_deploy:
+            shutdown_file = config_params.persistent_worker_dir / "shutdown"
+            if shutdown_file.exists():
+                shutdown_file.unlink()
             persistent_script_path = pkg_resources.resource_filename('openeogeotrellis.deploy', "submit_persistent_worker.sh")
             for i in range(persistent_worker_count):
                 args = [
