@@ -39,7 +39,6 @@ if __name__ == '__main__':
                 # Create lock file to prevent other workers from picking up the same job.
                 with open(lock_file, "w") as f:
                     f.write("locked")
-                # Run the job
                 try:
                     with open(job_file, "r") as f:
                         arguments = json.load(f)
@@ -48,6 +47,12 @@ if __name__ == '__main__':
                     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
                     logger.exception("OpenEO persistent worker failed: " + error_summary.summary)
                 finally:
+                    if os.path.exists(job_file):
+                        os.remove(job_file)
+                    pg_file = job_file.with_name("pg_" + job_file.name[4:])
+                    if os.path.exists(pg_file):
+                        os.remove(pg_file)
                     os.remove(lock_file)
+
         # Wait before checking again.
         time.sleep(10)

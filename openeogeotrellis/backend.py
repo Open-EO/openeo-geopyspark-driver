@@ -1,3 +1,5 @@
+import random
+
 import datetime
 import json
 import logging
@@ -1657,14 +1659,34 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(archives)
                     args.append(logging_threshold)
 
-                    try:
-                        logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                        logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
-                    except CalledProcessError as e:
-                        logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
-                                     extra={'job_id': job_id})
-                        raise e
+                    persistent_worker_count = ConfigParams().persistent_worker_count
+                    if persistent_worker_count != 0:
+                        # Write args to persistent_worker_dir as job_<job_id>.json
+                        # Also write process graph to pg_<job_id>.json
+                        persistent_worker_dir = ConfigParams().persistent_worker_dir
+                        if not os.path.exists(persistent_worker_dir):
+                            os.makedirs(persistent_worker_dir)
+                        pg_file_path = persistent_worker_dir / f"pg_{job_id}.json"
+                        persistent_args = [
+                            str(pg_file_path), str(self.get_job_output_dir(job_id)), "out", "log", JOB_METADATA_FILENAME,
+                            args[10], serialize_dependencies(), user_id, max_soft_errors_ratio, sentinel_hub_client_alias
+                        ]
+                        with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
+                            f.write(json.dumps(persistent_args))
+                        with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
+                            f.write(job_info["specification"])
+                        # Generate our own random application id.
+                        application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
+                        output_string = f"Application report for application_{application_id} (state: running)"
+                    else:
+                        try:
+                            logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
+                            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                            logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
+                        except CalledProcessError as e:
+                            logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
+                                         extra={'job_id': job_id})
+                            raise e
 
                 try:
                     application_id = self._extract_application_id(output_string)
