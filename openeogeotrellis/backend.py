@@ -1454,6 +1454,7 @@ class GpsBatchJobs(backend.BatchJobs):
             archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
+            use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
@@ -1553,7 +1554,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     datashim=os.environ.get("DATASHIM", ""),
                     archives=archives,
                     logging_threshold=logging_threshold,
-                    mount_tmp=mount_tmp
+                    mount_tmp=mount_tmp,
+                    use_pvc=use_pvc
                 )
 
                 api_instance = kube_client()
