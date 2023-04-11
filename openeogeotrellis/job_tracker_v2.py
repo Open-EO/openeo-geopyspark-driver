@@ -655,6 +655,7 @@ class CliApp:
                 "openeogeotrellis": {"level": "DEBUG"},
                 _log.name: {"level": "DEBUG"},
             },
+            context="job_tracker"
         )
 
         if rotating_file:
