@@ -1,6 +1,5 @@
 import json
 import shutil
-import textwrap
 from mock import MagicMock
 from pathlib import Path
 from unittest import mock
@@ -346,22 +345,30 @@ def test_run_job(evaluate, tmp_path):
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
+def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, monkeypatch):
     cube_mock = MagicMock()
-    first_asset = str(
-        get_test_data_file(
-            "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
-        )
+
+    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir.mkdir()
+    output_file = job_dir / "out"
+    metadata_file = job_dir / "metadata.json"
+
+    first_asset_source = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
+    first_asset_name = first_asset_source.name
+    first_asset_dest = job_dir / first_asset_name
+    shutil.copy(first_asset_source, first_asset_dest)
+
     asset_meta = {
-        first_asset: {
-            "href": first_asset,
+        first_asset_name: {
+            "href": first_asset_name,  # A path relative to the job dir must work.
             "roles": "data",
         },
         # The second file does not exist on the filesystem.
         # This triggers that the projection extension metadata is put on the
         # bands, for the remaining assets (Here there is only 1 other asset off course).
-        "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
+        "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
     }
     cube_mock.write_assets.return_value = asset_meta
     evaluate.return_value = ImageCollectionResult(
@@ -384,26 +391,26 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
         job_specification={
             "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
         },
-        output_file=tmp_path / "out",
-        metadata_file=tmp_path / "metadata.json",
+        output_file=output_file,
+        metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir="./",
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
 
     cube_mock.write_assets.assert_called_once()
-    metadata_result = read_json(tmp_path / "metadata.json")
+    metadata_result = read_json(metadata_file)
     assert metadata_result == {
         "assets": {
-            first_asset: {
-                "href": first_asset,
+            first_asset_name: {
+                "href": first_asset_name,
                 "roles": "data",
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
                 "proj:shape": [720, 1188],
             },
-            "openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"},
+            "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
         },
         "bbox": None,
         "end_datetime": None,
@@ -456,23 +463,32 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """
     cube_mock = MagicMock()
 
-    first_asset_path = get_test_data_file(
+    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir.mkdir()
+    output_file = job_dir / "out"
+    metadata_file = job_dir / "metadata.json"
+
+    first_asset_source = get_test_data_file(
         "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
-    first_asset = str(first_asset_path)
-    # For the second file: use a copy of the first file  (in the temp dir) so we know
-    # that GDAL will find exactly the same metadata under a different asset path.
-    second_asset_path = tmp_path / first_asset_path.name
-    second_asset = str(second_asset_path)
-    shutil.copyfile(first_asset_path, second_asset_path)
+    first_asset_name = first_asset_source.name
+    first_asset_dest = job_dir / first_asset_name
+    shutil.copy(first_asset_source, first_asset_dest)
+
+    # For the second file: use a copy of the first file so we know that GDAL
+    # will find exactly the same metadata under a different asset path.
+    second_asset_path = job_dir / f"second_{first_asset_name}"
+    second_asset_name = second_asset_path.name
+    shutil.copy(first_asset_source, second_asset_path)
+
     asset_meta = {
-        first_asset: {
-            "href": first_asset,
+        first_asset_name: {
+            "href": first_asset_name,
             "roles": "data",
         },
-        # use same file twice to simulate the same CRS and bbox
-        second_asset: {
-            "href": second_asset,
+        # Use same file twice to simulate the same CRS and bbox.
+        second_asset_name: {
+            "href": second_asset_name,
             "roles": "data",
         },
     }
@@ -498,8 +514,8 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         job_specification={
             "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
         },
-        output_file=tmp_path / "out",
-        metadata_file=tmp_path / "metadata.json",
+        output_file=output_file,
+        metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir="./",
         dependencies={},
@@ -507,16 +523,16 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     )
 
     cube_mock.write_assets.assert_called_once()
-    metadata_result = read_json(tmp_path / "metadata.json")
+    metadata_result = read_json(metadata_file)
     assert metadata_result == {
         "assets": {
-            first_asset: {
-                "href": first_asset,
+            first_asset_name: {
+                "href": first_asset_name,
                 "roles": "data",
                 # Projection extension metadata should not be here, but higher up.
             },
-            second_asset: {
-                "href": second_asset,
+            second_asset_name: {
+                "href": second_asset_name,
                 "roles": "data",
                 # Idem: projection extension metadata should not be here, but higher up.
             },
@@ -595,31 +611,38 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     """
     cube_mock = MagicMock()
 
-    first_asset_path = get_test_data_file(
+    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir.mkdir()
+    output_file = job_dir / "out"
+    metadata_file = job_dir / "metadata.json"
+
+    first_asset_source = get_test_data_file(
         "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
-    first_asset = str(first_asset_path)
+    first_asset_name = first_asset_source.name
+    first_asset_dest = job_dir / first_asset_name
+    shutil.copy(first_asset_source, first_asset_dest)
 
-    # For the second file: use a copy of the first file  (in the temp dir) so we know
-    # that GDAL will find exactly the same metadata under a different asset path.
-    second_asset_path = tmp_path / first_asset_path.name
-    (second_asset) = str(second_asset_path)
+    # For the second file: use a copy of the first file so we know that GDAL
+    # will find exactly the same metadata under a different asset path.
+    second_asset_path = job_dir / f"second_{first_asset_name}"
+    second_asset_name = second_asset_path.name
     reproject_raster_file(
-        source_path=first_asset,
-        destination_path=second_asset,
+        source_path=str(first_asset_source),
+        destination_path=str(second_asset_path),
         dest_crs="EPSG:3812",
         width=720,
         height=1188,
     )
 
     asset_meta = {
-        first_asset: {
-            "href": first_asset,
+        first_asset_name: {
+            "href": first_asset_name,
             "roles": "data",
         },
         # use same file twice to simulate the same CRS and bbox
-        second_asset: {
-            "href": second_asset,
+        second_asset_name: {
+            "href": second_asset_name,
             "roles": "data",
         },
     }
@@ -645,8 +668,8 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         job_specification={
             "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
         },
-        output_file=tmp_path / "out",
-        metadata_file=tmp_path / "metadata.json",
+        output_file=output_file,
+        metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir="./",
         dependencies={},
@@ -654,18 +677,18 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     )
 
     cube_mock.write_assets.assert_called_once()
-    metadata_result = read_json(tmp_path / "metadata.json")
+    metadata_result = read_json(metadata_file)
     assert metadata_result == {
         "assets": {
-            first_asset: {
-                "href": first_asset,
+            first_asset_name: {
+                "href": first_asset_name,
                 "roles": "data",
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
                 "proj:shape": [720, 1188],
             },
-            second_asset: {
-                "href": second_asset,
+            second_asset_name: {
+                "href": second_asset_name,
                 "roles": "data",
                 "proj:bbox": [723413.644, 577049.010, 745443.909, 614102.693],
                 "proj:epsg": 3812,
