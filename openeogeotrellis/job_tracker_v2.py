@@ -5,7 +5,6 @@ V2 implementation of JobTracker
 
 import abc
 import argparse
-from urllib3.exceptions import MaxRetryError
 
 import collections
 import datetime as dt
@@ -502,7 +501,7 @@ class JobTracker:
                 job_costs = self._job_costs_calculator.calculate_costs(costs_details)
                 # TODO: skip patching the job znode and read from this file directly?
                 zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
-            except MaxRetryError as e:
+            except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
                 stats["failed cost calculation"] += 1
 
