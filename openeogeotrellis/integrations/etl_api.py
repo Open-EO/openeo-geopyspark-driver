@@ -1,9 +1,7 @@
 import logging
-from time import sleep
 from typing import Optional
 
 import requests
-from requests.exceptions import RequestException
 
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
@@ -59,23 +57,20 @@ class EtlApi:
             'metrics': metrics
         }
 
-        def send_request():
-            with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
-                                    json=data) as resp:
-                if not resp.ok:
-                    _log.warning(
-                        f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
-                        extra={
-                            'user_id': user_id,
-                            'job_id': batch_job_id
-                        })
+        with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
+                                json=data) as resp:
+            if not resp.ok:
+                _log.warning(
+                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
+                    extra={
+                        'user_id': user_id,
+                        'job_id': batch_job_id
+                    })
 
-                resp.raise_for_status()
+            resp.raise_for_status()
 
-                total_credits = sum(resource['cost'] for resource in resp.json())
-                return total_credits
-
-        return self._retry(send_request)
+            total_credits = sum(resource['cost'] for resource in resp.json())
+            return total_credits
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
@@ -105,34 +100,17 @@ class EtlApi:
         if square_meters is not None:
             data['area'] = {'value': square_meters, 'unit': 'square_meter'}
 
-        def send_request():
-            with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
-                                    json=data) as resp:
-                if not resp.ok:
-                    _log.warning(
-                        f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
-                        extra={
-                            'user_id': user_id,
-                            'job_id': batch_job_id
-                        })
+        with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
+                                json=data) as resp:
+            if not resp.ok:
+                _log.warning(
+                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
+                    extra={
+                        'user_id': user_id,
+                        'job_id': batch_job_id
+                    })
 
-                resp.raise_for_status()
+            resp.raise_for_status()
 
-                total_credits = sum(resource['cost'] for resource in resp.json())
-                return total_credits
-
-        return self._retry(send_request)
-
-    @staticmethod
-    def _retry(func):
-        attempt = 1
-
-        while True:
-            try:
-                return func()
-            except RequestException as e:
-                if attempt >= 5:
-                    raise e
-
-                attempt += 1
-                sleep(10)
+            total_credits = sum(resource['cost'] for resource in resp.json())
+            return total_credits

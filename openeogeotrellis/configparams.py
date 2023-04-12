@@ -76,6 +76,15 @@ class ConfigParams:
             "TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
         )
 
+        _persistent_worker_count = os.environ.get("PERSISTENT_WORKER_COUNT", "0")
+        try:
+            _persistent_worker_count = int(_persistent_worker_count)
+        except ValueError:
+            _persistent_worker_count = 0
+        self.persistent_worker_count = _persistent_worker_count
+        _persistent_worker_dir = os.environ.get("PERSISTENT_WORKER_DIR", "/data/projects/OpenEO/persistent_workers")
+        self.persistent_worker_dir = Path(_persistent_worker_dir)
+
     def __str__(self) -> str:
         return pformat(vars(self))
 

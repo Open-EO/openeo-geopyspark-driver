@@ -1,3 +1,5 @@
+import random
+
 import datetime
 import json
 import logging
@@ -348,6 +350,26 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             # TODO #236 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
             elastic_job_registry = get_elastic_job_registry()
+
+        # Start persistent workers if configured.
+        config_params = ConfigParams()
+        persistent_worker_count = config_params.persistent_worker_count
+        if persistent_worker_count != 0 and not config_params.is_kube_deploy:
+            shutdown_file = config_params.persistent_worker_dir / "shutdown"
+            if shutdown_file.exists():
+                shutdown_file.unlink()
+            persistent_script_path = pkg_resources.resource_filename('openeogeotrellis.deploy', "submit_persistent_worker.sh")
+            for i in range(persistent_worker_count):
+                args = [
+                    persistent_script_path, str(i),
+                    principal, key_tab,
+                    GpsBatchJobs.get_submit_py_files(),
+                    "INFO"
+                ]
+                logger.info(f"Submitting persistent worker {i} with args: {args!r}")
+                output_string = subprocess.check_output(args, stderr = subprocess.STDOUT, universal_newlines = True)
+                logger.info(f"Submitted persistent worker {i}, output was: {output_string}")
+
 
         super().__init__(
             catalog=catalog,
@@ -1432,6 +1454,7 @@ class GpsBatchJobs(backend.BatchJobs):
             archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
+            use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
@@ -1531,7 +1554,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     datashim=os.environ.get("DATASHIM", ""),
                     archives=archives,
                     logging_threshold=logging_threshold,
-                    mount_tmp=mount_tmp
+                    mount_tmp=mount_tmp,
+                    use_pvc=use_pvc
                 )
 
                 api_instance = kube_client()
@@ -1637,14 +1661,34 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(archives)
                     args.append(logging_threshold)
 
-                    try:
-                        logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                        logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
-                    except CalledProcessError as e:
-                        logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
-                                     extra={'job_id': job_id})
-                        raise e
+                    persistent_worker_count = ConfigParams().persistent_worker_count
+                    if persistent_worker_count != 0:
+                        # Write args to persistent_worker_dir as job_<job_id>.json
+                        # Also write process graph to pg_<job_id>.json
+                        persistent_worker_dir = ConfigParams().persistent_worker_dir
+                        if not os.path.exists(persistent_worker_dir):
+                            os.makedirs(persistent_worker_dir)
+                        pg_file_path = persistent_worker_dir / f"pg_{job_id}.json"
+                        persistent_args = [
+                            str(pg_file_path), str(self.get_job_output_dir(job_id)), "out", "log", JOB_METADATA_FILENAME,
+                            args[10], serialize_dependencies(), user_id, max_soft_errors_ratio, sentinel_hub_client_alias
+                        ]
+                        with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
+                            f.write(json.dumps(persistent_args))
+                        with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
+                            f.write(job_info["specification"])
+                        # Generate our own random application id.
+                        application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
+                        output_string = f"Application report for application_{application_id} (state: running)"
+                    else:
+                        try:
+                            logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
+                            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                            logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
+                        except CalledProcessError as e:
+                            logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
+                                         extra={'job_id': job_id})
+                            raise e
 
                 try:
                     application_id = self._extract_application_id(output_string)

@@ -5,6 +5,7 @@ V2 implementation of JobTracker
 
 import abc
 import argparse
+
 import collections
 import datetime as dt
 import logging
@@ -496,10 +497,13 @@ class JobTracker:
                 unique_process_ids=result_metadata.get('unique_process_ids', [])
             )
 
-            job_costs = self._job_costs_calculator.calculate_costs(costs_details)
-
-            # TODO: skip patching the job znode and read from this file directly?
-            zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
+            try:
+                job_costs = self._job_costs_calculator.calculate_costs(costs_details)
+                # TODO: skip patching the job znode and read from this file directly?
+                zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
+            except Exception as e:
+                log.exception(f"Failed to calculate job costs: {e}")
+                stats["failed cost calculation"] += 1
 
         datetime_formatter = Rfc3339(propagate_none=True)
 
@@ -655,6 +659,7 @@ class CliApp:
                 "openeogeotrellis": {"level": "DEBUG"},
                 _log.name: {"level": "DEBUG"},
             },
+            context="job_tracker"
         )
 
         if rotating_file:
