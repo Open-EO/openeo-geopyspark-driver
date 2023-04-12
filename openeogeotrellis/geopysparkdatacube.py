@@ -853,6 +853,13 @@ class GeopysparkDataCube(DriverDataCube):
             raise OpenEOApiException(message="Trying to merge two cubes with different levels, perhaps you had to use 'resample_cube_spatial'? Levels of this cube: " + str(self.pyramid.levels.keys()) +
                                              " are merged with %s" % str(other.pyramid.levels.keys()))
 
+
+        if overlaps_resolver == None:
+            intersection = [value for value in leftBandNames if value in rightBandNames]
+            if len(intersection)>0:
+                raise OpenEOApiException(message=f"merge_cubes: No overlaps_resolver is set, and band names overlap. Either set an overlaps_resolver or rename the bands. Left names: {leftBandNames}, right names: {rightBandNames}.")
+
+
         # TODO properly combine bbox and temporal extents in metadata?
         pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
         if self._is_spatial() and other._is_spatial():
