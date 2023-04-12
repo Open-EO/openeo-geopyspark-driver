@@ -2236,13 +2236,21 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return {}
 
-    def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> Iterable[dict]:
+    def get_log_entries(
+        self,
+        job_id: str,
+        user_id: str,
+        offset: Optional[str] = None,
+        level: Optional[str] = None,
+    ) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
-        return elasticsearch_logs(job_id, job_info.created, offset)
+        return elasticsearch_logs(
+            job_id=job_id, create_time=job_info.created, offset=offset, level=level
+        )
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:
