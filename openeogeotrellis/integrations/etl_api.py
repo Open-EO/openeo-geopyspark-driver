@@ -29,6 +29,8 @@ class EtlApi:
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
                            cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
                            sentinel_hub_processing_units: Optional[float], access_token: str) -> float:
+        log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
+
         metrics = {}
 
         if cpu_seconds is not None:
@@ -57,10 +59,12 @@ class EtlApi:
             'metrics': metrics
         }
 
+        log.debug(f"logging resource usage {data}")
+
         with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:
-                _log.warning(
+                log.warning(
                     f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
                     extra={
                         'user_id': user_id,
@@ -74,7 +78,9 @@ class EtlApi:
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
-                        square_meters: Optional[float], access_token: str) -> float:
+                        square_meters: float, access_token: str) -> float:
+        log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
+
         billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
                                       "mean", "aggregate_spatial", "discard_result", "filter_temporal",
                                       "load_collection", "reduce_dimension", "apply_dimension", "not", "max", "or",
@@ -95,10 +101,10 @@ class EtlApi:
             'jobStart': started_ms,
             'jobFinish': finished_ms,
             'service': process_id,
+            'area': {'value': square_meters, 'unit': 'square_meter'}
         }
 
-        if square_meters is not None:
-            data['area'] = {'value': square_meters, 'unit': 'square_meter'}
+        log.debug(f"logging added value {data}")
 
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:

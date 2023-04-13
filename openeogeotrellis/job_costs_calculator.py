@@ -1,9 +1,13 @@
 import abc
 import datetime as dt
+import logging
 from typing import NamedTuple, Optional, List
 
 from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATE
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE
+
+
+_log = logging.getLogger(__name__)
 
 
 class CostsDetails(NamedTuple):  # for lack of a better name
@@ -65,16 +69,20 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             access_token=self._etl_api_access_token
         )
 
-        added_value_costs_in_credits = sum(self._etl_api.log_added_value(
-            batch_job_id=details.job_id,
-            title=details.job_title,
-            execution_id=details.execution_id,
-            user_id=details.user_id,
-            started_ms=started_ms,
-            finished_ms=finished_ms,
-            process_id=process_id,
-            square_meters=details.area_square_meters,
-            access_token=self._etl_api_access_token) for process_id in details.unique_process_ids)
+        if details.area_square_meters is None:
+            added_value_costs_in_credits = 0.0
+            _log.debug("not logging added value because area is None")
+        else:
+            added_value_costs_in_credits = sum(self._etl_api.log_added_value(
+                batch_job_id=details.job_id,
+                title=details.job_title,
+                execution_id=details.execution_id,
+                user_id=details.user_id,
+                started_ms=started_ms,
+                finished_ms=finished_ms,
+                process_id=process_id,
+                square_meters=details.area_square_meters,
+                access_token=self._etl_api_access_token) for process_id in details.unique_process_ids)
 
         return resource_costs_in_credits + added_value_costs_in_credits
 
