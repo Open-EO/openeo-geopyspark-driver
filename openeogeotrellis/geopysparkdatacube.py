@@ -853,11 +853,11 @@ class GeopysparkDataCube(DriverDataCube):
             raise OpenEOApiException(message="Trying to merge two cubes with different levels, perhaps you had to use 'resample_cube_spatial'? Levels of this cube: " + str(self.pyramid.levels.keys()) +
                                              " are merged with %s" % str(other.pyramid.levels.keys()))
 
-
-        if overlaps_resolver == None:
+        if overlaps_resolver is None:
             intersection = [value for value in leftBandNames if value in rightBandNames]
-            if len(intersection)>0:
-                raise OpenEOApiException(message=f"merge_cubes: No overlaps_resolver is set, and band names overlap. Either set an overlaps_resolver or rename the bands. Left names: {leftBandNames}, right names: {rightBandNames}.")
+            if len(intersection) > 0:
+                # Spec: https://github.com/Open-EO/openeo-processes/blob/0dd3ab0d81f67506547136532af39b5c9a16771e/merge_cubes.json#L83-L87
+                raise OpenEOApiException(f"merge_cubes: Overlapping data cubes, but no overlap resolver has been specified. Either set an overlaps_resolver or rename the bands. Left names: {leftBandNames}, right names: {rightBandNames}.")
 
 
         # TODO properly combine bbox and temporal extents in metadata?
