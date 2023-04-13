@@ -60,7 +60,7 @@ setup(
         'rasterio~=1.1.8',
         'py4j',
         'numpy==1.22.4',
-        'pandas>=0.24.2,<1.4.0',
+        'pandas>=1.4.0,<2.0.0',
         'pyproj==3.4.1',
         'protobuf~=3.9.2',
         'kazoo~=2.8.0',
