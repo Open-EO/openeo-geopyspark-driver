@@ -247,10 +247,37 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             # metadata at the item level.
             is_projection_md_missing = False
 
-            for asset_path in asset_metadata.keys():
+            for asset_path, asset_md in asset_metadata.items():
+                mime_type = asset_md.get("type")
+                logger.info(
+                    f"_export_result_metadata: {asset_path=}, "
+                    + f"file's MIME type: {mime_type}, "
+                    + f"job dir (based on output file): {output_file.parent=}"
+                )
+                logger.info(f"{asset_path=}, {asset_md=}")
+
+                #
+                # TODO: Skip assets that aren't images
+                #   For now I don't want to change the functionality,
+                #   only adding logging to find why the gdalinfo receives a relative path.
+                #   If the list of images formats is correct, then this code
+                #   block should do the trick, bet test coverage should be added.
+                #
+                # Skip assets that aren't images
+                # for example metadata with "type": "application/xml"
+                # mime_type_images = ["image/tiff", "image/png", "application/x-netcdf"]
+                # if mime_type and mime_type not in mime_type_images:
+                #     logger.info(
+                #         "_export_result_metadata: Asset file is not an image, "
+                #         f"it has {mime_type=}: {asset_path=}"
+                #     )
+                #     continue
+
                 # Won't assume the asset path is relative to the current working directory.
                 # It should be relative to the job directory.
                 abs_asset_path = get_abs_path_of_asset(asset_path, output_file.parent)
+                logger.info(f"{asset_path=} maps to absolute path: {abs_asset_path=}")
+
                 asset_proj_metadata = read_projection_extension_metadata(abs_asset_path)
                 # If gdal could not extract the projection metadata from the file
                 # (The file is corrupt perhaps?).
@@ -259,7 +286,8 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 else:
                     is_projection_md_missing = True
                     logger.warning(
-                        "Could not get projection extension metadata for following asset file: {asset_path}"
+                        "Could not get projection extension metadata for following asset:"
+                        f" '{asset_path}', {abs_asset_path=}"
                     )
 
             epsgs = {
@@ -340,9 +368,16 @@ def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Pat
 
     :return: the absolute path to the asset file, inside job_dir.
     """
+    logger.info(
+        f"{__name__}.get_abs_path_of_asset: {asset_filename=}, {job_dir=}, {Path.cwd()=}, "
+        + f"{Path(job_dir).is_absolute()=}, {Path(job_dir).exists()=}, "
+        + f"{Path(asset_filename).exists()=}"
+    )
+
     abs_asset_path = Path(asset_filename)
     if not abs_asset_path.is_absolute():
         abs_asset_path = Path(job_dir).resolve() / asset_filename
+
     return abs_asset_path
 
 
@@ -391,6 +426,7 @@ def read_projection_extension_metadata(
     and in that version the gdal.Info function include these properties directly
     in the key "stac" of the dictionary it returns.
     """
+    logger.info(f"{__name__}.read_projection_extension_metadata: {asset_path=}")
     return parse_projection_extension_metadata(read_gdal_info(str(asset_path)))
 
 
@@ -413,6 +449,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     :return:
         GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
     """
+    logger.info(f"{__name__}.read_gdal_info: {asset_uri=}")
 
     # By default, gdal does not raise exceptions but returns error codes and prints
     # error info on stdout. We don't want that. At the least it should go to the logs.
@@ -426,8 +463,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         #   specific exceptions gdal.Info might raise.
         logger.warning(
             "Could not get projection extension metadata, "
-            + f"gdal.Info failed for following asset: {asset_uri}. "
-            + "Either file does not exist or else it is probably not a raster."
+            + f"gdal.Info failed for following asset: '{asset_uri}' . "
+            + "Either file does not exist or else it is probably not a raster. "
             + f"Exception from GDAL: {exc}"
         )
         return {}

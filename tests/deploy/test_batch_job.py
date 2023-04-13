@@ -737,6 +737,121 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(
+    evaluate, tmp_path, monkeypatch
+):
+    cube_mock = MagicMock()
+
+    job_dir = Path("./tmp/job-test-proj-metadata")
+    if not job_dir.exists():
+        job_dir.mkdir(parents=True)
+    # Also user relative: run_job should interprete output_file and
+    # metadata_file as relative to the job dir in this case.
+    output_file = "out"
+    metadata_file = "metadata.json"
+
+    first_asset_source = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+    )
+    first_asset_name = first_asset_source.name
+    first_asset_dest = job_dir / first_asset_name
+    shutil.copy(first_asset_source, first_asset_dest)
+
+    asset_meta = {
+        first_asset_name: {
+            "href": first_asset_name,  # A path relative to the job dir must work.
+            "roles": "data",
+        },
+        # The second file does not exist on the filesystem.
+        # This triggers that the projection extension metadata is put on the
+        # bands, for the remaining assets (Here there is only 1 other asset off course).
+        "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
+    }
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(
+        cube=cube_mock, format="GTiff", options={"multidate": True}
+    )
+    t = _get_tracker()
+    t.setGlobalTracking(True)
+    t.clearGlobalTracker()
+    # tracker reset, so get it again
+    t = _get_tracker()
+    PU_COUNTER = "Sentinelhub_Processing_Units"
+    t.registerDoubleCounter(PU_COUNTER)
+    t.add(PU_COUNTER, 1.4)
+    t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
+    t.addInputProducts("collectionName", ["http://myproduct3"])
+    t.addInputProducts("other_collectionName", ["http://myproduct4"])
+    t.add(PU_COUNTER, 0.4)
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+        },
+        output_file=output_file,
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=job_dir,
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(metadata_file)
+    assert metadata_result == {
+        "assets": {
+            first_asset_name: {
+                "href": first_asset_name,
+                "roles": "data",
+                "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
+                "proj:epsg": 4326,
+                "proj:shape": [720, 1188],
+            },
+            "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
+        },
+        "bbox": None,
+        "epsg": None,
+        "end_datetime": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct4",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "usage": {
+            "sentinelhub": {
+                "unit": "sentinelhub_processing_unit",
+                "value": 1.7999999999999998,
+            }
+        },
+    }
+    t.setGlobalTracking(False)
+
+
 @pytest.mark.parametrize(
     ["json_file", "expected_metadata"],
     [
