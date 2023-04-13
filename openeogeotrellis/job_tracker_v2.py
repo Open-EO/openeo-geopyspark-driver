@@ -513,7 +513,7 @@ class JobTracker:
             status=job_metadata.status,
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
-            usage=job_metadata.usage.to_dict(),
+            usage=job_metadata.usage.to_dict() if job_metadata.usage is not None else None,
         )
         with ElasticJobRegistry.just_log_errors(
             f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
