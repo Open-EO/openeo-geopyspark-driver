@@ -276,7 +276,10 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 # Won't assume the asset path is relative to the current working directory.
                 # It should be relative to the job directory.
                 abs_asset_path = get_abs_path_of_asset(asset_path, output_file.parent)
-                logger.info(f"{asset_path=} maps to absolute path: {abs_asset_path=}")
+                logger.info(
+                    f"{asset_path=} maps to absolute path: {abs_asset_path=} , "
+                    + f"{abs_asset_path.exists()=}"
+                )
 
                 asset_proj_metadata = read_projection_extension_metadata(abs_asset_path)
                 # If gdal could not extract the projection metadata from the file
@@ -771,6 +774,7 @@ def run_job(
     job_dir = Path(job_dir)
 
     logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
+    logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
     process_graph = job_specification['process_graph']
     job_options = job_specification.get("job_options", {})
 
