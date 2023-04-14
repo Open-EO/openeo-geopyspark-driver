@@ -3,7 +3,9 @@ import json
 from typing import Iterable, Optional
 
 
-from elasticsearch import Elasticsearch, ConnectionTimeout
+from elasticsearch import Elasticsearch, ConnectionTimeout, TransportError
+
+from openeo.api.logs import normalize_log_level
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
@@ -19,7 +21,10 @@ ES_TAGS = ["openeo"]
 
 
 def elasticsearch_logs(
-    job_id: str, create_time: Optional[dt.datetime] = None, offset: Optional[str] = None
+    job_id: str,
+    create_time: Optional[dt.datetime] = None,
+    offset: Optional[str] = None,
+    level: Optional[str] = None,
 ) -> Iterable[dict]:
     """Retrieve a job's logs from Elasticsearch.
 
@@ -33,10 +38,13 @@ def elasticsearch_logs(
         Search only after this offset.
         If used, then this offset expects a combination of the timestamp and log.offset
         encoded as a JSON string that contains a list of the form [timestamp, log_offset]
-        where timestamp is the Unix Epoch (int) and log_offset is an integer refering to
+        where timestamp is the Unix Epoch (int) and log_offset is an integer referring to
         log.offset in Elasticsearch.
 
         For example: "[1673351608383, 102790]"
+
+    :param level:
+        Return only logs with this log level or higher.
 
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON
@@ -46,7 +54,12 @@ def elasticsearch_logs(
     """
     try:
         search_after = None if offset in [None, ""] else json.loads(offset)
-        return _elasticsearch_logs(job_id, create_time, search_after)
+        return _elasticsearch_logs(
+            job_id=job_id,
+            create_time=create_time,
+            search_after=search_after,
+            level=level,
+        )
     except json.decoder.JSONDecodeError:
         raise OpenEOApiException(status_code=400, code="OffsetInvalid",
                                  message=f"The value passed for the query parameter 'offset' is invalid: {offset}")
@@ -56,6 +69,7 @@ def _elasticsearch_logs(
     job_id: str,
     create_time: Optional[dt.datetime] = None,
     search_after: Optional[list] = None,
+    level: Optional[str] = None,
 ) -> Iterable[dict]:
     """Internal helper function to retrieve a job's logs from Elasticsearch.
 
@@ -72,6 +86,9 @@ def _elasticsearch_logs(
 
         For example: [1673351608383, 102790]
 
+    :param level:
+        Return only logs with this log level or higher.
+
     :raises OpenEOApiException:
         - Either when the offset is not valid JSON
         - or when Elasticsearch had a connection timeout
@@ -80,6 +97,16 @@ def _elasticsearch_logs(
     """
 
     req_id = FlaskRequestCorrelationIdLogging.get_request_id()
+    log_level_int = normalize_log_level(level)
+    level_filter = None
+    if log_level_int:
+        levels_to_include = {
+            logging.ERROR: ["ERROR"],
+            logging.WARNING: ["ERROR", "WARNING"],
+            logging.INFO: ["ERROR", "WARNING", "INFO"],
+            logging.DEBUG: ["ERROR", "WARNING", "INFO", "DEBUG"],
+        }
+        level_filter = {"terms": {"levelname": levels_to_include[log_level_int]}}
 
     page_size = 100
     query = {
@@ -101,6 +128,9 @@ def _elasticsearch_logs(
                 }
             }
         )
+    if level_filter:
+        query["bool"]["filter"].append(level_filter)
+
     with Elasticsearch(ES_HOSTS) as es:
         while True:
             try:
@@ -121,10 +151,23 @@ def _elasticsearch_logs(
             except ConnectionTimeout as exc:
                 # TODO: add a test that verifies: doesn't leak sensitive info + it does log the ConnectionTimeout
                 message = (
-                    f"Temporary failure while retrieving logs: ConnectionTimeout. "
+                    "Temporary failure while retrieving logs: ConnectionTimeout. "
                     + f"Please try again and report this error if it persists. (ref: {req_id})"
                 )
                 raise OpenEOApiException(status_code=504, message=message) from exc
+
+            except TransportError as exc:
+                # TODO: Retry when ES raises circuit breaker exception + better error if still fails.
+                #   https://github.com/Open-EO/openeo-python-driver/issues/170
+                if exc.status_code == 429:
+                    message = (
+                        "Temporary failure while retrieving logs: Elasticsearch has interrupted "
+                        + "the search request because it used too memory. Please try again later"
+                        + f"and report this error if it persists. (ref: {req_id})"
+                    )
+                    raise OpenEOApiException(status_code=429, message=message) from exc
+                else:
+                    raise
 
             else:
                 hits = search_result["hits"]["hits"]

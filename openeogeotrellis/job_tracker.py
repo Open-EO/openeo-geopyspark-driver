@@ -179,7 +179,7 @@ class JobTracker:
                                     resource_costs_in_credits = self._etl_api.log_resource_usage(
                                         batch_job_id=job_id,
                                         title=job_title,
-                                        application_id=application_id,
+                                        execution_id=application_id,
                                         user_id=user_id,
                                         started_ms=float(start_time),
                                         finished_ms=float(finish_time),
@@ -197,7 +197,7 @@ class JobTracker:
                                     added_value_costs_in_credits = sum(self._etl_api.log_added_value(
                                         batch_job_id=job_id,
                                         title=job_title,
-                                        application_id=application_id,
+                                        execution_id=application_id,
                                         user_id=user_id,
                                         started_ms=float(start_time),
                                         finished_ms=float(finish_time),
@@ -379,21 +379,16 @@ class JobTracker:
         return date_to_rfc3339(utc_datetime)
 
 
-def get_etl_api_access_token(principal: str, keytab: str):
-    requests_session = requests_with_retry(total=3, backoff_factor=2)
-
-    vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
-    vault_token = vault.login_kerberos(principal, keytab)
-    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
-
+def get_etl_api_access_token(client_id: str, client_secret: str, requests_session: requests.Session):
     oidc_provider = OidcProviderInfo(
+        # TODO: get issuer from the secret as well? (~ openeo-job-registry-elastic-api)
         issuer=ConfigParams().etl_api_oidc_issuer,
         requests_session=requests_session,
     )
     client_info = OidcClientInfo(
         provider=oidc_provider,
-        client_id=etl_api_credentials.client_id,
-        client_secret=etl_api_credentials.client_secret,
+        client_id=client_id,
+        client_secret=client_secret,
     )
 
     authenticator = OidcClientCredentialsAuthenticator(
@@ -435,23 +430,32 @@ def main():
 
     try:
         # the assumption here is that a token lifetime of 5 minutes is long enough for a JobTracker run
-        etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(args.principal,
-                                                                                                   args.keytab)
+        requests_session = requests_with_retry(total=3, backoff_factor=2)
 
-        elastic_job_registry = get_elastic_job_registry(
-            requests_session=requests_with_retry(total=3, backoff_factor=2)
+        if ConfigParams().is_kube_deploy:
+            etl_api_access_token = None
+        else:
+            vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
+            vault_token = vault.login_kerberos(args.principal, args.keytab)
+            etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+
+            etl_api_access_token = get_etl_api_access_token(
+                etl_api_credentials.client_id,
+                etl_api_credentials.client_secret,
+                requests_session)
+
+        elastic_job_registry = get_elastic_job_registry(requests_session)
+        etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+
+        job_tracker = JobTracker(
+            job_registry=ZkJobRegistry,
+            principal=args.principal,
+            keytab=args.keytab,
+            etl_api=etl_api,
+            etl_api_access_token=etl_api_access_token,
+            elastic_job_registry=elastic_job_registry,
         )
-
-        with EtlApi(ConfigParams().etl_api) as etl_api:
-            job_tracker = JobTracker(
-                job_registry=ZkJobRegistry,
-                principal=args.principal,
-                keytab=args.keytab,
-                etl_api=etl_api,
-                etl_api_access_token=etl_api_access_token,
-                elastic_job_registry=elastic_job_registry,
-            )
-            job_tracker.update_statuses()
+        job_tracker.update_statuses()
     except JobNotFoundException as e:
         _log.error(e, exc_info=True, extra={'job_id': e.job_id})
     except Exception as e:

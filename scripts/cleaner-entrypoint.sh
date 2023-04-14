@@ -26,3 +26,10 @@ classpath="geotrellis-extensions-static.jar:$(find $SPARK_HOME/jars -name '*.jar
 py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 
 /opt/venv/bin/python -m openeogeotrellis.cleaner --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" 2>&1
+
+/opt/venv/bin/python -m openeogeotrellis.cleaner --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" \
+  --user jenkins \
+  --user wig \
+  --min-age 20 \
+  --jobs-per-user-limit=100 \
+  2>&1

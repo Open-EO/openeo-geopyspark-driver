@@ -141,6 +141,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         layer_source_type = layer_source_info.get("type", "Accumulo").lower()
         is_utm = layer_source_info.get("is_utm", False)
+        catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
         logger.info("Layer source type: {s!r}".format(s=layer_source_type))
@@ -177,12 +178,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         east = spatial_extent.get("east", None)
         north = spatial_extent.get("north", None)
         south = spatial_extent.get("south", None)
-        srs = spatial_extent.get("crs", None)
+        srs = spatial_extent.get("crs", 'EPSG:4326')
         if isinstance(srs, int):
             srs = 'EPSG:%s' % str(srs)
-        if srs is None:
-            srs = 'EPSG:4326'
-
 
         correlation_id = env.get(CORRELATION_ID, '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
@@ -246,6 +244,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                          .reproject(projected_polygons, target_epsg_code))
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
+        opensearch_endpoint = layer_source_info.get('opensearch_endpoint', ConfigParams().default_opensearch_endpoint)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
@@ -292,7 +291,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 root_path,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", [], ""
+                    opensearch_endpoint, is_utm, "", [], catalog_type
                 )
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
@@ -305,24 +304,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             return file_pyramid(pyramid_factory)
 
-        def file_probav_pyramid():
-            opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
-                                                        ConfigParams().default_opensearch_endpoint)
 
+        def file_probav_pyramid():
             cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
             cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
-
-            factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(opensearch_endpoint, layer_source_info.get(
-                'opensearch_collection_id'), layer_source_info.get('root_path'),
-                                                                          jvm.geotrellis.raster.CellSize(cell_width,
-                                                                                                         cell_height))
-            if False:
-                return factory.datacube_seq(
-                    projected_polygons_native_crs, from_date, to_date,
-                    metadata_properties(), correlation_id, datacubeParams, band_indices
-                )
-            else:
-                return factory.pyramid_seq(extent, srs, from_date, to_date, band_indices, correlation_id)
+            factory = jvm.org.openeo.geotrellis.file.ProbaVPyramidFactory(
+                opensearch_endpoint,
+                layer_source_info.get('opensearch_collection_id'),
+                metadata.opensearch_link_titles,
+                layer_source_info.get('root_path'),
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+            )
+            return factory.pyramid_seq(extent, srs, from_date, to_date, correlation_id)
 
 
         def create_pyramid(factory):
@@ -361,14 +354,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
 
         def file_pyramid(pyramid_factory):
-            opensearch_endpoint = layer_source_info.get('opensearch_endpoint',
-                                                        ConfigParams().default_opensearch_endpoint)
             opensearch_collection_id = layer_source_info['opensearch_collection_id']
             opensearch_link_titles = metadata.opensearch_link_titles
             root_path = layer_source_info.get('root_path',None)
-
             factory = pyramid_factory(opensearch_endpoint, opensearch_collection_id, opensearch_link_titles, root_path)
-
             return create_pyramid(factory)
 
 
@@ -539,9 +528,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             data_glob = layer_source_info['data_glob']
             band_names = metadata.band_names
-
+            client_type = catalog_type if catalog_type != "" else "globspatialonly"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, None, band_names, "globspatialonly"
+                data_glob, False, None, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -561,8 +550,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
 
+            client_type = catalog_type if catalog_type != "" else "cgls"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, "cgls"
+                data_glob, False, date_regex, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -578,8 +568,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
+            client_type = catalog_type if catalog_type != "" else "agera5"
             opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, "agera5"
+                data_glob, False, date_regex, band_names, client_type
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -965,6 +956,8 @@ def is_layer_too_large(
         nr_bands: int,
         cell_width: float,
         cell_height: float,
+        native_crs: str,
+        resample_params: dict,
         threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS
 ):
     """
@@ -977,15 +970,43 @@ def is_layer_too_large(
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
+    :param native_crs: Native CRS of the layer.
+    :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
 
-    :return: True if the layer exceeds the threshold number of pixels.
+    :return: True if the layer exceeds the threshold in pixels. False otherwise.
+             Also returns the estimated number of pixels and the threshold.
     """
     from_date, to_date = temporal_extent
     days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    srs = spatial_extent.get("crs", 'EPSG:4326')
+    if isinstance(srs, int):
+        srs = 'EPSG:%s' % str(srs)
+
+    # Resampling process overwrites native_crs and resolution from metadata.
+    resample_target_crs = resample_params.get("target_crs", None)
+    if resample_target_crs:
+        native_crs = resample_target_crs
+    resample_target_resolution = resample_params.get("resolution", None)
+    if resample_target_resolution:
+        cell_width, cell_height = resample_target_resolution
+
+    # Reproject.
+    if isinstance(native_crs, dict):
+        native_crs = native_crs.get("id", {}).get("code", None)
+    if native_crs is None:
+        raise InternalException("No native CRS found during is_layer_too_large check.")
+    if native_crs == "Auto42001":
+        west, south = spatial_extent["west"], spatial_extent["south"]
+        east, north = spatial_extent["east"], spatial_extent["north"]
+        native_crs = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
+    if srs != native_crs:
+        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=native_crs)
+
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-    if (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands > threshold_pixels:
+    estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
+    if estimated_pixels > threshold_pixels:
         if geometries and not isinstance(geometries, dict):
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
             # For performance, we estimate the area using a simple bounding box around each polygon.
@@ -997,7 +1018,14 @@ def is_layer_too_large(
                 geometries_area = calculate_rough_area([geometries])
             else:
                 raise TypeError(f'Unsupported geometry type: {type(geometries)}')
-            if geometries_area / (cell_width * cell_height) * days * nr_bands <= threshold_pixels:
-                return False
-        return True
-    return False
+            if native_crs != 'EPSG:4326':
+                # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
+                cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
+                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
+                cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
+                cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
+            estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
+            if estimated_pixels <= threshold_pixels:
+                return False, estimated_pixels, threshold_pixels
+        return True, estimated_pixels, threshold_pixels
+    return False, estimated_pixels, threshold_pixels

@@ -1,3 +1,5 @@
+import random
+
 import datetime
 import json
 import logging
@@ -30,12 +32,19 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
-from pystac import Collection
+import pystac
 from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
-from openeo.util import dict_no_none, rfc3339, deep_get
+from openeo.util import (
+    dict_no_none,
+    rfc3339,
+    deep_get,
+    repr_truncate,
+    str_truncate,
+    TimingLogger,
+)
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
@@ -49,6 +58,7 @@ from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, I
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
@@ -341,6 +351,26 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
             elastic_job_registry = get_elastic_job_registry()
 
+        # Start persistent workers if configured.
+        config_params = ConfigParams()
+        persistent_worker_count = config_params.persistent_worker_count
+        if persistent_worker_count != 0 and not config_params.is_kube_deploy:
+            shutdown_file = config_params.persistent_worker_dir / "shutdown"
+            if shutdown_file.exists():
+                shutdown_file.unlink()
+            persistent_script_path = pkg_resources.resource_filename('openeogeotrellis.deploy', "submit_persistent_worker.sh")
+            for i in range(persistent_worker_count):
+                args = [
+                    persistent_script_path, str(i),
+                    principal, key_tab,
+                    GpsBatchJobs.get_submit_py_files(),
+                    "INFO"
+                ]
+                logger.info(f"Submitting persistent worker {i} with args: {args!r}")
+                output_string = subprocess.check_output(args, stderr = subprocess.STDOUT, universal_newlines = True)
+                logger.info(f"Submitted persistent worker {i}, output was: {output_string}")
+
+
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
@@ -564,34 +594,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
 
-        spatial_extent = load_params.spatial_extent
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        crs = spatial_extent.get("crs", None)
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
+        requested_bbox = BoundingBox.from_dict_or_none(
+            load_params.spatial_extent, default_crs="EPSG:4326"
+        )
+        logger.info(f"{requested_bbox=}")
 
         if job_id.startswith("http://") or job_id.startswith("https://"):
             job_results_canonical_url = job_id
-            job_results = Collection.from_file(href=job_results_canonical_url)
-
-            def reproject(bbox: List[float], crs_from, crs_to) -> List[float]:
-                from pyproj import Transformer
-                transform = Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
-                xmin, ymin = transform(xx=bbox[0], yy=bbox[1])
-                xmax, ymax = transform(xx=bbox[2], yy=bbox[3])
-                return [xmin, ymin, xmax, ymax]
+            job_results = pystac.Collection.from_file(href=job_results_canonical_url)
 
             def intersects_spatial_extent(item) -> bool:
-                if not spatial_bounds_present or item.bbox is None:
+                if not requested_bbox or item.bbox is None:
                     return True
 
-                spatial_extent_epsg4326 = reproject([west, south, east, north],
-                                                    crs_from=crs or "EPSG:4326",
-                                                    crs_to="EPSG:4326")
-
-                return Polygon.from_bounds(*spatial_extent_epsg4326).intersects(Polygon.from_bounds(*item.bbox))
+                requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
+                return requested_bbox_lonlat.as_polygon().intersects(
+                    Polygon.from_bounds(*item.bbox)
+                )
 
             uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
                                                               asset.extra_fields.get("eo:bands", []))
@@ -601,6 +620,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                   if asset.media_type == "image/tiff; application=geotiff"}
 
             timestamped_uris = {uri: timestamp for uri, (timestamp, _) in uris_with_metadata.items()}
+            logger.info(f"{len(uris_with_metadata)=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in uris_with_metadata.values())
@@ -609,17 +629,22 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
-            def load_spatial_bounds_from_job_results():
-                overall_spatial_extent = job_results.extent.spatial.bboxes[0]
-                best_epsg = auto_utm_epsg_for_geometry(box(*overall_spatial_extent))
-                return reproject(overall_spatial_extent, 4326, best_epsg), best_epsg
-
-            load_spatial_bounds = load_spatial_bounds_from_job_results
+            job_results_bbox = BoundingBox.from_wsen_tuple(
+                    job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
+                )
+            # TODO: this assumes that job result data is gridded in best UTM already?
+            job_results_epsg = job_results_bbox.best_utm()
+            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         else:
-            paths_with_metadata = {asset["href"]: (asset.get("datetime"), asset.get("bands", []))
-                                   for _, asset in self.batch_jobs.get_results(job_id=job_id, user_id=user_id).items()
-                                   if asset["type"] == "image/tiff; application=geotiff"}
+            paths_with_metadata = {
+                asset["href"]: (asset.get("datetime"), asset.get("bands", []))
+                for _, asset in self.batch_jobs.get_result_assets(
+                    job_id=job_id, user_id=user_id
+                ).items()
+                if asset["type"] == "image/tiff; application=geotiff"
+            }
+            logger.info(f"{paths_with_metadata=}")
 
             if len(paths_with_metadata) == 0:
                 raise OpenEOApiException(message=f"Job {job_id} contains no results of supported type GTiff.",
@@ -631,6 +656,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     status_code=400)
 
             timestamped_uris = {path: timestamp for path, (timestamp, _) in paths_with_metadata.items()}
+            logger.info(f"{timestamped_uris=}")
 
             try:
                 eo_bands = single_value(eo_bands for _, eo_bands in paths_with_metadata.values())
@@ -639,16 +665,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(message=f"Unsupported band information for job {job_id}: {str(e)}",
                                          status_code=501)
 
-            def load_spatial_bounds_from_job_info():
-                job_info = self.batch_jobs.get_job_info(job_id, user_id)
-                bbox = job_info.bbox
-                if not (isinstance(bbox, list) and len(bbox) == 4):
-                    raise InternalException(
-                        message=f"load_result with job {job_id} expects bbox list but got: {bbox!r}"
-                    )
-                return [bbox[0], bbox[1], bbox[2], bbox[3]], job_info.epsg
-
-            load_spatial_bounds = load_spatial_bounds_from_job_info
+            job_info = self.batch_jobs.get_job_info(job_id, user_id)
+            job_results_bbox = BoundingBox.from_wsen_tuple(
+                job_info.bbox, crs="EPSG:4326"
+            )
+            job_results_epsg = job_info.epsg
+            logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -662,13 +684,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-        else:
-            band_indices = None
-
         jvm = get_jvm()
 
         pyramid_factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_uris(timestamped_uris)
@@ -676,17 +691,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if single_level:
-            existing_bbox, existing_epsg = load_spatial_bounds()
+            target_bbox = requested_bbox or job_results_bbox
+            logger.info(f"{target_bbox=}")
 
-            if spatial_bounds_present:
-                extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-            else:
-                extent = jvm.geotrellis.vector.Extent(*[float(value) for value in existing_bbox])
-                crs = "EPSG:4326"
+            extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+            extent_crs = target_bbox.crs
 
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
-            projected_polygons = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
-                                  .reproject(projected_polygons, existing_epsg))
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+                extent, target_bbox.crs
+            )
+            projected_polygons = getattr(
+                getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
+            ).reproject(projected_polygons, job_results_epsg)
 
             metadata_properties = None
             correlation_id = None
@@ -696,13 +712,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
                                                    correlation_id, data_cube_parameters)
         else:
-            extent = (jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-                      if spatial_bounds_present else None)
+            if requested_bbox:
+                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
+                extent_crs = requested_bbox.crs
+            else:
+                extent = extent_crs = None
 
-            pyramid = pyramid_factory.pyramid_seq(extent, crs, from_date, to_date)
+            pyramid = pyramid_factory.pyramid_seq(
+                extent, extent_crs, from_date, to_date
+            )
 
-        metadata = metadata.filter_bbox(west=extent.xmin(), south=extent.ymin(), east=extent.xmax(),
-                                        north=extent.ymax(), crs=crs)
+        metadata = metadata.filter_bbox(
+            west=extent.xmin(),
+            south=extent.ymin(),
+            east=extent.xmax(),
+            north=extent.ymax(),
+            crs=extent_crs,
+        )
 
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
@@ -712,12 +738,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
-        image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
-            metadata=metadata
-        )
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
-        return image_collection.filter_bands(band_indices) if band_indices else image_collection
+        if load_params.bands:
+            cube = cube.filter_bands(load_params.bands)
+
+        return cube
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
@@ -818,9 +844,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
     def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
-        if isinstance(error, Py4JJavaError):
+        return self.summarize_exception_static(error, 2000)
+
+    @staticmethod
+    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+        if "Container killed on request. Exit code is 143" in str(error):
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+
+        elif isinstance(error, Py4JJavaError):
             java_exception = error.java_exception
 
+            java_exception_class_name = java_exception.getClass().getName()
+            is_spark_exception = "SparkException" in java_exception_class_name
             while java_exception.getCause() is not None and java_exception != java_exception.getCause():
                 java_exception = java_exception.getCause()
 
@@ -831,11 +867,35 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                              and "Cannot stitch empty collection" in java_exception_message)
 
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
-            summary = "Cannot construct an image because the given boundaries resulted in an empty image collection" if no_data_found else java_exception_message
+            if no_data_found:
+                summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
+            elif is_spark_exception:
+                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
+                if udf_stacktrace:
+                    summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                else:
+                    summary = f"Exception during Spark execution: {java_exception_message}"
+            else:
+                summary = java_exception_class_name + ": " + str(java_exception_message)
+            summary = str_truncate(summary, width=width)
+        else:
+            is_client_error = False  # Give user the benefit of doubt.
+            summary = repr_truncate(error, width=width)
 
-            return ErrorSummary(error, is_client_error, summary)
+        return ErrorSummary(error, is_client_error, summary)
 
-        return error
+    @staticmethod
+    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+        """
+        Select all lines a bit under 'run_udf_code'.
+        This is what interests the user
+        """
+        regex = re.compile(r" in run_udf_code\n.*\n((.|\n)*)", re.MULTILINE)
+
+        match = regex.search(full_stacktrace)
+        if match:
+            return match.group(1).rstrip()
+        return None
 
     def changelog(self) -> Union[str, Path]:
         roots = []
@@ -922,21 +982,36 @@ class GpsProcessing(ConcreteProcessing):
 
                 cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
                 cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
+                if isinstance(native_crs, dict):
+                    native_crs = native_crs.get("id", {}).get("code", None)
+                if isinstance(native_crs, int):
+                    native_crs = f"EPSG:{native_crs}"
+                if not isinstance(native_crs, str):
+                    yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
+                                                                  f"collection {collection_id!r}"}
+                    continue
+
                 bands = constraints.get("bands", [])
                 geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                 if geometries is None:
                     geometries = constraints.get("filter_spatial", {}).get("geometries")
-                if is_layer_too_large(
+                too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
                     spatial_extent=spatial_extent,
                     geometries=geometries,
                     temporal_extent=temporal_extent,
                     nr_bands=len(bands),
                     cell_width=cell_width,
-                    cell_height=cell_height
-                ):
+                    cell_height=cell_height,
+                    native_crs=native_crs,
+                    resample_params=constraints.get("resample", {}),
+                )
+                if too_large:
                     yield {
-                        "code": "LayerTooLarge",
-                        "message": "Layer is too large to be processed."
+                        "code": "ExtentTooLarge",
+                        "message": f"Requested extent for collection {collection_id!r} is too large to process. "
+                                   f"Estimated number of pixels: {estimated_pixels:.2e}, "
+                                   f"threshold: {threshold_pixels:.2e}."
                     }
 
 
@@ -1381,6 +1456,7 @@ class GpsBatchJobs(backend.BatchJobs):
             archives = ",".join(job_options.get("udf-dependency-archives", []))
             use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
+            use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
@@ -1480,7 +1556,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     datashim=os.environ.get("DATASHIM", ""),
                     archives=archives,
                     logging_threshold=logging_threshold,
-                    mount_tmp=mount_tmp
+                    mount_tmp=mount_tmp,
+                    use_pvc=use_pvc
                 )
 
                 api_instance = kube_client()
@@ -1586,14 +1663,34 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(archives)
                     args.append(logging_threshold)
 
-                    try:
-                        logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                        logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
-                    except CalledProcessError as e:
-                        logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
-                                     extra={'job_id': job_id})
-                        raise e
+                    persistent_worker_count = ConfigParams().persistent_worker_count
+                    if persistent_worker_count != 0:
+                        # Write args to persistent_worker_dir as job_<job_id>.json
+                        # Also write process graph to pg_<job_id>.json
+                        persistent_worker_dir = ConfigParams().persistent_worker_dir
+                        if not os.path.exists(persistent_worker_dir):
+                            os.makedirs(persistent_worker_dir)
+                        pg_file_path = persistent_worker_dir / f"pg_{job_id}.json"
+                        persistent_args = [
+                            str(pg_file_path), str(self.get_job_output_dir(job_id)), "out", "log", JOB_METADATA_FILENAME,
+                            args[10], serialize_dependencies(), user_id, max_soft_errors_ratio, sentinel_hub_client_alias
+                        ]
+                        with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
+                            f.write(json.dumps(persistent_args))
+                        with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
+                            f.write(job_info["specification"])
+                        # Generate our own random application id.
+                        application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
+                        output_string = f"Application report for application_{application_id} (state: running)"
+                    else:
+                        try:
+                            logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
+                            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                            logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
+                        except CalledProcessError as e:
+                            logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
+                                         extra={'job_id': job_id})
+                            raise e
 
                 try:
                     application_id = self._extract_application_id(output_string)
@@ -2025,7 +2122,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return False
 
-    def get_results(self, job_id: str, user_id: str) -> Dict[str, dict]:
+    def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
         Reads the metadata json file from the job directory
         and returns information about the output files.
@@ -2141,13 +2238,21 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return {}
 
-    def get_log_entries(self, job_id: str, user_id: str, offset: Optional[str] = None) -> Iterable[dict]:
+    def get_log_entries(
+        self,
+        job_id: str,
+        user_id: str,
+        offset: Optional[str] = None,
+        level: Optional[str] = None,
+    ) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
         if job_info.status in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED]:
             return iter(())
 
-        return elasticsearch_logs(job_id, job_info.created, offset)
+        return elasticsearch_logs(
+            job_id=job_id, create_time=job_info.created, offset=offset, level=level
+        )
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:
@@ -2314,12 +2419,42 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
-    def delete_jobs_before(self, upper: datetime) -> None:
-        with self._double_job_registry as registry:
-            jobs_before = registry.get_all_jobs_before(upper)
+    def delete_jobs_before(
+        self,
+        upper: datetime,
+        *,
+        user_ids: Optional[List[str]] = None,
+        dry_run: bool = True,
+        include_ongoing: bool = True,
+        include_done: bool = True,
+        user_limit: Optional[int] = 1000,
+    ) -> None:
+        with self._double_job_registry as registry, TimingLogger(
+            title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
+            logger=logger,
+        ):
+            jobs_before = registry.get_all_jobs_before(
+                upper,
+                user_ids=user_ids,
+                include_ongoing=include_ongoing,
+                include_done=include_done,
+                user_limit=user_limit,
+            )
+        logger.info(f"Collected {len(jobs_before)} jobs to delete")
 
-        for job_info in jobs_before:
-            self._delete_job(job_id=job_info['job_id'], user_id=job_info['user_id'], propagate_errors=True)
+        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=logger):
+
+            for job_info in jobs_before:
+                job_id = job_info["job_id"]
+                user_id = job_info["user_id"]
+                if not dry_run:
+                    logger.info(f"Deleting {job_id=} from {user_id=}")
+                    self._delete_job(
+                        job_id=job_id, user_id=user_id, propagate_errors=True
+                    )
+                else:
+                    logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
+
 
 
 class _BatchJobError(Exception):

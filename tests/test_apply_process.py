@@ -599,3 +599,17 @@ def test_merge_cubes_into_separate_bands():
     assert stitched.cells.shape[0] == 2
     np.testing.assert_array_equal(red_ramp, stitched.cells[0, 0:4, 0:4])
     np.testing.assert_array_equal(nir_ramp, stitched.cells[1, 0:4, 0:4])
+
+
+def test_merge_cubes_error():
+    with pytest.raises(OpenEOApiException):
+        red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
+        layer1 = _create_spacetime_layer(cells=np.array([[red_ramp]]))
+        layer2 = _create_spacetime_layer(cells=np.array([[nir_ramp]]))
+
+        metadata1 = _build_metadata(bands=["band1", "band2"])
+        metadata2 = _build_metadata(bands=["band2", "band3"])
+
+        cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
+        cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
+        cube1.merge_cubes(cube2)

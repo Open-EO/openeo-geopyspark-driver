@@ -60,8 +60,8 @@ class ConfigParams:
 
         self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
-        self.etl_api = "https://etl-dev.terrascope.be"
-        self.etl_api_oidc_issuer = "https://sso-int.terrascope.be/auth/realms/terrascope"
+        self.etl_api = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
+        self.etl_api_oidc_issuer = os.environ.get("OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope")
 
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
 
@@ -75,6 +75,15 @@ class ConfigParams:
             "OPENEO_EJR_CREDENTIALS_VAULT_PATH",
             "TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
         )
+
+        _persistent_worker_count = os.environ.get("PERSISTENT_WORKER_COUNT", "0")
+        try:
+            _persistent_worker_count = int(_persistent_worker_count)
+        except ValueError:
+            _persistent_worker_count = 0
+        self.persistent_worker_count = _persistent_worker_count
+        _persistent_worker_dir = os.environ.get("PERSISTENT_WORKER_DIR", "/data/projects/OpenEO/persistent_workers")
+        self.persistent_worker_dir = Path(_persistent_worker_dir)
 
     def __str__(self) -> str:
         return pformat(vars(self))

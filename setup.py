@@ -39,11 +39,12 @@ setup(
             "CHANGELOG.md",
             # TODO: make these config files real "package_data" so that they can be managed/found more easily in different contexts
             "scripts/submit_batch_job_log4j.properties",
-            "scripts/batch_job_log4j.properties",
+            "scripts/submit_batch_job_log4j2.xml",
+            "scripts/batch_job_log4j2.xml",
             "scripts/cleaner-entrypoint.sh",
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
-            "scripts/async_task_log4j.properties"
+            "scripts/async_task_log4j2.xml"
         ]),
     ],
     setup_requires=['pytest-runner'],
@@ -51,7 +52,7 @@ setup(
     install_requires=[
         "openeo>=0.15.0",
         "openeo_driver>=0.40.0.dev",
-        'pyspark==3.2.2; python_version>="3.8"',
+        'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
@@ -59,7 +60,7 @@ setup(
         'rasterio~=1.1.8',
         'py4j',
         'numpy==1.22.4',
-        'pandas>=0.24.2,<1.4.0',
+        'pandas>=1.4.0,<2.0.0',
         'pyproj==3.4.1',
         'protobuf~=3.9.2',
         'kazoo~=2.8.0',

@@ -1,7 +1,8 @@
 #!/bin/sh -e
 
-if [ "$#" -lt 7 ]; then
-    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> <OpenEO user> [api version] [driver memory] [executor memory]"
+if [ "$#" -lt 5 ]; then
+    # <> vs []: required vs optional
+    >&2 echo "Usage: $0 <worker_id> <principal> <key tab file> <pyfiles> <logging_threshold>"
     exit 1
 fi
 
@@ -22,35 +23,25 @@ if [ ! -f ${sparkSubmitLog4jConfigurationFile} ]; then
 
 fi
 
-jobName=$1
-processGraphFile=$2
-outputDir=$3
-outputFileName=$4
-userLogFileName=$5
-metadataFileName=$6
-principal=$7
-keyTab=$8
-proxyUser=$9
-apiVersion=${10}
-drivermemory=${11-22G}
-executormemory=${12-4G}
-executormemoryoverhead=${13-3G}
-drivercores=${14-14}
-executorcores=${15-2}
-drivermemoryoverhead=${16-8G}
-queue=${17-default}
-profile=${18-false}
-dependencies=${19-"[]"}
-pyfiles=${20}
-maxexecutors=${21-500}
-userId=${22}
-batchJobId=${23}
-maxSoftErrorsRatio=${24-"0.0"}
-taskCpus=${25}
-sentinelHubClientAlias=${26}
-propertiesFile=${27}
-archives=${28}
-logging_threshold=${29}
+jobName="openeo_persistent_worker_$1"
+principal=$2
+keyTab=$3
+pyfiles=$4
+logging_threshold=$5
+drivermemory="8G"
+executormemory="2G"
+executormemoryoverhead="3G"
+drivercores=5
+executorcores=2
+drivermemoryoverhead="2G"
+queue="default"
+profile="false"
+dependencies="[]"
+maxexecutors=100
+userId=$jobName
+batchJobId=$jobName
+taskCpus=1
+archives=[]
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -68,7 +59,7 @@ extensions="geotrellis-extensions-static.jar"
 backend_assembly="geotrellis-backend-assembly-static.jar"
 logging_jar=$(ls openeo-logging-static.jar) || true
 
-files="layercatalog.json,${processGraphFile}"
+files="layercatalog.json"
 if [ -n "${logging_jar}" ]; then
   files="${files},${logging_jar}"
 fi
@@ -79,7 +70,7 @@ if [ -f "http_credentials.json" ]; then
   files="${files},http_credentials.json"
 fi
 
-main_py_file="/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py"
+main_py_file="/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/persistent_worker.py"
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
@@ -93,15 +84,7 @@ sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopy
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
  -Dopeneo.logging.threshold=$logging_threshold"
 
-ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
-ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
-echo "${ipa_response}"
-ipa_user_count=$(echo "${ipa_response}" | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["result"]["count"])')
-if [ "${ipa_user_count}" != "0" ]; then
-  run_as="--proxy-user ${proxyUser}"
-else
-  run_as="--principal ${principal} --keytab ${keyTab}"
-fi
+run_as="--principal ${principal} --keytab ${keyTab}"
 
 spark-submit \
  --master yarn --deploy-mode cluster \
@@ -111,7 +94,6 @@ spark-submit \
  --driver-memory "${drivermemory}" \
  --executor-memory "${executormemory}" \
  --driver-java-options "${sparkDriverJavaOptions}" \
- --properties-file "${propertiesFile}" \
  --conf spark.executor.extraJavaOptions="${sparkExecutorJavaOptions}" \
  --conf spark.python.profile=$profile \
  --conf spark.executor.processTreeMetrics.enabled=true \
@@ -179,4 +161,4 @@ spark-submit \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}" "${sentinelHubClientAlias}"
+ "${main_py_file}"
