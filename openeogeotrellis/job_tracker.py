@@ -432,14 +432,17 @@ def main():
         # the assumption here is that a token lifetime of 5 minutes is long enough for a JobTracker run
         requests_session = requests_with_retry(total=3, backoff_factor=2)
 
-        vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
-        vault_token = vault.login_kerberos(args.principal, args.keytab)
-        etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+        if ConfigParams().is_kube_deploy:
+            etl_api_access_token = None
+        else:
+            vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
+            vault_token = vault.login_kerberos(args.principal, args.keytab)
+            etl_api_credentials = vault.get_etl_api_credentials(vault_token)
 
-        etl_api_access_token = None if ConfigParams().is_kube_deploy else get_etl_api_access_token(
-            etl_api_credentials.client_id,
-            etl_api_credentials.client_secret,
-            requests_session)
+            etl_api_access_token = get_etl_api_access_token(
+                etl_api_credentials.client_id,
+                etl_api_credentials.client_secret,
+                requests_session)
 
         elastic_job_registry = get_elastic_job_registry(requests_session)
         etl_api = EtlApi(ConfigParams().etl_api, requests_session)
