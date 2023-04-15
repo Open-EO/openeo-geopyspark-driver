@@ -2221,11 +2221,10 @@ class GpsBatchJobs(backend.BatchJobs):
                 contents = get_s3_file_contents(str(metadata_file))
                 return json.loads(contents)
             except Exception:
-                logger.error(
+                logger.warning(
                     "Could not retrieve result metadata from object storage %s",
                     metadata_file, exc_info=True,
                     extra={'job_id': job_id})
-                raise
 
         try:
             with open(metadata_file) as f:
