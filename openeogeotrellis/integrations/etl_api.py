@@ -2,6 +2,9 @@ import logging
 from typing import Optional
 
 import requests
+from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCredentialsAuthenticator
+
+from openeogeotrellis.configparams import ConfigParams
 
 SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
@@ -120,3 +123,22 @@ class EtlApi:
 
             total_credits = sum(resource['cost'] for resource in resp.json())
             return total_credits
+
+
+def get_etl_api_access_token(client_id: str, client_secret: str, requests_session: requests.Session) -> str:
+    oidc_provider = OidcProviderInfo(
+        # TODO: get issuer from the secret as well? (~ openeo-job-registry-elastic-api)
+        issuer=ConfigParams().etl_api_oidc_issuer,
+        requests_session=requests_session,
+    )
+    client_info = OidcClientInfo(
+        provider=oidc_provider,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+    authenticator = OidcClientCredentialsAuthenticator(
+        client_info=client_info,
+        requests_session=requests_session,
+    )
+    return authenticator.get_tokens().access_token

@@ -63,6 +63,7 @@ from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
 )
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
@@ -75,6 +76,7 @@ from openeogeotrellis.geopysparkdatacube import (
 from openeogeotrellis.geotrellis_tile_processgraph_visitor import (
     GeotrellisTileProcessGraphVisitor,
 )
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_job_name,
@@ -323,6 +325,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        use_etl_api: bool = False,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -336,7 +339,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
         )
 
-        vault = Vault(ConfigParams().vault_addr)
+        requests_session = requests_with_retry(total=3, backoff_factor=2)
+        vault = Vault(ConfigParams().vault_addr, requests_session)
 
         catalog = get_layer_catalog(vault)
 
@@ -389,6 +393,46 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         self._principal = principal
         self._key_tab = key_tab
+
+        self._get_request_costs: Callable[[str, str, bool], Optional[float]] = lambda user_id, request_id, success: None
+
+        if use_etl_api:
+            def get_request_costs_from_etl_api(user_id: str, request_id: str, success: bool) -> Optional[float]:
+                sc = SparkContext.getOrCreate()
+
+                request_metadata_tracker = jvm.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(request_id,
+                                                                                                       sc._jsc.sc())
+                sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
+
+                vault_token = vault.login_kerberos(self._principal, self._key_tab)
+                etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+
+                access_token = get_etl_api_access_token(client_id=etl_api_credentials.client_id,
+                                                        client_secret=etl_api_credentials.client_secret,
+                                                        requests_session=requests_session)
+
+                etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+
+                costs = etl_api.log_resource_usage(batch_job_id=request_id,
+                                                   title=None,
+                                                   execution_id=request_id,
+                                                   user_id=user_id,
+                                                   started_ms=None,
+                                                   finished_ms=None,
+                                                   state="FINISHED" if success else "FAILED",
+                                                   status="SUCCEEDED" if success else "FAILED",
+                                                   cpu_seconds=None,
+                                                   mb_seconds=None,
+                                                   duration_ms=None,
+                                                   sentinel_hub_processing_units=sentinel_hub_processing_units,
+                                                   access_token=access_token)
+
+                logger.info(f"{'successful' if success else 'failed'} request required {sentinel_hub_processing_units} "
+                            f"PUs and cost {costs} credits")
+
+                return costs
+
+            self._get_request_costs = get_request_costs_from_etl_api
 
     def capabilities_billing(self) -> dict:
         return {
@@ -926,12 +970,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         return user
 
-    def after_request(self):
+    def after_request(self, request_id: str):
         sc = SparkContext.getOrCreate()
         jvm = sc._gateway.jvm
 
         for mdc_key in [jvm.org.openeo.logging.JsonLayout.RequestId(), jvm.org.openeo.logging.JsonLayout.UserId()]:
             mdc_remove(sc, jvm, mdc_key)
+
+        jvm.org.openeo.geotrelliscommon.ScopedMetadataTracker.remove(request_id)
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self.batch_jobs.set_default_sentinel_hub_credentials(client_id, client_secret)
@@ -939,6 +985,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self.batch_jobs.set_terrascope_access_token_getter(get_terrascope_access_token)
+
+    def request_costs(self, user_id: str, request_id: str, success: bool) -> Optional[float]:
+        return self._get_request_costs(user_id, request_id, success)
 
 
 class GpsProcessing(ConcreteProcessing):
