@@ -26,6 +26,7 @@ tests_require = [
     "time_machine>=2.8.0",
     "kubernetes",
     "re-assert",
+    "matplotlib",
 ]
 
 setup(
@@ -87,7 +88,6 @@ setup(
         'hvac==1.0.2',
         "pyarrow>=1.0.0",  # For pyspark.pandas
         "attrs>=22.1.0",
-        "matplotlib",
     ],
     extras_require={
         "dev": tests_require,
