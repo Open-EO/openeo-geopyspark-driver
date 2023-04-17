@@ -15,14 +15,13 @@ import kazoo.client
 
 import openeogeotrellis.backend
 from openeo.util import date_to_rfc3339, deep_get, url_join
-from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
-from openeogeotrellis.integrations.etl_api import EtlApi
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
     k8s_state_to_openeo_job_status, K8S_SPARK_APP_STATE,
@@ -377,25 +376,6 @@ class JobTracker:
 
         utc_datetime = datetime.utcfromtimestamp(int(epoch_millis) / 1000)
         return date_to_rfc3339(utc_datetime)
-
-
-def get_etl_api_access_token(client_id: str, client_secret: str, requests_session: requests.Session):
-    oidc_provider = OidcProviderInfo(
-        # TODO: get issuer from the secret as well? (~ openeo-job-registry-elastic-api)
-        issuer=ConfigParams().etl_api_oidc_issuer,
-        requests_session=requests_session,
-    )
-    client_info = OidcClientInfo(
-        provider=oidc_provider,
-        client_id=client_id,
-        client_secret=client_secret,
-    )
-
-    authenticator = OidcClientCredentialsAuthenticator(
-        client_info=client_info,
-        requests_session=requests_session,
-    )
-    return authenticator.get_tokens().access_token
 
 
 def main():
