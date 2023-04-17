@@ -282,6 +282,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 )
 
                 asset_proj_metadata = read_projection_extension_metadata(abs_asset_path)
+                logger.info(f"{asset_path=}, {asset_proj_metadata=}")
                 # If gdal could not extract the projection metadata from the file
                 # (The file is corrupt perhaps?).
                 if asset_proj_metadata:
@@ -317,18 +318,35 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             assets_have_same_proj_md = not is_projection_md_missing and all(
                 [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
             )
+            logger.info(f"{epsgs=}, {bboxes=}, {shapes=}, {assets_have_same_proj_md=}")
             if assets_have_same_proj_md:
                 # TODO: Should we overwrite existing values for epsg and bbox, or keep
                 #   what is already there?
                 if not epsg and not metadata.get("epsg"):
                     epsg = epsgs.pop()
+                    logger.info(
+                        "Projection metadata at top level: replacing value "
+                        f"of epsg with epsg from gdalinfo {epsg=}"
+                    )
                 if not metadata.get("bbox"):
                     metadata["bbox"] = list(bboxes.pop())
+                    logger.info(
+                        "Projection metadata at top level: replacing value "
+                        f"of bbox with bbox from gdalinfo: {metadata['bbox']}"
+                    )
                 metadata["proj:shape"] = list(shapes.pop())
+                logger.info(
+                    "Projection metadata at top level: setting proj:shape, "
+                    f"{metadata['proj:shape']=}"
+                )
             else:
                 # Each asset has its different projection metadata so set it per asset.
                 for asset_path, proj_md in projection_metadata.items():
                     asset_metadata[asset_path].update(proj_md)
+                    logger.info(
+                        f"Updated metadata for asset {asset_path} with projection metadata: "
+                        + f"{proj_md=}, {asset_metadata[asset_path]=}"
+                    )
 
             metadata["assets"] = asset_metadata
 
@@ -460,7 +478,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     gdal.UseExceptions()
 
     try:
-        return gdal.Info(asset_uri, options=gdal.InfoOptions(format="json"))
+        data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json"))
     except Exception as exc:
         # TODO: Specific exception type(s) would be better but Wasn't able to find what
         #   specific exceptions gdal.Info might raise.
@@ -471,6 +489,9 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             + f"Exception from GDAL: {exc}"
         )
         return {}
+    else:
+        logger.info(f"{asset_uri=}, {data_gdalinfo=}")
+        return data_gdalinfo
 
 
 def parse_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
