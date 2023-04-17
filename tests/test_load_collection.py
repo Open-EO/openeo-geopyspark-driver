@@ -55,7 +55,7 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock, catalog):
                                  spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
                                  sar_backscatter=SarBackscatterArgs())
     catalog.load_collection('SENTINEL1_GRD', load_params=load_params,
-                            env=EvalEnv({'pyramid_levels': 'highest'}))
+                            env=EvalEnv({'pyramid_levels': 'highest', 'correlation_id': 'r-abc123'}))
 
     factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting
     sample_type_mock = jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.return_value
@@ -78,7 +78,7 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock, catalog):
     factory_mock.return_value.datacube_seq.assert_called_once_with(reprojected.polygons(),
                                                  ANY, '2021-02-08T10:36:00+00:00', '2021-02-08T10:36:00+00:00',
                                                  ['VV', 'VH', 'HV', 'HH'], {},
-                                                 datacubeParams)
+                                                 datacubeParams, 'r-abc123')
 
 
 def test_load_collection_sar_backscatter_incompatible(catalog):

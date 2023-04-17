@@ -36,12 +36,11 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import EtlApi
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCostsCalculator, YarnJobCostsCalculator,
                                                    K8sJobCostsCalculator, CostsDetails)
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.job_tracker import get_etl_api_access_token
 from openeogeotrellis.utils import StatsReporter
 from openeogeotrellis.vault import Vault
 
