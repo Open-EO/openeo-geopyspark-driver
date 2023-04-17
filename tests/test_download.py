@@ -292,9 +292,10 @@ class TestDownload:
     os.makedirs(test_write_assets_parameterize_path)
 
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
-    @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
-    @pytest.mark.parametrize("stitch", [True])  # Specify [True, False] to run more tests
-    @pytest.mark.parametrize("catalog", [True])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("tiled", [True, False])
+    @pytest.mark.parametrize("stitch", [True, False])
+    @pytest.mark.parametrize("catalog", [True, False])
+    @pytest.mark.parametrize("useColorMap", [True, False])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
@@ -306,6 +307,7 @@ class TestDownload:
                                        tiled,
                                        stitch,
                                        catalog,
+                                       useColorMap,
                                        tile_grid,
                                        sample_by_feature,
                                        batch_mode,
@@ -324,6 +326,20 @@ class TestDownload:
             imagecollection = imagecollection_with_two_bands_and_three_dates
         else:
             imagecollection = imagecollection_with_two_bands_spatial_only
+
+        colormap = None
+        if useColorMap:
+            from matplotlib.colors import ListedColormap
+            col_palette = [
+                [174, 199, 232, 255],
+                [214, 39, 40, 255],
+                [247, 182, 210, 255],
+                [219, 219, 141, 255],
+                [199, 199, 199, 255]
+
+            ]
+            cmap = ListedColormap(col_palette)
+            colormap = {x: [c / 255.0 for c in cmap(x)] for x in range(0, len(col_palette))}
 
         if format_arg == "NETCDF":
             extension = ".nc"
@@ -353,6 +369,7 @@ class TestDownload:
                 "geometries": geometries,
                 # "feature_id_property": 'id',  # not used
                 # "multidate": True,  # not used
+                "colormap": colormap,
             }
         )
         # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:

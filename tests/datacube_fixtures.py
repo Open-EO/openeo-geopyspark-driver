@@ -136,7 +136,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
 
     date1, date3, rdd = numpy_rdd_two_bands_and_three_dates()
 
-    metadata = {'cellType': 'int32ud-1',
+    metadata = {'cellType': 'int8ud-1',  # 'int32ud-1',
                 'extent': extent,
                 'crs': '+proj=longlat +datum=WGS84 +no_defs ',
                 'bounds': {
@@ -149,7 +149,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
                 }
                 }
 
-    geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata).convert_data_type('int32',no_data_value=-1)
+    geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata).convert_data_type('int8',no_data_value=-1)
 
     datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata))
     if request.instance:
