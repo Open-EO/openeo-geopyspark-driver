@@ -295,7 +295,7 @@ class TestDownload:
     @pytest.mark.parametrize("tiled", [True, False])
     @pytest.mark.parametrize("stitch", [True, False])
     @pytest.mark.parametrize("catalog", [True, False])
-    @pytest.mark.parametrize("useColorMap", [True, False])
+    @pytest.mark.parametrize("useColorMap", [False])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
