@@ -84,7 +84,7 @@ setup(
         'elasticsearch==7.16.3',
         'pystac>=1.0.0',
         'boto3==1.16.25',
-        'hvac==1.0.2',
+        "hvac>=1.0.2",
         "pyarrow>=1.0.0",  # For pyspark.pandas
         "attrs>=22.1.0",
     ],
