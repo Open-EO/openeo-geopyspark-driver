@@ -295,7 +295,7 @@ class TestDownload:
     @pytest.mark.parametrize("tiled", [True, False])
     @pytest.mark.parametrize("stitch", [True, False])
     @pytest.mark.parametrize("catalog", [True, False])
-    @pytest.mark.parametrize("useColorMap", [True])
+    @pytest.mark.parametrize("useColorMap", [False])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
@@ -336,8 +336,7 @@ class TestDownload:
                 [214, 39, 40, 255],
                 [247, 182, 210, 255],
                 [219, 219, 141, 255],
-                [199, 199, 199, 255]
-
+                [199, 199, 199, 255],
             ]
             cmap = ListedColormap(col_palette)
             colormap = {x: [c / 255.0 for c in cmap(x)] for x in range(0, len(col_palette))}
@@ -395,7 +394,28 @@ class TestDownload:
                     assert "/openEO" in asset['href']
         assert Path(asset['href']).parent == tmp_path
 
-    #skipped because gdal_merge.py is not available on jenkins
+    def test_write_assets_colormap(self, tmp_path, imagecollection_with_two_bands_and_three_dates,
+                                   imagecollection_with_two_bands_spatial_only,
+                                   ):
+        # Should not have:
+        # java.lang.ClassCastException: cannot assign instance of spire.std.DoubleAlgebra to field geotrellis.raster.render.BreakMap.evidence$1 of type org.locationtech.geopyspark.shaded.cats.kernel.Order in instance of geotrellis.raster.render.BreakMap$mcDI$sp
+        self.test_write_assets_parameterize(
+            tmp_path=tmp_path,
+            imagecollection_with_two_bands_and_three_dates=imagecollection_with_two_bands_and_three_dates,
+            imagecollection_with_two_bands_spatial_only=imagecollection_with_two_bands_spatial_only,
+            format_arg='GTIFF',
+            tiled=True,
+            stitch=False,
+            catalog=False,
+            useColorMap=True,
+            tile_grid=None,
+            sample_by_feature=False,
+            batch_mode=True,
+            filename_prefix=None,
+            space_type='spacetime',
+        )
+
+    # skipped because gdal_merge.py is not available on jenkins
     @skip
     def test_download_as_catalog(self):
         input_layer = layer_with_two_bands_and_one_date()
