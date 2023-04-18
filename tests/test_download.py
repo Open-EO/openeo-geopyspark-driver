@@ -317,6 +317,7 @@ class TestDownload:
                                        ):
         d = locals()
         d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
+        print(d)
         test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
         if batch_mode and sample_by_feature:
             # 'sample_by_feature' is only relevant in 'batch_mode'
