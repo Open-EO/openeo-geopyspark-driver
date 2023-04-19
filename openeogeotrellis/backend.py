@@ -67,7 +67,7 @@ from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.config import gps_backend_config
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
@@ -460,7 +460,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return res
 
     def oidc_providers(self) -> List[OidcProvider]:
-        return gps_backend_config().oidc_providers
+        return get_backend_config().oidc_providers
 
     def file_formats(self) -> dict:
         return {
