@@ -1,10 +1,11 @@
 import importlib.resources
 import logging
 import os
-from pathlib import Path
 from typing import List, Union, Optional
 
 import attrs
+
+from openeo_driver.config.load import load_from_py_file
 from openeo_driver.users.oidc import OidcProvider
 
 _log = logging.getLogger(__name__)
@@ -29,30 +30,6 @@ class GpsBackendConfig:
 
     oidc_providers: List[OidcProvider] = attrs.Factory(list)
 
-    @staticmethod
-    def from_py_file(
-        path: Union[str, Path], config_variable: str = "config"
-    ) -> "GpsBackendConfig":
-        """Load config from a Python file."""
-        path = Path(path)
-        _log.info(f"Loading GpsBackendConfig from Python file {path}")
-        # Based on flask's Config.from_pyfile
-        with path.open(mode="rb") as f:
-            code = compile(f.read(), path, "exec")
-        globals = {"__file__": str(path)}
-        exec(code, globals)
-        try:
-            config = globals[config_variable]
-        except KeyError:
-            raise ConfigException(
-                f"No variable {config_variable!r} found in config file {path}"
-            )
-        if not isinstance(config, GpsBackendConfig):
-            raise ConfigException(
-                f"Expected {GpsBackendConfig.__name__} but got {type(config).__name__}"
-            )
-        return config
-
 
 # Global config (lazy-load cache)
 _gps_backend_config: Union[GpsBackendConfig, None] = None
@@ -70,7 +47,9 @@ def gps_backend_config(force_reload: bool = False) -> GpsBackendConfig:
                 "OPENEO_BACKEND_CONFIG",
                 default_config,
             )
-        _gps_backend_config = GpsBackendConfig.from_py_file(config_path)
+        _gps_backend_config = load_from_py_file(
+            config_path, expected_class=GpsBackendConfig
+        )
 
     return _gps_backend_config
 

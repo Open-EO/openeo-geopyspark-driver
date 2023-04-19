@@ -41,12 +41,6 @@ class TestGpsBackendConfig:
         config = GpsBackendConfig()
         assert isinstance(config, GpsBackendConfig)
 
-    @pytest.mark.parametrize("path_type", [str, Path])
-    def test_from_py_file_defaults(self, tmp_path, path_type):
-        config_path = get_config_file(tmp_path=tmp_path, content=SIMPLE_CONFIG)
-        config = GpsBackendConfig.from_py_file(path_type(config_path))
-        assert isinstance(config, GpsBackendConfig)
-
     def test_immutability(self):
         config = GpsBackendConfig(id="foo")
         assert config.id == "foo"
