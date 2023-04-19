@@ -400,37 +400,41 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             def get_request_costs_from_etl_api(user_id: str, request_id: str, success: bool) -> Optional[float]:
                 sc = SparkContext.getOrCreate()
 
+                # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
                 request_metadata_tracker = jvm.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(request_id,
                                                                                                        sc._jsc.sc())
                 sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
 
-                vault_token = vault.login_kerberos(self._principal, self._key_tab)
-                etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+                if sentinel_hub_processing_units > 0:
+                    vault_token = vault.login_kerberos(self._principal, self._key_tab)
+                    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
 
-                access_token = get_etl_api_access_token(client_id=etl_api_credentials.client_id,
-                                                        client_secret=etl_api_credentials.client_secret,
-                                                        requests_session=requests_session)
+                    access_token = get_etl_api_access_token(client_id=etl_api_credentials.client_id,
+                                                            client_secret=etl_api_credentials.client_secret,
+                                                            requests_session=requests_session)
 
-                etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+                    etl_api = EtlApi(ConfigParams().etl_api, requests_session)
 
-                costs = etl_api.log_resource_usage(batch_job_id=request_id,
-                                                   title=None,
-                                                   execution_id=request_id,
-                                                   user_id=user_id,
-                                                   started_ms=None,
-                                                   finished_ms=None,
-                                                   state="FINISHED" if success else "FAILED",
-                                                   status="SUCCEEDED" if success else "FAILED",
-                                                   cpu_seconds=None,
-                                                   mb_seconds=None,
-                                                   duration_ms=None,
-                                                   sentinel_hub_processing_units=sentinel_hub_processing_units,
-                                                   access_token=access_token)
+                    costs = etl_api.log_resource_usage(batch_job_id=request_id,
+                                                       title=None,
+                                                       execution_id=request_id,
+                                                       user_id=user_id,
+                                                       started_ms=None,
+                                                       finished_ms=None,
+                                                       state="FINISHED" if success else "FAILED",
+                                                       status="SUCCEEDED" if success else "FAILED",
+                                                       cpu_seconds=None,
+                                                       mb_seconds=None,
+                                                       duration_ms=None,
+                                                       sentinel_hub_processing_units=sentinel_hub_processing_units,
+                                                       access_token=access_token)
 
-                logger.info(f"{'successful' if success else 'failed'} request required {sentinel_hub_processing_units} "
-                            f"PUs and cost {costs} credits")
+                    logger.info(f"{'successful' if success else 'failed'} request required "
+                                f"{sentinel_hub_processing_units} PU(s) and cost {costs} credit(s)")
 
-                return costs
+                    return costs
+
+                return None
 
             self._get_request_costs = get_request_costs_from_etl_api
 
