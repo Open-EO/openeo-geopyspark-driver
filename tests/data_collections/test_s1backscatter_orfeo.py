@@ -418,7 +418,7 @@ def test_orfeo_soft_errors(tmp_path):
             elev_geoid=None, elev_default=0,
             log_prefix="test",
             orfeo_memory=512,
-            tracker=_get_tracker(),
+            tracker=S1BackscatterOrfeo._get_tracker(),
             max_soft_errors_ratio=0
         )
     get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.setGlobalTracking(False)

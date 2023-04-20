@@ -37,6 +37,8 @@ from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext,
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
+_EXECUTION_TRACKER_ID = "orfeo_backscatter_execution_counter"
+
 
 def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
     """
@@ -310,7 +312,7 @@ class S1BackscatterOrfeo:
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
         max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-        tracker.registerCounter(_SOFT_ERROR_TRACKER_ID)
+        tracker.add(_EXECUTION_TRACKER_ID, 1)
 
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
@@ -345,9 +347,10 @@ class S1BackscatterOrfeo:
             # Check soft error ratio.
             if tracker is not None:
                 tracker.add(_SOFT_ERROR_TRACKER_ID, error_counter.value)
-                num_errors = tracker.asDict().get(_SOFT_ERROR_TRACKER_ID)
+                tracker_dict = tracker.asDict()
+                num_errors = tracker_dict.get(_SOFT_ERROR_TRACKER_ID)
                 if num_errors > 0:
-                    num_executions = 1  # TODO
+                    num_executions = tracker_dict.get(_EXECUTION_TRACKER_ID)
                     error_ratio = num_errors / num_executions
                     if error_ratio > max_soft_errors_ratio:
                         logger.error(f"error/request ratio [{num_errors}/{num_executions}] {error_ratio} > {max_soft_errors_ratio}")
@@ -581,7 +584,7 @@ class S1BackscatterOrfeo:
 
         #print(local)
         orfeo_function = S1BackscatterOrfeo._get_process_function(
-            sar_backscatter_arguments, result_dtype, bands, _get_tracker(), max_soft_errors_ratio
+            sar_backscatter_arguments, result_dtype, bands, S1BackscatterOrfeo._get_tracker(), max_soft_errors_ratio
         )
 
         tile_rdd = grouped.flatMap(orfeo_function)
@@ -742,6 +745,14 @@ class S1BackscatterOrfeo:
         return temp_dir
 
 
+    @staticmethod
+    def _get_tracker():
+        tracker = _get_tracker()
+        tracker.registerCounter(_SOFT_ERROR_TRACKER_ID)
+        tracker.registerCounter(_EXECUTION_TRACKER_ID)
+        return tracker
+
+
 class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
     """
     EP-3730 optimization: instead of splitting input image in tiles and applying Orfeo pipeline to each tile,
@@ -793,7 +804,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
-        tracker = _get_tracker()
+        tracker = S1BackscatterOrfeo._get_tracker()
 
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
