@@ -406,11 +406,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
 
                 if sentinel_hub_processing_units > 0:
-                    vault_token = vault.login_kerberos(self._principal, self._key_tab)
-                    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+                    if config_params.is_kube_deploy:  # TODO: replace with strategy pattern?
+                        etl_api_client_id = os.environ["OPENEO_ETL_OIDC_CLIENT_ID"]
+                        etl_api_client_secret = os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
+                    else:
+                        vault_token = vault.login_kerberos(self._principal, self._key_tab)
+                        etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+                        etl_api_client_id = etl_api_credentials.client_id
+                        etl_api_client_secret = etl_api_credentials.client_secret
 
-                    access_token = get_etl_api_access_token(client_id=etl_api_credentials.client_id,
-                                                            client_secret=etl_api_credentials.client_secret,
+                    access_token = get_etl_api_access_token(client_id=etl_api_client_id,
+                                                            client_secret=etl_api_client_secret,
                                                             requests_session=requests_session)
 
                     etl_api = EtlApi(ConfigParams().etl_api, requests_session)
