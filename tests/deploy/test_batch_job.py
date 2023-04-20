@@ -18,13 +18,13 @@ from openeo_driver.utils import read_json
 from openeo_driver.util.geometry import reproject_geometry
 from openeogeotrellis.deploy.batch_job import (
     extract_result_metadata,
-    run_job, _get_tracker,
-    _convert_asset_outputs_to_s3_urls,
+    run_job, _convert_asset_outputs_to_s3_urls,
     _convert_job_metadatafile_outputs_to_s3_urls,
     read_projection_extension_metadata,
     parse_projection_extension_metadata,
     _get_projection_extension_metadata,
 )
+from utils import _get_tracker
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis._version import __version__
 from tests.data import get_test_data_file

@@ -33,10 +33,10 @@ from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
-    ensure_executor_logging
+    ensure_executor_logging, _get_tracker
 
 logger = logging.getLogger(__name__)
-
+_SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
 
 def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
     """
@@ -107,8 +107,6 @@ class S1BackscatterOrfeo:
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
-        _tracker = self.jvm.org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker("")
-        _tracker.registerCounter("orfeo_backscatter_soft_errors")
 
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
@@ -306,23 +304,20 @@ class S1BackscatterOrfeo:
             elev_default: float = None,
             log_prefix: str = "",
             orfeo_memory:int = 512,
-            tracker=None
+            tracker=None,
+            max_soft_errors_ratio = 0.0
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
-
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
-
         max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
+        tracker.registerCounter(_SOFT_ERROR_TRACKER_ID)
 
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
 
-
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
-
             arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
-            error_counter = multiprocessing.Value('i', 0,lock=False)
-
+            error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
                                                                sar_calibration_lut, epsg=extent_epsg)
@@ -332,12 +327,11 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("outputs.sizey", extent_height_px)
                 ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
                 ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
-
-                ortho_rect.Execute()
-                # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
                 try:
+                    ortho_rect.Execute()
+                    # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
-                    np.copyto(np.frombuffer(arr).reshape((extent_height_px,extent_width_px)),localdata)
+                    np.copyto(np.frombuffer(arr).reshape((extent_height_px, extent_width_px)), localdata)
                 except RuntimeError as e:
                     error_counter.value += 1
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
@@ -345,16 +339,23 @@ class S1BackscatterOrfeo:
             p = Process(target=run, args=())
             p.start()
             p.join()
-            if(p.exitcode == -signal.SIGSEGV):
-                if tracker is not None:
-                    tracker.add(1)
+            if p.exitcode == -signal.SIGSEGV:
+                error_counter.value += 1
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
+            # Check soft error ratio.
             if tracker is not None:
-                tracker.add( error_counter.value)
+                tracker.add(_SOFT_ERROR_TRACKER_ID, error_counter.value)
+                num_errors = tracker.asDict().get(_SOFT_ERROR_TRACKER_ID)
+                if num_errors > 0:
+                    num_executions = 1  # TODO
+                    error_ratio = num_errors / num_executions
+                    if error_ratio > max_soft_errors_ratio:
+                        logger.error(f"error/request ratio [{num_errors}/{num_executions}] {error_ratio} > {max_soft_errors_ratio}")
+                        raise RuntimeError("Too many errors while running Orfeo toolbox")
+                    else:
+                        logger.warning(f"ignoring soft error {error_ratio} <= {max_soft_errors_ratio}")
 
-            data =  np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
-
-
+            data = np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
 
             logger.info(
                 f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
@@ -412,7 +413,7 @@ class S1BackscatterOrfeo:
         return ortho_rect
 
     @staticmethod
-    def _get_process_function(sar_backscatter_arguments,result_dtype,bands):
+    def _get_process_function(sar_backscatter_arguments, result_dtype, bands, tracker=None, max_soft_errors_ratio=0.0):
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", S1BackscatterOrfeo._DEFAULT_TILE_SIZE)
@@ -483,7 +484,9 @@ class S1BackscatterOrfeo:
                                 sar_calibration_lut=sar_calibration_lut,
                                 noise_removal=noise_removal,
                                 elev_geoid=elev_geoid, elev_default=elev_default,
-                                log_prefix=f"{log_prefix}-{band}"
+                                log_prefix=f"{log_prefix}-{band}",
+                                tracker=tracker,
+                                max_soft_errors_ratio=max_soft_errors_ratio,
                             )
                             tile_data[b] = data
 
@@ -514,7 +517,8 @@ class S1BackscatterOrfeo:
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
             result_dtype="float32",
             extra_properties={},
-            datacubeParams=None
+            datacubeParams=None,
+            max_soft_errors_ratio=0.0
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -576,7 +580,9 @@ class S1BackscatterOrfeo:
         #local = grouped.collect()
 
         #print(local)
-        orfeo_function = S1BackscatterOrfeo._get_process_function(sar_backscatter_arguments,result_dtype,bands)
+        orfeo_function = S1BackscatterOrfeo._get_process_function(
+            sar_backscatter_arguments, result_dtype, bands, _get_tracker(), max_soft_errors_ratio
+        )
 
         tile_rdd = grouped.flatMap(orfeo_function)
         #tile_rdd = list(map(orfeo_function,local))
@@ -753,7 +759,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             zoom=0,  # TODO: what to do with zoom? It is not used at the moment.
             result_dtype="float32",
             extra_properties={},
-            datacubeParams=None
+            datacubeParams=None,
+            max_soft_errors_ratio=0.0
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -786,6 +793,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
+        tracker = _get_tracker()
 
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
@@ -807,8 +815,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             }
 
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
-
-        error_acc = feature_pyrdd.context.accumulator(0)
 
         # TODO: still split if full layout extent is too large for processing as a whole?
 
@@ -883,7 +889,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         elev_geoid=elev_geoid, elev_default=elev_default,
                         log_prefix=f"{log_prefix}-{band}",
                         orfeo_memory=orfeo_memory,
-                        tracker = error_acc
+                        tracker=tracker,
+                        max_soft_errors_ratio = max_soft_errors_ratio
                     )
                     #orfeo_bands = y,x
                     orfeo_bands[b] = data

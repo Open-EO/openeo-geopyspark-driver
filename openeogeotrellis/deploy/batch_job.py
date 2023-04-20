@@ -4,7 +4,6 @@ import os
 import shutil
 import stat
 import sys
-from itertools import chain
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
@@ -17,7 +16,7 @@ from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
-from openeo.util import ensure_dir, Rfc3339, TimingLogger, dict_no_none
+from openeo.util import ensure_dir, Rfc3339, TimingLogger
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
@@ -38,7 +37,7 @@ from openeo_driver.util.logging import (
     LOGGING_CONTEXT_BATCH_JOB,
 )
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, temporal_extent_union, generate_unique_id
+from openeo_driver.utils import EvalEnv, temporal_extent_union
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
@@ -46,6 +45,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, mdc_include, to_s3_url
+from utils import _get_tracker_metadata
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
@@ -629,33 +629,6 @@ def _process_gdalinfo_for_netcdf_subdatasets(
         proj_info["proj:epsg"] = epsg_codes.pop()
 
     return proj_info
-
-
-def _get_tracker(tracker_id=""):
-    return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
-
-
-def _get_tracker_metadata(tracker_id="") -> dict:
-    tracker = _get_tracker(tracker_id)
-    t = tracker
-    if(t is not None):
-        tracker_results = t.asDict()
-        pu = tracker_results.get("Sentinelhub_Processing_Units",None)
-        usage = None
-        if pu is not None:
-            usage = {"sentinelhub":{"value":pu,"unit":"sentinelhub_processing_unit"}}
-
-        pixels = tracker_results.get("InputPixels", None)
-        if pixels is not None:
-            usage = {"input_pixel":{"value":pixels/(1024*1024),"unit":"mega-pixel"}}
-
-        links = tracker_results.get("links", None)
-        all_links = None
-        if links is not None:
-            all_links = list(chain(*links.values()))
-            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
-
-        return dict_no_none(usage=usage,links=all_links)
 
 
 def _deserialize_dependencies(arg: str) -> List[dict]:

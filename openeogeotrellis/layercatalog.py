@@ -245,6 +245,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
         opensearch_endpoint = layer_source_info.get('opensearch_endpoint', ConfigParams().default_opensearch_endpoint)
+        max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
@@ -467,8 +468,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
-                max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
-
                 sentinel_hub_client_alias = env.get('%s' % HUB_CLIENT_ALIAS, 'default')
                 logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
@@ -617,7 +616,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sar_backscatter_arguments=sar_backscatter_arguments,
                 bands=bands,
                 extra_properties=metadata_properties(),
-                datacubeParams = datacubeParams
+                datacubeParams = datacubeParams,
+                max_soft_errors_ratio=max_soft_errors_ratio
             )
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
