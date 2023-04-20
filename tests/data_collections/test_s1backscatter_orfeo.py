@@ -5,6 +5,8 @@ import sys
 import tempfile
 import textwrap
 import zipfile
+from openeogeotrellis.utils import get_jvm, _get_tracker
+
 from pathlib import Path
 from unittest import skip, mock
 
@@ -343,6 +345,7 @@ def test_creodias_dem_subset_copernicus30_geotiff(bbox, bbox_epsg, expected_syml
         expected_symlinks[i] = str(Path(expected_symlink, expected_symlink + ".tif"))
     assert set(expected_symlinks) == set(symlinks)
 
+
 @pytest.mark.parametrize(["bbox", "bbox_epsg", "expected"], [
     ((3.1, 51.2, 3.5, 51.3), 4326, {"N51E003.hgt"}),
     ((506986, 5672070, 534857, 5683305), 32631, {"N51E003.hgt"}),
@@ -399,3 +402,23 @@ def test_import_orfeo_toolbox(tmp_path, caplog):
 
 def test_instant_ms_to_day():
     assert _instant_ms_to_day(1479249799770) == datetime.datetime(2016, 11, 15)
+
+
+def test_orfeo_soft_errors(tmp_path):
+    get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.setGlobalTracking(True)
+    with pytest.raises(RuntimeError):
+        S1BackscatterOrfeoV2._orfeo_pipeline(
+            input_tiff=Path("some_path.tiff"),
+            extent={'xmin':697534, 'ymin':5865437-80000, 'xmax':697534 + 10000, 'ymax':5865437-40000},
+            extent_epsg=32631,
+            dem_dir=None,
+            extent_width_px=100, extent_height_px=120,
+            sar_calibration_lut="gamma",
+            noise_removal=True,
+            elev_geoid=None, elev_default=0,
+            log_prefix="test",
+            orfeo_memory=512,
+            tracker=_get_tracker(),
+            max_soft_errors_ratio=0
+        )
+    get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.setGlobalTracking(False)
