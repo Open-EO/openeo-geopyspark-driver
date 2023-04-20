@@ -45,7 +45,7 @@ def main():
         setup_batch_jobs()
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
-    app = build_app(backend_implementation=GeoPySparkBackendImplementation())
+    app = build_app(backend_implementation=GeoPySparkBackendImplementation(use_etl_api=True))
     app.config.from_object(flask_config)
     app.config.from_mapping(
         # TODO: move this VITO/CreoDIAS specific description to CreoDIAS deploy repo.
