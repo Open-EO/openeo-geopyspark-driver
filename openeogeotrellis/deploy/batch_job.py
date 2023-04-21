@@ -44,8 +44,8 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, mdc_include, to_s3_url
-from utils import _get_tracker_metadata
+from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, \
+                                   mdc_include, to_s3_url, _get_tracker_metadata
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
