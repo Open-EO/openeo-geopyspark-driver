@@ -24,8 +24,7 @@ from openeogeotrellis.deploy.batch_job import (
     parse_projection_extension_metadata,
     _get_projection_extension_metadata,
 )
-from utils import _get_tracker
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis.utils import get_jvm, _get_tracker
 from openeogeotrellis._version import __version__
 from tests.data import get_test_data_file
 
