@@ -106,6 +106,7 @@ class S1BackscatterOrfeo:
 
     _DEFAULT_TILE_SIZE = 256
     _COPERNICUS_DEM_ROOT = "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/"
+    _trackers = None
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
@@ -306,14 +307,12 @@ class S1BackscatterOrfeo:
             elev_default: float = None,
             log_prefix: str = "",
             orfeo_memory:int = 512,
-            tracker=None,
+            trackers=None,
             max_soft_errors_ratio = 0.0
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
         max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-        tracker.add(_EXECUTION_TRACKER_ID, 1)
-
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
 
@@ -345,26 +344,27 @@ class S1BackscatterOrfeo:
                 error_counter.value += 1
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
             # Check soft error ratio.
-            if tracker is not None:
-                tracker.add(_SOFT_ERROR_TRACKER_ID, error_counter.value)
-                tracker_dict = tracker.asDict()
-                num_errors = tracker_dict.get(_SOFT_ERROR_TRACKER_ID)
+            if trackers is not None:
+                (nr_execution_tracker, nr_error_tracker) = trackers
+                nr_execution_tracker.add(1)
+                nr_error_tracker.add(error_counter.value)
+                num_errors = nr_error_tracker.value
                 if num_errors > 0:
-                    num_executions = tracker_dict.get(_EXECUTION_TRACKER_ID)
+                    num_executions = nr_execution_tracker.value
                     error_ratio = num_errors / num_executions
-                    if error_ratio > max_soft_errors_ratio:
+                    if error_ratio >= max_soft_errors_ratio:
                         logger.error(f"error/request ratio [{num_errors}/{num_executions}] {error_ratio} > {max_soft_errors_ratio}")
                         raise RuntimeError("Too many errors while running Orfeo toolbox")
                     else:
                         logger.warning(f"ignoring soft error {error_ratio} <= {max_soft_errors_ratio}")
 
-            data = np.reshape(np.frombuffer(arr),(extent_height_px,extent_width_px))
+            data = np.reshape(np.frombuffer(arr), (extent_height_px, extent_width_px))
 
             logger.info(
                 f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
                 f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
             )
-            return data,0
+            return data, 0
 
 
 
@@ -416,7 +416,7 @@ class S1BackscatterOrfeo:
         return ortho_rect
 
     @staticmethod
-    def _get_process_function(sar_backscatter_arguments, result_dtype, bands, tracker=None, max_soft_errors_ratio=0.0):
+    def _get_process_function(sar_backscatter_arguments, result_dtype, bands, trackers=None, max_soft_errors_ratio=0.0):
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", S1BackscatterOrfeo._DEFAULT_TILE_SIZE)
@@ -488,7 +488,7 @@ class S1BackscatterOrfeo:
                                 noise_removal=noise_removal,
                                 elev_geoid=elev_geoid, elev_default=elev_default,
                                 log_prefix=f"{log_prefix}-{band}",
-                                tracker=tracker,
+                                trackers=trackers,
                                 max_soft_errors_ratio=max_soft_errors_ratio,
                             )
                             tile_data[b] = data
@@ -584,7 +584,8 @@ class S1BackscatterOrfeo:
 
         #print(local)
         orfeo_function = S1BackscatterOrfeo._get_process_function(
-            sar_backscatter_arguments, result_dtype, bands, S1BackscatterOrfeo._get_tracker(), max_soft_errors_ratio
+            sar_backscatter_arguments, result_dtype, bands, S1BackscatterOrfeo._get_trackers(per_product.context),
+            max_soft_errors_ratio
         )
 
         tile_rdd = grouped.flatMap(orfeo_function)
@@ -746,11 +747,15 @@ class S1BackscatterOrfeo:
 
 
     @staticmethod
-    def _get_tracker():
-        tracker = _get_tracker()
-        tracker.registerCounter(_SOFT_ERROR_TRACKER_ID)
-        tracker.registerCounter(_EXECUTION_TRACKER_ID)
-        return tracker
+    def _get_trackers(spark_context):
+        if "OPENEO_BATCH_JOB_ID" in os.environ:
+            # Trackers are only used for batch jobs, and they are global to that job.
+            if S1BackscatterOrfeo._trackers is None:
+                S1BackscatterOrfeo._trackers = (
+                    spark_context.accumulator(0), # nr_execution_tracker
+                    spark_context.accumulator(0), # nr_error_tracker
+                )
+        return S1BackscatterOrfeo._trackers
 
 
 class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
@@ -804,7 +809,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
-        tracker = S1BackscatterOrfeo._get_tracker()
 
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
@@ -814,6 +818,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
+        trackers = S1BackscatterOrfeo._get_trackers(feature_pyrdd.context)
 
         # Group multiple tiles by product id
         def process_feature(feature: dict) -> Tuple[str, dict]:
@@ -900,7 +905,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         elev_geoid=elev_geoid, elev_default=elev_default,
                         log_prefix=f"{log_prefix}-{band}",
                         orfeo_memory=orfeo_memory,
-                        tracker=tracker,
+                        trackers=trackers,
                         max_soft_errors_ratio = max_soft_errors_ratio
                     )
                     #orfeo_bands = y,x
