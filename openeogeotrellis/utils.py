@@ -1,10 +1,7 @@
-from itertools import chain
-
 import collections
 import collections.abc
 import contextlib
 import datetime
-import socket
 
 import grp
 import json
@@ -18,7 +15,6 @@ import tempfile
 
 from epsel import on_first_time
 from functools import partial
-from openeo.util import dict_no_none
 from pathlib import Path
 from shapely.geometry.base import BaseGeometry
 from typing import Callable, Optional, Tuple, Union, Iterable
@@ -36,9 +32,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.geometry import GeometryBufferer
 from openeo_driver.util.logging import (
     get_logging_config,
-    setup_logging,
-    user_id_trim,
-    BatchJobLoggingFilter,
+    setup_logging, BatchJobLoggingFilter,
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
     LOGGING_CONTEXT_BATCH_JOB,
@@ -561,30 +555,3 @@ class StatsReporter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.report(f"{self.name}: {json.dumps(self.stats)}")
-
-
-def _get_tracker(tracker_id=""):
-    return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
-
-
-def _get_tracker_metadata(tracker_id="") -> dict:
-    tracker = _get_tracker(tracker_id)
-    t = tracker
-    if(t is not None):
-        tracker_results = t.asDict()
-        pu = tracker_results.get("Sentinelhub_Processing_Units",None)
-        usage = None
-        if pu is not None:
-            usage = {"sentinelhub":{"value":pu,"unit":"sentinelhub_processing_unit"}}
-
-        pixels = tracker_results.get("InputPixels", None)
-        if pixels is not None:
-            usage = {"input_pixel":{"value":pixels/(1024*1024),"unit":"mega-pixel"}}
-
-        links = tracker_results.get("links", None)
-        all_links = None
-        if links is not None:
-            all_links = list(chain(*links.values()))
-            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
-
-        return dict_no_none(usage=usage,links=all_links)

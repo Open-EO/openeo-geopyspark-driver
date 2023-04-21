@@ -2,13 +2,11 @@ import datetime
 import os
 import subprocess
 import sys
-import tempfile
 import textwrap
 import zipfile
-from openeogeotrellis.utils import get_jvm, _get_tracker
 
 from pathlib import Path
-from unittest import skip, mock
+from unittest import mock
 
 import pytest
 import rasterio

@@ -15,7 +15,6 @@ from datetime import datetime
 from multiprocessing import Process
 from typing import Dict, Tuple, Union, List
 
-import epsel
 import geopyspark
 import numpy
 import numpy as np
@@ -29,11 +28,10 @@ from py4j.java_gateway import JVMView, JavaObject
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
-from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
-    ensure_executor_logging, _get_tracker
+    ensure_executor_logging
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
