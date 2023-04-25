@@ -27,13 +27,14 @@ https://openeo.vito.be/openeo/
 Set up your (virtual) environment with necessary dependencies:
 
     # Install Python package and its depdendencies
-    pip install .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+    pip install . --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
 
     # Get necessary JAR dependency files for running Geopyspark driver
     python scripts/get-jars.py
 
 
-For development, you can run the service:
+For development, refer to [docs/development](./docs/development.md) for more information.
+You can run the service with:
 
     export SPARK_HOME=$(find_spark_home.py)
     export HADOOP_CONF_DIR=/etc/hadoop/conf
