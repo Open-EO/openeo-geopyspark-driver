@@ -6,7 +6,7 @@ import textwrap
 import zipfile
 
 from pathlib import Path
-from unittest import mock
+from unittest import mock, skip
 
 import pytest
 import rasterio
@@ -263,7 +263,7 @@ class TestOrfeoPipeline:
         with pytest.raises(RuntimeError):
             self.orfeo_failed_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)
 
-
+    @skip("2023-04-24, Emile: Activate again when used service works again.")
     @pytest.mark.parametrize(
         [
             "spatial_extent",
