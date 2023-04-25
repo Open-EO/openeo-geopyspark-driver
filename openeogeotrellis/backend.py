@@ -37,6 +37,7 @@ from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
+import openeo.udf
 from openeo.util import (
     dict_no_none,
     rfc3339,
@@ -1075,6 +1076,15 @@ class GpsProcessing(ConcreteProcessing):
                                    f"Estimated number of pixels: {estimated_pixels:.2e}, "
                                    f"threshold: {threshold_pixels:.2e}."
                     }
+
+    def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
+        sc = SparkContext.getOrCreate()
+        data_rdd = sc.parallelize([data])
+        result_rdd = data_rdd.map(lambda d: openeo.udf.run_udf_code(code=udf, data=d))
+        result = result_rdd.collect()
+        if not len(result) == 1:
+            raise InternalException(message=f"run_udf result RDD with 1 element expected but got {len(result)}")
+        return result[0]
 
 
 def get_elastic_job_registry(
