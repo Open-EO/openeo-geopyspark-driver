@@ -659,7 +659,6 @@ class TestBatchJobs:
             # TODO: mock retrieval of logs from ES
             assert res["logs"] == []
 
-
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
         new_callable=mock.PropertyMock,
@@ -1148,6 +1147,187 @@ class TestBatchJobs:
             # To view these logs in caplog.text, run pytest with the '-s' option.
             print(caplog.text)
             assert sensitive_info in caplog.text
+
+    def test_api_job_results_contains_proj_metadata_at_asset_level(self, api, batch_job_output_root):
+        """Test that projection metadata at the asset level in the job results
+        comes through via the API / view.
+        """
+
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+        job_dir: pathlib.Path = batch_job_output_root / job_id
+        job_metadata = job_dir / JOB_METADATA_FILENAME
+
+        job_metadata_contents = {
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[2.0, 51.0], [2.0, 52.0], [3.0, 52.0], [3.0, 51.0], [2.0, 51.0]]],
+            },
+            "bbox": [2, 51, 3, 52],
+            "start_datetime": "2017-11-21T00:00:00Z",
+            "end_datetime": "2017-11-21T00:00:00Z",
+            "links": [],
+            "assets": {
+                "openEO_2017-11-21Z.tif": {
+                    "href": f"{job_dir}/openEO_2017-11-21Z.tif",
+                    "output_dir": str(job_dir),  # dir on local file, not in object storage
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "ndvi", "common_name": None, "wavelength_um": None}],
+                    "nodata": 255,
+                    # For this test: make the asset"s projection metadata different
+                    # from the values at the top level, so we detect the difference.
+                    # All three properties have just fake nonsensical values.
+                    "proj:epsg": 6234,
+                    "proj:bbox": [1.0, 2.0, 3.0, 4.0],
+                    "proj:shape": [321, 654],
+                }
+            },
+            "epsg": 4326,
+            "instruments": [],
+            "processing:facility": "VITO - SPARK",
+            "processing:software": "openeo-geotrellis-0.3.3a1",
+        }
+
+        # Set up fake output files and job metadata on the local file system.
+        job_dir.mkdir(parents=True)
+
+        # We want to check that download succeeds for both files "openEO_2017-11-21Z.tif" and "out".
+        # The generic name "out" has a different decision branch handling it, so we test it explicitly.
+        job_output1 = job_dir / "out"
+        with job_output1.open("wb") as f:
+            f.write(TIFF_DUMMY_DATA)
+
+        job_output2 = job_dir / "openEO_2017-11-21Z.tif"
+        with job_output2.open("wb") as f:
+            f.write(TIFF_DUMMY_DATA)
+
+        with job_metadata.open("w") as f:
+            json.dump(job_metadata_contents, f)
+
+        with self._mock_kazoo_client() as zk:
+            # where to import dict_no_none from
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            job_options = {}
+
+            with ZkJobRegistry() as registry:
+                registry.register(
+                    job_id=job_id,
+                    user_id=TEST_USER,
+                    api_version="1.0.0",
+                    specification=dict(
+                        process_graph=data,
+                        job_options=job_options,
+                    ),
+                    title="Fake Test Job",
+                    description="Fake job for the purpose of testing",
+                )
+                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+
+                # Download
+                res = (
+                    api.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
+                    .assert_status_code(200)
+                    .json
+                )
+
+                assert "openEO_2017-11-21Z.tif" in res["assets"]
+                assert "proj:epsg" in res["assets"]["openEO_2017-11-21Z.tif"]
+                assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:epsg"] == 6234
+
+                assert "proj:bbox" in res["assets"]["openEO_2017-11-21Z.tif"]
+                assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:bbox"] == [1.0, 2.0, 3.0, 4.0]
+
+                assert "proj:shape" in res["assets"]["openEO_2017-11-21Z.tif"]
+                assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:shape"] == [321, 654]
+
+    def test_api_job_results_contains_proj_metadata_at_item_level(self, api, batch_job_output_root):
+        """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
+
+        Some changes were introduced be able to download from S3, so we want to be sure the existing
+        stuff works the same as before.
+        """
+
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+        job_dir: pathlib.Path = batch_job_output_root / job_id
+        job_metadata = job_dir / JOB_METADATA_FILENAME
+
+        job_metadata_contents = {
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[2.0, 51.0], [2.0, 52.0], [3.0, 52.0], [3.0, 51.0], [2.0, 51.0]]],
+            },
+            "bbox": [2, 51, 3, 52],
+            "start_datetime": "2017-11-21T00:00:00Z",
+            "end_datetime": "2017-11-21T00:00:00Z",
+            "links": [],
+            "assets": {
+                "openEO_2017-11-21Z.tif": {
+                    "href": f"{job_dir}/openEO_2017-11-21Z.tif",
+                    "output_dir": str(job_dir),  # dir on local file, not in object storage
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "ndvi", "common_name": None, "wavelength_um": None}],
+                    "nodata": 255,
+                }
+            },
+            "epsg": 4326,
+            "instruments": [],
+            "processing:facility": "VITO - SPARK",
+            "processing:software": "openeo-geotrellis-0.3.3a1",
+            "proj:shape": [321, 654],
+        }
+
+        # Set up fake output files and job metadata on the local file system.
+        job_dir.mkdir(parents=True)
+
+        # We want to check that download succeeds for both files "openEO_2017-11-21Z.tif" and "out".
+        # The generic name "out" has a different decision branch handling it, so we test it explicitly.
+        job_output1 = job_dir / "out"
+        with job_output1.open("wb") as f:
+            f.write(TIFF_DUMMY_DATA)
+
+        job_output2 = job_dir / "openEO_2017-11-21Z.tif"
+        with job_output2.open("wb") as f:
+            f.write(TIFF_DUMMY_DATA)
+
+        with job_metadata.open("w") as f:
+            json.dump(job_metadata_contents, f)
+
+        with self._mock_kazoo_client() as zk:
+            # where to import dict_no_none from
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            job_options = {}
+
+            with ZkJobRegistry() as registry:
+                registry.register(
+                    job_id=job_id,
+                    user_id=TEST_USER,
+                    api_version="1.0.0",
+                    specification=dict(
+                        process_graph=data,
+                        job_options=job_options,
+                    ),
+                    title="Fake Test Job",
+                    description="Fake job for the purpose of testing",
+                )
+                registry.patch(job_id=job_id, user_id=TEST_USER, **job_metadata_contents)
+                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+
+                # Download
+                res = (
+                    api.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
+                    .assert_status_code(200)
+                    .json
+                )
+
+                assert res == DictSubSet(
+                    {
+                        "properties": DictSubSet({"proj:epsg": 4326, "proj:shape": [321, 654]}),
+                        "bbox": [2, 51, 3, 52],
+                    }
+                )
+
+                assert "openEO_2017-11-21Z.tif" in res["assets"]
 
 
 class TestSentinelHubBatchJobs:
