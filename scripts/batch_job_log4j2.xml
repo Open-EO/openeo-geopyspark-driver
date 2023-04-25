@@ -2,10 +2,10 @@
     <!-- Used by batch_job.py to output logs in the Java implementation (e.g. ComputeStatsGeotrellisAdapter). -->
     <Appenders>
         <Console name="stdout" target="SYSTEM_OUT">
-            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOBatchJobJsonLogLayout.json"  locationInfoEnabled="true"/>
         </Console>
         <File name="file" fileName="${sys:spark.yarn.app.container.log.dir}/openeo.log">
-            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOJsonLogLayout.json"  locationInfoEnabled="true"/>
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOBatchJobJsonLogLayout.json"  locationInfoEnabled="true"/>
         </File>
     </Appenders>
     <Loggers>
