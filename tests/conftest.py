@@ -102,8 +102,33 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set(key='spark.driver.memory', value='2G')
     conf.set(key='spark.executor.memory', value='2G')
     conf.set('spark.ui.enabled', False)
-    # Some options to allow attaching a Java debugger to running Spark driver
-    conf.set('spark.driver.extraJavaOptions', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009')
+
+    jars = []
+    for jar_dir in additional_jar_dirs:
+        for jar_path in Path(jar_dir).iterdir():
+            if jar_path.match("openeo-logging-*.jar"):
+                jars.append(str(jar_path))
+    extraClassPath = ":".join(jars)
+    conf.set('spark.driver.extraClassPath', extraClassPath)
+    conf.set('spark.executor.extraClassPath', extraClassPath)
+
+    sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
+    with open(sparkSubmitLog4jConfigurationFile, 'r') as read_file:
+        content = read_file.read()
+        sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
+        with open(sparkSubmitLog4jConfigurationFile, 'w') as write_file:
+            # There could be a more elegant way to fill in this variable during testing:
+            write_file.write(content.replace("${sys:spark.yarn.app.container.log.dir}/", ""))
+
+    # 'agentlib' to allow attaching a Java debugger to running Spark driver
+    extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}' \
+                    f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
+    conf.set('spark.driver.extraJavaOptions', extra_options)
+    # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
+    conf.set('spark.extraListeners', "org.openeo.sparklisteners.LogErrorSparkListener")
+
+    OPENEO_BATCH_JOB_ID = "j-jobAbc123"
+    os.environ["OPENEO_BATCH_JOB_ID"] = OPENEO_BATCH_JOB_ID
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)

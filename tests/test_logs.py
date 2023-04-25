@@ -1,10 +1,9 @@
 import mock
-
+import os
 import pytest
 
 from openeogeotrellis.logs import elasticsearch_logs
 from openeo_driver.errors import OpenEOApiException
-
 from elasticsearch.exceptions import ConnectionTimeout, TransportError
 
 
@@ -132,3 +131,40 @@ def test_circuit_breaker_raises_openeoapiexception(mock_search):
         + "and report this error if it persists. (ref: no-request)"
     )
     assert raise_context.value.message == expected_message
+
+
+def test_spark_log(caplog):
+    from pyspark import SparkContext
+    from openeogeotrellis.utils import get_jvm, mdc_include
+    OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID", "unknown-job")
+
+    def _setup_java_logging(sc: SparkContext, user_id: str):
+        jvm = get_jvm()
+        mdc_include(sc, jvm, jvm.org.openeo.logging.CustomJsonLayout.UserId(), user_id)
+        mdc_include(sc, jvm, jvm.org.openeo.logging.CustomJsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
+
+    user_id = "testUserId"
+    sc = SparkContext.getOrCreate()
+
+    _setup_java_logging(sc, user_id)
+    jvm = get_jvm()
+    logger = jvm.org.slf4j.LoggerFactory.getLogger("be.example")
+    _setup_java_logging(sc, user_id)
+
+    logger.warn("Test warning message")
+
+    def throw_function(x):
+        raise AssertionError("Boom!")
+        return x
+
+    try:
+        count = sc.parallelize([1, 2, 3], numSlices=2).map(throw_function).sum()
+        print(count)
+    except Exception as e:
+        print(type(e))
+
+    with open('openeo.log', 'r') as file:
+        data = file.read()
+        assert "LogErrorSparkListener" in data
+        assert "TaskSetManager" in data
+        assert "job_id" in data
