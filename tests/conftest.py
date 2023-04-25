@@ -127,8 +127,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
     conf.set('spark.extraListeners', "org.openeo.sparklisteners.LogErrorSparkListener")
 
-    OPENEO_BATCH_JOB_ID = "j-jobAbc123"
-    os.environ["OPENEO_BATCH_JOB_ID"] = OPENEO_BATCH_JOB_ID
+    os.environ["OPENEO_BATCH_JOB_ID"] = "j-jobAbc123"
+    os.environ["OPENEO_USER_ID"] = "userId123"
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
