@@ -140,8 +140,8 @@ def test_spark_log(caplog):
 
     def _setup_java_logging(sc: SparkContext, user_id: str):
         jvm = get_jvm()
-        mdc_include(sc, jvm, jvm.org.openeo.logging.CustomJsonLayout.UserId(), user_id)
-        mdc_include(sc, jvm, jvm.org.openeo.logging.CustomJsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
+        mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
+        mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
 
     user_id = "testUserId"
     sc = SparkContext.getOrCreate()
