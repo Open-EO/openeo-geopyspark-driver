@@ -504,13 +504,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     # Only run when relevant bands are present
                     if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
                         polarization = None
-                        if "HH" in bn and "HV" in bn:
+                        if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
                             polarization = "DH"
-                        elif "VV" in bn and "VH" in bn:
+                        elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
                             polarization = "DV"
-                        elif "HV" in bn:
+                        elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
                             polarization = "HV"
-                        elif "VH" in bn:
+                        elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
                             polarization = "VH"
                         if polarization:
                             logger.info("No polarization was specified, using one based on band selection: " + polarization)

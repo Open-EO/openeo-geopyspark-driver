@@ -81,6 +81,41 @@ def test_load_collection_sar_backscatter_compatible(jvm_mock, catalog):
                                                  datacubeParams, 'r-abc123')
 
 
+def test_load_collection_polarization_based_on_bands(jvm_mock, catalog):
+    load_params = LoadParameters(temporal_extent=("2021-02-08T10:36:00Z", "2021-02-08T10:36:00Z"),
+                                 spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
+                                 sar_backscatter=SarBackscatterArgs(),
+                                 bands=['VV', 'VH'],
+                                 )
+    catalog.load_collection('SENTINEL1_GRD', load_params=load_params,
+                            env=EvalEnv({'pyramid_levels': 'highest', 'correlation_id': 'r-abc123'}))
+
+    factory_mock = jvm_mock.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting
+    sample_type_mock = jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.return_value
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
+    projected_polys = jvm_mock.org.openeo.geotrellis.ProjectedPolygons.fromExtent.return_value
+
+    reproject = (getattr(getattr(jvm_mock.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")).reproject
+    reproject.assert_called_once_with(projected_polys, 32631)
+    reprojected = reproject.return_value
+
+    factory_mock.assert_called_once_with("https://services.sentinel-hub.com", "sentinel-1-grd", "sentinel-1-grd",
+                                         "???", "!!!",
+                                         "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
+                                         "/openeo/rlguard/access_token_default",
+                                         {"backCoeff": "GAMMA0_TERRAIN", "orthorectify": True}, sample_type_mock,
+                                         cellsize_mock, False)
+
+    datacubeParams = jvm_mock.org.openeo.geotrelliscommon.DataCubeParameters.return_value
+    jvm_mock.org.openeo.geotrellissentinelhub.SampleType.withName.assert_called_once_with("FLOAT32")
+    factory_mock.return_value.datacube_seq.assert_called_once_with(reprojected.polygons(),
+                                                                   ANY, '2021-02-08T10:36:00+00:00',
+                                                                   '2021-02-08T10:36:00+00:00',
+                                                                   ['VV', 'VH'],
+                                                                   {'polarization': {'eq': 'DV'}},
+                                                                   datacubeParams, 'r-abc123')
+
+
 def test_load_collection_sar_backscatter_incompatible(catalog):
     load_params = LoadParameters(sar_backscatter=SarBackscatterArgs())
     with pytest.raises(OpenEOApiException) as exc_info:
