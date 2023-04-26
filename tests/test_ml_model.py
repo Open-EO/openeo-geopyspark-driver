@@ -113,8 +113,9 @@ def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir,
         'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
         'assets': {'catboost_model.cbm': {'href': 'catboost_model.cbm'}}, 'epsg': None, 'instruments': [],
         "processing:facility": "VITO - SPARK",
-        "processing:software":  RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+"),
-        'unique_process_ids': ['discard_result'], 'ml_model_metadata': {
+        "processing:software": RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+[a-z0-9]"),
+        'unique_process_ids': ['discard_result'],
+        'ml_model_metadata': {
             'stac_version': '1.0.0',
             'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
             'id': 'cb-uuid', 'collection': 'collection-id', 'bbox': [-179.999, -89.999, 179.999, 89.999], 'geometry': {
@@ -133,7 +134,8 @@ def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir,
                     'roles': ['ml-model:checkpoint']
                 }
             }
-        }
+        },
+        'usage': {'input_pixel': {'unit': 'mega-pixel', 'value': RegexMatcher(r'\d+\.\d+')}},
     }
 
     # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
