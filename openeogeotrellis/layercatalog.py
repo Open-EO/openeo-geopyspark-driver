@@ -498,6 +498,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
+                if "polarization" not in unflattened_metadata_properties:
+                    bn = set(shub_band_names)
+                    # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
+                    # Only run when relevant bands are present
+                    if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
+                        polarization = None
+                        if "HH" in bn and "HV" in bn:
+                            polarization = "DH"
+                        elif "VV" in bn and "VH" in bn:
+                            polarization = "DV"
+                        elif "HV" in bn:
+                            polarization = "HV"
+                        elif "VH" in bn:
+                            polarization = "VH"
+                        if polarization:
+                            logger.info("No polarization was specified, using one based on band selection: " + polarization)
+                            unflattened_metadata_properties["polarization"] = {'eq': polarization}
+                        else:
+                            logger.warning("No polarization was specified. This might give errors from Sentinelhub.")
 
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
