@@ -28,7 +28,7 @@ from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import CollectionMetadata, Band, Dimension
-from openeo.udf import UdfData, run_udf_code
+from openeo.udf import UdfData
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none, str_truncate
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
@@ -49,6 +49,7 @@ from openeogeotrellis.utils import (
     get_jvm,
     temp_csv_dir,
 )
+from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
 from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
 

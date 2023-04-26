@@ -1,6 +1,7 @@
 import contextlib
 import json
 import logging
+import os
 import shutil
 import textwrap
 from pathlib import Path
@@ -1929,6 +1930,59 @@ class TestVectorCubeRunUdf:
             fetch_metadata=False,
         )
         return cube
+
+    def test_legacy_simple(self, api100):
+        """Legacy run_udf on vector cube (non-parallelized)."""
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import UdfData, StructuredData
+            def apply_udf_data(data: UdfData):
+                data.set_feature_collection_list(None)
+                data.set_structured_data_list([
+                    StructuredData([1, 1, 2, 3, 5, 8]),
+                ])
+            """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+        result = api100.check_result(processed).json
+        assert result == [1, 1, 2, 3, 5, 8]
+
+    def test_legacy_run_in_executor(self, api100):
+        """
+        Legacy run_udf implementation should not run in driver process
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/404
+        """
+        cube = self._load_cube()
+        geometries = get_test_data_file("geometries/FeatureCollection03.json")
+        aggregates = cube.aggregate_spatial(geometries, "min")
+        udf = textwrap.dedent(
+            """
+            import os, sys
+            from openeo.udf import UdfData, StructuredData
+            def apply_udf_data(data: UdfData):
+                data.set_feature_collection_list(None)
+                data.set_structured_data_list([
+                    StructuredData([
+                        "Greetings from apply_udf_data",
+                        os.getpid(),
+                        sys.executable,
+                        sys.argv,
+                    ])
+                ])
+        """
+        )
+        processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
+
+        result = api100.check_result(processed).json
+        print(result)
+        assert isinstance(result, list)
+        assert result[0] == "Greetings from apply_udf_data"
+        # Check that UDF ran in executor process instead of driver process
+        assert result[1] != os.getpid()
+        assert "pyspark/daemon.py" in result[3][0]
 
     def test_udf_apply_udf_data_scalar(self, api100):
         # TODO: influence of tight spatial_extent that excludes some geometries? e.g.:
