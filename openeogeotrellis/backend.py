@@ -103,6 +103,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
 )
 from openeogeotrellis.traefik import Traefik
+from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
     InMemoryUserDefinedProcessRepository,
@@ -1080,7 +1081,7 @@ class GpsProcessing(ConcreteProcessing):
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         sc = SparkContext.getOrCreate()
         data_rdd = sc.parallelize([data])
-        result_rdd = data_rdd.map(lambda d: openeo.udf.run_udf_code(code=udf, data=d))
+        result_rdd = data_rdd.map(lambda d: run_udf_code(code=udf, data=d))
         result = result_rdd.collect()
         if not len(result) == 1:
             raise InternalException(message=f"run_udf result RDD with 1 element expected but got {len(result)}")
