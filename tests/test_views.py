@@ -1446,6 +1446,164 @@ class TestSentinelHubBatchJobs:
         res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
         assert res["status"] == "queued"
 
+    def test_start_large_extent_with_polarization_based_on_bands(
+        self,
+        api,
+        job_registry,
+        time_machine,
+        zk_client,
+        batch_job_output_root,
+    ):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+        true = True
+        null = None
+        job_data = {
+            "job_options": {"sentinel-hub": {"input": "batch"}},
+            "process": {
+                "process_graph": {
+                    "filterspatial1": {
+                        "arguments": {
+                            "data": {
+                                "from_node": "loadcollection1"
+                            },
+                            "geometries": {
+                                "features": [
+                                    {
+                                        "geometry": {
+                                            "coordinates": [
+                                                [
+                                                    [
+                                                        6.42,
+                                                        51.03
+                                                    ],
+                                                    [
+                                                        6.42,
+                                                        51.11
+                                                    ],
+                                                    [
+                                                        6.54,
+                                                        51.11
+                                                    ],
+                                                    [
+                                                        6.54,
+                                                        51.03
+                                                    ]
+                                                ]
+                                            ],
+                                            "type": "Polygon"
+                                        },
+                                        "properties": {},
+                                        "type": "Feature"
+                                    },
+                                    {
+                                        "geometry": {
+                                            "coordinates": [
+                                                [
+                                                    [
+                                                        -30,
+                                                        56.9
+                                                    ],
+                                                    [
+                                                        -30,
+                                                        56.9
+                                                    ],
+                                                    [
+                                                        -29.9,
+                                                        57
+                                                    ],
+                                                    [
+                                                        -29.9,
+                                                        57
+                                                    ]
+                                                ]
+                                            ],
+                                            "type": "Polygon"
+                                        },
+                                        "properties": {},
+                                        "type": "Feature"
+                                    }
+                                ],
+                                "type": "FeatureCollection"
+                            }
+                        },
+                        "process_id": "filter_spatial"
+                    },
+                    "loadcollection1": {
+                        "arguments": {
+                            "bands": [
+                                "VV",
+                                "VH"
+                            ],
+                            "id": "SENTINEL1_GRD",
+                            "properties": {
+                                # polarization will be automatically added:
+                                # "polarization": {
+                                #     "process_graph": {
+                                #         "eq1": {
+                                #             "arguments": {
+                                #                 "x": {
+                                #                     "from_parameter": "value"
+                                #                 },
+                                #                 "y": "DV"
+                                #             },
+                                #             "process_id": "eq",
+                                #             "result": true
+                                #         }
+                                #     }
+                                # }
+                            },
+                            "spatial_extent": null,
+                            "temporal_extent": [
+                                "2017-03-01",
+                                "2017-03-15"
+                            ]
+                        },
+                        "process_id": "load_collection"
+                    },
+                    "saveresult1": {
+                        "arguments": {
+                            "data": {
+                                "from_node": "filterspatial1"
+                            },
+                            "format": "GTiff",
+                            "options": {}
+                        },
+                        "process_id": "save_result",
+                        "result": true
+                    }
+                }
+            }
+        }
+        res = api.post("/jobs", json=job_data).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        assert job_id.startswith("j-")
+
+        # Check status
+        assert zk_client.get_json_decoded(
+            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
+        ) == DictSubSet({"status": "created"})
+        # Check metadata in (elastic) job tracker
+        assert job_registry.db[job_id] == DictSubSet({"status": "created"})
+        res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
+        assert res["status"] == "created"
+
+        # Start job
+        time_machine.move_to("2020-04-20T12:02:02Z")
+        with self._submit_batch_job_mock(
+            api=api
+        ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
+            "kafka.KafkaProducer"
+        ) as KafkaProducer:
+            # Trigger job start
+            api.post(f"/jobs/{job_id}/results", json={}).assert_status_code(202)
+
+        # submit_batch_job not called yet
+        submit_batch_job.assert_not_called()
+        sh_batch_service.start_batch_process.assert_called_once_with(
+            "sentinel-1-grd", "sentinel-1-grd", mock.ANY, mock.ANY, mock.ANY, mock.ANY, ['VV', 'VH'], mock.ANY,
+            {'polarization': {'eq': 'DV'}}, mock.ANY
+        )
+
     def test_download_large_extent(
         self,
         api,

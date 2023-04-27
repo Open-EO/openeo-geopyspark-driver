@@ -88,7 +88,7 @@ from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
 )
 from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
-                                           is_layer_too_large, )
+                                           is_layer_too_large, assure_polarization_from_sentinel_bands)
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.sentinel_hub.batchprocessing import (
@@ -1976,11 +1976,18 @@ class GpsBatchJobs(backend.BatchJobs):
                     if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
 
-                    def metadata_properties() -> Dict[str, Dict[str, object]]:
-                        def as_dicts(criteria):
-                            return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
 
-                        return {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
+                    metadata_properties_cache = None
+
+                    def metadata_properties() -> Dict[str, Dict[str, object]]:
+                        nonlocal metadata_properties_cache
+                        if metadata_properties_cache is None:
+                            def as_dicts(criteria):
+                                return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
+
+                            metadata_properties_cache = {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
+                            assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties_cache)
+                        return metadata_properties_cache
 
                     geometries = get_geometries()
 

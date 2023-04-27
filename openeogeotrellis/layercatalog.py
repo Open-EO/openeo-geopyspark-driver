@@ -498,25 +498,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
-                if "polarization" not in unflattened_metadata_properties:
-                    bn = set(shub_band_names)
-                    # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
-                    # Only run when relevant bands are present
-                    if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
-                        polarization = None
-                        if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
-                            polarization = "DH"
-                        elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
-                            polarization = "DV"
-                        elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
-                            polarization = "HV"
-                        elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
-                            polarization = "VH"
-                        if polarization:
-                            logger.info("No polarization was specified, using one based on band selection: " + polarization)
-                            unflattened_metadata_properties["polarization"] = {'eq': polarization}
-                        else:
-                            logger.warning("No polarization was specified. This might give errors from Sentinelhub.")
+                assure_polarization_from_sentinel_bands(shub_band_names, unflattened_metadata_properties)
 
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
@@ -897,6 +879,32 @@ def _merge_layers_with_common_name(metadata):
 
     return metadata
 
+
+def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: Dict[str, object]):
+    """
+    @param shub_band_names:
+    @param metadata_properties: Gets modified to have polarization filter when necessary
+    """
+    if "polarization" not in metadata_properties:
+        bn = set(shub_band_names)
+        # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
+        # Only run when relevant bands are present
+        if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
+            polarization = None
+            if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
+                polarization = "DH"
+            elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
+                polarization = "DV"
+            elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
+                polarization = "HV"
+            elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
+                polarization = "VH"
+
+            if polarization:
+                logger.info("No polarization was specified, using one based on band selection: " + polarization)
+                metadata_properties["polarization"] = {'eq': polarization}
+            else:
+                logger.warning("No polarization was specified. This might give errors from Sentinelhub.")
 
 def check_missing_products(
         collection_metadata: Union[GeopysparkCubeMetadata, dict],
