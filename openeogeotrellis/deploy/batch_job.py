@@ -357,8 +357,9 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
     metadata["processing:software"] = "openeo-geotrellis-" + __version__
     metadata["unique_process_ids"] = list(unique_process_ids)
-    metadata["providers"] = result.metadata.get("providers",[])
-    metadata["processing:expression"] = result.metadata.get("processing:expression", {})
+    global_metadata = result.options.get("file_metadata",{})
+    metadata["providers"] = global_metadata.get("providers",[])
+    metadata["processing:expression"] = global_metadata.get("processing:expression", {})
     metadata = {**metadata, **_get_tracker_metadata("")}
 
     if ml_model_metadata is not None:
@@ -855,24 +856,7 @@ def run_job(
     global_metadata_attributes = {
         "title" : job_specification.get("title",""),
         "description": job_specification.get("description", ""),
-        "institution": "openEO platform - Geotrellis backend: " + __version__,
-        "providers": [
-            {
-                "name": "VITO",
-                "description": "This data was processed on an openEO backend maintained by VITO.",
-                "roles": [
-                    "processor"
-                ],
-                "processing:facility": "openEO Geotrellis backend",
-                "processing:software": {
-                    "Geotrellis backend": __version__
-                }
-            }],
-        "processing:expression": [
-            {
-                "format": "openeo",
-                "expression":process_graph
-            }]
+        "institution": "openEO platform - Geotrellis backend: " + __version__
     }
 
     assets_metadata = {}
@@ -941,6 +925,27 @@ def run_job(
         _transform_stac_metadata(job_dir)
 
     unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+
+
+
+    if "file_metadata" in result.options:
+        result.options["file_metadata"]["providers"] = [
+            {
+                "name": "VITO",
+                "description": "This data was processed on an openEO backend maintained by VITO.",
+                "roles": [
+                    "processor"
+                ],
+                "processing:facility": "openEO Geotrellis backend",
+                "processing:software": {
+                    "Geotrellis backend": __version__
+                }
+            }],
+        result.options["file_metadata"]["processing:expression"] = [
+            {
+                "format": "openeo",
+                "expression": process_graph
+            }]
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
                             unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
