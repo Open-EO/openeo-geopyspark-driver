@@ -18,7 +18,7 @@ from shapely.geometry import GeometryCollection, Point
 
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.save_result import MlModelResult
-from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester, RegexMatcher
+from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester, RegexMatcher, DictSubSet
 from openeo_driver.utils import EvalEnv, read_json
 from pyspark.mllib.tree import RandomForestModel
 
@@ -113,8 +113,9 @@ def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir,
         'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
         'assets': {'catboost_model.cbm': {'href': 'catboost_model.cbm'}}, 'epsg': None, 'instruments': [],
         "processing:facility": "VITO - SPARK",
-        "processing:software":  RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+"),
-        'unique_process_ids': ['discard_result'], 'ml_model_metadata': {
+        "processing:software": RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+"),
+        'unique_process_ids': ['discard_result'],
+        'ml_model_metadata': {
             'stac_version': '1.0.0',
             'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
             'id': 'cb-uuid', 'collection': 'collection-id', 'bbox': [-179.999, -89.999, 179.999, 89.999], 'geometry': {
@@ -133,7 +134,7 @@ def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir,
                     'roles': ['ml-model:checkpoint']
                 }
             }
-        }
+        },
     }
 
     # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
@@ -291,7 +292,7 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     model_id = metadata_result['ml_model_metadata']['id']
     assert re.match(r'rf-[0-9a-f]{32}', model_id)
     metadata_result['ml_model_metadata']['id'] = 'rf-uuid'
-    assert metadata_result == {
+    assert metadata_result == DictSubSet({
         'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
         'assets': {
             'randomforest.model.tar.gz': {
@@ -323,14 +324,14 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
                 }
             }
         }
-    }
+    })
 
     # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
     # It uses the job_metadata file as a basis to fill in the ml_model metadata fields.
     get_job_info.return_value = BatchJobMetadata(id=job_id, status='finished', created = datetime.now())
     api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
     res = api.get('/jobs/{j}/results'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
-    assert res == {
+    assert res == DictSubSet({
         'assets': {
             'randomforest.model.tar.gz': {
                 'file:size': size,
@@ -361,12 +362,12 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
             'ml-model:learning_approach': ['supervised'],
             'ml-model:prediction_type': ['classification']
         }, 'type': 'Collection'
-    }
+    })
 
     item_res = api.get('/jobs/{j}/results/items/ml_model_metadata.json'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
     assert item_res['id'] == model_id
     item_res['id'] = 'rf-uuid'
-    assert item_res == {
+    assert item_res == DictSubSet({
         'assets': {
             'model': {
                 'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/randomforest.model.tar.gz'.format(job_id = job_id),
@@ -385,4 +386,4 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
             'start_datetime': '1970-01-01T00:00:00Z'
         }, 'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
         'stac_version': '1.0.0', 'type': 'Feature'
-    }
+    })

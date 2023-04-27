@@ -343,18 +343,12 @@ class S1BackscatterOrfeo:
                 logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
             # Check soft error ratio.
             if trackers is not None:
-                (nr_execution_tracker, nr_error_tracker) = trackers
-                nr_execution_tracker.add(1)
-                nr_error_tracker.add(error_counter.value)
-                num_errors = nr_error_tracker.value
-                if num_errors > 0:
-                    num_executions = nr_execution_tracker.value
-                    error_ratio = num_errors / num_executions
-                    if error_ratio >= max_soft_errors_ratio:
-                        logger.error(f"error/request ratio [{num_errors}/{num_executions}] {error_ratio} > {max_soft_errors_ratio}")
+                if max_soft_errors_ratio == 0.0:
+                    if error_counter.value > 0:
                         raise RuntimeError("Too many errors while running Orfeo toolbox")
-                    else:
-                        logger.warning(f"ignoring soft error {error_ratio} <= {max_soft_errors_ratio}")
+                else:
+                    # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
+                    logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
             data = np.reshape(np.frombuffer(arr), (extent_height_px, extent_width_px))
 

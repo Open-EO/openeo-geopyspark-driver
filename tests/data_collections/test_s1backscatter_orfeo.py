@@ -256,7 +256,7 @@ class TestOrfeoPipeline:
     def test_orfeo_soft_errors(self):
         import geopyspark
         pysc = geopyspark.get_spark_context()
-        max_soft_errors_ratio = 0.5
+        max_soft_errors_ratio = 0.0
 
         # The first run should succeed, the second should fail.
         self.orfeo_success_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)

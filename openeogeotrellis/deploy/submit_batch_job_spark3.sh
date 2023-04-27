@@ -57,7 +57,7 @@ pysparkPython="/opt/venv/bin/python"
 kinit -kt ${keyTab} ${principal} || true
 
 export HDP_VERSION=3.1.4.0-315
-export SPARK_HOME=/opt/spark3_3_1
+export SPARK_HOME=/opt/spark3_4_0
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="/opt/venv/lib64"
@@ -173,6 +173,7 @@ spark-submit \
  --conf spark.history.store.path=/var/lib/spark2/shs_db \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
  --conf spark.archives=${archives} \
+ --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \

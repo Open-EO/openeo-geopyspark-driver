@@ -9,13 +9,18 @@
         </File>
     </Appenders>
     <Loggers>
-        <Logger name="org.apache.spark" level="error"/>
-        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
-        <!-- Put Executor on off once TaskSetManager shows it is working fine. -->
-        <!-- <Logger name="org.apache.spark.executor.Executor" level="off" />-->
-        <Logger name="org.apache.spark.scheduler.TaskSetManager" level="warn" />
-        <Logger name="org.apache.zookeeper" level="warn"/>
+        <!-- alphabetically -->
         <Logger name="org.apache.curator" level="warn"/>
+        <Logger name="org.apache.hadoop" level="error"/>
+        <Logger name="org.apache.spark" level="error"/>
+        <Logger name="org.apache.spark.deploy.yarn.ApplicationMaster" level="off"/> <!-- Ignore this: "User application exited with status 1" -->
+        <Logger name="org.apache.spark.executor.Executor" level="off"/>
+        <Logger name="org.apache.spark.network.server.TransportRequestHandler" level="off"/> <!-- Ignore this: "Could not find CoarseGrainedScheduler." -->
+        <Logger name="org.apache.spark.scheduler.TaskSetManager" level="warn"/>
+        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
+        <Logger name="org.apache.zookeeper" level="warn"/>
+        <Logger name="org.apache.zookeeper.ClientCnxn" level="error"/> <!-- Ignore this: "Unable to read additional data from server sessionid 0x..., likely server has closed socket" -->
+        <Logger name="org.sparkproject.jetty.server" level="warn"/>
         <Root level="${sys:openeo.logging.threshold}">
             <AppenderRef ref="stdout"/>
             <AppenderRef ref="file"/>
