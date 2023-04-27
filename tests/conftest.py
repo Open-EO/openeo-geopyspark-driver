@@ -125,7 +125,6 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                     f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
     conf.set('spark.driver.extraJavaOptions', extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
-    conf.set('spark.extraListeners', "org.openeo.sparklisteners.LogErrorSparkListener")
 
     os.environ["OPENEO_BATCH_JOB_ID"] = "j-jobAbc123"
     os.environ["OPENEO_USER_ID"] = "userId123"
