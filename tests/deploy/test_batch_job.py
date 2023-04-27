@@ -27,6 +27,17 @@ from openeogeotrellis.deploy.batch_job import (
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis.deploy.batch_job import _get_tracker
 from openeogeotrellis._version import __version__
+
+EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
+                                               "result": True}},
+                        "format": "openeo"}]
+
+EXPECTED_PROVIDERS = [[{'description': 'This data was processed on an openEO backend ' \
+                               'maintained by VITO.',
+                'name': 'VITO',
+                'processing:facility': 'openEO Geotrellis backend',
+                'processing:software': {'Geotrellis backend': __version__},
+                'roles': ['processor']}]]
 from tests.data import get_test_data_file
 
 
@@ -336,9 +347,13 @@ def test_run_job(evaluate, tmp_path):
                                          {'href': 'http://myproduct1', 'rel': 'derived_from', 'title': 'Derived from http://myproduct1'},
                                          {'href': 'http://myproduct2', 'rel': 'derived_from', 'title': 'Derived from http://myproduct2'},
                                          {'href': 'http://myproduct3', 'rel': 'derived_from', 'title': 'Derived from http://myproduct3'}],
+                               'processing:expression': [{'expression': {'nop': {'process_id': 'discard_result',
+                                                                                 'result': True}},
+                                                          'format': 'openeo'}],
                                'processing:facility': 'VITO - SPARK',
                                'processing:software': 'openeo-geotrellis-' + __version__,
                                'start_datetime': None,
+                               'providers': EXPECTED_PROVIDERS,
                                'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
                                                          'value': 1.7999999999999998}}
                                }
@@ -442,6 +457,8 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, monkeypat
                 "title": "Derived from http://myproduct3",
             },
         ],
+        "processing:expression": EXPECTED_GRAPH,
+        "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
         "start_datetime": None,
@@ -568,6 +585,8 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 "title": "Derived from http://myproduct3",
             },
         ],
+        "processing:expression": EXPECTED_GRAPH,
+        "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
         "start_datetime": None,
@@ -725,6 +744,8 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "title": "Derived from http://myproduct3",
             },
         ],
+        "processing:expression": EXPECTED_GRAPH,
+        "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
         "start_datetime": None,
@@ -845,6 +866,8 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                     "title": "Derived from http://myproduct3",
                 },
             ],
+            "processing:expression": EXPECTED_GRAPH,
+            "providers": EXPECTED_PROVIDERS,
             "processing:facility": "VITO - SPARK",
             "processing:software": "openeo-geotrellis-" + __version__,
             "start_datetime": None,
