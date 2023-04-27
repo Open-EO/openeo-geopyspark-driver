@@ -57,7 +57,7 @@ pysparkPython="/opt/venv/bin/python"
 kinit -kt ${keyTab} ${principal} || true
 
 export HDP_VERSION=3.1.4.0-315
-export SPARK_HOME=/opt/spark3_3_1
+export SPARK_HOME=/opt/spark3_4_0
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="/opt/venv/lib64"
