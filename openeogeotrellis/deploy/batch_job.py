@@ -357,6 +357,8 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
     metadata["processing:software"] = "openeo-geotrellis-" + __version__
     metadata["unique_process_ids"] = list(unique_process_ids)
+    metadata["providers"] = result.metadata.get("providers",[])
+    metadata["processing:expression"] = result.metadata.get("processing:expression", {})
     metadata = {**metadata, **_get_tracker_metadata("")}
 
     if ml_model_metadata is not None:
@@ -853,8 +855,24 @@ def run_job(
     global_metadata_attributes = {
         "title" : job_specification.get("title",""),
         "description": job_specification.get("description", ""),
-        "institution": "openEO platform - Geotrellis backend: " + __version__
-
+        "institution": "openEO platform - Geotrellis backend: " + __version__,
+        "providers": [
+            {
+                "name": "VITO",
+                "description": "This data was processed on an openEO backend maintained by VITO.",
+                "roles": [
+                    "processor"
+                ],
+                "processing:facility": "openEO Geotrellis backend",
+                "processing:software": {
+                    "Geotrellis backend": __version__
+                }
+            }],
+        "processing:expression": [
+            {
+                "format": "openeo",
+                "expression":process_graph
+            }]
     }
 
     assets_metadata = {}
