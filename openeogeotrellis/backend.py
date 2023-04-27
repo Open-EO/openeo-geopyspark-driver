@@ -1079,6 +1079,9 @@ class GpsProcessing(ConcreteProcessing):
                     }
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
+        if get_backend_config().allow_run_udf_in_driver:
+            # TODO: remove this temporary feature flag https://github.com/Open-EO/openeo-geopyspark-driver/issues/404
+            return run_udf_code(code=udf, data=data, require_executor_context=False)
         sc = SparkContext.getOrCreate()
         data_rdd = sc.parallelize([data])
         result_rdd = data_rdd.map(lambda d: run_udf_code(code=udf, data=d))

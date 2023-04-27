@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ### Changed
 - Add filtering on log_level when retrieving logs from Elasticsearch. ([Open-EO/openeo-python-driver#170](https://github.com/Open-EO/openeo-python-driver/issues/170))
+- Prevent running UDFs in Spark driver process ([#404](https://github.com/Open-EO/openeo-geopyspark-driver/issues/404))
 
 ## 2023-03-30 (0.9.5a1)
 
