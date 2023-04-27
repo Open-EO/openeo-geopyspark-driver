@@ -35,7 +35,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation 
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
+from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
     calculate_rough_area
 from openeogeotrellis.vault import Vault
@@ -754,6 +754,8 @@ def get_layer_catalog(
                 opensearch = OpenSearchOscars(endpoint=endpoint)
             elif "creodias" in endpoint:
                 opensearch = OpenSearchCreodias(endpoint=endpoint)
+            elif "dataspace.copernicus.eu" in endpoint:
+                opensearch = OpenSearchCdse(endpoint=endpoint)
             else:
                 raise ValueError(endpoint)
 
