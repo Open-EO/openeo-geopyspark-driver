@@ -1,3 +1,5 @@
+from typing import Dict
+
 import logging
 from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -44,7 +46,7 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
     )
 
 
-def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: dict[str, object]):
+def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: Dict[str, object]):
     """
     @param shub_band_names:
     @param metadata_properties: Gets modified to have polarization filter when necessary
