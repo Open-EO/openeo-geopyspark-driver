@@ -326,20 +326,16 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 #   what is already there?
                 if not epsg and not metadata.get("epsg"):
                     epsg = epsgs.pop()
-                    logger.info(
-                        "Projection metadata at top level: replacing value "
-                        f"of epsg with epsg from gdalinfo {epsg=}"
-                    )
+                    logger.info("Projection metadata at top level: setting epsg " f"to value from gdalinfo {epsg=}")
                 if not metadata.get("bbox"):
                     metadata["bbox"] = list(bboxes.pop())
                     logger.info(
-                        "Projection metadata at top level: replacing value "
-                        f"of bbox with bbox from gdalinfo: {metadata['bbox']}"
+                        "Projection metadata at top level: setting bbox " f"to value from gdalinfo: {metadata['bbox']}"
                     )
                 metadata["proj:shape"] = list(shapes.pop())
                 logger.info(
-                    "Projection metadata at top level: setting proj:shape, "
-                    f"{metadata['proj:shape']=}"
+                    "Projection metadata at top level: setting proj:shape "
+                    f"to value from gdalinfo {metadata['proj:shape']=}"
                 )
             else:
                 # Each asset has its different projection metadata so set it per asset.
