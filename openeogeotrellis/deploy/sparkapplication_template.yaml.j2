@@ -55,6 +55,7 @@ spec:
     "spark.storage.decommission.enabled": "true"
     "spark.storage.decommission.rddBlocks.enabled": "true"
     "spark.storage.decommission.shuffleBlocks.enabled": "true"
+    "spark.kubernetes.decommission.script": "/opt/decom.sh"
     "spark.executor.processTreeMetrics.enabled": "true"
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
@@ -235,6 +236,10 @@ spec:
             mountPath: "/spark_tmp"
 {%- endblock %}
 {%- endif %}
+    lifecycle:
+      preStop:
+        exec:
+          command: ['sh', '-c', '/opt/decom.sh']
     podSecurityContext:
 {%- block executor_podSecurityContext %}
       fsGroup: 18585
