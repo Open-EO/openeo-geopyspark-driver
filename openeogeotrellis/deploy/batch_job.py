@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
+from copy import deepcopy
 
 import pyproj
 from osgeo import gdal
@@ -830,6 +831,7 @@ def run_job(
     env = EvalEnv(env_values)
     tracer = DryRunDataTracer()
     logger.info("Starting process graph evaluation")
+    pg_copy = deepcopy(process_graph)
     result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
     logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
@@ -940,7 +942,7 @@ def run_job(
         result.options["file_metadata"]["processing:expression"] = [
             {
                 "format": "openeo",
-                "expression": process_graph
+                "expression": pg_copy
             }]
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
