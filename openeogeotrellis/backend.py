@@ -322,12 +322,12 @@ class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def __init__(
-        self,
-        use_zookeeper=True,
-        batch_job_output_root: Optional[Path] = None,
-        use_job_registry: bool = True,
-        elastic_job_registry: Optional[ElasticJobRegistry] = None,
-        use_etl_api: bool = False,
+            self,
+            use_zookeeper=True,
+            batch_job_output_root: Optional[Path] = None,
+            use_job_registry: bool = True,
+            elastic_job_registry: Optional[ElasticJobRegistry] = None,
+            use_etl_api: bool = False,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -482,6 +482,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "description": "GeoParquet is an efficient binary format, to distribute large amounts of vector data.",
                     "gis_data_types": ["vector"],
                     "parameters": {},
+                },
+                "GTiff": {
+                    "description": "Geotiff is one of the most widely supported formats. This backend allows reading from Geotiff to create raster data cubes.",
+                    "gis_data_types": ["raster"],
+                    "parameters": {}
                 }
             },
             "output": {
@@ -691,8 +696,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                          status_code=501)
 
             job_results_bbox = BoundingBox.from_wsen_tuple(
-                    job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
-                )
+                job_results.extent.spatial.bboxes[0], crs="EPSG:4326"
+            )
             # TODO: this assumes that job result data is gridded in best UTM already?
             job_results_epsg = job_results_bbox.best_utm()
             logger.info(f"job result: {job_results_bbox=} {job_results_epsg=}")
