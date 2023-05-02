@@ -47,8 +47,16 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import kerberos, describe_path, log_memory, get_jvm, add_permissions, \
-                                   mdc_include, to_s3_url
+from openeogeotrellis.utils import (
+    kerberos,
+    describe_path,
+    log_memory,
+    get_jvm,
+    add_permissions,
+    mdc_include,
+    to_s3_url,
+    get_s3_file_contents,
+)
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 user_facing_logger = logging.getLogger('openeo-user-log')
@@ -283,6 +291,16 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                     f"{asset_path=} maps to absolute path: {abs_asset_path=} , "
                     + f"{abs_asset_path.exists()=}"
                 )
+
+                asset_href = asset_md.get("href", "")
+                if not abs_asset_path.exists() and asset_href.startswith("s3://"):
+                    try:
+                        abs_asset_path.write_text(get_s3_file_contents(asset_href))
+                    except Exception as exc:
+                        logger.error(
+                            "Could not download asset from object storage: "
+                            + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
+                        )
 
                 asset_proj_metadata = read_projection_extension_metadata(abs_asset_path)
                 logger.info(f"{asset_path=}, {asset_proj_metadata=}")
