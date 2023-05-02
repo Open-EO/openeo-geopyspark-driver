@@ -567,10 +567,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         def file_agera5_pyramid():
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
+            band_marker = layer_source_info.get('band_marker','dewpoint-temperature')
             band_names = metadata.band_names
-            client_type = catalog_type if catalog_type != "" else "agera5"
-            opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                data_glob, False, date_regex, band_names, client_type
+
+            opensearch_client = jvm.org.openeo.opensearch.backends.Agera5SearchClient.apply(
+                data_glob, False, date_regex, band_names, band_marker
             )
             factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
@@ -598,7 +599,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = creo_pyramid()
         elif layer_source_type == "file-cgls2":
             pyramid = file_cgls_pyramid()
-        elif layer_source_type == 'file-agera5':
+        elif layer_source_type == 'file-agera5' or layer_source_type == 'file-glob':
             pyramid = file_agera5_pyramid()
         elif layer_source_type == 'file-globspatialonly':
             pyramid = globspatialonly_pyramid()
