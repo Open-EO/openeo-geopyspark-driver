@@ -89,7 +89,7 @@ from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
 )
 from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
-                                           is_layer_too_large, )
+                                           is_layer_too_large)
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
 from openeogeotrellis.sentinel_hub.batchprocessing import (
@@ -1990,11 +1990,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
                         shub_band_names.append('localIncidenceAngle')
 
-                    def metadata_properties() -> Dict[str, Dict[str, object]]:
+                    def metadata_properties_from_criteria() -> Dict[str, Dict[str, object]]:
                         def as_dicts(criteria):
                             return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
 
-                        return {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
+                        metadata_properties_return = {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
+                        sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties_return)
+                        return metadata_properties_return
+
+                    metadata_properties = metadata_properties_from_criteria()
 
                     geometries = get_geometries()
 
@@ -2047,7 +2051,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             to_date,
                             to_hashable(shub_band_names),
                             dem_instance,
-                            to_hashable(metadata_properties())
+                            to_hashable(metadata_properties)
                         )
 
                         batch_request_ids, subfolder = batch_request_cache.get(batch_request_cache_key, (None, None))
@@ -2068,7 +2072,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                 to_date,
                                 shub_band_names,
                                 dem_instance,
-                                metadata_properties(),
+                                metadata_properties,
                                 subfolder,
                                 request_group_uuid)
                             )
@@ -2099,7 +2103,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             from_date,
                             to_date,
                             to_hashable(shub_band_names),
-                            to_hashable(metadata_properties()),
+                            to_hashable(metadata_properties),
                             to_hashable(processing_options)
                         )
 
@@ -2125,7 +2129,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                     to_date,
                                     shub_band_names,
                                     sample_type,
-                                    metadata_properties(),
+                                    metadata_properties,
                                     processing_options,
                                     subfolder,
                                     collecting_folder
@@ -2156,7 +2160,7 @@ class GpsBatchJobs(backend.BatchJobs):
                                         to_date,
                                         shub_band_names,
                                         sample_type,
-                                        metadata_properties(),
+                                        metadata_properties,
                                         processing_options
                                     )
 

@@ -1,9 +1,13 @@
+from typing import Dict
+
+import logging
 from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import FeatureUnsupportedException
 
 OG_BATCH_RESULTS_BUCKET = "openeo-sentinelhub"
 
+logger = logging.getLogger(__name__)
 
 def processing_options(collection_id: str, sar_backscatter_arguments: SarBackscatterArgs) -> dict:
     # TODO: split off validation so it can be used for CARD4L flow
@@ -40,3 +44,30 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
         orthorectify=orthorectify,
         demInstance=sar_backscatter_arguments.elevation_model
     )
+
+
+def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: Dict[str, object]):
+    """
+    @param shub_band_names:
+    @param metadata_properties: Gets modified to have polarization filter when necessary
+    """
+    if "polarization" not in metadata_properties:
+        bn = set(shub_band_names)
+        # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
+        # Only run when relevant bands are present
+        if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
+            polarization = None
+            if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
+                polarization = "DH"
+            elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
+                polarization = "DV"
+            elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
+                polarization = "HV"
+            elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
+                polarization = "VH"
+
+            if polarization:
+                logger.info("No polarization was specified, using one based on band selection: " + polarization)
+                metadata_properties["polarization"] = {'eq': polarization}
+            else:
+                logger.warning("No polarization was specified. This might give errors from Sentinelhub.")

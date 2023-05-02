@@ -498,6 +498,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
+                sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names, unflattened_metadata_properties)
 
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
