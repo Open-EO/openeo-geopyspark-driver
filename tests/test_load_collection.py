@@ -313,8 +313,8 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     dataglob = "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif"
     band_names = ["temperature-mean"]
     date_regex = ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif"
-    opensearchclient_mock = jvm_mock.org.openeo.opensearch.OpenSearchClient.apply(
-        dataglob, False, date_regex, band_names, "agera5"
+    opensearchclient_mock = jvm_mock.org.openeo.opensearch.backends.Agera5SearchClient.apply(
+        dataglob, False, date_regex, band_names, ''
     )
     factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     cellsize_mock = jvm_mock.geotrellis.raster.CellSize(10, 10)
