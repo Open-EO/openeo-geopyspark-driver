@@ -46,10 +46,12 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
     )
 
 
-def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: Dict[str, object]):
+def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: Dict[str, object],
+                                            job_id: str = None):
     """
     @param shub_band_names:
     @param metadata_properties: Gets modified to have polarization filter when necessary
+    @param job_id: (optional) job ID to log
     """
     if "polarization" not in metadata_properties:
         bn = set(shub_band_names)
@@ -66,8 +68,12 @@ def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties
             elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
                 polarization = "VH"
 
+            logging_extra = {'job_id': job_id} if job_id else {}
+
             if polarization:
-                logger.info("No polarization was specified, using one based on band selection: " + polarization)
+                logger.info(f"No polarization was specified, using one based on band selection: {polarization}",
+                            extra=logging_extra)
                 metadata_properties["polarization"] = {'eq': polarization}
             else:
-                logger.warning("No polarization was specified. This might give errors from Sentinelhub.")
+                logger.warning("No polarization was specified. This might give errors from Sentinelhub.",
+                               extra=logging_extra)

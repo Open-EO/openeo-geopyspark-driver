@@ -2000,7 +2000,8 @@ class GpsBatchJobs(backend.BatchJobs):
                             return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
 
                         metadata_properties_return = {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
-                        sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties_return)
+                        sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names,
+                                                                             metadata_properties_return, job_id)
                         return metadata_properties_return
 
                     metadata_properties = metadata_properties_from_criteria()
