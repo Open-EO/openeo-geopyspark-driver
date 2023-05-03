@@ -4,8 +4,10 @@ from typing import Union
 import sys
 from pathlib import Path
 
+import boto3
 import flask
 import pytest
+from moto import mock_s3
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
@@ -243,3 +245,43 @@ def api110(client) -> ApiTester:
 @pytest.fixture
 def vault() -> Vault:
     return Vault("http://example.org")
+
+
+TEST_AWS_REGION_NAME = "eu-central-1"
+
+
+@pytest.fixture(scope="function")
+def aws_credentials(monkeypatch):
+    """Mocked AWS Credentials for moto."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", TEST_AWS_REGION_NAME)
+    monkeypatch.setenv("AWS_REGION", TEST_AWS_REGION_NAME)
+
+
+@pytest.fixture(scope="function")
+def mock_s3_resource(aws_credentials):
+    with mock_s3():
+        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
+
+
+@pytest.fixture(scope="function")
+def mock_s3_client(aws_credentials):
+    with mock_s3():
+        yield boto3.s3_client("s3", region_name=TEST_AWS_REGION_NAME)
+
+
+@pytest.fixture(scope="function")
+def mock_s3_bucket(mock_s3_resource, monkeypatch):
+    # TODO: bucket_name: there could be a mismatch with ConfigParams().s3_bucket_name if any ConfigParams instances were created earlier in the test setup.
+    bucket_name = "openeo-fake-bucketname"
+    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
+    from openeogeotrellis.configparams import ConfigParams
+
+    assert ConfigParams().s3_bucket_name == bucket_name
+
+    bucket = mock_s3_resource.Bucket(bucket_name)
+    bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
+    yield bucket

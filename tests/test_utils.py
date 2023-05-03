@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from openeo_driver.testing import TIFF_DUMMY_DATA
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import (
     dict_merge_recursive,
     describe_path,
@@ -15,6 +17,7 @@ from openeogeotrellis.utils import (
     UtcNowClock,
     single_value,
     StatsReporter,
+    get_s3_binary_file_contents,
 )
 
 
@@ -209,3 +212,13 @@ class TestStatsReporter:
                 stats["coconut"] = 8
 
         assert caplog.messages == ['stats: {"apple": 1, "banana": 12}']
+
+
+def test_get_s3_binary_file_contents(mock_s3_bucket):
+    output_file = "foo/bar.tif"
+    out_file_s3_url = f"s3://{ConfigParams().s3_bucket_name}/{output_file}"
+    mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
+
+    bytes_retrieved = get_s3_binary_file_contents(out_file_s3_url)
+
+    assert TIFF_DUMMY_DATA == bytes_retrieved

@@ -55,7 +55,7 @@ from openeogeotrellis.utils import (
     add_permissions,
     mdc_include,
     to_s3_url,
-    get_s3_file_contents,
+    get_s3_binary_file_contents,
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
@@ -295,7 +295,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
                 asset_href = asset_md.get("href", "")
                 if not abs_asset_path.exists() and asset_href.startswith("s3://"):
                     try:
-                        abs_asset_path.write_text(get_s3_file_contents(asset_href))
+                        abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
                     except Exception as exc:
                         logger.error(
                             "Could not download asset from object storage: "
