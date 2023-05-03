@@ -348,13 +348,14 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 
 
 def get_s3_binary_file_contents(s3_url: str) -> bytes:
-    """Get contents of a binary file from the S3 bucket.
-
-    The bucket is set in ConfigParams().s3_bucket_name
-    """
+    """Get contents of a binary file from the S3 bucket."""
     # TODO: move this to openeogeotrellis.integrations.s3?
+
+    # This only supports S3 URLs, does not support filenames with the
+    # S3 bucket set in ConfigParams().
     if not s3_url.startswith("s3://"):
         raise ValueError(f"s3_url must be a URL that starts with 's3://' Value is: {s3_url=}")
+
     bucket, file_name = s3_url[5:].split("/", 1)
     logger.debug("Downloading contents from S3 object storage: {bucket=}, key={file_name}")
 
