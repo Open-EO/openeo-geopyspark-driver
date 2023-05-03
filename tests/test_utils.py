@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from openeo_driver.testing import TIFF_DUMMY_DATA
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import (
     dict_merge_recursive,
     describe_path,
@@ -15,6 +17,7 @@ from openeogeotrellis.utils import (
     UtcNowClock,
     single_value,
     StatsReporter,
+    get_s3_binary_file_contents,
 )
 
 
@@ -209,3 +212,19 @@ class TestStatsReporter:
                 stats["coconut"] = 8
 
         assert caplog.messages == ['stats: {"apple": 1, "banana": 12}']
+
+
+def test_get_s3_binary_file_contents(mock_s3_bucket):
+    """Upload a file to the mock implementation of S3 and check that our wrapper
+    function can download it correctly, meaning:
+    - it processes the S3 URL correctly
+    - it downloads the file as binary, so the result should be identical byte for byte.
+    """
+    output_file = "foo/bar.tif"
+    # mock_s3_bucket sets the ConfigParams().s3_bucket_name to a fake test bucket.
+    out_file_s3_url = f"s3://{ConfigParams().s3_bucket_name}/{output_file}"
+    mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
+
+    bytes_retrieved = get_s3_binary_file_contents(out_file_s3_url)
+
+    assert TIFF_DUMMY_DATA == bytes_retrieved

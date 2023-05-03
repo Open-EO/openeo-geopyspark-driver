@@ -327,44 +327,6 @@ class TestCollections:
                 assert [b[f] for b in resp['summaries']['eo:bands'] if f in b] == [b[f] for b in eo_bands if f in b]
 
 
-TEST_AWS_REGION_NAME = 'eu-central-1'
-
-@pytest.fixture(scope='function')
-def aws_credentials(monkeypatch):
-    """Mocked AWS Credentials for moto."""
-    monkeypatch.setenv('AWS_ACCESS_KEY_ID', 'testing')
-    monkeypatch.setenv('AWS_SECRET_ACCESS_KEY', 'testing')
-    monkeypatch.setenv('AWS_SECURITY_TOKEN', 'testing')
-    monkeypatch.setenv('AWS_SESSION_TOKEN', 'testing')
-    monkeypatch.setenv('AWS_DEFAULT_REGION', TEST_AWS_REGION_NAME)
-    monkeypatch.setenv('AWS_REGION', TEST_AWS_REGION_NAME)
-
-
-@pytest.fixture(scope='function')
-def mock_s3_resource(aws_credentials):
-    with mock_s3():
-        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
-
-
-@pytest.fixture(scope='function')
-def mock_s3_client(aws_credentials):
-    with mock_s3():
-        yield boto3.s3_client("s3", region_name=TEST_AWS_REGION_NAME)
-
-
-@pytest.fixture(scope='function')
-def mock_s3_bucket(mock_s3_resource, monkeypatch):
-    # TODO: bucket_name: there could be a mismatch with ConfigParams().s3_bucket_name if any ConfigParams instances were created earlier in the test setup.
-    bucket_name = "openeo-fake-bucketname"
-    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
-    from openeogeotrellis.configparams import ConfigParams
-    assert ConfigParams().s3_bucket_name == bucket_name
-
-    bucket = mock_s3_resource.Bucket(bucket_name)
-    bucket.create(CreateBucketConfiguration={'LocationConstraint': TEST_AWS_REGION_NAME})
-    yield bucket
-
-
 def create_files_on_s3(s3_bucket, file_names, file_contents):
     for fname, contents in zip(file_names, file_contents):
         s3_bucket.put_object(Key=fname, Body=contents)
