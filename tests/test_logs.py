@@ -133,7 +133,6 @@ def test_circuit_breaker_raises_openeoapiexception(mock_search):
     assert raise_context.value.message == expected_message
 
 
-@pytest.mark.skip(reason="suddenly started failing")
 def test_spark_log(caplog):
     from pyspark import SparkContext
     from openeogeotrellis.utils import get_jvm, mdc_include
