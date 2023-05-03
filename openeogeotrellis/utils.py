@@ -370,7 +370,9 @@ def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) 
     # TODO: Does this function belong in the openeo-python-driver?
     # TODO: move this to openeogeotrellis.integrations.s3?
     bucketname = bucketname or ConfigParams().s3_bucket_name
-    return f"s3://{bucketname}{file_or_dir_name}"
+    bucketname = bucketname.strip("/")
+    file_or_dir_name = str(file_or_dir_name).strip("/")
+    return f"s3://{bucketname}/{file_or_dir_name}"
 
 
 def lonlat_to_mercator_tile_indices(
