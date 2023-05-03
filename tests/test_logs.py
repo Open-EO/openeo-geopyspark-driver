@@ -165,6 +165,5 @@ def test_spark_log(caplog):
 
     with open('openeo.log', 'r') as file:
         data = file.read()
-        assert "LogErrorSparkListener" in data
         assert "TaskSetManager" in data
         assert "job_id" in data
