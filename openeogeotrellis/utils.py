@@ -367,11 +367,26 @@ def get_s3_binary_file_contents(s3_url: str) -> bytes:
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
-    # TODO: Does this function belong in the openeo-python-driver?
     # TODO: move this to openeogeotrellis.integrations.s3?
+
     bucketname = bucketname or ConfigParams().s3_bucket_name
-    bucketname = bucketname.strip("/")
+
+    # See also:
+    # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html
+    #
+    # file_or_dir_name, is actually the S3 key, and it should neither start nor
+    # end with a slash in order to keep the S3 keys and S3 URLs uniform.
+    #
+    # 1) With / at the start we would get weird URLS with a // after bucketname,
+    # like so: s3://my-bucket//path-to-file-or-dir
+    #
+    # 2) Allowing folders to end with a slash just creates confusion.
+    # It keeps things simpler when S3 keys never include a slash at the end.
     file_or_dir_name = str(file_or_dir_name).strip("/")
+
+    # Keep it robust: bucketname should not contain "/" at all but lets remove
+    # the / just in case, because mistakes are easy to make.
+    bucketname = bucketname.strip("/")
     return f"s3://{bucketname}/{file_or_dir_name}"
 
 
