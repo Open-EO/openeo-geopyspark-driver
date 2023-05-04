@@ -1248,7 +1248,8 @@ class GeopysparkDataCube(DriverDataCube):
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.get_max_level()
-        (x_layer,y_layer) = pyproj.transform(pyproj.Proj(init=srs),pyproj.Proj(max_level.layer_metadata.crs),x,y)
+        transformer = pyproj.Transformer.from_crs(srs, max_level.layer_metadata.crs)
+        (x_layer, y_layer) = transformer.transform(x, y)
         points = [
             Point(x_layer, y_layer),
         ]
@@ -1971,12 +1972,8 @@ class GeopysparkDataCube(DriverDataCube):
         dst_proj = pyproj.Proj(dst_crs)
 
         def reproject_point(x, y):
-            return pyproj.transform(
-                src_proj,
-                dst_proj,
-                x, y,
-                always_xy=True
-            )
+            transformer = pyproj.Transformer.from_crs(src_proj, dst_proj, always_xy=True)
+            return transformer.transform(x, y)
 
         reprojected_xmin1, reprojected_ymin1 = reproject_point(xmin, ymin)
         reprojected_xmax1, reprojected_ymax1 = reproject_point(xmax, ymax)
