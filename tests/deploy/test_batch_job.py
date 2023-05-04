@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-import pytest
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
 from shapely.geometry import box, mapping, shape, Polygon
@@ -14,6 +13,7 @@ from osgeo import gdal
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import read_json
 from openeo_driver.util.geometry import reproject_geometry
 from openeogeotrellis.deploy.batch_job import (
@@ -23,7 +23,11 @@ from openeogeotrellis.deploy.batch_job import (
     read_projection_extension_metadata,
     parse_projection_extension_metadata,
     _get_projection_extension_metadata,
+    read_gdal_raster_metadata,
+    parse_gdal_raster_metadata,
+    RasterMetadata,
 )
+
 from openeogeotrellis.utils import get_jvm
 from openeogeotrellis.deploy.batch_job import _get_tracker
 from openeogeotrellis._version import __version__
@@ -947,6 +951,39 @@ def test_parse_projection_extension_metadata(mock_read_gdal_info):
 
 
 @mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+def test_parse_gdal_raster_metadata(mock_read_gdal_info):
+    json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
+    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+    nc_json_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc.json"
+
+    def read_json_file(netcdf_uri: str) -> dict:
+        if netcdf_uri == str(netcdf_path):
+            # json_path = netcdf_uri + ".json"
+            json_path = nc_json_path
+        else:
+            parts = netcdf_uri.split(":")
+            band = parts[-1]
+            # strip off the surrounding double quotes from the filename
+            filename = parts[1][1:-1]
+            json_path = json_dir / f"{filename}.{band}.json"
+        with open(json_path, "rt") as f:
+            return json.load(f)
+
+    mock_read_gdal_info.side_effect = read_json_file
+    with open(nc_json_path, "rt") as f_in:
+        gdal_info = json.load(f_in)
+
+    raster_metadata: RasterMetadata = parse_gdal_raster_metadata(gdal_info)
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert raster_metadata.projection == expected_metadata
+
+
+@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
 def test_read_projection_extension_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file(
         "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
@@ -977,6 +1014,35 @@ def test_read_projection_extension_metadata(mock_read_gdal_info):
     assert proj_metadata == expected_metadata
 
 
+@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+def test_read_gdal_raster_metadata(mock_read_gdal_info):
+    json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
+    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+
+    def read_json_file(netcdf_uri: str) -> dict:
+        if netcdf_uri == str(netcdf_path):
+            json_path = netcdf_uri + ".json"
+        else:
+            parts = netcdf_uri.split(":")
+            band = parts[-1]
+            # strip off the surrounding double quotes from the filename
+            filename = parts[1][1:-1]
+            json_path = json_dir / f"{filename}.{band}.json"
+        with open(json_path, "rt") as f:
+            return json.load(f)
+
+    mock_read_gdal_info.side_effect = read_json_file
+
+    raster_metadata = read_gdal_raster_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert raster_metadata.projection == expected_metadata
+
+
 def test_read_projection_extension_metadata_from_multiband_netcdf_file():
     netcdf_path = get_test_data_file(
         "binary/stac_proj_extension/netcdf/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
@@ -992,6 +1058,101 @@ def test_read_projection_extension_metadata_from_multiband_netcdf_file():
     assert proj_metadata == expected_metadata
 
 
+def test_read_gdal_raster_metadata_from_multiband_netcdf_file():
+    netcdf_path = get_test_data_file(
+        "binary/stac_proj_extension/netcdf/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
+    )
+
+    raster_metadata = read_gdal_raster_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        "proj:epsg": 32631,
+        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
+        "proj:shape": [357, 233],
+    }
+    assert raster_metadata.projection == expected_metadata
+
+    assert len(raster_metadata.statistics) == 8
+
+    actual_band_stats = raster_metadata.statistics["B01"]
+    assert actual_band_stats.minimum == approx(1651, abs=0.1)
+    assert actual_band_stats.maximum == approx(4203, abs=0.1)
+    assert actual_band_stats.mean == approx(2260.1994, abs=0.0001)
+    assert actual_band_stats.stddev == approx(535.1263, abs=0.0001)
+    assert actual_band_stats.valid_percent is None
+
+    actual_stats = {band: stats.to_dict() for band, stats in raster_metadata.statistics.items()}
+
+    assert raster_metadata.statistics["B01"].to_dict() == {
+        "minimum": approx(1651.0, abs=0.1),
+        "maximum": approx(4203.0, abs=0.1),
+        "mean": approx(2260.1994, abs=0.0001),
+        "stddev": approx(535.1263, abs=0.0001),
+        "valid_percent": None,
+    }
+
+    assert actual_stats == DictSubSet(
+        {
+            "B01": {
+                "minimum": approx(1651.0, abs=0.1),
+                "maximum": approx(4203.0, abs=0.1),
+                "mean": approx(2260.1994, abs=0.0001),
+                "stddev": approx(535.1263, abs=0.0001),
+                "valid_percent": None,
+            },
+            "B02": {
+                "minimum": approx(1230.0, abs=0.1),
+                "maximum": approx(4262.0, abs=0.1),
+                "mean": approx(1877.3180, abs=0.0001),
+                "stddev": approx(531.5487, abs=0.0001),
+                "valid_percent": None,
+            },
+            "B03": {
+                "minimum": approx(848, abs=0.1),
+                "maximum": approx(3683, abs=0.1),
+                "mean": approx(1479.7089, rel=0.0001),
+                "stddev": approx(506.3976, rel=0.0001),
+                "valid_percent": None,
+            },
+            "B04": {
+                "minimum": approx(715, abs=0.1),
+                "maximum": approx(4007, abs=0.1),
+                "mean": approx(1451.2542, rel=0.0001),
+                "stddev": approx(593.3228, rel=0.0001),
+                "valid_percent": None,
+            },
+            "B05": {
+                "minimum": approx(746, abs=0.1),
+                "maximum": approx(4243, abs=0.1),
+                "mean": approx(1596.4995, rel=0.0001),
+                "stddev": approx(643.2813, rel=0.0001),
+                "valid_percent": None,
+            },
+            "B06": {
+                "minimum": approx(738, abs=0.1),
+                "maximum": approx(4678, abs=0.1),
+                "mean": approx(1822.6124, rel=0.0001),
+                "stddev": approx(700.7382, rel=0.0001),
+                "valid_percent": None,
+            },
+            "B07": {
+                "minimum": approx(753, abs=0.1),
+                "maximum": approx(4931, abs=0.1),
+                "mean": approx(1926.1757, rel=0.0001),
+                "stddev": approx(729.2182, rel=0.0001),
+                "valid_percent": None,
+            },
+            "B08": {
+                "minimum": approx(670, abs=0.1),
+                "maximum": approx(4834, abs=0.1),
+                "mean": approx(1875.9574, rel=0.0001),
+                "stddev": approx(706.7410, rel=0.0001),
+                "valid_percent": None,
+            },
+        }
+    )
+
+
 def test_read_projection_extension_metadata_from_singleband_netcdf_file():
     netcdf_path = get_test_data_file(
         "binary/stac_proj_extension/netcdf/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc"
@@ -1005,6 +1166,30 @@ def test_read_projection_extension_metadata_from_singleband_netcdf_file():
         "proj:shape": [900, 451],
     }
     assert proj_metadata == expected_metadata
+
+
+def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
+    netcdf_path = get_test_data_file(
+        "binary/stac_proj_extension/netcdf/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc"
+    )
+
+    raster_metadata = read_gdal_raster_metadata(str(netcdf_path))
+
+    expected_metadata = {
+        # "proj:epsg": 32631,
+        "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
+        "proj:shape": [900, 451],
+    }
+    assert raster_metadata.projection == expected_metadata
+
+    assert len(raster_metadata.statistics) == 1
+
+    actual_band_stats = raster_metadata.statistics["Total Aerosol Optical Depth at 550nm"]
+    assert actual_band_stats.minimum == approx(0.008209, abs=0.000001)
+    assert actual_band_stats.maximum == approx(3.0, abs=0.000001)
+    assert actual_band_stats.mean == approx(0.12490846004707)
+    assert actual_band_stats.stddev == approx(0.12537779432458)
+    assert actual_band_stats.valid_percent is None
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
