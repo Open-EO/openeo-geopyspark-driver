@@ -408,7 +408,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
 
                 if sentinel_hub_processing_units > 0:
-                    if config_params.is_kube_deploy:  # TODO: replace with strategy pattern?
+                    if config_params.is_kube_deploy:
+                        # TODO: replace with strategy pattern?
                         etl_api_client_id = os.environ["OPENEO_ETL_OIDC_CLIENT_ID"]
                         etl_api_client_secret = os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
                     else:
@@ -1600,9 +1601,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 ).from_string(open(jinja_path).read())
 
                 spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+                pod_namespace = ConfigParams().pod_namespace
 
                 rendered = jinja_template.render(
                     job_name=spark_app_id,
+                    job_namespace=pod_namespace,
                     job_specification=job_specification_file,
                     output_dir=output_dir,
                     output_file="out",
@@ -1646,7 +1649,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 dict_ = yaml.safe_load(rendered)
 
                 try:
-                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications", dict_, pretty=True)
+                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
                     logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
@@ -1655,7 +1658,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         retry+=1
                         time.sleep(10)
                         try:
-                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", "spark-jobs", "sparkapplications",
+                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
                                                                                         spark_app_id)
                         except ApiException as e:
                             logger.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
@@ -2359,7 +2362,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 api_instance = kube_client()
                 group = "sparkoperator.k8s.io"
                 version = "v1beta2"
-                namespace = "spark-jobs"
+                namespace = ConfigParams().pod_namespace
                 plural = "sparkapplications"
                 name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")

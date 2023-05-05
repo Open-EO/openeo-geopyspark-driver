@@ -35,26 +35,28 @@ from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation 
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias
+from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
     calculate_rough_area
 from openeogeotrellis.vault import Vault
 
 VAULT_TOKEN = 'vault_token'
-HUB_CLIENT_ALIAS = 'sentinel_hub_client_alias'
+SENTINEL_HUB_CLIENT_ALIAS = 'sentinel_hub_client_alias'
 MAX_SOFT_ERRORS_RATIO = 'max_soft_errors_ratio'
 DEPENDENCIES = 'dependencies'
 PYRAMID_LEVELS = 'pyramid_levels'
 REQUIRE_BOUNDS = 'require_bounds'
 CORRELATION_ID = 'correlation_id'
+USER = 'user'
 WHITELIST = [
     VAULT_TOKEN,
-    HUB_CLIENT_ALIAS,
+    SENTINEL_HUB_CLIENT_ALIAS,
     MAX_SOFT_ERRORS_RATIO,
     DEPENDENCIES,
     PYRAMID_LEVELS,
     REQUIRE_BOUNDS,
-    CORRELATION_ID
+    CORRELATION_ID,
+    USER
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = 100 * pow(10, 9)
 
@@ -435,13 +437,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 if collection_id == 'PLANETSCOPE':
 
                     if 'byoc_collection_id' in feature_flags:
-                        shub_collection_id = feature_flags['byoc_collection_id']
-                        dataset_id = shub_collection_id
+                        shub_collection_id = dataset_id = feature_flags['byoc_collection_id']
                     else:
                         (condition, byoc_id) = metadata_properties(flatten_eqs=False).get('byoc_id', (None, None))
                         if condition == "eq":
                             # note: "byoc-" prefix is optional for the collection ID but dataset ID requires it
-                            dataset_id = byoc_id
+                            shub_collection_id = dataset_id = byoc_id
                             del load_params.properties['byoc_id']
                         else:
                             raise OpenEOApiException(code="MissingByocId", status_code=400,
@@ -468,34 +469,49 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
-                sentinel_hub_client_alias = env.get('%s' % HUB_CLIENT_ALIAS, 'default')
-                logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
-
-                if sentinel_hub_client_alias == 'default':
-                    sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                    sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
+                if ConfigParams().is_kube_deploy:
+                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withCustomAuthApi(
+                        endpoint,
+                        shub_collection_id,
+                        dataset_id,
+                        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+                        self._default_sentinel_hub_client_id,
+                        self._default_sentinel_hub_client_secret,
+                        sentinel_hub.processing_options(collection_id,
+                                                        sar_backscatter_arguments) if sar_backscatter_arguments else {},
+                        sample_type,
+                        cell_size,
+                        max_soft_errors_ratio
+                    )
                 else:
-                    vault_token = env[VAULT_TOKEN]
-                    sentinel_hub_client_id, sentinel_hub_client_secret = (
-                        self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
+                    sentinel_hub_client_alias = env.get(SENTINEL_HUB_CLIENT_ALIAS, 'default')
+                    logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
-                zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
-                zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+                    if sentinel_hub_client_alias == 'default':
+                        sentinel_hub_client_id = self._default_sentinel_hub_client_id
+                        sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
+                    else:
+                        vault_token = env[VAULT_TOKEN]
+                        sentinel_hub_client_id, sentinel_hub_client_secret = (
+                            self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
-                pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(
-                    endpoint,
-                    shub_collection_id,
-                    dataset_id,
-                    sentinel_hub_client_id,
-                    sentinel_hub_client_secret,
-                    zookeeper_connection_string,
-                    zookeeper_access_token_path,
-                    sentinel_hub.processing_options(collection_id,
-                                                    sar_backscatter_arguments) if sar_backscatter_arguments else {},
-                    sample_type,
-                    cell_size,
-                    max_soft_errors_ratio
-                )
+                    zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
+                    zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
+
+                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(
+                        endpoint,
+                        shub_collection_id,
+                        dataset_id,
+                        sentinel_hub_client_id,
+                        sentinel_hub_client_secret,
+                        zookeeper_connection_string,
+                        zookeeper_access_token_path,
+                        sentinel_hub.processing_options(collection_id,
+                                                        sar_backscatter_arguments) if sar_backscatter_arguments else {},
+                        sample_type,
+                        cell_size,
+                        max_soft_errors_ratio
+                    )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
                 sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names, unflattened_metadata_properties)
@@ -756,6 +772,8 @@ def get_layer_catalog(
                 opensearch = OpenSearchOscars(endpoint=endpoint)
             elif "creodias" in endpoint:
                 opensearch = OpenSearchCreodias(endpoint=endpoint)
+            elif "dataspace.copernicus.eu" in endpoint:
+                opensearch = OpenSearchCdse(endpoint=endpoint)
             else:
                 raise ValueError(endpoint)
 

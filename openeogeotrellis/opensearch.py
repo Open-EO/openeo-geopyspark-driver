@@ -178,3 +178,18 @@ class OpenSearchCreodias(OpenSearch):
             "keywords": deep_get(collection, "osDescription", "Tags", default="").split(),
             # TODO more metadata
         }
+
+
+class OpenSearchCdse(OpenSearch):
+    def __init__(self, endpoint: str):
+        self.endpoint = endpoint
+        self._collections_cache = None
+
+    def get_metadata(self, collection_id: str) -> dict:
+        if not self._collections_cache:
+            url = self.endpoint + "/collections"
+            logger.info(f"Getting collection metadata from {url}")
+            resp = requests.get(url=url)
+            resp.raise_for_status()
+            self._collections_cache = {c["id"]: c for c in resp.json()["collections"]}
+        return self._collections_cache[collection_id]
