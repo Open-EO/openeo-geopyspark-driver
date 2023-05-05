@@ -408,7 +408,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
 
                 if sentinel_hub_processing_units > 0:
-                    if config_params.is_kube_deploy:  # TODO: replace with strategy pattern?
+                    if config_params.is_kube_deploy:
+                        # TODO: replace with strategy pattern?
                         etl_api_client_id = os.environ["OPENEO_ETL_OIDC_CLIENT_ID"]
                         etl_api_client_secret = os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
                     else:
