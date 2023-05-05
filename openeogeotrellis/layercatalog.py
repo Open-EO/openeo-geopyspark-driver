@@ -470,14 +470,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 if ConfigParams().is_kube_deploy:
-                    # FIXME: make this work for batch jobs as well
-                    access_token = env[USER].internal_auth_data["access_token"]
-
-                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(
+                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withCustomAuthApi(
                         endpoint,
                         shub_collection_id,
                         dataset_id,
-                        access_token,
+                        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+                        self._default_sentinel_hub_client_id,
+                        self._default_sentinel_hub_client_secret,
                         sentinel_hub.processing_options(collection_id,
                                                         sar_backscatter_arguments) if sar_backscatter_arguments else {},
                         sample_type,
