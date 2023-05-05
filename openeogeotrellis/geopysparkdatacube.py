@@ -1248,7 +1248,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         max_level = self.get_max_level()
-        transformer = pyproj.Transformer.from_crs(srs, max_level.layer_metadata.crs)
+        transformer = pyproj.Transformer.from_crs(pyproj.crs.CRS(init=srs), max_level.layer_metadata.crs)
         (x_layer, y_layer) = transformer.transform(x, y)
         points = [
             Point(x_layer, y_layer),
