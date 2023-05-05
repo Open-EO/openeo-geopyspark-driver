@@ -919,14 +919,14 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
                     merged[field] += deepcopy(to_merge[field])
 
             # Take union of bands
-            for band_dim in [k for k, v in to_merge["cube:dimensions"].items() if v["type"] == "bands"]:
+            for band_dim in [k for k, v in to_merge.get("cube:dimensions", {}).items() if v["type"] == "bands"]:
                 if band_dim not in merged["cube:dimensions"]:
                     merged["cube:dimensions"][band_dim] = deepcopy(to_merge["cube:dimensions"][band_dim])
                 else:
                     for b in to_merge["cube:dimensions"][band_dim]["values"]:
                         if b not in merged["cube:dimensions"][band_dim]["values"]:
                             merged["cube:dimensions"][band_dim]["values"].append(b)
-            for b in to_merge["summaries"]["eo:bands"]:
+            for b in deep_get(to_merge, "summaries", "eo:bands", default=[]):
                 eob_names = [x["name"] for x in merged["summaries"]["eo:bands"]]
                 if b["name"] not in eob_names:
                     merged["summaries"]["eo:bands"].append(b)
@@ -939,8 +939,10 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
 
             # Union of extents
             # TODO: make sure first bbox/interval is overall extent
-            merged["extent"]["spatial"]["bbox"].extend(to_merge["extent"]["spatial"]["bbox"])
-            merged["extent"]["temporal"]["interval"].extend(to_merge["extent"]["temporal"]["interval"])
+            merged["extent"]["spatial"]["bbox"].extend(deep_get(to_merge, "extent", "spatial", "bbox", default=[]))
+            merged["extent"]["temporal"]["interval"].extend(
+                deep_get(to_merge, "extent", "temporal", "interval", default=[])
+            )
 
         metadata[common_name] = merged
 
