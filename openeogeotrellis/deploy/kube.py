@@ -45,7 +45,7 @@ def main():
         setup_batch_jobs()
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
-    backend_implementation = GeoPySparkBackendImplementation(use_etl_api=True)
+    backend_implementation = GeoPySparkBackendImplementation()
 
     sentinel_hub_client_id = os.environ.get("OPENEO_SENTINELHUB_CLIENT_ID")
     sentinel_hub_client_secret = os.environ.get("OPENEO_SENTINELHUB_CLIENT_SECRET")
