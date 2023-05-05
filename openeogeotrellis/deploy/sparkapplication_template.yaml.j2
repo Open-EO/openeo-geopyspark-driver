@@ -4,7 +4,7 @@ kind: SparkApplication
 metadata:
 {%- block metadata %}
   name: {{ job_name }}
-  namespace: spark-jobs
+  namespace: {{ job_namespace }}
 {%- endblock %}
 spec:
 {%- block spec_options %}

@@ -282,7 +282,7 @@ class JobTracker:
     def get_kube_usage(self, job_id, application_id) -> Union[dict, None]:
         try:
             url = url_join(self._KUBECOST_URL, "/model/allocation")
-            namespace = "spark-jobs"
+            namespace = os.environ["POD_NAMESPACE"]
             window = "5d"
             pod = application_id + "*"
             params = (
@@ -321,7 +321,7 @@ class JobTracker:
         status = api_instance.get_namespaced_custom_object(
             group="sparkoperator.k8s.io",
             version="v1beta2",
-            namespace="spark-jobs",
+            namespace=os.environ["POD_NAMESPACE"],
             plural="sparkapplications",
             name=application_id,
         )
