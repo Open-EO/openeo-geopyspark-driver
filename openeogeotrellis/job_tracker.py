@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 from decimal import Decimal
+from os import environ
 from logging.handlers import RotatingFileHandler
 import subprocess
 import sys
