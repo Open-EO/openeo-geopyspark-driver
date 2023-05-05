@@ -40,6 +40,7 @@ def pytest_configure(config):
     os.environ["VAULT_ADDR"] = "https://vault.test"
     os.environ["OPENSEARCH_ENRICH"] = "no"
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
+    os.environ["POD_NAMESPACE"] = "spark-jobs"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
