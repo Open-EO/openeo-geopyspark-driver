@@ -1,5 +1,8 @@
+import argparse
 import datetime as dt
+import json
 import logging
+import sys
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -736,26 +739,36 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
-def get_layer_catalog(
-    vault: Vault = None, opensearch_enrich: Optional[bool] = None
-) -> GeoPySparkLayerCatalog:
+# Type annotation aliases to make things more self-documenting
+CollectionId = str
+CollectionMetadataDict = Dict[str, Union[str, dict, list]]
+CatalogDict = Dict[CollectionId, CollectionMetadataDict]
+
+
+def _get_layer_catalog(
+    catalog_files: Optional[List[str]] = None,
+    opensearch_enrich: Optional[bool] = None,
+) -> CatalogDict:
     """
     Get layer catalog (from JSON files)
     """
     if opensearch_enrich is None:
         opensearch_enrich = ConfigParams().opensearch_enrich
+    if catalog_files is None:
+        catalog_files = ConfigParams().layer_catalog_metadata_files
 
-    metadata: Dict[str, dict] = {}
+    metadata: CatalogDict = {}
 
-    def read_catalog_file(catalog_file) -> Dict[str, dict]:
+    def read_catalog_file(catalog_file) -> CatalogDict:
         return {coll["id"]: coll for coll in read_json(catalog_file)}
 
-    catalog_files = ConfigParams().layer_catalog_metadata_files
-    logger.info(f"get_layer_catalog: {catalog_files=}")
+    logger.info(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
+        logger.info(f"_get_layer_catalog: reading {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        logger.info(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.info(f"get_layer_catalog: {opensearch_enrich=}")
+    logger.info(f"_get_layer_catalog: {opensearch_enrich=}")
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
@@ -837,15 +850,48 @@ def get_layer_catalog(
 
     metadata = _merge_layers_with_common_name(metadata)
 
+    return metadata
+
+
+def get_layer_catalog(
+    vault: Vault = None,
+    opensearch_enrich: Optional[bool] = None,
+) -> GeoPySparkLayerCatalog:
+    metadata = _get_layer_catalog(opensearch_enrich=opensearch_enrich)
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
     )
 
 
-def _merge_layers_with_common_name(metadata):
+def dump_layer_catalog():
+    """CLI tool to dump layer catalog"""
+    cli = argparse.ArgumentParser()
+    cli.add_argument("--opensearch-enrich", action="store_true", help="Enable OpenSearch based enriching.")
+    cli.add_argument(
+        "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
+    )
+    cli.add_argument(
+        "--container",
+        choices=["list", "dict"],
+        default="list",
+        help="Top level container to list the collections in: a list like in openEO API, or a dict, keyed on collection id.",
+    )
+    cli.add_argument("--verbose", action="store_true")
+    arguments = cli.parse_args()
+
+    logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
+
+    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, opensearch_enrich=arguments.opensearch_enrich)
+    if arguments.container == "list":
+        metadata = list(metadata.values())
+    json.dump(metadata, fp=sys.stdout, indent=2)
+
+
+def _merge_layers_with_common_name(metadata: CatalogDict):
+    """Merge collections with same common name. Updates metadata dict in place."""
     common_names = set(m["common_name"] for m in metadata.values() if "common_name" in m)
-    logger.debug(f"Creating merged collections for common names: {common_names}")
+    logger.info(f"Creating merged collections for common names: {common_names}")
     for common_name in common_names:
         merged = {
             "id": common_name,
@@ -859,7 +905,9 @@ def _merge_layers_with_common_name(metadata):
             "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
         }
 
-        for to_merge in (m for m in metadata.values() if m.get("common_name") == common_name):
+        merge_sources = [m for m in metadata.values() if m.get("common_name") == common_name]
+        logger.info(f"Merging {common_name} from {[m['id'] for m in merge_sources]}")
+        for to_merge in merge_sources:
             merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
             # Fill some fields with first hit
             for field in ["title", "description", "keywords", "version", "license", "cube:dimensions", "summaries"]:
@@ -1049,3 +1097,7 @@ def is_layer_too_large(
                 return False, estimated_pixels, threshold_pixels
         return True, estimated_pixels, threshold_pixels
     return False, estimated_pixels, threshold_pixels
+
+
+if __name__ == "__main__":
+    dump_layer_catalog()
