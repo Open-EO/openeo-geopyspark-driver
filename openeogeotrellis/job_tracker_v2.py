@@ -248,7 +248,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             metadata = self._kubernetes_api.get_namespaced_custom_object(
                 group="sparkoperator.k8s.io",
                 version="v1beta2",
-                namespace=environ["POD_NAMESPACE"],
+                namespace=ConfigParams().pod_namespace,
                 plural="sparkapplications",
                 name=application_id,
             )
@@ -276,7 +276,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def _get_usage(self, job_id: str, application_id: str) -> Union[_Usage, None]:
         try:
             url = url_join(self._kubecost_url, "/model/allocation")
-            namespace = environ["POD_NAMESPACE"]
+            namespace = ConfigParams().pod_namespace
             window = "5d"
             pod = application_id + "*"
             params = (
