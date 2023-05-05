@@ -8,14 +8,13 @@ from unittest import mock
 import pytest
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
-from shapely.geometry import box, mapping, shape, Polygon
+from shapely.geometry import box, mapping, shape
 from osgeo import gdal
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.testing import DictSubSet
+from openeo_driver.testing import DictSubSet, ListSubSet
 from openeo_driver.utils import read_json
-from openeo_driver.util.geometry import reproject_geometry
 from openeogeotrellis.deploy.batch_job import (
     extract_result_metadata,
     run_job, _convert_asset_outputs_to_s3_urls,
@@ -25,7 +24,8 @@ from openeogeotrellis.deploy.batch_job import (
     _get_projection_extension_metadata,
     read_gdal_raster_metadata,
     parse_gdal_raster_metadata,
-    RasterMetadata,
+    AssetRasterMetadata,
+    BandStatistics,
 )
 
 from openeogeotrellis.utils import get_jvm
@@ -365,7 +365,7 @@ def test_run_job(evaluate, tmp_path):
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, monkeypatch):
+def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     cube_mock = MagicMock()
 
     job_dir = tmp_path / "job-test-proj-metadata"
@@ -429,6 +429,18 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, monkeypat
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
                 "proj:shape": [720, 1188],
+                "raster:bands": [
+                    {
+                        "name": "1",
+                        "statistics": {
+                            "maximum": approx(641.22131347656),
+                            "mean": approx(403.31786404988),
+                            "minimum": approx(149.76655578613),
+                            "stddev": approx(98.389307981699),
+                            "valid_percent": 100.0,
+                        },
+                    }
+                ],
             },
             "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
         },
@@ -485,7 +497,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """
     cube_mock = MagicMock()
 
-    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir = tmp_path / "job-test-proj-metadata-same_epsg_and_bbox"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -552,11 +564,35 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 "href": first_asset_name,
                 "roles": "data",
                 # Projection extension metadata should not be here, but higher up.
+                "raster:bands": [
+                    {
+                        "name": "1",
+                        "statistics": {
+                            "maximum": approx(641.22131347656),
+                            "minimum": approx(149.76655578613),
+                            "mean": approx(403.31786404988),
+                            "stddev": approx(98.389307981699),
+                            "valid_percent": 100.0,
+                        },
+                    }
+                ],
             },
             second_asset_name: {
                 "href": second_asset_name,
                 "roles": "data",
                 # Idem: projection extension metadata should not be here, but higher up.
+                "raster:bands": [
+                    {
+                        "name": "1",
+                        "statistics": {
+                            "maximum": approx(641.22131347656),
+                            "minimum": approx(149.76655578613),
+                            "mean": approx(403.31786404988),
+                            "stddev": approx(98.389307981699),
+                            "valid_percent": 100.0,
+                        },
+                    }
+                ],
             },
         },
         "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
@@ -635,7 +671,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     """
     cube_mock = MagicMock()
 
-    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir = tmp_path / "job-test-proj-metadata-different_epsg"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -710,6 +746,18 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
                 "proj:shape": [720, 1188],
+                "raster:bands": [
+                    {
+                        "name": "1",
+                        "statistics": {
+                            "maximum": approx(641.22131347656),
+                            "mean": approx(403.31786404988),
+                            "minimum": approx(149.76655578613),
+                            "stddev": approx(98.389307981699),
+                            "valid_percent": 100.0,
+                        },
+                    }
+                ],
             },
             second_asset_name: {
                 "href": second_asset_name,
@@ -717,6 +765,18 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "proj:bbox": [723413.644, 577049.010, 745443.909, 614102.693],
                 "proj:epsg": 3812,
                 "proj:shape": [720, 1188],
+                "raster:bands": [
+                    {
+                        "name": "1",
+                        "statistics": {
+                            "maximum": approx(641.22131347656),
+                            "minimum": approx(0.0),
+                            "mean": approx(388.80473522222),
+                            "stddev": approx(122.48474568907),
+                            "valid_percent": 100.0,
+                        },
+                    }
+                ],
             },
         },
         "bbox": None,
@@ -838,6 +898,18 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                     "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                     "proj:epsg": 4326,
                     "proj:shape": [720, 1188],
+                    "raster:bands": [
+                        {
+                            "name": "1",
+                            "statistics": {
+                                "maximum": approx(641.22131347656),
+                                "mean": approx(403.31786404988),
+                                "minimum": approx(149.76655578613),
+                                "stddev": approx(98.389307981699),
+                                "valid_percent": 100.0,
+                            },
+                        }
+                    ],
                 },
                 "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
             },
@@ -973,7 +1045,7 @@ def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     with open(nc_json_path, "rt") as f_in:
         gdal_info = json.load(f_in)
 
-    raster_metadata: RasterMetadata = parse_gdal_raster_metadata(gdal_info)
+    raster_metadata: AssetRasterMetadata = parse_gdal_raster_metadata(gdal_info)
 
     expected_metadata = {
         "proj:epsg": 32631,
@@ -1065,92 +1137,85 @@ def test_read_gdal_raster_metadata_from_multiband_netcdf_file():
 
     raster_metadata = read_gdal_raster_metadata(str(netcdf_path))
 
-    expected_metadata = {
+    assert raster_metadata.to_dict() == {
         "proj:epsg": 32631,
         "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
         "proj:shape": [357, 233],
+        "raster:bands": [
+            {
+                "name": "B01",
+                "statistics": {
+                    "minimum": approx(1651.0),
+                    "maximum": approx(4203.0),
+                    "mean": approx(2260.1994),
+                    "stddev": approx(535.1263),
+                },
+            },
+            {
+                "name": "B02",
+                "statistics": {
+                    "minimum": approx(1230.0),
+                    "maximum": approx(4262.0),
+                    "mean": approx(1877.3180),
+                    "stddev": approx(531.5487),
+                },
+            },
+            {
+                "name": "B03",
+                "statistics": {
+                    "minimum": approx(848),
+                    "maximum": approx(3683),
+                    "mean": approx(1479.7089),
+                    "stddev": approx(506.3976),
+                },
+            },
+            {
+                "name": "B04",
+                "statistics": {
+                    "minimum": approx(715),
+                    "maximum": approx(4007),
+                    "mean": approx(1451.2542),
+                    "stddev": approx(593.3228),
+                },
+            },
+            {
+                "name": "B05",
+                "statistics": {
+                    "minimum": approx(746),
+                    "maximum": approx(4243),
+                    "mean": approx(1596.4995),
+                    "stddev": approx(643.2813),
+                },
+            },
+            {
+                "name": "B06",
+                "statistics": {
+                    "minimum": approx(738),
+                    "maximum": approx(4678),
+                    "mean": approx(1822.6124),
+                    "stddev": approx(700.7382),
+                },
+            },
+            {
+                "name": "B07",
+                "statistics": {
+                    "minimum": approx(753),
+                    "maximum": approx(4931),
+                    "mean": approx(1926.1757),
+                    "stddev": approx(729.2182),
+                },
+            },
+            {
+                "name": "B08",
+                "statistics": {
+                    "minimum": approx(670),
+                    "maximum": approx(4834),
+                    "mean": approx(1875.9574),
+                    "stddev": approx(706.7410),
+                },
+            },
+        ],
     }
-    assert raster_metadata.projection == expected_metadata
-
-    assert len(raster_metadata.statistics) == 8
-
-    actual_band_stats = raster_metadata.statistics["B01"]
-    assert actual_band_stats.minimum == approx(1651, abs=0.1)
-    assert actual_band_stats.maximum == approx(4203, abs=0.1)
-    assert actual_band_stats.mean == approx(2260.1994, abs=0.0001)
-    assert actual_band_stats.stddev == approx(535.1263, abs=0.0001)
-    assert actual_band_stats.valid_percent is None
-
-    actual_stats = {band: stats.to_dict() for band, stats in raster_metadata.statistics.items()}
-
-    assert raster_metadata.statistics["B01"].to_dict() == {
-        "minimum": approx(1651.0, abs=0.1),
-        "maximum": approx(4203.0, abs=0.1),
-        "mean": approx(2260.1994, abs=0.0001),
-        "stddev": approx(535.1263, abs=0.0001),
-        "valid_percent": None,
-    }
-
-    assert actual_stats == DictSubSet(
-        {
-            "B01": {
-                "minimum": approx(1651.0, abs=0.1),
-                "maximum": approx(4203.0, abs=0.1),
-                "mean": approx(2260.1994, abs=0.0001),
-                "stddev": approx(535.1263, abs=0.0001),
-                "valid_percent": None,
-            },
-            "B02": {
-                "minimum": approx(1230.0, abs=0.1),
-                "maximum": approx(4262.0, abs=0.1),
-                "mean": approx(1877.3180, abs=0.0001),
-                "stddev": approx(531.5487, abs=0.0001),
-                "valid_percent": None,
-            },
-            "B03": {
-                "minimum": approx(848, abs=0.1),
-                "maximum": approx(3683, abs=0.1),
-                "mean": approx(1479.7089, rel=0.0001),
-                "stddev": approx(506.3976, rel=0.0001),
-                "valid_percent": None,
-            },
-            "B04": {
-                "minimum": approx(715, abs=0.1),
-                "maximum": approx(4007, abs=0.1),
-                "mean": approx(1451.2542, rel=0.0001),
-                "stddev": approx(593.3228, rel=0.0001),
-                "valid_percent": None,
-            },
-            "B05": {
-                "minimum": approx(746, abs=0.1),
-                "maximum": approx(4243, abs=0.1),
-                "mean": approx(1596.4995, rel=0.0001),
-                "stddev": approx(643.2813, rel=0.0001),
-                "valid_percent": None,
-            },
-            "B06": {
-                "minimum": approx(738, abs=0.1),
-                "maximum": approx(4678, abs=0.1),
-                "mean": approx(1822.6124, rel=0.0001),
-                "stddev": approx(700.7382, rel=0.0001),
-                "valid_percent": None,
-            },
-            "B07": {
-                "minimum": approx(753, abs=0.1),
-                "maximum": approx(4931, abs=0.1),
-                "mean": approx(1926.1757, rel=0.0001),
-                "stddev": approx(729.2182, rel=0.0001),
-                "valid_percent": None,
-            },
-            "B08": {
-                "minimum": approx(670, abs=0.1),
-                "maximum": approx(4834, abs=0.1),
-                "mean": approx(1875.9574, rel=0.0001),
-                "stddev": approx(706.7410, rel=0.0001),
-                "valid_percent": None,
-            },
-        }
-    )
 
 
 def test_read_projection_extension_metadata_from_singleband_netcdf_file():
@@ -1175,21 +1240,34 @@ def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
 
     raster_metadata = read_gdal_raster_metadata(str(netcdf_path))
 
-    expected_metadata = {
-        # "proj:epsg": 32631,
-        "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
-        "proj:shape": [900, 451],
-    }
-    assert raster_metadata.projection == expected_metadata
-
-    assert len(raster_metadata.statistics) == 1
-
-    actual_band_stats = raster_metadata.statistics["Total Aerosol Optical Depth at 550nm"]
+    # Check it via the BandStatistics object before we check the dict that
+    # contains the entire result.
+    actual_band_stats: BandStatistics = raster_metadata.statistics["Total Aerosol Optical Depth at 550nm"]
     assert actual_band_stats.minimum == approx(0.008209, abs=0.000001)
     assert actual_band_stats.maximum == approx(3.0, abs=0.000001)
-    assert actual_band_stats.mean == approx(0.12490846004707)
-    assert actual_band_stats.stddev == approx(0.12537779432458)
+    assert actual_band_stats.mean == approx(0.124908, abs=0.000001)
+    assert actual_band_stats.stddev == approx(0.12537779432458, abs=0.000001)
     assert actual_band_stats.valid_percent is None
+
+    assert raster_metadata.to_dict() == DictSubSet(
+        {
+            "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
+            "proj:shape": [900, 451],
+            "raster:bands": [
+                {
+                    "name": "Total Aerosol Optical Depth at 550nm",
+                    "statistics": DictSubSet(
+                        {
+                            "minimum": approx(0.008209, abs=0.000001),
+                            "maximum": approx(3.0, abs=0.000001),
+                            "mean": approx(0.1249084, abs=0.000001),
+                            "stddev": approx(0.1253777, abs=0.000001),
+                        }
+                    ),
+                }
+            ],
+        }
+    )
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
