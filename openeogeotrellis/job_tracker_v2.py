@@ -16,7 +16,7 @@ from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 
-# We only need requests_gssapi for Yarn, which uses Kereberos authentication.
+# We only need requests_gssapi for Yarn, which uses Kerberos authentication.
 try:
     import requests_gssapi
 except ImportError:
@@ -122,7 +122,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             Normally we use Kerberos and then you should pass an instance of
             requests_gssapi.HTTPSPNEGOAuth.
 
-            In general you could use any authentication that requests.get(auth=auth)
+            In general, you could use any authentication that requests.get(auth=auth)
             accepts for its auth parameter, if needed.
             See also: https://requests.readthedocs.io/en/latest/api/#requests.request
         """
@@ -347,6 +347,7 @@ class JobTracker:
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
+                # TODO: #236 also/instead get jobs_to_track from EJR?
                 jobs_to_track = zk_job_registry.get_running_jobs()
             _log.info(f"Collected {len(jobs_to_track)} jobs to track")
             stats["collected jobs"] = len(jobs_to_track)
@@ -639,7 +640,7 @@ class CliApp:
             default=ConfigParams().batch_jobs_zookeeper_root_path,
             help="ZooKeeper root path for the job registry",
         )
-        # TODO: also allow setting zk_root_path through "env" setting (prod,dev, integrationtests, ...)?
+        # TODO: also allow setting zk_root_path through "env" setting (prod, dev, integration tests, ...)?
 
         return parser.parse_args(args=args)
 
