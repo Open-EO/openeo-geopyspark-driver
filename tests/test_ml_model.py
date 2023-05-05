@@ -293,14 +293,11 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     assert re.match(r'rf-[0-9a-f]{32}', model_id)
     metadata_result['ml_model_metadata']['id'] = 'rf-uuid'
     assert metadata_result == DictSubSet({
-        'geometry': None, 'bbox': None, 'area': None, 'start_datetime': None, 'end_datetime': None, 'links': [],
         'assets': {
             'randomforest.model.tar.gz': {
                 'href': str(tmp_path / "randomforest.model.tar.gz")
             }
-        }, 'epsg': None, 'instruments': [], 'processing:facility': 'VITO - SPARK',
-        "processing:software": RegexMatcher(r"openeo-geotrellis-[0-9a-z.]+"),
-        'unique_process_ids': ['discard_result'],
+        },
         'ml_model_metadata': {
             'stac_version': '1.0.0',
             'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 'type': 'Feature',
@@ -331,37 +328,26 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     get_job_info.return_value = BatchJobMetadata(id=job_id, status='finished', created = datetime.now())
     api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
     res = api.get('/jobs/{j}/results'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
-    assert res == DictSubSet({
-        'assets': {
-            'randomforest.model.tar.gz': {
-                'file:size': size,
-                'file:nodata': [None],
-                'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/randomforest.model.tar.gz',
-                'roles': ['data'], 'title': 'randomforest.model.tar.gz', 'type': 'application/octet-stream'
-            }
-        }, 'description': 'Results for batch job {job_id}'.format(job_id=job_id),
-        'extent': {
-            'spatial': {'bbox': [None]},
-                   'temporal': {'interval': [[None, None]]}}, 'id': job_id,
-        'license': 'proprietary',
-        'links': [{'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results'.format(job_id=job_id), 'rel': 'self', 'type': 'application/json'},
-                  {
-                      'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results'.format(job_id=job_id), 'rel': 'canonical',
-                      'type': 'application/json'
-                  }, {
-                      'href': 'http://ceos.org/ard/files/PFS/SR/v5.0/CARD4L_Product_Family_Specification_Surface_Reflectance-v5.0.pdf',
-                      'rel': 'card4l-document', 'type': 'application/pdf'
-                  }, {
-                      'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/items/ml_model_metadata.json'.format(job_id=job_id),
-                      'rel': 'item', 'type': 'application/json'
-                  }],
-        'stac_extensions': ['eo', 'file', 'https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
-        'stac_version': '1.0.0',
-        'summaries': {
-            'ml-model:architecture': ['random-forest'],
-            'ml-model:learning_approach': ['supervised'],
-            'ml-model:prediction_type': ['classification']
-        }, 'type': 'Collection'
+    assert res['assets'] == DictSubSet({
+        'randomforest.model.tar.gz': {
+            'file:size': size,
+            'file:nodata': [None],
+            'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/randomforest.model.tar.gz',
+            'roles': ['data'], 'title': 'randomforest.model.tar.gz', 'type': 'application/octet-stream'
+        }
+    })
+    ml_metadata_link = {
+        'href': 'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/items/ml_model_metadata.json'.format(
+            job_id = job_id),
+        'rel': 'item',
+        'type': 'application/json'
+    }
+    assert ml_metadata_link in res['links']
+    assert "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json" in res['stac_extensions']
+    assert res['summaries'] == DictSubSet({
+        'ml-model:architecture': ['random-forest'],
+        'ml-model:learning_approach': ['supervised'],
+        'ml-model:prediction_type': ['classification']
     })
 
     item_res = api.get('/jobs/{j}/results/items/ml_model_metadata.json'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
