@@ -906,9 +906,17 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
         }
 
         merge_sources = [m for m in metadata.values() if m.get("common_name") == common_name]
+        # Give priority to (reference/override) values in the "virtual:merge-by-common-name" placeholder entry
+        merge_sources = sorted(
+            merge_sources,
+            key=(lambda m: deep_get(m, "_vito", "data_source", "type", default=None) == "virtual:merge-by-common-name"),
+            reverse=True,
+        )
+        eo_bands = {}
         logger.info(f"Merging {common_name} from {[m['id'] for m in merge_sources]}")
         for to_merge in merge_sources:
-            merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
+            if not deep_get(to_merge, "_vito", "data_source", "type", default="").startswith("virtual:"):
+                merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
             # Fill some fields with first hit
             for field in ["title", "description", "keywords", "version", "license", "cube:dimensions", "summaries"]:
                 if field not in merged and field in to_merge:
@@ -927,15 +935,14 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
                         if b not in merged["cube:dimensions"][band_dim]["values"]:
                             merged["cube:dimensions"][band_dim]["values"].append(b)
             for b in deep_get(to_merge, "summaries", "eo:bands", default=[]):
-                eob_names = [x["name"] for x in merged["summaries"]["eo:bands"]]
-                if b["name"] not in eob_names:
-                    merged["summaries"]["eo:bands"].append(b)
+                band_name = b["name"]
+                if band_name not in eo_bands:
+                    eo_bands[band_name] = b
                 else:
-                    i = eob_names.index(b["name"])
-                    merged["summaries"]["eo:bands"][i]["aliases"] = list(
-                        set(merged["summaries"]["eo:bands"][i].get("aliases", []))
-                        | set(b.get("aliases", []))
-                    )
+                    # Merge some things
+                    aliases = set(eo_bands[band_name].get("aliases", [])) | set(b.get("aliases", []))
+                    if aliases:
+                        eo_bands[band_name]["aliases"] = list(aliases)
 
             # Union of extents
             # TODO: make sure first bbox/interval is overall extent
@@ -943,6 +950,12 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
             merged["extent"]["temporal"]["interval"].extend(
                 deep_get(to_merge, "extent", "temporal", "interval", default=[])
             )
+
+        # Adapt band order under `eo:bands`, based on `cube:dimensions`
+        band_dims = [k for k, v in merged.get("cube:dimensions", {}).items() if v["type"] == "bands"]
+        if band_dims:
+            (band_dim,) = band_dims
+            merged["summaries"]["eo:bands"] = [eo_bands[b] for b in merged["cube:dimensions"][band_dim]["values"]]
 
         metadata[common_name] = merged
 
