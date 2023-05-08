@@ -13,14 +13,12 @@ from osgeo import gdal
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.testing import DictSubSet, ListSubSet
+from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import read_json
 from openeogeotrellis.deploy.batch_job import (
     extract_result_metadata,
     run_job, _convert_asset_outputs_to_s3_urls,
     _convert_job_metadatafile_outputs_to_s3_urls,
-    read_projection_extension_metadata,
-    parse_projection_extension_metadata,
     _get_projection_extension_metadata,
     read_gdal_raster_metadata,
     parse_gdal_raster_metadata,
@@ -957,6 +955,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
         t.setGlobalTracking(False)
 
 
+# TODO: Update this test to include statistics or not? Would need to update the json file.
 @pytest.mark.parametrize(
     ["json_file", "expected_metadata"],
     [
@@ -985,43 +984,7 @@ def test_get_projection_extension_metadata(json_file, expected_metadata):
     assert proj_metadata == expected_metadata
 
 
-@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
-def test_parse_projection_extension_metadata(mock_read_gdal_info):
-    json_dir = get_test_data_file(
-        "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
-    )
-    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
-    nc_json_path = (
-        json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc.json"
-    )
-
-    def read_json_file(netcdf_uri: str) -> dict:
-        if netcdf_uri == str(netcdf_path):
-            # json_path = netcdf_uri + ".json"
-            json_path = nc_json_path
-        else:
-            parts = netcdf_uri.split(":")
-            band = parts[-1]
-            # strip off the surrounding double quotes from the filename
-            filename = parts[1][1:-1]
-            json_path = json_dir / f"{filename}.{band}.json"
-        with open(json_path, "rt") as f:
-            return json.load(f)
-
-    mock_read_gdal_info.side_effect = read_json_file
-    with open(nc_json_path, "rt") as f_in:
-        gdal_info = json.load(f_in)
-
-    proj_metadata = parse_projection_extension_metadata(gdal_info)
-
-    expected_metadata = {
-        "proj:epsg": 32631,
-        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
-        "proj:shape": [357, 233],
-    }
-    assert proj_metadata == expected_metadata
-
-
+# TODO: Can we remove this test? We test the same directly using the binary file and gdalinfo.
 @mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
 def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
@@ -1056,37 +1019,6 @@ def test_parse_gdal_raster_metadata(mock_read_gdal_info):
 
 
 @mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
-def test_read_projection_extension_metadata(mock_read_gdal_info):
-    json_dir = get_test_data_file(
-        "gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23"
-    )
-    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
-
-    def read_json_file(netcdf_uri: str) -> dict:
-        if netcdf_uri == str(netcdf_path):
-            json_path = netcdf_uri + ".json"
-        else:
-            parts = netcdf_uri.split(":")
-            band = parts[-1]
-            # strip off the surrounding double quotes from the filename
-            filename = parts[1][1:-1]
-            json_path = json_dir / f"{filename}.{band}.json"
-        with open(json_path, "rt") as f:
-            return json.load(f)
-
-    mock_read_gdal_info.side_effect = read_json_file
-
-    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
-
-    expected_metadata = {
-        "proj:epsg": 32631,
-        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
-        "proj:shape": [357, 233],
-    }
-    assert proj_metadata == expected_metadata
-
-
-@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
 def test_read_gdal_raster_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
     netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
@@ -1115,21 +1047,6 @@ def test_read_gdal_raster_metadata(mock_read_gdal_info):
     assert raster_metadata.projection == expected_metadata
 
 
-def test_read_projection_extension_metadata_from_multiband_netcdf_file():
-    netcdf_path = get_test_data_file(
-        "binary/stac_proj_extension/netcdf/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
-    )
-
-    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
-
-    expected_metadata = {
-        "proj:epsg": 32631,
-        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
-        "proj:shape": [357, 233],
-    }
-    assert proj_metadata == expected_metadata
-
-
 def test_read_gdal_raster_metadata_from_multiband_netcdf_file():
     netcdf_path = get_test_data_file(
         "binary/stac_proj_extension/netcdf/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
@@ -1144,93 +1061,94 @@ def test_read_gdal_raster_metadata_from_multiband_netcdf_file():
         "raster:bands": [
             {
                 "name": "B01",
-                "statistics": {
-                    "minimum": approx(1651.0),
-                    "maximum": approx(4203.0),
-                    "mean": approx(2260.1994),
-                    "stddev": approx(535.1263),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(1651.0),
+                        "maximum": approx(4203.0),
+                        "mean": approx(2260.1994),
+                        "stddev": approx(535.1263),
+                    }
+                ),
             },
             {
                 "name": "B02",
-                "statistics": {
-                    "minimum": approx(1230.0),
-                    "maximum": approx(4262.0),
-                    "mean": approx(1877.3180),
-                    "stddev": approx(531.5487),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(1230.0),
+                        "maximum": approx(4262.0),
+                        "mean": approx(1877.3180),
+                        "stddev": approx(531.5487),
+                    }
+                ),
             },
             {
                 "name": "B03",
-                "statistics": {
-                    "minimum": approx(848),
-                    "maximum": approx(3683),
-                    "mean": approx(1479.7089),
-                    "stddev": approx(506.3976),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(848),
+                        "maximum": approx(3683),
+                        "mean": approx(1479.7089),
+                        "stddev": approx(506.3976),
+                    }
+                ),
             },
             {
                 "name": "B04",
-                "statistics": {
-                    "minimum": approx(715),
-                    "maximum": approx(4007),
-                    "mean": approx(1451.2542),
-                    "stddev": approx(593.3228),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(715),
+                        "maximum": approx(4007),
+                        "mean": approx(1451.2542),
+                        "stddev": approx(593.3228),
+                    }
+                ),
             },
             {
                 "name": "B05",
-                "statistics": {
-                    "minimum": approx(746),
-                    "maximum": approx(4243),
-                    "mean": approx(1596.4995),
-                    "stddev": approx(643.2813),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(746),
+                        "maximum": approx(4243),
+                        "mean": approx(1596.4995),
+                        "stddev": approx(643.2813),
+                    }
+                ),
             },
             {
                 "name": "B06",
-                "statistics": {
-                    "minimum": approx(738),
-                    "maximum": approx(4678),
-                    "mean": approx(1822.6124),
-                    "stddev": approx(700.7382),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(738),
+                        "maximum": approx(4678),
+                        "mean": approx(1822.6124),
+                        "stddev": approx(700.7382),
+                    }
+                ),
             },
             {
                 "name": "B07",
-                "statistics": {
-                    "minimum": approx(753),
-                    "maximum": approx(4931),
-                    "mean": approx(1926.1757),
-                    "stddev": approx(729.2182),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(753),
+                        "maximum": approx(4931),
+                        "mean": approx(1926.1757),
+                        "stddev": approx(729.2182),
+                    }
+                ),
             },
             {
                 "name": "B08",
-                "statistics": {
-                    "minimum": approx(670),
-                    "maximum": approx(4834),
-                    "mean": approx(1875.9574),
-                    "stddev": approx(706.7410),
-                },
+                "statistics": DictSubSet(
+                    {
+                        "minimum": approx(670),
+                        "maximum": approx(4834),
+                        "mean": approx(1875.9574),
+                        "stddev": approx(706.7410),
+                    }
+                ),
             },
         ],
     }
-
-
-def test_read_projection_extension_metadata_from_singleband_netcdf_file():
-    netcdf_path = get_test_data_file(
-        "binary/stac_proj_extension/netcdf/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc"
-    )
-
-    proj_metadata = read_projection_extension_metadata(str(netcdf_path))
-
-    expected_metadata = {
-        # "proj:epsg": 32631,
-        "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
-        "proj:shape": [900, 451],
-    }
-    assert proj_metadata == expected_metadata
 
 
 def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
@@ -1247,7 +1165,9 @@ def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
     assert actual_band_stats.maximum == approx(3.0, abs=0.000001)
     assert actual_band_stats.mean == approx(0.124908, abs=0.000001)
     assert actual_band_stats.stddev == approx(0.12537779432458, abs=0.000001)
-    assert actual_band_stats.valid_percent is None
+    # Turns out this result changes after the first run of the test, because
+    # gdalinfo generates an *.aux.xml file that caches the statistics.
+    # assert actual_band_stats.valid_percent is None
 
     assert raster_metadata.to_dict() == DictSubSet(
         {
