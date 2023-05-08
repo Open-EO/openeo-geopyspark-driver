@@ -1,5 +1,8 @@
+import argparse
 import datetime as dt
+import json
 import logging
+import sys
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -736,26 +739,36 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
 
-def get_layer_catalog(
-    vault: Vault = None, opensearch_enrich: Optional[bool] = None
-) -> GeoPySparkLayerCatalog:
+# Type annotation aliases to make things more self-documenting
+CollectionId = str
+CollectionMetadataDict = Dict[str, Union[str, dict, list]]
+CatalogDict = Dict[CollectionId, CollectionMetadataDict]
+
+
+def _get_layer_catalog(
+    catalog_files: Optional[List[str]] = None,
+    opensearch_enrich: Optional[bool] = None,
+) -> CatalogDict:
     """
     Get layer catalog (from JSON files)
     """
     if opensearch_enrich is None:
         opensearch_enrich = ConfigParams().opensearch_enrich
+    if catalog_files is None:
+        catalog_files = ConfigParams().layer_catalog_metadata_files
 
-    metadata: Dict[str, dict] = {}
+    metadata: CatalogDict = {}
 
-    def read_catalog_file(catalog_file) -> Dict[str, dict]:
+    def read_catalog_file(catalog_file) -> CatalogDict:
         return {coll["id"]: coll for coll in read_json(catalog_file)}
 
-    catalog_files = ConfigParams().layer_catalog_metadata_files
-    logger.info(f"get_layer_catalog: {catalog_files=}")
+    logger.info(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
+        logger.info(f"_get_layer_catalog: reading {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        logger.info(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.info(f"get_layer_catalog: {opensearch_enrich=}")
+    logger.info(f"_get_layer_catalog: {opensearch_enrich=}")
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
@@ -837,15 +850,48 @@ def get_layer_catalog(
 
     metadata = _merge_layers_with_common_name(metadata)
 
+    return metadata
+
+
+def get_layer_catalog(
+    vault: Vault = None,
+    opensearch_enrich: Optional[bool] = None,
+) -> GeoPySparkLayerCatalog:
+    metadata = _get_layer_catalog(opensearch_enrich=opensearch_enrich)
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
     )
 
 
-def _merge_layers_with_common_name(metadata):
+def dump_layer_catalog():
+    """CLI tool to dump layer catalog"""
+    cli = argparse.ArgumentParser()
+    cli.add_argument("--opensearch-enrich", action="store_true", help="Enable OpenSearch based enriching.")
+    cli.add_argument(
+        "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
+    )
+    cli.add_argument(
+        "--container",
+        choices=["list", "dict"],
+        default="list",
+        help="Top level container to list the collections in: a list like in openEO API, or a dict, keyed on collection id.",
+    )
+    cli.add_argument("--verbose", action="store_true")
+    arguments = cli.parse_args()
+
+    logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
+
+    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, opensearch_enrich=arguments.opensearch_enrich)
+    if arguments.container == "list":
+        metadata = list(metadata.values())
+    json.dump(metadata, fp=sys.stdout, indent=2)
+
+
+def _merge_layers_with_common_name(metadata: CatalogDict):
+    """Merge collections with same common name. Updates metadata dict in place."""
     common_names = set(m["common_name"] for m in metadata.values() if "common_name" in m)
-    logger.debug(f"Creating merged collections for common names: {common_names}")
+    logger.info(f"Creating merged collections for common names: {common_names}")
     for common_name in common_names:
         merged = {
             "id": common_name,
@@ -859,8 +905,18 @@ def _merge_layers_with_common_name(metadata):
             "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
         }
 
-        for to_merge in (m for m in metadata.values() if m.get("common_name") == common_name):
-            merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
+        merge_sources = [m for m in metadata.values() if m.get("common_name") == common_name]
+        # Give priority to (reference/override) values in the "virtual:merge-by-common-name" placeholder entry
+        merge_sources = sorted(
+            merge_sources,
+            key=(lambda m: deep_get(m, "_vito", "data_source", "type", default=None) == "virtual:merge-by-common-name"),
+            reverse=True,
+        )
+        eo_bands = {}
+        logger.info(f"Merging {common_name} from {[m['id'] for m in merge_sources]}")
+        for to_merge in merge_sources:
+            if not deep_get(to_merge, "_vito", "data_source", "type", default="").startswith("virtual:"):
+                merged["_vito"]["data_source"]["merged_collections"].append(to_merge["id"])
             # Fill some fields with first hit
             for field in ["title", "description", "keywords", "version", "license", "cube:dimensions", "summaries"]:
                 if field not in merged and field in to_merge:
@@ -871,28 +927,35 @@ def _merge_layers_with_common_name(metadata):
                     merged[field] += deepcopy(to_merge[field])
 
             # Take union of bands
-            for band_dim in [k for k, v in to_merge["cube:dimensions"].items() if v["type"] == "bands"]:
+            for band_dim in [k for k, v in to_merge.get("cube:dimensions", {}).items() if v["type"] == "bands"]:
                 if band_dim not in merged["cube:dimensions"]:
                     merged["cube:dimensions"][band_dim] = deepcopy(to_merge["cube:dimensions"][band_dim])
                 else:
                     for b in to_merge["cube:dimensions"][band_dim]["values"]:
                         if b not in merged["cube:dimensions"][band_dim]["values"]:
                             merged["cube:dimensions"][band_dim]["values"].append(b)
-            for b in to_merge["summaries"]["eo:bands"]:
-                eob_names = [x["name"] for x in merged["summaries"]["eo:bands"]]
-                if b["name"] not in eob_names:
-                    merged["summaries"]["eo:bands"].append(b)
+            for b in deep_get(to_merge, "summaries", "eo:bands", default=[]):
+                band_name = b["name"]
+                if band_name not in eo_bands:
+                    eo_bands[band_name] = b
                 else:
-                    i = eob_names.index(b["name"])
-                    merged["summaries"]["eo:bands"][i]["aliases"] = list(
-                        set(merged["summaries"]["eo:bands"][i].get("aliases", []))
-                        | set(b.get("aliases", []))
-                    )
+                    # Merge some things
+                    aliases = set(eo_bands[band_name].get("aliases", [])) | set(b.get("aliases", []))
+                    if aliases:
+                        eo_bands[band_name]["aliases"] = list(aliases)
 
             # Union of extents
             # TODO: make sure first bbox/interval is overall extent
-            merged["extent"]["spatial"]["bbox"].extend(to_merge["extent"]["spatial"]["bbox"])
-            merged["extent"]["temporal"]["interval"].extend(to_merge["extent"]["temporal"]["interval"])
+            merged["extent"]["spatial"]["bbox"].extend(deep_get(to_merge, "extent", "spatial", "bbox", default=[]))
+            merged["extent"]["temporal"]["interval"].extend(
+                deep_get(to_merge, "extent", "temporal", "interval", default=[])
+            )
+
+        # Adapt band order under `eo:bands`, based on `cube:dimensions`
+        band_dims = [k for k, v in merged.get("cube:dimensions", {}).items() if v["type"] == "bands"]
+        if band_dims:
+            (band_dim,) = band_dims
+            merged["summaries"]["eo:bands"] = [eo_bands[b] for b in merged["cube:dimensions"][band_dim]["values"]]
 
         metadata[common_name] = merged
 
@@ -1049,3 +1112,7 @@ def is_layer_too_large(
                 return False, estimated_pixels, threshold_pixels
         return True, estimated_pixels, threshold_pixels
     return False, estimated_pixels, threshold_pixels
+
+
+if __name__ == "__main__":
+    dump_layer_catalog()

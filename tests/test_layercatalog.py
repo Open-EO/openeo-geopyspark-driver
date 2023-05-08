@@ -9,7 +9,7 @@ from openeo.util import deep_get
 from openeo_driver.utils import read_json
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
-from openeogeotrellis.layercatalog import get_layer_catalog
+from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name
 from openeogeotrellis.vault import Vault
 
 
@@ -228,3 +228,138 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
         {"id": "BAR", "description": "bar",  "links": ["example.com/bar"]},
         {"id": "BZZ"}
     ]
+
+
+def test_merge_layers_with_common_name_nothing():
+    metadata = {"FOO": {"id": "FOO"}, "BAR": {"id": "BAR"}}
+    _merge_layers_with_common_name(metadata)
+    assert metadata == {"FOO": {"id": "FOO"}, "BAR": {"id": "BAR"}}
+
+
+def test_merge_layers_with_common_name_simple():
+    metadata = {
+        "FOO": {"id": "FOO", "common_name": "S2"},
+        "BAR": {"id": "BAR", "common_name": "S2"},
+    }
+    _merge_layers_with_common_name(metadata)
+    assert metadata == {
+        "BAR": {"common_name": "S2", "id": "BAR"},
+        "FOO": {"common_name": "S2", "id": "FOO"},
+        "S2": {
+            "id": "S2",
+            "_vito": {
+                "data_source": {
+                    "common_name": "S2",
+                    "merged_collections": ["FOO", "BAR"],
+                    "type": "merged_by_common_name",
+                }
+            },
+            "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
+            "links": [],
+            "providers": [],
+        },
+    }
+
+
+def test_merge_layers_with_common_name_band_order():
+    metadata = {
+        "FOO": {
+            "id": "FOO",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B01", "B02", "B03", "B04"]}},
+            "summaries": {"eo:bands": [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}, {"name": "B04"}]},
+        },
+        "BAR": {
+            "id": "BAR",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B03", "B02", "B01", "B06"]}},
+            "summaries": {"eo:bands": [{"name": "B03"}, {"name": "B02"}, {"name": "B01"}, {"name": "B06"}]},
+        },
+    }
+    _merge_layers_with_common_name(metadata)
+    assert metadata == {
+        "BAR": {
+            "id": "BAR",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B03", "B02", "B01", "B06"]}},
+            "summaries": {"eo:bands": [{"name": "B03"}, {"name": "B02"}, {"name": "B01"}, {"name": "B06"}]},
+        },
+        "FOO": {
+            "id": "FOO",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B01", "B02", "B03", "B04"]}},
+            "summaries": {"eo:bands": [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}, {"name": "B04"}]},
+        },
+        "S2": {
+            "_vito": {
+                "data_source": {
+                    "common_name": "S2",
+                    "merged_collections": ["FOO", "BAR"],
+                    "type": "merged_by_common_name",
+                }
+            },
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B01", "B02", "B03", "B04", "B06"]}},
+            "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
+            "id": "S2",
+            "links": [],
+            "providers": [],
+            "summaries": {
+                "eo:bands": [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}, {"name": "B04"}, {"name": "B06"}]
+            },
+        },
+    }
+
+
+def test_merge_layers_with_common_name_band_order_override():
+    metadata = {
+        "FOO": {
+            "id": "FOO",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B01", "B02", "B03", "B04"]}},
+            "summaries": {"eo:bands": [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}, {"name": "B04"}]},
+        },
+        "BAR": {
+            "id": "BAR",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B03", "B02", "B01", "B06"]}},
+            "summaries": {"eo:bands": [{"name": "B03"}, {"name": "B02"}, {"name": "B01"}, {"name": "B06"}]},
+        },
+        "S2": {
+            "id": "S2",
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B02", "B04", "B06", "B01", "B03"]}},
+            "_vito": {"data_source": {"type": "virtual:merge-by-common-name"}},
+        },
+    }
+    _merge_layers_with_common_name(metadata)
+    assert metadata == {
+        "BAR": {
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B03", "B02", "B01", "B06"]}},
+            "id": "BAR",
+            "summaries": {"eo:bands": [{"name": "B03"}, {"name": "B02"}, {"name": "B01"}, {"name": "B06"}]},
+        },
+        "FOO": {
+            "common_name": "S2",
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B01", "B02", "B03", "B04"]}},
+            "id": "FOO",
+            "summaries": {"eo:bands": [{"name": "B01"}, {"name": "B02"}, {"name": "B03"}, {"name": "B04"}]},
+        },
+        "S2": {
+            "_vito": {
+                "data_source": {
+                    "common_name": "S2",
+                    "merged_collections": ["FOO", "BAR"],
+                    "type": "merged_by_common_name",
+                }
+            },
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B02", "B04", "B06", "B01", "B03"]}},
+            "extent": {"spatial": {"bbox": []}, "temporal": {"interval": []}},
+            "id": "S2",
+            "links": [],
+            "providers": [],
+            "summaries": {
+                "eo:bands": [{"name": "B02"}, {"name": "B04"}, {"name": "B06"}, {"name": "B01"}, {"name": "B03"}]
+            },
+        },
+    }
