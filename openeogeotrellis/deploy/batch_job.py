@@ -348,6 +348,89 @@ class AssetRasterMetadata:
         return result
 
 
+def _extract_asset_metadata(
+    job_result_metadata: Dict[str, Any],
+    asset_metadata: Dict[str, Any],
+    job_dir: Path,
+    epsg: int,
+):
+    """Extract the STAC metadata we need from a raster asset.
+
+    :param job_result_metadata:
+        The job result metadata that was already extracted and needs to be completed
+    :param asset_metadata:
+        The asset metadata extracted by `_extract_asset_raster_metadata`
+        see: `_extract_asset_raster_metadata`
+    :param job_dir:
+        The path where the job's metadata and result metadata is saved.
+    :param epsg:
+        Used to detect if an epsg code was already extracted before because
+        in that case we should not overwrite it.
+        (This is only relevant if all assets have the same epsg and it would be save at
+        the item level.)
+    """
+    raster_metadata, is_some_raster_md_missing = _extract_asset_raster_metadata(asset_metadata, job_dir)
+
+    # Determine if projection metadata should be store at the item level,
+    # because they are the same for all assets.
+    epsgs = _make_set_for_key(raster_metadata, "proj:epsg")
+    same_epsg_all_assets = len(epsgs) == 1
+
+    bboxes = _make_set_for_key(raster_metadata, "proj:bbox", tuple)
+    same_bbox_all_assets = len(bboxes) == 1
+
+    shapes = _make_set_for_key(raster_metadata, "proj:shape", tuple)
+    same_shapes_all_assets = len(shapes) == 1
+
+    assets_have_same_proj_md = not is_some_raster_md_missing and all(
+        [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
+    )
+    logger.debug(f"{assets_have_same_proj_md=}, based on: {is_some_raster_md_missing=}, {epsgs=}, {bboxes=}, {shapes=}")
+
+    if assets_have_same_proj_md:
+        # TODO: Should we overwrite existing values for epsg and bbox, or keep
+        #   what is already there?
+        if not epsg and not job_result_metadata.get("epsg"):
+            epsg = epsgs.pop()
+            logger.debug(f"Projection metadata at top level: setting epsg to value from gdalinfo {epsg=}")
+            job_result_metadata["epsg"] = epsg
+        if not job_result_metadata.get("bbox"):
+            job_result_metadata["bbox"] = list(bboxes.pop())
+            logger.debug(
+                f"Projection metadata at top level: setting bbox to value from gdalinfo: {job_result_metadata['bbox']}"
+            )
+        job_result_metadata["proj:shape"] = list(shapes.pop())
+        logger.debug(
+            "Projection metadata at top level: setting proj:shape "
+            + f"to value from gdalinfo {job_result_metadata['proj:shape']=}"
+        )
+    else:
+        # Each asset has its different projection metadata so set it per asset.
+        for asset_path, raster_md in raster_metadata.items():
+            proj_md = dict(**raster_md)
+            del proj_md["raster:bands"]
+
+            asset_metadata[asset_path].update(proj_md)
+            logger.debug(
+                f"Updated metadata for asset {asset_path} with projection metadata: "
+                + f"{proj_md=}, {asset_metadata[asset_path]=}"
+            )
+
+    # Save raster statistics: always on the asset level.
+    # There is no other place to store them really, and because stats are floats
+    # they are very rarely going to be identical numbers.
+    for asset_path, raster_md in raster_metadata.items():
+        raster_bands = raster_md["raster:bands"]
+
+        asset_metadata[asset_path]["raster:bands"] = raster_bands
+        logger.debug(
+            f"Updated metadata for asset {asset_path} with raster statistics: "
+            + f"{raster_bands=}, {asset_metadata[asset_path]=}"
+        )
+
+    job_result_metadata["assets"] = asset_metadata
+
+
 def _extract_asset_raster_metadata(
     asset_metadata: Dict[str, Any],
     job_dir: Path,
@@ -437,86 +520,6 @@ def _extract_asset_raster_metadata(
 
     logger.debug(f"{raster_metadata=}\n{is_some_raster_md_missing=}")
     return raster_metadata, is_some_raster_md_missing
-
-
-def _extract_asset_metadata(
-    job_result_metadata: Dict[str, Any],
-    asset_metadata: Dict[str, Any],
-    job_dir: Path,
-    epsg: int,
-):
-    """Extract the STAC metadata we need from a raster asset.
-
-    :param job_result_metadata:
-        the job result metadata that was already extracted and needs to be completed
-    :param asset_metadata:
-        the asset metadata extracted by `_extract_asset_raster_metadata`
-        see: `_extract_asset_raster_metadata`
-    :param job_dir:
-        the path where the job's metadata and result metadata is saved.
-    :param epsg:
-
-    """
-    raster_metadata, is_some_raster_md_missing = _extract_asset_raster_metadata(asset_metadata, job_dir)
-
-    # Determine if projection metadata should be store at the item level,
-    # because they are the same for all assets.
-    epsgs = _make_set_for_key(raster_metadata, "proj:epsg")
-    same_epsg_all_assets = len(epsgs) == 1
-
-    bboxes = _make_set_for_key(raster_metadata, "proj:bbox", tuple)
-    same_bbox_all_assets = len(bboxes) == 1
-
-    shapes = _make_set_for_key(raster_metadata, "proj:shape", tuple)
-    same_shapes_all_assets = len(shapes) == 1
-
-    assets_have_same_proj_md = not is_some_raster_md_missing and all(
-        [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
-    )
-    logger.debug(f"{assets_have_same_proj_md=}, based on: {is_some_raster_md_missing=}, {epsgs=}, {bboxes=}, {shapes=}")
-
-    if assets_have_same_proj_md:
-        # TODO: Should we overwrite existing values for epsg and bbox, or keep
-        #   what is already there?
-        if not epsg and not job_result_metadata.get("epsg"):
-            epsg = epsgs.pop()
-            logger.debug(f"Projection metadata at top level: setting epsg to value from gdalinfo {epsg=}")
-            job_result_metadata["epsg"] = epsg
-        if not job_result_metadata.get("bbox"):
-            job_result_metadata["bbox"] = list(bboxes.pop())
-            logger.debug(
-                f"Projection metadata at top level: setting bbox to value from gdalinfo: {job_result_metadata['bbox']}"
-            )
-        job_result_metadata["proj:shape"] = list(shapes.pop())
-        logger.debug(
-            "Projection metadata at top level: setting proj:shape "
-            + f"to value from gdalinfo {job_result_metadata['proj:shape']=}"
-        )
-    else:
-        # Each asset has its different projection metadata so set it per asset.
-        for asset_path, raster_md in raster_metadata.items():
-            proj_md = dict(**raster_md)
-            del proj_md["raster:bands"]
-
-            asset_metadata[asset_path].update(proj_md)
-            logger.debug(
-                f"Updated metadata for asset {asset_path} with projection metadata: "
-                + f"{proj_md=}, {asset_metadata[asset_path]=}"
-            )
-
-    # Save raster statistics: always on the asset level.
-    # There is no other place to store them really, and because stats are floats
-    # they are very rarely going to be identical numbers.
-    for asset_path, raster_md in raster_metadata.items():
-        raster_bands = raster_md["raster:bands"]
-
-        asset_metadata[asset_path]["raster:bands"] = raster_bands
-        logger.debug(
-            f"Updated metadata for asset {asset_path} with raster statistics: "
-            + f"{raster_bands=}, {asset_metadata[asset_path]=}"
-        )
-
-    job_result_metadata["assets"] = asset_metadata
 
 
 def _make_set_for_key(

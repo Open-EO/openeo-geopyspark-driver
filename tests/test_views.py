@@ -1142,6 +1142,17 @@ class TestBatchJobs:
                     "proj:epsg": 6234,
                     "proj:bbox": [1.0, 2.0, 3.0, 4.0],
                     "proj:shape": [321, 654],
+                    "raster:bands": [
+                        {
+                            "statistics": {
+                                "maximum": 641.22131,
+                                "mean": 403.31786,
+                                "minimum": 149.76655,
+                                "stddev": 98.38930,
+                                "valid_percent": 100.0,
+                            }
+                        }
+                    ],
                 }
             },
             "epsg": 4326,
@@ -1202,6 +1213,18 @@ class TestBatchJobs:
                 assert "proj:shape" in res["assets"]["openEO_2017-11-21Z.tif"]
                 assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:shape"] == [321, 654]
 
+                assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
+                    {
+                        "statistics": {
+                            "maximum": 641.22131,
+                            "mean": 403.31786,
+                            "minimum": 149.76655,
+                            "stddev": 98.38930,
+                            "valid_percent": 100.0,
+                        }
+                    }
+                ]
+
     def test_api_job_results_contains_proj_metadata_at_item_level(self, api, batch_job_output_root):
         """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
 
@@ -1230,6 +1253,17 @@ class TestBatchJobs:
                     "roles": ["data"],
                     "bands": [{"name": "ndvi", "common_name": None, "wavelength_um": None}],
                     "nodata": 255,
+                    "raster:bands": [
+                        {
+                            "statistics": {
+                                "maximum": 641.22131,
+                                "mean": 403.31786,
+                                "minimum": 149.76655,
+                                "stddev": 98.38930,
+                                "valid_percent": 100.0,
+                            }
+                        }
+                    ],
                 }
             },
             "epsg": 4326,
@@ -1290,7 +1324,17 @@ class TestBatchJobs:
                 )
 
                 assert "openEO_2017-11-21Z.tif" in res["assets"]
-
+                assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
+                    {
+                        "statistics": {
+                            "maximum": 641.22131,
+                            "mean": 403.31786,
+                            "minimum": 149.76655,
+                            "stddev": 98.38930,
+                            "valid_percent": 100.0,
+                        }
+                    }
+                ]
 
 class TestSentinelHubBatchJobs:
     """Tests for batch jobs involving SentinelHub collections and batch processes"""
