@@ -248,9 +248,12 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
         else:
             # New approach: SaveResult has generated metadata already for us
             _extract_asset_metadata(
-                metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
+                job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
             )
-
+    # _extract_asset_metadata may already fill in metadata["epsg"], but only
+    # if the value of epsg was None. So we don't want to overwrite it with
+    # None here.
+    # TODO: would be better to eliminate this complication.
     if "epsg" not in metadata:
         metadata["epsg"] = epsg
 
@@ -345,26 +348,22 @@ class AssetRasterMetadata:
         return result
 
 
-def _extract_asset_metadata(
-    metadata: Dict[str, Any],
-    asset_metadata: Dict[str, Any],
-    job_dir: Path,
-    epsg: int,
-):
-    raster_metadata, is_some_raster_md_missing = _extract_asset_raster_metadata(asset_metadata, job_dir)
-    _save_asset_metadata_at_right_level(
-        metadata=metadata,
-        asset_metadata=asset_metadata,
-        raster_metadata=raster_metadata,
-        is_some_raster_md_missing=is_some_raster_md_missing,
-        epsg=epsg,
-    )
-
-
 def _extract_asset_raster_metadata(
     asset_metadata: Dict[str, Any],
     job_dir: Path,
 ) -> Tuple[Dict[str, Dict[str, Any]], bool]:
+    """Extract STAC metadata about each raster asset, using gdalinfo.
+
+    In particular we extract projection metadata and raster statistics.
+
+    :param asset_metadata:
+        the pre-existing metadata that should be completed with
+        projection metadata and raster statistics.
+    :param job_dir:
+        the path where the job's metadata and result metadata is saved.
+    :return:
+        a dict that maps the asset's filename to a dict containing its metadata.
+    """
     # TODO would be better if we could return just Dict[str, AssetRasterMetadata]
     #   or even CollectionRasterMetadata with CollectionRasterMetadata = Dict[str, AssetRasterMetadata]
 
@@ -440,13 +439,28 @@ def _extract_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _save_asset_metadata_at_right_level(
-    metadata: Dict[str, Any],
+def _extract_asset_metadata(
+    job_result_metadata: Dict[str, Any],
     asset_metadata: Dict[str, Any],
-    raster_metadata: Dict[str, Dict],
-    is_some_raster_md_missing: bool,
+    job_dir: Path,
     epsg: int,
-) -> Dict[str, Any]:
+):
+    """Extract the STAC metadata we need from a raster asset.
+
+    :param job_result_metadata:
+        the job result metadata that was already extracted and needs to be completed
+    :param asset_metadata:
+        the asset metadata extracted by `_extract_asset_raster_metadata`
+        see: `_extract_asset_raster_metadata`
+    :param job_dir:
+        the path where the job's metadata and result metadata is saved.
+    :param epsg:
+
+    """
+    raster_metadata, is_some_raster_md_missing = _extract_asset_raster_metadata(asset_metadata, job_dir)
+
+    # Determine if projection metadata should be store at the item level,
+    # because they are the same for all assets.
     epsgs = _make_set_for_key(raster_metadata, "proj:epsg")
     same_epsg_all_assets = len(epsgs) == 1
 
@@ -461,25 +475,22 @@ def _save_asset_metadata_at_right_level(
     )
     logger.debug(f"{assets_have_same_proj_md=}, based on: {is_some_raster_md_missing=}, {epsgs=}, {bboxes=}, {shapes=}")
 
-    # TODO: try to eliminate parameters, is_some_raster_md_missing could be replaced,
-    #   but need to switch to using AssetRasterMetadata for that:
-    # assert is_some_raster_md_missing == any(rmd.could_not_read_file for rmd in raster_metadata.values())
-
     if assets_have_same_proj_md:
         # TODO: Should we overwrite existing values for epsg and bbox, or keep
         #   what is already there?
-        if not epsg and not metadata.get("epsg"):
+        if not epsg and not job_result_metadata.get("epsg"):
             epsg = epsgs.pop()
-            logger.debug("Projection metadata at top level: setting epsg " f"to value from gdalinfo {epsg=}")
-            metadata["epsg"] = epsg
-        if not metadata.get("bbox"):
-            metadata["bbox"] = list(bboxes.pop())
+            logger.debug(f"Projection metadata at top level: setting epsg to value from gdalinfo {epsg=}")
+            job_result_metadata["epsg"] = epsg
+        if not job_result_metadata.get("bbox"):
+            job_result_metadata["bbox"] = list(bboxes.pop())
             logger.debug(
-                "Projection metadata at top level: setting bbox " f"to value from gdalinfo: {metadata['bbox']}"
+                f"Projection metadata at top level: setting bbox to value from gdalinfo: {job_result_metadata['bbox']}"
             )
-        metadata["proj:shape"] = list(shapes.pop())
+        job_result_metadata["proj:shape"] = list(shapes.pop())
         logger.debug(
-            "Projection metadata at top level: setting proj:shape " f"to value from gdalinfo {metadata['proj:shape']=}"
+            "Projection metadata at top level: setting proj:shape "
+            + f"to value from gdalinfo {job_result_metadata['proj:shape']=}"
         )
     else:
         # Each asset has its different projection metadata so set it per asset.
@@ -505,10 +516,20 @@ def _save_asset_metadata_at_right_level(
             + f"{raster_bands=}, {asset_metadata[asset_path]=}"
         )
 
-    metadata["assets"] = asset_metadata
+    job_result_metadata["assets"] = asset_metadata
 
 
-def _make_set_for_key(data, key, func: callable = lambda x: x):
+def _make_set_for_key(
+    data: Dict[str, Dict[str, Any]],
+    key: str,
+    func: callable = lambda x: x,
+) -> set:
+    """
+    Create a set containing only the values for `key` from the dicts in data.values().
+
+    Optionally apply func() to that value, for example to allow converting lists,
+    which are not hashable and cannot be a set element, to tuples.
+    """
     return {func(val.get(key)) for val in data.values() if key in val}
 
 

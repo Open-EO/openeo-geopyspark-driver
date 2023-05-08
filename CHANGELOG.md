@@ -12,6 +12,9 @@ without compromising stable operations.
 
 ## [Unreleased]
 
+### Feature
+- Add statistics to asset metadata ([#391](https://github.com/Open-EO/openeo-geopyspark-driver/issues/391))
+
 ### Changed
 - Add filtering on log_level when retrieving logs from Elasticsearch. ([Open-EO/openeo-python-driver#170](https://github.com/Open-EO/openeo-python-driver/issues/170))
 - Prevent running UDFs in Spark driver process ([#404](https://github.com/Open-EO/openeo-geopyspark-driver/issues/404))
