@@ -1271,6 +1271,7 @@ class TestBatchJobs:
             "processing:facility": "VITO - SPARK",
             "processing:software": "openeo-geotrellis-0.3.3a1",
             "proj:shape": [321, 654],
+            "proj:bbox": [2, 51, 3, 52],
         }
 
         # Set up fake output files and job metadata on the local file system.
@@ -1318,7 +1319,13 @@ class TestBatchJobs:
 
                 assert res == DictSubSet(
                     {
-                        "properties": DictSubSet({"proj:epsg": 4326, "proj:shape": [321, 654]}),
+                        "properties": DictSubSet(
+                            {
+                                "proj:epsg": 4326,
+                                "proj:shape": [321, 654],
+                                "proj:bbox": [2, 51, 3, 52],
+                            }
+                        ),
                         "bbox": [2, 51, 3, 52],
                     }
                 )

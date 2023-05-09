@@ -470,6 +470,7 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
         usage=job_info.get("usage", {}),
         costs=job_info.get("costs"),
         proj_shape=job_info.get("proj:shape"),
+        proj_bbox=job_info.get("proj:bbox"),
     )
 
 

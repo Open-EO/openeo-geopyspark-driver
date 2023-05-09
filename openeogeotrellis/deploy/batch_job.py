@@ -168,6 +168,28 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     links = [link for k, v in links.items() for link in v]
 
     # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
+    bbox = convert_bbox_to_lat_long(bbox, bbox_crs)
+
+    # TODO: dedicated type?
+    # TODO: match STAC format?
+    return {
+        "geometry": geometry,
+        "bbox": bbox,
+        "area": {"value": area, "unit": "square meter"} if area else None,
+        "start_datetime": start_date,
+        "end_datetime": end_date,
+        "links": links,
+    }
+
+
+def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int, pyproj.CRS]] = None) -> List[int]:
+    """Convert bounding box to lat-long, i.e. EPSG:4326, if it was not EPSG:4326 already.
+
+    :param bbox: the bounding box
+    :param bbox_crs: in which CRS bbox is currently expressed.
+    :return: the bounding box expressed in EPSG:4326
+    """
+    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
     if bbox and bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
         # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
         # get a pyproy CRS object instead of an EPSG code. In that case it is OK to
@@ -184,18 +206,9 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         latlon_spatial_extent = reproject_bounding_box(
             latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
         )
-        bbox = [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
+        return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
-    # TODO: dedicated type?
-    # TODO: match STAC format?
-    return {
-        'geometry': geometry,
-        'bbox': bbox,
-        'area': {'value': area, 'unit': 'square meter'} if area else None,
-        'start_datetime': start_date,
-        'end_datetime': end_date,
-        'links': links
-    }
+    return bbox
 
 
 def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,
@@ -243,6 +256,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             _extract_asset_metadata(
                 job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
             )
+
     # _extract_asset_metadata may already fill in metadata["epsg"], but only
     # if the value of epsg was None. So we don't want to overwrite it with
     # None here.
@@ -381,17 +395,24 @@ def _extract_asset_metadata(
     logger.debug(f"{assets_have_same_proj_md=}, based on: {is_some_raster_md_missing=}, {epsgs=}, {bboxes=}, {shapes=}")
 
     if assets_have_same_proj_md:
-        # TODO: Should we overwrite existing values for epsg and bbox, or keep
-        #   what is already there?
+        # TODO: Should we overwrite or keep existing value for epsg?
+        #   Seems best to keep existing values, but we should clarify which
+        #   source gets priority for epsg.
         if not epsg and not job_result_metadata.get("epsg"):
             epsg = epsgs.pop()
             logger.debug(f"Projection metadata at top level: setting epsg to value from gdalinfo {epsg=}")
             job_result_metadata["epsg"] = epsg
+
+        proj_bbox = list(bboxes.pop())
+        job_result_metadata["proj:bbox"] = proj_bbox
         if not job_result_metadata.get("bbox"):
-            job_result_metadata["bbox"] = list(bboxes.pop())
+            # Convert bbox to lat-long / EPSG:4326, if it was any other CRS.
+            bbox_lat_long = convert_bbox_to_lat_long(proj_bbox, epsg)
+            job_result_metadata["bbox"] = bbox_lat_long
             logger.debug(
                 f"Projection metadata at top level: setting bbox to value from gdalinfo: {job_result_metadata['bbox']}"
             )
+
         job_result_metadata["proj:shape"] = list(shapes.pop())
         logger.debug(
             "Projection metadata at top level: setting proj:shape "
