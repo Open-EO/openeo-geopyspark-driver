@@ -18,6 +18,7 @@ from openeogeotrellis.utils import (
     single_value,
     StatsReporter,
     get_s3_binary_file_contents,
+    to_s3_url,
 )
 
 
@@ -228,3 +229,41 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
     bytes_retrieved = get_s3_binary_file_contents(out_file_s3_url)
 
     assert TIFF_DUMMY_DATA == bytes_retrieved
+
+
+@pytest.mark.parametrize(
+    ["file_or_folder_path", "bucket_name", "expected_url"],
+    [
+        # Slashes at the start and end of the path should be unified:
+        # the S3 key has no slashes at the start or end.
+        ("foo", "test-bucket", "s3://test-bucket/foo"),
+        ("foo/", "test-bucket", "s3://test-bucket/foo"),
+        ("/foo", "test-bucket", "s3://test-bucket/foo"),
+        ("/foo/", "test-bucket", "s3://test-bucket/foo"),
+        ("foo/bar", "test-bucket", "s3://test-bucket/foo/bar"),
+        ("foo/bar/", "test-bucket", "s3://test-bucket/foo/bar"),
+        ("/foo/bar", "test-bucket", "s3://test-bucket/foo/bar"),
+        ("/foo/bar/", "test-bucket", "s3://test-bucket/foo/bar"),
+        ("foo/bar/file.txt", "test-bucket", "s3://test-bucket/foo/bar/file.txt"),
+        ("/foo/bar/file.txt", "test-bucket", "s3://test-bucket/foo/bar/file.txt"),
+        # Less likely to occur: slashes at the start or end of the bucket name,
+        # but just in case we have small mistakes in the bucket name.
+        ("foo/bar/file.txt", "test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
+        ("foo/bar/file.txt", "/test-bucket", "s3://test-bucket/foo/bar/file.txt"),
+        ("foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
+        ("/foo/bar/file.txt", "test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
+        ("/foo/bar/file.txt", "/test-bucket", "s3://test-bucket/foo/bar/file.txt"),
+        ("/foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
+    ],
+)
+def test_to_s3_url(file_or_folder_path, bucket_name, expected_url, monkeypatch):
+    monkeypatch.setenv("SWIFT_BUCKET", "this-should-not-show-up-as-the-bucket")
+    actual1 = to_s3_url(file_or_folder_path, bucketname=bucket_name)
+    assert actual1 == expected_url
+
+    # Check result when bucket_name arg not set => using ConfigParams
+    # ConfigParams gets its value from the env var SWIFT_BUCKET
+    bucket_name = bucket_name or "openeo-fake-bucketname"
+    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
+    actual2 = to_s3_url(file_or_folder_path)
+    assert actual2 == expected_url

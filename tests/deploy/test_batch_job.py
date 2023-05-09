@@ -9,13 +9,13 @@ import pytest
 import pytest
 from pytest import approx
 from openeo_driver.save_result import ImageCollectionResult
-from shapely.geometry import box, mapping, shape, Polygon
+from shapely.geometry import box, mapping, shape
 from osgeo import gdal
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import read_json
-from openeo_driver.util.geometry import reproject_geometry
 from openeogeotrellis.deploy.batch_job import (
     extract_result_metadata,
     run_job, _convert_asset_outputs_to_s3_urls,
@@ -24,7 +24,7 @@ from openeogeotrellis.deploy.batch_job import (
     parse_projection_extension_metadata,
     _get_projection_extension_metadata,
 )
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis.utils import get_jvm, to_s3_url
 from openeogeotrellis.deploy.batch_job import _get_tracker
 from openeogeotrellis._version import __version__
 
@@ -879,6 +879,184 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             },
         }
         t.setGlobalTracking(False)
+
+
+@mock.patch(
+    "openeogeotrellis.configparams.ConfigParams.use_object_storage",
+    new_callable=mock.PropertyMock,
+)
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_assets_in_s3(
+    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket
+):
+    mock_config_use_object_storage.return_value = True
+    cube_mock = MagicMock()
+
+    job_id = "j-123546"
+    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir.mkdir()
+    output_file = job_dir / "out"
+    metadata_file = job_dir / "metadata.json"
+
+    single_asset_source = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+    )
+    single_asset_name = single_asset_source.name
+    asset_s3_key = f"{job_id}/{single_asset_name}"
+    single_asset_href = to_s3_url(asset_s3_key)
+    mock_s3_bucket.put_object(Key=asset_s3_key, Body=single_asset_source.read_bytes())
+
+    asset_meta = {
+        single_asset_name: {
+            "href": single_asset_href,
+            "roles": "data",
+        }
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
+
+    # The asset file should not be available in the local job_dir before
+    # starting the job. It will be downloaded when gdalinfo needs it.
+    first_asset_dest = job_dir / single_asset_name
+    assert not first_asset_dest.exists()
+
+    run_job(
+        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        output_file=output_file,
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+
+    # After run_job the asset should have been downloaded to be accessible to gdalinfo.
+    assert first_asset_dest.exists()
+
+    metadata_result = read_json(metadata_file)
+    assert metadata_result == DictSubSet(
+        {
+            "assets": {
+                single_asset_name: {
+                    "href": single_asset_href,
+                    "roles": "data",
+                    # Projection extension metadata should not be here, but higher up.
+                },
+            },
+            "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
+            "epsg": 4326,
+            "proj:shape": [720, 1188],
+        }
+    )
+
+
+@mock.patch(
+    "openeogeotrellis.configparams.ConfigParams.use_object_storage",
+    new_callable=mock.PropertyMock,
+)
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
+    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket
+):
+    mock_config_use_object_storage.return_value = True
+    cube_mock = MagicMock()
+
+    job_id = "j-123546"
+    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir.mkdir()
+    output_file = job_dir / "out"
+    metadata_file = job_dir / "metadata.json"
+
+    first_asset_source = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
+    )
+    first_asset_name = first_asset_source.name
+
+    # For the second file: use a copy of the first file so we know that GDAL
+    # will find exactly the same metadata under a different asset path.
+    second_asset_path: Path = tmp_path / f"second_{first_asset_name}"
+    second_asset_name = second_asset_path.name
+    reproject_raster_file(
+        source_path=str(first_asset_source),
+        destination_path=str(second_asset_path),
+        dest_crs="EPSG:3812",
+        width=720,
+        height=1188,
+    )
+
+    first_asset_s3_key = f"{job_id}/{first_asset_name}"
+    second_asset_s3_key = f"{job_id}/{second_asset_name}"
+    first_asset_href = to_s3_url(first_asset_s3_key)
+    second_asset_href = to_s3_url(second_asset_s3_key)
+    mock_s3_bucket.put_object(Key=first_asset_s3_key, Body=first_asset_source.read_bytes())
+    mock_s3_bucket.put_object(Key=second_asset_s3_key, Body=second_asset_path.read_bytes())
+
+    asset_meta = {
+        first_asset_name: {
+            "href": first_asset_href,
+            "roles": "data",
+        },
+        second_asset_name: {
+            "href": second_asset_href,
+            "roles": "data",
+        },
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
+
+    # The asset files should not be available in the local job_dir before
+    # starting the job. They will be downloaded when gdalinfo needs them.
+    assert len(list(job_dir.iterdir())) == 0
+
+    run_job(
+        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        output_file=output_file,
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+
+    # After run_job the assets should have been downloaded to be accessible to gdalinfo
+    first_asset_dest = job_dir / first_asset_name
+    second_asset_dest = job_dir / second_asset_name
+    assert first_asset_dest.exists()
+    assert second_asset_dest.exists()
+
+    metadata_result = read_json(metadata_file)
+    assert metadata_result == DictSubSet(
+        {
+            "assets": {
+                first_asset_name: DictSubSet(
+                    {
+                        "href": first_asset_href,
+                        "roles": "data",
+                        "proj:bbox": pytest.approx([5.3997917, 50.0001389, 5.6997917, 50.3301389]),
+                        "proj:epsg": 4326,
+                        "proj:shape": [720, 1188],
+                    }
+                ),
+                second_asset_name: DictSubSet(
+                    {
+                        "href": second_asset_href,
+                        "roles": "data",
+                        "proj:bbox": pytest.approx([723413.644, 577049.010, 745443.909, 614102.693]),
+                        "proj:epsg": 3812,
+                        "proj:shape": [720, 1188],
+                    }
+                ),
+            },
+            "bbox": None,
+            "epsg": None,
+        }
+    )
 
 
 @pytest.mark.parametrize(
