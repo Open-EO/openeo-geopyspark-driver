@@ -71,7 +71,7 @@ def main():
     parser.add_argument(
         "--min-age",
         type=int,
-        default=60,
+        default=30,
         help="Minimum age in days for jobs to clean up",
     )
     parser.add_argument("--dry-run", action="store_true")
