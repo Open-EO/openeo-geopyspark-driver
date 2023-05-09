@@ -984,7 +984,6 @@ def test_get_projection_extension_metadata(json_file, expected_metadata):
     assert proj_metadata == expected_metadata
 
 
-# TODO: Can we remove this test? We test the same directly using the binary file and gdalinfo.
 @mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
 def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
@@ -1009,35 +1008,6 @@ def test_parse_gdal_raster_metadata(mock_read_gdal_info):
         gdal_info = json.load(f_in)
 
     raster_metadata: AssetRasterMetadata = parse_gdal_raster_metadata(gdal_info)
-
-    expected_metadata = {
-        "proj:epsg": 32631,
-        "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
-        "proj:shape": [357, 233],
-    }
-    assert raster_metadata.projection == expected_metadata
-
-
-@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
-def test_read_gdal_raster_metadata(mock_read_gdal_info):
-    json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
-    netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
-
-    def read_json_file(netcdf_uri: str) -> dict:
-        if netcdf_uri == str(netcdf_path):
-            json_path = netcdf_uri + ".json"
-        else:
-            parts = netcdf_uri.split(":")
-            band = parts[-1]
-            # strip off the surrounding double quotes from the filename
-            filename = parts[1][1:-1]
-            json_path = json_dir / f"{filename}.{band}.json"
-        with open(json_path, "rt") as f:
-            return json.load(f)
-
-    mock_read_gdal_info.side_effect = read_json_file
-
-    raster_metadata = read_gdal_raster_metadata(str(netcdf_path))
 
     expected_metadata = {
         "proj:epsg": 32631,
