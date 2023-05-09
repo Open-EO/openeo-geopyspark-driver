@@ -1256,6 +1256,13 @@ class GpsBatchJobs(backend.BatchJobs):
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
+            batch_process_errors = {batch_request_id: details.errorMessage() or "<no error details>"
+                                    for batch_request_id, (details, _, _) in batch_processes.items()
+                                    if details.status() == "FAILED"}
+
+            logger.error(f"Failing batch job because one or more Sentinel Hub batch processes failed: "
+                         f"{batch_process_errors}", extra={'job_id': job_id, 'user_id': user_id})
+
             with self._double_job_registry as registry:
                 registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
