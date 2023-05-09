@@ -69,6 +69,8 @@ spec:
     "spark.kubernetes.allocation.maxPendingPods": "8"
     "spark.task.cpus": "{{ task_cpus }}"
     "spark.archives": "{{ archives }}"
+    "spark.openeo.sentinelhub.client.id.default": "{{ sentinelhub_client_id_default }}"
+    "spark.openeo.sentinelhub.client.secret.default": "{{ sentinelhub_client_secret_default }}"
 {%- if use_pvc %}
     spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.claimName: "OnDemand"
     spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.storageClass: "csi-cinder-sc-delete"

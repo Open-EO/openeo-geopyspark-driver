@@ -1641,7 +1641,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     archives=archives,
                     logging_threshold=logging_threshold,
                     mount_tmp=mount_tmp,
-                    use_pvc=use_pvc
+                    use_pvc=use_pvc,
+                    sentinelhub_client_id_default=self._default_sentinel_hub_client_id,
+                    sentinelhub_client_secret_default=self._default_sentinel_hub_client_secret
                 )
 
                 api_instance = kube_client()
