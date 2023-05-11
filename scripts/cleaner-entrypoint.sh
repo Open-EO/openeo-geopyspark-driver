@@ -30,6 +30,6 @@ py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 /opt/venv/bin/python -m openeogeotrellis.cleaner --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" \
   --user jenkins \
   --user wig \
-  --min-age 20 \
+  --min-age 10 \
   --jobs-per-user-limit=100 \
   2>&1

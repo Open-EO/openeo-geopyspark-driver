@@ -54,7 +54,6 @@ from openeogeotrellis.utils import (
     log_memory,
     get_jvm,
     add_permissions,
-    mdc_include,
     to_s3_url,
     get_s3_binary_file_contents,
 )
@@ -80,12 +79,6 @@ def _setup_user_logging(log_file: Path) -> None:
     user_facing_logger.addHandler(file_handler)
 
     add_permissions(log_file, stat.S_IWGRP)
-
-
-def _setup_java_logging(sc: SparkContext, user_id: str):
-    jvm = get_jvm()
-    mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
-    mdc_include(sc, jvm, jvm.org.openeo.logging.JsonLayout.JobId(), OPENEO_BATCH_JOB_ID)
 
 
 def _create_job_dir(job_dir: Path):
@@ -946,8 +939,6 @@ def main(argv: List[str]) -> None:
             .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
     with SparkContext(conf=conf) as sc:
-        _setup_java_logging(sc, user_id)
-
         principal = sc.getConf().get("spark.yarn.principal")
         key_tab = sc.getConf().get("spark.yarn.keytab")
 

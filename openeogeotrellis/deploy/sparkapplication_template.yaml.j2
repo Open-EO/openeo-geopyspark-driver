@@ -69,6 +69,8 @@ spec:
     "spark.kubernetes.allocation.maxPendingPods": "8"
     "spark.task.cpus": "{{ task_cpus }}"
     "spark.archives": "{{ archives }}"
+    "spark.openeo.sentinelhub.client.id.default": "{{ sentinelhub_client_id_default }}"
+    "spark.openeo.sentinelhub.client.secret.default": "{{ sentinelhub_client_secret_default }}"
 {%- if use_pvc %}
     spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.claimName: "OnDemand"
     spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.storageClass: "csi-cinder-sc-delete"
@@ -118,7 +120,7 @@ spec:
   driver:
 {%- block driver_options %}
     cores: {{ driver_cores }}
-    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
     memory: "{{ driver_memory }}"
     serviceAccount: openeo
 {%- endblock %}
@@ -223,7 +225,7 @@ spec:
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Dlog4j2.configurationFile=file:/opt/log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+    javaOptions: "-Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
 {%- endblock %}
 {%- if mount_tmp %}
     initContainers:

@@ -27,6 +27,8 @@ without compromising stable operations.
 - Fix: Extent in STAC result metadata should be lat lon ([#321](https://github.com/Open-EO/openeo-geopyspark-driver/issues/321))
 - Single row/line results with SentinelHub
   ([#375](https://github.com/Open-EO/openeo-geopyspark-driver/issues/375))
+- Fix: Creodias: Download asset from object storage (S3) before extracting projection metadata
+  ([#403](https://github.com/Open-EO/openeo-geopyspark-driver/issues/403))
 
 ### Changed
 - /validation now detects if the amount of pixels that will be processed is too large
