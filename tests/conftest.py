@@ -103,7 +103,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     conf.set(key='spark.driver.memory', value='2G')
     conf.set(key='spark.executor.memory', value='2G')
-    conf.set('spark.ui.enabled', False)
+    conf.set('spark.ui.enabled', True)
 
     jars = []
     for jar_dir in additional_jar_dirs:
@@ -120,11 +120,14 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
         with open(sparkSubmitLog4jConfigurationFile, 'w') as write_file:
             # There could be a more elegant way to fill in this variable during testing:
-            write_file.write(content.replace("${sys:spark.yarn.app.container.log.dir}/", ""))
+            write_file.write(content
+                             .replace("${sys:spark.yarn.app.container.log.dir}/", "/home/emile/openeo/openeo-geopyspark-driver/tests/integrations/")
+                             .replace("${sys:openeo.logging.threshold}", "DEBUG")
+                             )
 
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
-    extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}' \
-                    f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
+    extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
+    extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
     conf.set('spark.driver.extraJavaOptions', extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
@@ -133,6 +136,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
+    context.setLogLevel("DEBUG")
     out.write_line("[conftest.py] JVM info: {d!r}".format(d={
         f: context._jvm.System.getProperty(f)
         for f in [
