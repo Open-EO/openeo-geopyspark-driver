@@ -121,7 +121,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         with open(sparkSubmitLog4jConfigurationFile, 'w') as write_file:
             # There could be a more elegant way to fill in this variable during testing:
             write_file.write(content
-                             .replace("${sys:spark.yarn.app.container.log.dir}/", "/home/emile/openeo/openeo-geopyspark-driver/tests/integrations/")
+                             .replace("${sys:spark.yarn.app.container.log.dir}/", "")
                              .replace("${sys:openeo.logging.threshold}", "DEBUG")
                              )
 
