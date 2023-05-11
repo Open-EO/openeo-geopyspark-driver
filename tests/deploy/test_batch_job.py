@@ -1017,6 +1017,18 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
                     "href": single_asset_href,
                     "roles": "data",
                     # Projection extension metadata should not be here, but higher up.
+                    "raster:bands": [
+                        {
+                            "name": "1",
+                            "statistics": {
+                                "maximum": approx(641.22131347656),
+                                "mean": approx(403.31786404988),
+                                "minimum": approx(149.76655578613),
+                                "stddev": approx(98.389307981699),
+                                "valid_percent": 100.0,
+                            },
+                        }
+                    ],
                 },
             },
             "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
