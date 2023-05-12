@@ -970,6 +970,27 @@ class GeopysparkDataCube(DriverDataCube):
             lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
         )
 
+    def to_scl_dilation_mask(
+        self,
+        erosion_kernel_size: int,
+        mask1_values: List[int],
+        mask2_values: List[int],
+        kernel1_size: int,
+        kernel2_size: int,
+    ) -> "GeopysparkDataCube":
+        return (
+            gps.get_spark_context()
+            ._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            .toSclDilationMask(
+                self.pyramid.levels[self.get_max_level().level_id].srdd.rdd(),
+                erosion_kernel_size,
+                mask1_values,
+                mask2_values,
+                kernel1_size,
+                kernel2_size,
+            )
+        )
+
     def apply_kernel(self, kernel: np.ndarray, factor=1, border=0, replace_invalid=0):
         # TODO: support border options and replace_invalid
         if border != 0:
