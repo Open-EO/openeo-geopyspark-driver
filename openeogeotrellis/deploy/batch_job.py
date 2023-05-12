@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from itertools import chain
 
 import json
@@ -7,7 +8,7 @@ import shutil
 import stat
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 from copy import deepcopy
 
@@ -239,128 +240,16 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             }
         else:
             # New approach: SaveResult has generated metadata already for us
-
-            # Add the projection extension metadata.
-            # When the projection metadata is the same for all assets, then set it at
-            # the item level only. This makes it easier to read, so we see at a glance
-            # that all bands have the same proj metadata.
-            projection_metadata = {}
-
-            # We also check whether any asset file was missing or its projection
-            # metadata could not be read. In that case we never write the projection
-            # metadata at the item level.
-            is_projection_md_missing = False
-
-            for asset_path, asset_md in asset_metadata.items():
-                mime_type = asset_md.get("type")
-                logger.info(
-                    f"_export_result_metadata: {asset_path=}, "
-                    + f"file's MIME type: {mime_type}, "
-                    + f"job dir (based on output file): {output_file.parent=}"
-                )
-                logger.info(f"{asset_path=}, {asset_md=}")
-
-                #
-                # TODO: Skip assets that aren't images
-                #   For now I don't want to change the functionality,
-                #   only adding logging to find why the gdalinfo receives a relative path.
-                #   If the list of images formats is correct, then this code
-                #   block should do the trick, bet test coverage should be added.
-                #
-                # Skip assets that aren't images
-                # for example metadata with "type": "application/xml"
-                # mime_type_images = ["image/tiff", "image/png", "application/x-netcdf"]
-                # if mime_type and mime_type not in mime_type_images:
-                #     logger.info(
-                #         "_export_result_metadata: Asset file is not an image, "
-                #         f"it has {mime_type=}: {asset_path=}"
-                #     )
-                #     continue
-
-                # Won't assume the asset path is relative to the current working directory.
-                # It should be relative to the job directory.
-                abs_asset_path = get_abs_path_of_asset(asset_path, output_file.parent)
-                logger.info(
-                    f"{asset_path=} maps to absolute path: {abs_asset_path=} , "
-                    + f"{abs_asset_path.exists()=}"
-                )
-
-                asset_href = asset_md.get("href", "")
-                if not abs_asset_path.exists() and asset_href.startswith("s3://"):
-                    try:
-                        abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
-                    except Exception as exc:
-                        logger.error(
-                            "Could not download asset from object storage: "
-                            + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
-                        )
-
-                asset_proj_metadata = read_projection_extension_metadata(abs_asset_path)
-                logger.info(f"{asset_path=}, {asset_proj_metadata=}")
-                # If gdal could not extract the projection metadata from the file
-                # (The file is corrupt perhaps?).
-                if asset_proj_metadata:
-                    projection_metadata[asset_path] = asset_proj_metadata
-                else:
-                    is_projection_md_missing = True
-                    logger.warning(
-                        "Could not get projection extension metadata for following asset:"
-                        f" '{asset_path}', {abs_asset_path=}"
-                    )
-
-            epsgs = {
-                m.get("proj:epsg")
-                for m in projection_metadata.values()
-                if "proj:epsg" in m
-            }
-            same_epsg_all_assets = len(epsgs) == 1
-
-            bboxes = {
-                tuple(m.get("proj:bbox"))
-                for m in projection_metadata.values()
-                if "proj:bbox" in m
-            }
-            same_bbox_all_assets = len(bboxes) == 1
-
-            shapes = {
-                tuple(m.get("proj:shape"))
-                for m in projection_metadata.values()
-                if "proj:shape" in m
-            }
-            same_shapes_all_assets = len(shapes) == 1
-
-            assets_have_same_proj_md = not is_projection_md_missing and all(
-                [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
+            _extract_asset_metadata(
+                job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
             )
-            logger.info(f"{epsgs=}, {bboxes=}, {shapes=}, {assets_have_same_proj_md=}")
-            if assets_have_same_proj_md:
-                # TODO: Should we overwrite existing values for epsg and bbox, or keep
-                #   what is already there?
-                if not epsg and not metadata.get("epsg"):
-                    epsg = epsgs.pop()
-                    logger.info("Projection metadata at top level: setting epsg " f"to value from gdalinfo {epsg=}")
-                if not metadata.get("bbox"):
-                    metadata["bbox"] = list(bboxes.pop())
-                    logger.info(
-                        "Projection metadata at top level: setting bbox " f"to value from gdalinfo: {metadata['bbox']}"
-                    )
-                metadata["proj:shape"] = list(shapes.pop())
-                logger.info(
-                    "Projection metadata at top level: setting proj:shape "
-                    f"to value from gdalinfo {metadata['proj:shape']=}"
-                )
-            else:
-                # Each asset has its different projection metadata so set it per asset.
-                for asset_path, proj_md in projection_metadata.items():
-                    asset_metadata[asset_path].update(proj_md)
-                    logger.info(
-                        f"Updated metadata for asset {asset_path} with projection metadata: "
-                        + f"{proj_md=}, {asset_metadata[asset_path]=}"
-                    )
+    # _extract_asset_metadata may already fill in metadata["epsg"], but only
+    # if the value of epsg was None. So we don't want to overwrite it with
+    # None here.
+    # TODO: would be better to eliminate this complication.
+    if "epsg" not in metadata:
+        metadata["epsg"] = epsg
 
-            metadata["assets"] = asset_metadata
-
-    metadata["epsg"] = epsg
     metadata["instruments"] = instruments
     metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
     metadata["processing:software"] = "openeo-geotrellis-" + __version__
@@ -379,6 +268,265 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     add_permissions(metadata_file, stat.S_IWGRP)
 
     logger.info("wrote metadata to %s" % metadata_file)
+
+
+GDALInfo = Dict[str, Any]
+"""Output from GDAL.Info.
+
+Type alias used as a helper type for the read projection metadata functions.
+"""
+
+
+ProjectionMetadata = Dict[str, Any]
+"""Projection metadata retrieved about the raster file, compatible with STAC.
+
+Type alias used as a helper type for the read projection metadata functions.
+"""
+
+
+@dataclass
+class BandStatistics:
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
+    mean: Optional[float] = None
+    stddev: Optional[float] = None
+    valid_percent: Optional[float] = None
+
+    def to_dict(self):
+        return {
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "mean": self.mean,
+            "stddev": self.stddev,
+            "valid_percent": self.valid_percent,
+        }
+
+
+RasterStatistics = Dict[str, BandStatistics]
+"""
+Maps a the bands in a raster to their band statistics, by the band name (str).
+
+If the band name can not be found in the gdalinfo output, then the name will
+be the band's number, as a string for consistency, and starting to count from 1,
+so that would be: "1", "2", etc.
+"""
+
+
+@dataclass
+class AssetRasterMetadata:
+    """Metadata about the projection and raster statistics or a single raster asset.
+
+    The raster is one file but that file may contain several bands.
+    - The projection will be for the whole file.
+    - The statistics will be per band.
+    """
+
+    gdal_info: GDALInfo
+    projection: Optional[ProjectionMetadata] = None
+    statistics: Optional[RasterStatistics] = None
+    could_not_read_file: bool = False
+
+    def to_dict(self) -> dict:
+        if self.could_not_read_file:
+            return {}
+
+        result = dict_no_none(self.projection or {})
+
+        if self.statistics is not None:
+            raster_bands = []
+            for band, stats in self.statistics.items():
+                raster_bands.append({"name": band, "statistics": dict_no_none(stats.to_dict())})
+            result["raster:bands"] = raster_bands
+
+        return result
+
+
+def _extract_asset_metadata(
+    job_result_metadata: Dict[str, Any],
+    asset_metadata: Dict[str, Any],
+    job_dir: Path,
+    epsg: int,
+):
+    """Extract the STAC metadata we need from a raster asset.
+
+    :param job_result_metadata:
+        The job result metadata that was already extracted and needs to be completed
+    :param asset_metadata:
+        The asset metadata extracted by `_extract_asset_raster_metadata`
+        see: `_extract_asset_raster_metadata`
+    :param job_dir:
+        The path where the job's metadata and result metadata is saved.
+    :param epsg:
+        Used to detect if an epsg code was already extracted before because
+        in that case we should not overwrite it.
+        (This is only relevant if all assets have the same epsg and it would be save at
+        the item level.)
+    """
+    raster_metadata, is_some_raster_md_missing = _extract_asset_raster_metadata(asset_metadata, job_dir)
+
+    # Determine if projection metadata should be store at the item level,
+    # because they are the same for all assets.
+    epsgs = _make_set_for_key(raster_metadata, "proj:epsg")
+    same_epsg_all_assets = len(epsgs) == 1
+
+    bboxes = _make_set_for_key(raster_metadata, "proj:bbox", tuple)
+    same_bbox_all_assets = len(bboxes) == 1
+
+    shapes = _make_set_for_key(raster_metadata, "proj:shape", tuple)
+    same_shapes_all_assets = len(shapes) == 1
+
+    assets_have_same_proj_md = not is_some_raster_md_missing and all(
+        [same_epsg_all_assets, same_bbox_all_assets, same_shapes_all_assets]
+    )
+    logger.debug(f"{assets_have_same_proj_md=}, based on: {is_some_raster_md_missing=}, {epsgs=}, {bboxes=}, {shapes=}")
+
+    if assets_have_same_proj_md:
+        # TODO: Should we overwrite existing values for epsg and bbox, or keep
+        #   what is already there?
+        if not epsg and not job_result_metadata.get("epsg"):
+            epsg = epsgs.pop()
+            logger.debug(f"Projection metadata at top level: setting epsg to value from gdalinfo {epsg=}")
+            job_result_metadata["epsg"] = epsg
+        if not job_result_metadata.get("bbox"):
+            job_result_metadata["bbox"] = list(bboxes.pop())
+            logger.debug(
+                f"Projection metadata at top level: setting bbox to value from gdalinfo: {job_result_metadata['bbox']}"
+            )
+        job_result_metadata["proj:shape"] = list(shapes.pop())
+        logger.debug(
+            "Projection metadata at top level: setting proj:shape "
+            + f"to value from gdalinfo {job_result_metadata['proj:shape']=}"
+        )
+    else:
+        # Each asset has its different projection metadata so set it per asset.
+        for asset_path, raster_md in raster_metadata.items():
+            proj_md = dict(**raster_md)
+            del proj_md["raster:bands"]
+
+            asset_metadata[asset_path].update(proj_md)
+            logger.debug(
+                f"Updated metadata for asset {asset_path} with projection metadata: "
+                + f"{proj_md=}, {asset_metadata[asset_path]=}"
+            )
+
+    # Save raster statistics: always on the asset level.
+    # There is no other place to store them really, and because stats are floats
+    # they are very rarely going to be identical numbers.
+    for asset_path, raster_md in raster_metadata.items():
+        raster_bands = raster_md["raster:bands"]
+
+        asset_metadata[asset_path]["raster:bands"] = raster_bands
+        logger.debug(
+            f"Updated metadata for asset {asset_path} with raster statistics: "
+            + f"{raster_bands=}, {asset_metadata[asset_path]=}"
+        )
+
+    job_result_metadata["assets"] = asset_metadata
+
+
+def _extract_asset_raster_metadata(
+    asset_metadata: Dict[str, Any],
+    job_dir: Path,
+) -> Tuple[Dict[str, Dict[str, Any]], bool]:
+    """Extract STAC metadata about each raster asset, using gdalinfo.
+
+    In particular we extract projection metadata and raster statistics.
+
+    :param asset_metadata:
+        the pre-existing metadata that should be completed with
+        projection metadata and raster statistics.
+    :param job_dir:
+        the path where the job's metadata and result metadata is saved.
+    :return:
+        a dict that maps the asset's filename to a dict containing its metadata.
+    """
+    # TODO would be better if we could return just Dict[str, AssetRasterMetadata]
+    #   or even CollectionRasterMetadata with CollectionRasterMetadata = Dict[str, AssetRasterMetadata]
+
+    # Add the projection extension metadata.
+    # When the projection metadata is the same for all assets, then set it at
+    # the item level only. This makes it easier to read, so we see at a glance
+    # that all bands have the same proj metadata.
+    raster_metadata = {}
+
+    # We also check whether any asset file was missing or its projection
+    # metadata could not be read. In that case we never write the projection
+    # metadata at the item level.
+    is_some_raster_md_missing = False
+
+    for asset_path, asset_md in asset_metadata.items():
+        mime_type = asset_md.get("type")
+        logger.debug(
+            f"_export_result_metadata: {asset_path=}, "
+            + f"file's MIME type: {mime_type}, "
+            + f"job dir (based on output file): {job_dir=}"
+        )
+        logger.debug(f"{asset_path=}, {asset_md=}")
+
+        #
+        # TODO: Skip assets that aren't images
+        #   For now I don't want to change the functionality,
+        #   only adding logging to find why the gdalinfo receives a relative path.
+        #   If the list of images formats is correct, then this code
+        #   block should do the trick, bet test coverage should be added.
+        #
+        # Skip assets that aren't images
+        # for example metadata with "type": "application/xml"
+        # mime_type_images = ["image/tiff", "image/png", "application/x-netcdf"]
+        # if mime_type and mime_type not in mime_type_images:
+        #     logger.info(
+        #         "_export_result_metadata: Asset file is not an image, "
+        #         f"it has {mime_type=}: {asset_path=}"
+        #     )
+        #     continue
+
+        # Won't assume the asset path is relative to the current working directory.
+        # It should be relative to the job directory.
+        abs_asset_path = get_abs_path_of_asset(asset_path, job_dir)
+        logger.debug(f"{asset_path=} maps to absolute path: {abs_asset_path=} , " + f"{abs_asset_path.exists()=}")
+
+        asset_href = asset_md.get("href", "")
+        if not abs_asset_path.exists() and asset_href.startswith("s3://"):
+            try:
+                abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
+            except Exception as exc:
+                logger.error(
+                    "Could not download asset from object storage: "
+                    + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
+                )
+
+        asset_gdal_metadata = read_gdal_raster_metadata(abs_asset_path)
+        logger.debug(f"{asset_path=}, {asset_gdal_metadata=}")
+        # If gdal could not extract the projection metadata from the file
+        # (The file is corrupt perhaps?).
+        if asset_gdal_metadata.could_not_read_file:
+            is_some_raster_md_missing = True
+            logger.warning(
+                "Could not get projection extension metadata for following asset:"
+                + f" '{asset_path}', {abs_asset_path=}"
+            )
+        else:
+            raster_metadata[asset_path] = asset_gdal_metadata.to_dict()
+            # TODO: Would make it simpler if we could store the AssetRasterMetadata
+            #   and convert it to dict at the end.
+            # raster_metadata[asset_path] = asset_gdal_metadata
+
+    logger.debug(f"{raster_metadata=}\n{is_some_raster_md_missing=}")
+    return raster_metadata, is_some_raster_md_missing
+
+
+def _make_set_for_key(
+    data: Dict[str, Dict[str, Any]],
+    key: str,
+    func: callable = lambda x: x,
+) -> set:
+    """
+    Create a set containing only the values for `key` from the dicts in data.values().
+
+    Optionally apply func() to that value, for example to allow converting lists,
+    which are not hashable and cannot be a set element, to tuples.
+    """
+    return {func(val.get(key)) for val in data.values() if key in val}
 
 
 def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Path:
@@ -402,7 +550,7 @@ def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Pat
 
     :return: the absolute path to the asset file, inside job_dir.
     """
-    logger.info(
+    logger.debug(
         f"{__name__}.get_abs_path_of_asset: {asset_filename=}, {job_dir=}, {Path.cwd()=}, "
         + f"{Path(job_dir).is_absolute()=}, {Path(job_dir).exists()=}, "
         + f"{Path(asset_filename).exists()=}"
@@ -415,23 +563,7 @@ def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Pat
     return abs_asset_path
 
 
-GDALInfo = Dict[str, Any]
-"""Output from GDAL.Info.
-
-Type alias used as a helper type for the read projection metadata functions.
-"""
-
-
-ProjectionMetadata = Dict[str, Any]
-"""Projection metadata retrieved about the raster file, compatible with STAC.
-
-Type alias used as a helper type for the read projection metadata functions.
-"""
-
-
-def read_projection_extension_metadata(
-    asset_path: Union[str, Path]
-) -> Optional[ProjectionMetadata]:
+def read_gdal_raster_metadata(asset_path: Union[str, Path]) -> Optional[AssetRasterMetadata]:
     """Get the projection metadata for the file in asset_path.
 
     :param asset_path: path to the asset file to read.
@@ -460,8 +592,8 @@ def read_projection_extension_metadata(
     and in that version the gdal.Info function include these properties directly
     in the key "stac" of the dictionary it returns.
     """
-    logger.info(f"{__name__}.read_projection_extension_metadata: {asset_path=}")
-    return parse_projection_extension_metadata(read_gdal_info(str(asset_path)))
+    logger.debug(f"{__name__}.read_projection_extension_metadata: {asset_path=}")
+    return parse_gdal_raster_metadata(read_gdal_info(str(asset_path)))
 
 
 def read_gdal_info(asset_uri: str) -> GDALInfo:
@@ -483,7 +615,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     :return:
         GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
     """
-    logger.info(f"{__name__}.read_gdal_info: {asset_uri=}")
+    logger.debug(f"{__name__}.read_gdal_info: {asset_uri=}")
 
     # By default, gdal does not raise exceptions but returns error codes and prints
     # error info on stdout. We don't want that. At the least it should go to the logs.
@@ -491,7 +623,10 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     gdal.UseExceptions()
 
     try:
-        data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json"))
+        data_gdalinfo = gdal.Info(
+            asset_uri,
+            options=gdal.InfoOptions(format="json", stats=True),
+        )
     except Exception as exc:
         # TODO: Specific exception type(s) would be better but Wasn't able to find what
         #   specific exceptions gdal.Info might raise.
@@ -503,11 +638,11 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         )
         return {}
     else:
-        logger.info(f"{asset_uri=}, {data_gdalinfo=}")
+        logger.debug(f"{asset_uri=}, {data_gdalinfo=}")
         return data_gdalinfo
 
 
-def parse_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
+def parse_gdal_raster_metadata(gdal_info: GDALInfo) -> AssetRasterMetadata:
     """Parse the JSON output from gdal.Info.
 
     :param gdal_info: Dictionary that contains the output from `gdal.Info()`.
@@ -518,11 +653,18 @@ def parse_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetada
 
     # If there are subdatasets then the final answer comes from the subdatasets.
     # Otherwise, we get it from the file directly.
-    proj_info = _process_gdalinfo_for_netcdf_subdatasets(gdal_info)
-    if proj_info:
-        return proj_info
+    if not gdal_info:
+        return AssetRasterMetadata(could_not_read_file=True, gdal_info=gdal_info)
+
+    raster_md = _process_gdalinfo_for_netcdf_subdatasets(gdal_info)
+    if raster_md:
+        return raster_md
     else:
-        return _get_projection_extension_metadata(gdal_info)
+        return AssetRasterMetadata(
+            projection=_get_projection_extension_metadata(gdal_info),
+            statistics=_get_raster_statistics(gdal_info),
+            gdal_info=gdal_info,
+        )
 
 
 def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
@@ -574,9 +716,43 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
     return proj_metadata
 
 
+def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
+    """Helper function that parses gdal.Info output without processing subdatasets.
+
+    :param gdal_info: Dictionary that contains the output from gdal.Info.
+
+    :return: TODO
+    """
+    raster_stats = dict()
+    for band in gdal_info.get("bands", []):
+        band_num = band["band"]
+        band_metadata = band.get("metadata", {})
+        if not band_metadata:
+            continue
+
+        # Yes, the metadata from gdalinfo *does* contain a key that is
+        # just the empty string.
+        gdal_band_stats = band_metadata.get("", {})
+        band_name = gdal_band_stats.get("long_name", str(band_num))
+
+        def to_float_or_none(x):
+            return None if x is None else float(x)
+
+        band_stats = BandStatistics(
+            minimum=to_float_or_none(gdal_band_stats.get("STATISTICS_MINIMUM")),
+            maximum=to_float_or_none(gdal_band_stats.get("STATISTICS_MAXIMUM")),
+            mean=to_float_or_none(gdal_band_stats.get("STATISTICS_MEAN")),
+            stddev=to_float_or_none(gdal_band_stats.get("STATISTICS_STDDEV")),
+            valid_percent=to_float_or_none(gdal_band_stats.get("STATISTICS_VALID_PERCENT")),
+        )
+        raster_stats[band_name] = band_stats
+
+    return raster_stats
+
+
 def _process_gdalinfo_for_netcdf_subdatasets(
     gdal_info: GDALInfo,
-) -> ProjectionMetadata:
+) -> Optional[AssetRasterMetadata]:
     """Read and process the gdal.Info for each subdataset, if subdatasets are present.
 
     This function only supports subdatasets in netCDF files.
@@ -613,35 +789,54 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     # For other formats that have subdatasets, such as HDF5, the subdatasets
     # will not be processed.
     if gdal_info.get("driverShortName") != "netCDF":
-        return {}
+        return None
     if "SUBDATASETS" not in gdal_info.get("metadata", {}):
-        return {}
+        return None
 
-    sub_datasets = {}
+    sub_datasets_proj = {}
+    sub_datasets_stats = {}
     for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
         if key.endswith("_NAME"):
             sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
             sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
-            sub_datasets[sub_ds_uri] = sub_ds_md
+            sub_datasets_proj[sub_ds_uri] = sub_ds_md
+
+            stats_info = _get_raster_statistics(sub_ds_gdal_info)
+            logger.info(f"_process_gdalinfo_for_netcdf_subdatasets:: {stats_info=}")
+            sub_datasets_stats[sub_ds_uri] = stats_info
 
     proj_info = {}
-    shapes = {
-        tuple(md["proj:shape"]) for md in sub_datasets.values() if "proj:shape" in md
-    }
+    shapes = _make_set_for_key(sub_datasets_proj, "proj:shape", tuple)
     if len(shapes) == 1:
         proj_info["proj:shape"] = list(shapes.pop())
 
-    bboxes = {
-        tuple(md["proj:bbox"]) for md in sub_datasets.values() if "proj:bbox" in md
-    }
+    bboxes = _make_set_for_key(sub_datasets_proj, "proj:bbox", tuple)
     if len(bboxes) == 1:
         proj_info["proj:bbox"] = list(bboxes.pop())
 
-    epsg_codes = {md["proj:epsg"] for md in sub_datasets.values() if "proj:epsg" in md}
+    epsg_codes = _make_set_for_key(sub_datasets_proj, "proj:epsg")
     if len(epsg_codes) == 1:
         proj_info["proj:epsg"] = epsg_codes.pop()
 
-    return proj_info
+    ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
+    logger.debug(f"{ds_band_names=}")
+
+    # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
+    if sorted(set(ds_band_names)) != sorted(ds_band_names):
+        logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
+    else:
+        logger.info(f"There are no duplicate bands in {ds_band_names=}, Will use all bands' statistics in result.")
+        all_raster_stats = {}
+        for bands in sub_datasets_stats.values():
+            for band_name, stats in bands.items():
+                all_raster_stats[band_name] = stats
+
+    logger.debug(f"{all_raster_stats=}")
+
+    result = AssetRasterMetadata(gdal_info=gdal_info, projection=proj_info, statistics=all_raster_stats)
+    logger.debug(f"_process_gdalinfo_for_netcdf_subdatasets:: returning {result=}")
+
+    return AssetRasterMetadata(gdal_info=gdal_info, projection=proj_info, statistics=all_raster_stats)
 
 
 def _get_tracker(tracker_id=""):
