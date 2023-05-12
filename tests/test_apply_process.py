@@ -154,23 +154,23 @@ def create_spacetime_layer_singleband() -> TiledRasterLayer:
 
 
 def test_point_series():
-
     input = create_spacetime_layer()
-
-    imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
-    transformed_collection = imagecollection.apply("cos")
+    cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+    transformed_collection = cube.apply(
+        {"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}}
+    )
     for p in points[0:3]:
+        # TODO #421 drop old unsued "point timeseries" feature
         result = transformed_collection.timeseries(p.x, p.y)
-        print(result)
-        value = result.popitem()
+        assert result == {"2017-09-25T11:37:00+00:00": [pytest.approx(math.cos(10)), pytest.approx(math.cos(5))]}
 
-        assert math.cos(10) == value[1][0]
-        assert math.cos(5) == value[1][1]
 
 def test_apply_cos():
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
-    res = cube.apply("cos")
+    res = cube.apply(
+        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}}
+    )
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(second[0]))

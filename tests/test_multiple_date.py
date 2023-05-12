@@ -387,6 +387,7 @@ class TestMultipleDates(TestCase):
         self.assertEquals(2.0,stitched.cells[0][0][0])
 
         for p in self.points[1:3]:
+            # TODO #421 drop old unsued "point timeseries" feature
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
             print(cube.timeseries(p.x,p.y,srs="EPSG:3857"))
