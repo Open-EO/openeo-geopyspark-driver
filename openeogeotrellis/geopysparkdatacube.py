@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from datetime import datetime, date
 from functools import partial
-from typing import Dict, List, Union, Tuple, Iterable, Callable
+from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
 
 import geopyspark as gps
 import numpy as np
@@ -241,7 +241,7 @@ class GeopysparkDataCube(DriverDataCube):
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
-    def apply(self, process: dict, context: dict) -> "GeopysparkDataCube":
+    def apply(self, process: dict, context: Optional[dict] = None) -> "GeopysparkDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
