@@ -19,7 +19,7 @@ class CreoOrder(object):
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        
+
     def _handle_request(self,session,request):
         pr=request.prepare()
         self.logger.debug("--- request")
@@ -32,7 +32,7 @@ class CreoOrder(object):
             self.logger.debug(resp.content)
             raise Exception("Error executing request in creo ordering module: "+str(resp.status_code)+': '+str(resp.content))
         return resp
-    
+
     def _build_session(self):
         s=requests.Session()
         return s
@@ -48,7 +48,7 @@ class CreoOrder(object):
                 'client_id':'CLOUDFERRO_PUBLIC',
                 'username':usr,
                 'password':pwd,
-                'grant_type':'password' 
+                'grant_type':'password'
             }
         )
         respjson= self._handle_request(session, request).json()
@@ -77,7 +77,7 @@ class CreoOrder(object):
             url="https://finder.creodias.eu/api/order/",
             headers={
                 'Content-Type':'application/json',
-                'Keycloak-Token':token 
+                'Keycloak-Token':token
             },
             json=pl
         )
@@ -85,24 +85,24 @@ class CreoOrder(object):
         self.logger.info("Order id: "+str(respjson['id']))
         self.logger.debug(json.dumps(respjson,indent=2))
         return respjson
-       
-    
+
+
     def order(self,catalog_entries,tag):
         session=self._build_session()
         token=self._get_auth_token(session)
         return self._send_order(session, token, catalog_entries, tag)
-        
 
-        
+
+
 # '''
 # Created on Oct 23, 2019
-# 
+#
 # @author: banyait
-# 
+#
 # This is a little testing snippet of ordering products on CreoDIAS
 # '''
-# 
-# 
+#
+#
 # def perform_search_get_first_n(session,numresults=1):
 #     self.logger.debug("*** USING THE FINDER ***")
 #     url='https://finder.creodias.eu/resto/api/collections/Sentinel1/search.json'
@@ -142,8 +142,8 @@ class CreoOrder(object):
 #         del i['properties']['keywords']
 #     self.logger.debug(json.dumps(items,indent=2))
 #     return items
-# 
-# 
+#
+#
 # def list_orders(session,token):
 #     self.logger.debug("*** LIST ORDERS ***")
 #     request=requests.Request(
@@ -151,14 +151,14 @@ class CreoOrder(object):
 #         url="https://finder.creodias.eu/api/order/",
 #         headers={
 #             'Content-Type':'application/json',
-#             'Keycloak-Token':token 
+#             'Keycloak-Token':token
 #         }
 #     )
 #     respjson= _handle_request(session, request).json()
 #     self.logger.debug(json.dumps(respjson,indent=2))
 #     return respjson
-    
 
-    
-    
-    
+
+
+
+

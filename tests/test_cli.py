@@ -4,9 +4,9 @@ from openeogeotrellis.cli import handle_cli
 
 PG_BLOB1 = re.sub(r"\s+", "", '''{
     "load": {
-        "process_id": "load_collection", 
+        "process_id": "load_collection",
         "arguments": {
-            "id": "FOOBAR", 
+            "id": "FOOBAR",
             "spatial_extent": {"west": 3, "south": 51, "east": 4, "north": 52}
         }}}''')
 

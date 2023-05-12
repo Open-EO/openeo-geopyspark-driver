@@ -143,7 +143,7 @@ class TestCustomFunctions(TestCase):
         red = cube.array.sel(bands='red')
         nir = cube.array.sel(bands='nir')
         ndvi = (nir - red) / (nir + red)
-        ndvi.name = "NDVI"    
+        ndvi.name = "NDVI"
         return XarrayDataCube(array=ndvi)
     """
 ])

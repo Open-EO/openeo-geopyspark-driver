@@ -2,12 +2,12 @@ import logging
 from abc import abstractclassmethod, abstractproperty
 from enum import Enum
 
-    
+
 class CatalogStatus(Enum):
     NOT_FOUND=1
     AVAILABLE=2
     ORDERABLE=3
-    
+
 
 class CatalogEntryBase:
     # TODO: is this abstract base class useful at the moment?
@@ -23,16 +23,16 @@ class CatalogEntryBase:
 
     @abstractclassmethod
     def getS3Bucket(self): pass
-    
+
     @abstractclassmethod
     def getS3Key(self): pass
-    
+
     @abstractclassmethod
     def getTileId(self): pass
-    
+
     @abstractclassmethod
     def getStatus(self): pass
-    
+
     @abstractclassmethod
     def getFileRelPath(self,s3fileutil,band,resolution): pass
 
@@ -42,7 +42,7 @@ class CatalogEntryBase:
         """
         pass
 
-    
+
     def getFileAbsPath(self,s3fileutil,band,resolution):
         return '/'.join([self.getS3Bucket(),self.getS3Key(),self.getFileRelPath(s3fileutil, band, resolution)])
 
@@ -58,14 +58,14 @@ class CatalogClientBase:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractclassmethod
-    def catalogEntryFromProductId(self,product_id): pass  
+    def catalogEntryFromProductId(self,product_id): pass
 
     @abstractclassmethod
-    def query(self, start_date, end_date, 
+    def query(self, start_date, end_date,
               tile_ids=None,
               ulx=-180, uly=90, brx=180, bry=-90,
               cldPrcnt=100.): pass
-    
+
     @abstractclassmethod
     def count(self, start_date, end_date,
               tile_ids=None,
