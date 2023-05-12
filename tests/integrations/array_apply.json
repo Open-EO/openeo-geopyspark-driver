@@ -4,7 +4,7 @@
       "process_id": "load_collection",
       "arguments": {
         "bands": [
-          "TOC-B03_10M"
+          "B01"
         ],
         "id": "TERRASCOPE_S2_TOC_V2",
         "spatial_extent": {
@@ -15,43 +15,8 @@
         },
         "temporal_extent": [
           "2020-03-01",
-          "2020-03-10"
+          "2020-03-30"
         ]
-      }
-    },
-    "applydimension1": {
-      "process_id": "apply_dimension",
-      "arguments": {
-        "data": {
-          "from_node": "loadcollection1"
-        },
-        "dimension": "t",
-        "process": {
-          "process_graph": {
-            "arrayapply1": {
-              "process_id": "array_apply",
-              "arguments": {
-                "data": {
-                  "from_parameter": "data"
-                },
-                "process": {
-                  "process_graph": {
-                    "cos1": {
-                      "process_id": "cos",
-                      "arguments": {
-                        "x": {
-                          "from_parameter": "x"
-                        }
-                      },
-                      "result": true
-                    }
-                  }
-                }
-              },
-              "result": true
-            }
-          }
-        }
       },
       "result": true
     }
