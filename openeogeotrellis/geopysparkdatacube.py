@@ -241,7 +241,7 @@ class GeopysparkDataCube(DriverDataCube):
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
-    def apply(self, process: str, arguments: dict = {}) -> 'GeopysparkDataCube':
+    def apply(self, process: dict, context: dict) -> "GeopysparkDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
@@ -252,19 +252,12 @@ class GeopysparkDataCube(DriverDataCube):
             # also `apply` style local unary mapping operations.
             return  self._apply_bands_dimension(process)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf = process.udf_args.get('udf', None)
-            context = process.udf_args.get('context', {})
+            udf = process.udf_args.get("udf", None)
+            # TODO: resolve parameters from context in udf_context
+            udf_context = process.udf_args.get("context", {})
             if not isinstance(udf, str):
-                raise ValueError(
-                    "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
-            return self.apply_tiles(udf_code=udf, context=context)
-        elif isinstance(process,str):
-            #old 04x code path
-            if 'y' in arguments:
-                raise NotImplementedError("Apply only supports unary operators,"
-                                          " but got {p!r} with {a!r}".format(p=process, a=arguments))
-            applyProcess = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().applyProcess
-            return self._apply_to_levels_geotrellis_rdd(lambda rdd, k: applyProcess(rdd, process))
+                raise ValueError(f"The 'run_udf' process requires at least a 'udf' string argument, but got: {udf!r}.")
+            return self.apply_tiles(udf_code=udf, context=udf_context)
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
