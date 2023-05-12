@@ -294,6 +294,8 @@ spec:
         value: "EMPTY_DIR"
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
         value: "YES"
+      - name: CPL_VSIL_CURL_CHUNK_SIZE
+        value: "10485760"
       - name: PYTHONPATH
         value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       - name: VSI_CACHE
