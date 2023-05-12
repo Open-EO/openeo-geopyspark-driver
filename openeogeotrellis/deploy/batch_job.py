@@ -1099,7 +1099,7 @@ def run_job(
         s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
 
         poll_interval_secs = 10
-        max_delay_secs = 600
+        max_delay_secs = 60
 
         card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
 
