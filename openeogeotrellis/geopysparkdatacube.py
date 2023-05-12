@@ -450,10 +450,13 @@ class GeopysparkDataCube(DriverDataCube):
             # Make sure the numpy array has the right shape.
             band_count = bands_numpy.shape[dims.index('bands')]
             if band_count != len(band_coordinates):
-                raise OpenEOApiException(status_code=400,message=
-                """In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels. 
-                These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct."""
-                                         .format(b=band_count, len_dim = len(band_coordinates), labels=str(band_coordinates)))
+                raise OpenEOApiException(
+                    status_code=400,
+                    message="""In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels.
+                These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct.""".format(
+                        b=band_count, len_dim=len(band_coordinates), labels=str(band_coordinates)
+                    ),
+                )
 
         # Set the X and Y coordinates.
         # this is tricky because if apply_neighborhood is used, then extent is the area without overlap
@@ -466,17 +469,17 @@ class GeopysparkDataCube(DriverDataCube):
         #
         # NOTE.2.: for optimization reasons the y coordinate is computed decreasing instead of flipping the datacube (expensive)
         # NOTE.3.: if extent is None, no coordinates will be generated (UDF's dominantly don't use x&y)
-        if extent is not None: 
-            gridx=(extent.right-extent.left)/extent.width
-            gridy=(extent.top-extent.bottom)/extent.height
-            xdelta=gridx*0.5*(bands_numpy.shape[-1]-extent.width) 
-            ydelta=gridy*0.5*(bands_numpy.shape[-2]-extent.height)
-            xmin=extent.left   -xdelta 
-            xmax=extent.right  +xdelta 
-            ymin=extent.bottom -ydelta 
-            ymax=extent.top    +ydelta 
-            coords['x']=np.linspace(xmin+0.5*gridx,xmax-0.5*gridx,bands_numpy.shape[-1],dtype=np.float32)
-            coords['y']=np.linspace(ymax-0.5*gridy,ymin+0.5*gridy,bands_numpy.shape[-2],dtype=np.float32)
+        if extent is not None:
+            gridx = (extent.right - extent.left) / extent.width
+            gridy = (extent.top - extent.bottom) / extent.height
+            xdelta = gridx * 0.5 * (bands_numpy.shape[-1] - extent.width)
+            ydelta = gridy * 0.5 * (bands_numpy.shape[-2] - extent.height)
+            xmin = extent.left - xdelta
+            xmax = extent.right + xdelta
+            ymin = extent.bottom - ydelta
+            ymax = extent.top + ydelta
+            coords["x"] = np.linspace(xmin + 0.5 * gridx, xmax - 0.5 * gridx, bands_numpy.shape[-1], dtype=np.float32)
+            coords["y"] = np.linspace(ymax - 0.5 * gridy, ymin + 0.5 * gridy, bands_numpy.shape[-2], dtype=np.float32)
 
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
@@ -915,8 +918,8 @@ class GeopysparkDataCube(DriverDataCube):
         if self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
             for iband in other.metadata.bands:
                 if iband.name not in merged_data.metadata.band_names:
-                    merged_data.metadata=merged_data.metadata.append_band(iband)
-        
+                    merged_data.metadata = merged_data.metadata.append_band(iband)
+
         return merged_data
 
     # TODO legacy alias to be removed
@@ -1536,7 +1539,7 @@ class GeopysparkDataCube(DriverDataCube):
                             return color
                         elif isinstance(color, list):
                             # Convert e.g. [0.5,0.1,0.2,0.5] to 2132358015.
-                            # By multiplying each with 255 and interpreting them together 
+                            # By multiplying each with 255 and interpreting them together
                             # as a 32-bit unsigned long in big-endian.
                             import struct
                             import builtins
@@ -1796,8 +1799,8 @@ class GeopysparkDataCube(DriverDataCube):
             if not tiled:
                 result=self._collect_as_xarray(max_level, crop_bounds, crop_dates)
             else:
-                result=self._collect_as_xarray(max_level)
-                
+                result = self._collect_as_xarray(max_level)
+
             XarrayIO.to_json_file(array=result, path=filename)
 
         else:
@@ -1832,7 +1835,6 @@ class GeopysparkDataCube(DriverDataCube):
 
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
-            
         # windows/dims are tuples of (xmin/mincol,ymin/minrow,width/cols,height/rows)
         layout_pix=rdd.layer_metadata.layout_definition.tileLayout
         layout_win=(0, 0, layout_pix.layoutCols*layout_pix.tileCols, layout_pix.layoutRows*layout_pix.tileRows)
@@ -1847,13 +1849,22 @@ class GeopysparkDataCube(DriverDataCube):
             ymax= math.ceil((crop_bounds.ymax-layout_extent.ymin)/yres)
             crop_win=(xmin, ymin, xmax-xmin, ymax-ymin)
         else:
-            xmin=rdd.layer_metadata.bounds.minKey.col
-            xmax=rdd.layer_metadata.bounds.maxKey.col+1
-            ymin=rdd.layer_metadata.bounds.minKey.row
-            ymax=rdd.layer_metadata.bounds.maxKey.row+1
-            crop_win=(xmin*layout_pix.tileCols, ymin*layout_pix.tileRows, (xmax-xmin)*layout_pix.tileCols, (ymax-ymin)*layout_pix.tileRows)
-        crop_dim=(layout_dim[0]+crop_win[0]*xres, layout_dim[1]+crop_win[1]*yres, crop_win[2]*xres, crop_win[3]*yres)
-            
+            xmin = rdd.layer_metadata.bounds.minKey.col
+            xmax = rdd.layer_metadata.bounds.maxKey.col + 1
+            ymin = rdd.layer_metadata.bounds.minKey.row
+            ymax = rdd.layer_metadata.bounds.maxKey.row + 1
+            crop_win = (
+                xmin * layout_pix.tileCols,
+                ymin * layout_pix.tileRows,
+                (xmax - xmin) * layout_pix.tileCols,
+                (ymax - ymin) * layout_pix.tileRows,
+            )
+        crop_dim = (
+            layout_dim[0] + crop_win[0] * xres,
+            layout_dim[1] + crop_win[1] * yres,
+            crop_win[2] * xres,
+            crop_win[3] * yres,
+        )
 
         # build metadata for the xarrays
         # coordinates are in the order of t,bands,x,y
@@ -1864,25 +1875,24 @@ class GeopysparkDataCube(DriverDataCube):
             dims.append('t')
         has_bands=self.metadata.has_band_dimension()
         if has_bands:
-            dims.append('bands')
-            coords['bands']=self.metadata.band_names
-        dims.append('x')
-        coords['x']=np.linspace(crop_dim[0]+0.5*xres, crop_dim[0]+crop_dim[2]-0.5*xres, crop_win[2])
-        dims.append('y')
-        coords['y']=np.linspace(crop_dim[1]+0.5*yres, crop_dim[1]+crop_dim[3]-0.5*yres, crop_win[3])
-        
+            dims.append("bands")
+            coords["bands"] = self.metadata.band_names
+        dims.append("x")
+        coords["x"] = np.linspace(crop_dim[0] + 0.5 * xres, crop_dim[0] + crop_dim[2] - 0.5 * xres, crop_win[2])
+        dims.append("y")
+        coords["y"] = np.linspace(crop_dim[1] + 0.5 * yres, crop_dim[1] + crop_dim[3] - 0.5 * yres, crop_win[3])
+
         def stitch_at_time(crop_win, layout_win, tiles):
-            
             # value expected to be another tuple with the original spacetime key and the array
-            subarrs=list(tiles)
-                        
+            subarrs = list(tiles)
+
             # get block sizes
-            bw,bh=subarrs[0][1].cells.shape[-2:]
-            bbands=sum(subarrs[0][1].cells.shape[:-2]) if len(subarrs[0][1].cells.shape)>2 else 1
-            wbind=np.arange(0,bbands)
-            dtype=subarrs[0][1].cells.dtype
-            nodata=subarrs[0][1].no_data_value
-            
+            bw, bh = subarrs[0][1].cells.shape[-2:]
+            bbands = sum(subarrs[0][1].cells.shape[:-2]) if len(subarrs[0][1].cells.shape) > 2 else 1
+            wbind = np.arange(0, bbands)
+            dtype = subarrs[0][1].cells.dtype
+            nodata = subarrs[0][1].no_data_value
+
             # allocate collector ndarray
             if nodata:
                 window=np.full((bbands,crop_win[2],crop_win[3]), nodata, dtype)
@@ -1896,13 +1906,10 @@ class GeopysparkDataCube(DriverDataCube):
             switch_topleft=True
             tp=(0,1,2)
             if switch_topleft:
-                nyblk=int(layout_win[3]/bh)-1
-                subarrs=list(map(
-                    lambda t: ( SpatialKey(t[0].col,nyblk-t[0].row), t[1] ),
-                    subarrs
-                ))
-                tp=(0,2,1)
-            
+                nyblk = int(layout_win[3] / bh) - 1
+                subarrs = list(map(lambda t: (SpatialKey(t[0].col, nyblk - t[0].row), t[1]), subarrs))
+                tp = (0, 2, 1)
+
             # loop over blocks and merge into
             for iblk in subarrs:
                 iwin=(iblk[0].col*bw, iblk[0].row*bh, bw, bh)
@@ -1911,39 +1918,42 @@ class GeopysparkDataCube(DriverDataCube):
                 ixind=np.arange(iwin[0],iwin[0]+iwin[2])
                 iyind=np.arange(iwin[1],iwin[1]+iwin[3])
                 if switch_topleft:
-                    iyind=iyind[::-1]
-                xoverlap= np.intersect1d(wxind,ixind,True,True)
-                yoverlap= np.intersect1d(wyind,iyind,True,True)
-                if len(xoverlap[1])>0 and len(yoverlap[1]>0):
-                    window[np.ix_(wbind,xoverlap[1],yoverlap[1])]=iarr[np.ix_(wbind,xoverlap[2],yoverlap[2])]
-                    
+                    iyind = iyind[::-1]
+                xoverlap = np.intersect1d(wxind, ixind, True, True)
+                yoverlap = np.intersect1d(wyind, iyind, True, True)
+                if len(xoverlap[1]) > 0 and len(yoverlap[1] > 0):
+                    window[np.ix_(wbind, xoverlap[1], yoverlap[1])] = iarr[np.ix_(wbind, xoverlap[2], yoverlap[2])]
+
             # return date (or None) - window tuple
             return window
 
-        # at every date stitch together the layer, still on the workers   
-        #mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
-        collection=rdd\
-            .to_numpy_rdd()\
-            .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
-            .groupByKey()\
-            .mapValues(partial(stitch_at_time, crop_win, layout_win))\
+        # at every date stitch together the layer, still on the workers
+        # mapped=list(map(lambda t: (t[0].row,t[0].col),rdd.to_numpy_rdd().collect())); min(mapped); max(mapped)
+        collection = (
+            rdd.to_numpy_rdd()
+            .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))
+            .groupByKey()
+            .mapValues(partial(stitch_at_time, crop_win, layout_win))
             .collect()
-            
-# only for debugging on driver, do not use in production
-#         collection=rdd\
-#             .to_numpy_rdd()\
-#             .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
-#             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
-#             .groupByKey()\
-#             .collect()
-#         collection=list(map(partial(stitch_at_time, crop_win, layout_win),collection))
-        
-        if len(collection)==0:
-            return xr.DataArray(np.full([0]*len(dims),0),dims=dims,coords=dict(map(lambda k: (k[0],[]),coords.items())))
-        
-        if len(collection)>1:
-            collection.sort(key= lambda i: i[0])
-                        
+        )
+
+        # only for debugging on driver, do not use in production
+        #         collection=rdd\
+        #             .to_numpy_rdd()\
+        #             .filter(lambda t: (t[0].instant>=crop_dates[0] and t[0].instant<=crop_dates[1]) if has_time else True)\
+        #             .map(lambda t: (t[0].instant if has_time else None, (t[0], t[1])))\
+        #             .groupByKey()\
+        #             .collect()
+        #         collection=list(map(partial(stitch_at_time, crop_win, layout_win),collection))
+
+        if len(collection) == 0:
+            return xr.DataArray(
+                np.full([0] * len(dims), 0), dims=dims, coords=dict(map(lambda k: (k[0], []), coords.items()))
+            )
+
+        if len(collection) > 1:
+            collection.sort(key=lambda i: i[0])
+
         if not has_bands:
             #no bands defined, so we need to force the data to only have 2 dimensions
             collection=list(map(lambda i: (i[0],i[1][0] if len(i[1].shape)>2 else i[1]), collection))
@@ -1959,8 +1969,8 @@ class GeopysparkDataCube(DriverDataCube):
             result=xr.DataArray(npresult,dims=dims,coords=coords)
         else:
             # TODO error if len > 1
-            result=xr.DataArray(collection[0][1],dims=dims,coords=coords)
-            
+            result = xr.DataArray(collection[0][1], dims=dims, coords=coords)
+
         # add some metadata
         result=result.assign_attrs(dict(
             # TODO: layer_metadata is always 255, regardless of dtype, only correct inside the rdd-s
@@ -1973,14 +1983,13 @@ class GeopysparkDataCube(DriverDataCube):
         # Some things we need to do to make GDAL
         # and other software recognize the CRS
         # cfr: https://github.com/pydata/xarray/issues/2288
-        result.coords['spatial_ref'] = 0
-        result.coords['spatial_ref'].attrs['spatial_ref'] = projCRS.to_wkt()
-        result.coords['spatial_ref'].attrs['crs_wkt'] = projCRS.to_wkt()
-        result.attrs['grid_mapping'] = 'spatial_ref'
-        
+        result.coords["spatial_ref"] = 0
+        result.coords["spatial_ref"].attrs["spatial_ref"] = projCRS.to_wkt()
+        result.coords["spatial_ref"].attrs["crs_wkt"] = projCRS.to_wkt()
+        result.attrs["grid_mapping"] = "spatial_ref"
+
         return result
 
-        
     @classmethod
     def _reproject_extent(cls, src_crs, dst_crs, xmin, ymin, xmax, ymax):
         src_proj = pyproj.Proj(src_crs)
