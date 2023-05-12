@@ -40,4 +40,3 @@ classpath="geotrellis-extensions-static.jar:openeo-logging-static.jar:$(find $SP
 py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 
 /opt/venv/bin/python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" --keytab "$keytab" --task "$task_json"
-
