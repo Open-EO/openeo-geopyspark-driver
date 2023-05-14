@@ -1,0 +1,24 @@
+{
+  "process_graph": {
+    "loadcollection1": {
+      "process_id": "load_collection",
+      "arguments": {
+        "bands": [
+          "B01"
+        ],
+        "id": "TERRASCOPE_S2_TOC_V2",
+        "spatial_extent": {
+          "west": 5.07,
+          "south": 51.215,
+          "east": 5.08,
+          "north": 51.22
+        },
+        "temporal_extent": [
+          "2020-03-01",
+          "2020-03-30"
+        ]
+      },
+      "result": true
+    }
+  }
+}
