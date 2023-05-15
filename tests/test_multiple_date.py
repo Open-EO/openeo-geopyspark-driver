@@ -157,7 +157,7 @@ class TestMultipleDates(TestCase):
                 print(ds.profile)
                 #this reprojection does not change the shape, so we can compare
                 assert ds.read().shape == ref_ds.read().shape
-                
+
                 assert (ds.crs.to_epsg() == 3395)
 
     def test_drop_dimension(self):
@@ -387,6 +387,7 @@ class TestMultipleDates(TestCase):
         self.assertEquals(2.0,stitched.cells[0][0][0])
 
         for p in self.points[1:3]:
+            # TODO #421 drop old unsued "point timeseries" feature
             result = min_time.timeseries(p.x, p.y,srs="EPSG:3857")
             print(result)
             print(cube.timeseries(p.x,p.y,srs="EPSG:3857"))
@@ -426,7 +427,7 @@ def rct_savitzky_golay(udf_data:UdfData):
 
     print(udf_data.get_datacube_list())
     return udf_data
-        
+
         """
 
 
@@ -544,11 +545,13 @@ def rct_savitzky_golay(udf_data:UdfData):
         dim_renamed.metadata.assert_valid_dimension('myNewTimeDim')
 
 
-@pytest.mark.parametrize("udf_code", [
-    """
+@pytest.mark.parametrize(
+    "udf_code",
+    [
+        """
         from openeo_udf.api.datacube import DataCube  # Old style openeo_udf API
         from openeo_udf.api.udf_data import UdfData  # Old style openeo_udf API
-        
+
         def hyper_sum(udf_data: UdfData):
             # Iterate over each tile
             cube_list = []
@@ -558,9 +561,9 @@ def rct_savitzky_golay(udf_data:UdfData):
                 cube_list.append(DataCube(array=mean))
             udf_data.set_datacube_list(cube_list)
     """,
-    """
+        """
         from openeo.udf import XarrayDataCube, UdfData
-    
+
         def hyper_sum(udf_data: UdfData):
             # Iterate over each tile
             cube_list = []

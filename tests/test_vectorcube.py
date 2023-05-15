@@ -28,5 +28,3 @@ def test_from_parquet(file):
     fromWktMethod = mockjvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt
     fromWktMethod.assert_called_once()
     assert fromWktMethod.call_args[0][1] == "EPSG:4326"
-
-

@@ -1,0 +1,15 @@
+# .git-blame-ignore-revs: commit ignore list for `git blame`
+# Allows to ignore commits that only fixup code style and formatting.
+#
+# A git feature since version 2.23 (Augustus 2019)
+# Also see https://git-scm.com/docs/git-blame#Documentation/git-blame.txt---ignore-revs-fileltfilegt
+#
+# Configure your local git checkout to automatically use this ignore file:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# pre-commit end-of-file-fixer and trailing-whitespace
+6120fd684965a861af09f209160906802724d00a
+
+# pre-commit end-of-file-fixer and trailing-whitespace
+3c3afde09d5c0646e3a008be895223e742e5b999
+d9ff10122e7f77b95b88e1e47a301169981fdc6f

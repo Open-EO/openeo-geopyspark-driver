@@ -43,13 +43,13 @@ def test_extract_application_id():
 19/07/10 15:57:02 INFO Client: Uploading resource file:/data1/hadoop/yarn/local/usercache/jenkins/appcache/application_1562328661428_5538/spark-ad3a2402-36d5-407a-8b30-392033d45899/__spark_conf__2177799938793019578.zip -> hdfs://hacluster/user/jenkins/.sparkStaging/application_1562328661428_5542/__spark_conf__.zip
 19/07/10 15:57:02 INFO SecurityManager: Changing view acls to: jenkins
 19/07/10 15:57:02 INFO SecurityManager: Changing modify acls to: jenkins
-19/07/10 15:57:02 INFO SecurityManager: Changing view acls groups to: 
-19/07/10 15:57:02 INFO SecurityManager: Changing modify acls groups to: 
+19/07/10 15:57:02 INFO SecurityManager: Changing view acls groups to:
+19/07/10 15:57:02 INFO SecurityManager: Changing modify acls groups to:
 19/07/10 15:57:02 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users  with view permissions: Set(jenkins); groups with view permissions: Set(); users  with modify permissions: Set(jenkins); groups with modify permissions: Set()
 19/07/10 15:57:02 INFO Client: Submitting application application_1562328661428_5542 to ResourceManager
 19/07/10 15:57:02 INFO YarnClientImpl: Submitted application application_1562328661428_5542
 19/07/10 15:57:03 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
-19/07/10 15:57:03 INFO Client: 
+19/07/10 15:57:03 INFO Client:
 	 client token: Token { kind: YARN_CLIENT_TOKEN, service:  }
 	 diagnostics: AM container is launched, waiting for AM container to Register with RM
 	 ApplicationMaster host: N/A
@@ -69,7 +69,7 @@ def test_extract_application_id():
 19/07/10 15:58:00 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:58:01 INFO Client: Application report for application_1562328661428_5542 (state: ACCEPTED)
 19/07/10 15:58:02 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
-19/07/10 15:58:02 INFO Client: 
+19/07/10 15:58:02 INFO Client:
 	 client token: Token { kind: YARN_CLIENT_TOKEN, service:  }
 	 diagnostics: N/A
 	 ApplicationMaster host: 192.168.207.182

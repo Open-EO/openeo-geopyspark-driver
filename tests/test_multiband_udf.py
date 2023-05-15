@@ -96,4 +96,3 @@ class TestMultiBandUDF(TestCase):
         np.testing.assert_almost_equal(the_array.x.values,np.array([185.0,195.0,205.0,215.0,225.0,235.0]),5)
         np.testing.assert_almost_equal(the_array.y.values,np.array([120.0,110.0,100.0, 90.0]),5)
         print(the_array)
-

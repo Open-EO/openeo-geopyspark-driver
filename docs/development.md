@@ -1,9 +1,9 @@
 # Development
 ## Setup virtual environment
-For development, it is best to combine the virtual environment from the openeo-python-driver 
-and the openeo-geopyspark-driver projects. By using the -e flag, you can install the two projects in the venv 
+For development, it is best to combine the virtual environment from the openeo-python-driver
+and the openeo-geopyspark-driver projects. By using the -e flag, you can install the two projects in the venv
 using symbolic links, so that you can edit the code and see the changes immediately. Optionally, you can also
-include the python client using symbolic links. Just be sure to occasionally pull the latest changes from all three 
+include the python client using symbolic links. Just be sure to occasionally pull the latest changes from all three
 projects if you choose to do so.
 ```commandline
 git clone --recursive git@github.com:Open-EO/openeo-geopyspark-driver.git
