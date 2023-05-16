@@ -561,6 +561,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 "href": first_asset_name,
                 "roles": "data",
                 # Projection extension metadata should not be here, but higher up.
+                # Raster statistics however are always stored at the asset level.
                 "raster:bands": [
                     {
                         "name": "1",
@@ -593,9 +594,10 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
             },
         },
         "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
-        "end_datetime": None,
+        "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
         "epsg": 4326,
         "proj:shape": [720, 1188],
+        "end_datetime": None,
         "geometry": None,
         "area": None,
         "unique_process_ids": ["discard_result"],
@@ -637,9 +639,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     t.setGlobalTracking(False)
 
 
-def reproject_raster_file(
-    source_path: str, destination_path: str, dest_crs: str, width: int, height: int
-):
+def reproject_raster_file(source_path: str, destination_path: str, dest_crs: str, width: int, height: int):
     """Use the equavalent of the gdalwarp utility to reproject a raster file to a new CRS
 
     :param source_path: Path to the source raster file.
@@ -654,9 +654,110 @@ def reproject_raster_file(
         Same remark as for `width`: need to specify output raster's width and height.
     """
     opts = gdal.WarpOptions(dstSRS=dest_crs, width=width, height=height)
-    gdal.Warp(
-        destNameOrDestDS=destination_path, srcDSOrSrcDSTab=source_path, options=opts
+    gdal.Warp(destNameOrDestDS=destination_path, srcDSOrSrcDSTab=source_path, options=opts)
+
+
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox_but_not_epsg4326(evaluate, tmp_path):
+    """When there are two raster assets with the same projection metadata, it should put
+    those metadata at the level of the item instead of the individual bands.
+    """
+    cube_mock = MagicMock()
+
+    job_dir = tmp_path / "job-test-proj-metadata-same_epsg_and_bbox_but_not_epsg4326"
+    job_dir.mkdir()
+    output_file = job_dir / "out"
+    metadata_file = job_dir / "metadata.json"
+
+    first_asset_source = get_test_data_file(
+        "binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
     )
+    first_asset_name = first_asset_source.name
+    first_asset_dest = job_dir / first_asset_name
+    reproject_raster_file(
+        source_path=str(first_asset_source),
+        destination_path=str(first_asset_dest),
+        dest_crs="EPSG:3812",
+        width=720,
+        height=1188,
+    )
+
+    # For the second file: use a copy of the first file so we know that GDAL
+    # will find exactly the same metadata under a different asset path.
+    second_asset_path = job_dir / f"second_{first_asset_name}"
+    second_asset_name = second_asset_path.name
+    shutil.copy(first_asset_dest, second_asset_path)
+
+    asset_meta = {
+        first_asset_name: {
+            "href": first_asset_name,
+            "roles": "data",
+        },
+        # Use same file twice to simulate the same CRS and bbox.
+        second_asset_name: {
+            "href": second_asset_name,
+            "roles": "data",
+        },
+    }
+
+    cube_mock.write_assets.return_value = asset_meta
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
+
+    run_job(
+        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        output_file=output_file,
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir="./",
+        dependencies={},
+        user_id="jenkins",
+    )
+
+    cube_mock.write_assets.assert_called_once()
+    metadata_result = read_json(metadata_file)
+
+    assert metadata_result["bbox"] == approx([5.3926158, 49.996947, 5.7092465, 50.333217])
+    assert metadata_result["epsg"] == 3812
+    assert metadata_result["proj:bbox"] == approx([723413.644, 577049.010, 745443.909, 614102.693])
+    assert metadata_result["proj:shape"] == [720, 1188]
+
+    assert metadata_result["assets"] == {
+        first_asset_name: {
+            "href": first_asset_name,
+            "roles": "data",
+            # Projection extension metadata should not be here, but higher up.
+            # Raster statistics however are always stored at the asset level.
+            "raster:bands": [
+                {
+                    "name": "1",
+                    "statistics": {
+                        "maximum": approx(641.22131347656),
+                        "minimum": approx(0.0),
+                        "mean": approx(388.80473522222),
+                        "stddev": approx(122.48474568907),
+                        "valid_percent": 100.0,
+                    },
+                }
+            ],
+        },
+        second_asset_name: {
+            "href": second_asset_name,
+            "roles": "data",
+            # Idem: projection extension metadata should not be here, but higher up.
+            "raster:bands": [
+                {
+                    "name": "1",
+                    "statistics": {
+                        "maximum": approx(641.22131347656),
+                        "minimum": approx(0.0),
+                        "mean": approx(388.80473522222),
+                        "stddev": approx(122.48474568907),
+                        "valid_percent": 100.0,
+                    },
+                }
+            ],
+        },
+    }
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
@@ -1017,6 +1118,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
                     "href": single_asset_href,
                     "roles": "data",
                     # Projection extension metadata should not be here, but higher up.
+                    # Raster statistics however, are always stored at the asset level.
                     "raster:bands": [
                         {
                             "name": "1",
