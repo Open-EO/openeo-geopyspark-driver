@@ -332,7 +332,7 @@ class KubernetesMock:
 
             # Mock kubernetes usage API
             requests_mocker.get(
-                url_join(self.kubecost_url, "/model/allocation"),
+                url_join(self.kubecost_url, "/api/allocation"),
                 json=get_model_allocation,
             )
 
