@@ -228,7 +228,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def __init__(self, kubecost_url: Optional[str] = None):
         self._kubernetes_api = kube_client()
         # TODO: get this url from config?
-        self._kubecost_url = kubecost_url or "http://kubecost.kube-dev.vgt.vito.be/"
+        self._kubecost_url = kubecost_url or "https://opencost.openeo-cdse-staging.vgt.vito.be"
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         job_status = self._get_job_status(app_id)
@@ -275,7 +275,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
     def _get_usage(self, job_id: str, application_id: str) -> Union[_Usage, None]:
         try:
-            url = url_join(self._kubecost_url, "/model/allocation")
+            url = url_join(self._kubecost_url, "/api/allocation")
             namespace = ConfigParams().pod_namespace
             window = "5d"
             pod = application_id + "*"
