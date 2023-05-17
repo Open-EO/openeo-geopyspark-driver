@@ -9,7 +9,6 @@ from openeogeotrellis.utils import get_jvm
 
 
 class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
-
     def __init__(self, _builder=None):
         super().__init__()
         self.builder = _builder or get_jvm().org.openeo.geotrellis.OpenEOProcessScriptBuilder()
@@ -62,6 +61,19 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
     #     if 'process_graph' in value:
     #         self.accept_process_graph(value['process_graph'])
 
+
+class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
+    def __init__(self):
+        super().__init__()
+        self.udf_args = {}
+
+    def enterArgument(self, argument_id: str, value):
+        self.udf_args[argument_id] = value
+
+    def constantArgument(self, argument_id: str, value):
+        self.udf_args[argument_id] = value
+
+
 class FakeGeotrellisTileProcessGraphVisitor(GeotrellisTileProcessGraphVisitor):
     """
     Fake GeotrellisTileProcessGraphVisitor that just prints out all
@@ -83,12 +95,12 @@ class FakeGeotrellisTileProcessGraphVisitor(GeotrellisTileProcessGraphVisitor):
         super().__init__(_builder=self._FakeBuilder())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if sys.argv[1:]:
-        process_graph, = sys.argv[1:]
-        if process_graph.strip().startswith('{'):
+        (process_graph,) = sys.argv[1:]
+        if process_graph.strip().startswith("{"):
             process_graph = json.loads(process_graph)
-        elif process_graph.strip().endswith('.json'):
+        elif process_graph.strip().endswith(".json"):
             with open(process_graph) as f:
                 process_graph = json.load(f)
         elif process_graph.strip() == "-":
@@ -98,19 +110,13 @@ if __name__ == '__main__':
     else:
         # Default example
         process_graph = {
-            "band0": {
-                "process_id": "array_element",
-                "arguments": {"data": {"from_parameter": "data"}, "index": 0}
-            },
-            "band1": {
-                "process_id": "array_element",
-                "arguments": {"data": {"from_parameter": "data"}, "index": 1}
-            },
+            "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
+            "band1": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}},
             "add": {
                 "process_id": "add",
                 "arguments": {"x": {"from_node": "band0"}, "y": {"from_node": "band1"}},
-                "result": True
-            }
+                "result": True,
+            },
         }
 
     visitor = FakeGeotrellisTileProcessGraphVisitor()

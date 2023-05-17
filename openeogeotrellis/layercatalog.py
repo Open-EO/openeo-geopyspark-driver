@@ -39,6 +39,7 @@ from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
     calculate_rough_area
 from openeogeotrellis.vault import Vault
@@ -677,7 +678,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         )
 
         if postprocessing_band_graph != None:
-            from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
             visitor = GeotrellisTileProcessGraphVisitor()
             image_collection = image_collection.apply_dimension(
                 process=visitor.accept_process_graph(postprocessing_band_graph),

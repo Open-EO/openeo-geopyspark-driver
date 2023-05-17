@@ -764,7 +764,7 @@ def test_apply_run_udf_with_apply_context(api100):
 
 
 def test_apply_run_udf_with_udp_context(api100, user_defined_process_registry):
-    """A UDP with a UDF: can UDP parameters be passed through to the UDF context?"""
+    """A UDP with `apply` of a UDF: can UDP parameters be passed through to the UDF context?"""
     udf_code = textwrap.dedent(
         """
         from openeo.udf import XarrayDataCube
@@ -835,6 +835,165 @@ def test_apply_run_udf_with_udp_context(api100, user_defined_process_registry):
     assert result["dims"] == ["t", "bands", "x", "y"]
     expected = 123 * np.array([[np.array([[0, 0.25, 0.5, 0.75]] * 4).T]] * 3)
     assert_equal(result["data"], expected)
+
+
+@pytest.mark.parametrize(["dimension"], [("t",), ("x",)])
+def test_apply_dimension_run_udf_with_udp_context(api100, user_defined_process_registry, dimension):
+    """A UDP with `apply_dimension` of a UDF: can UDP parameters be passed through to the UDF context?"""
+    udf_code = textwrap.dedent(
+        """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            factor = context["factor"]
+            array = cube.get_array()
+            return XarrayDataCube(factor * array)
+    """
+    )
+    udp_id = random_name("udp")
+    udp_spec = {
+        "id": udp_id,
+        "parameters": [
+            {"name": "factor", "schema": {"type": "number"}},
+        ],
+        "process_graph": {
+            "apply_dimension": {
+                "process_id": "apply_dimension",
+                "arguments": {
+                    "data": {"from_parameter": "data"},
+                    "dimension": dimension,
+                    "process": {
+                        "process_graph": {
+                            "udf": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "data"},
+                                    "udf": udf_code,
+                                    "runtime": "Python",
+                                    "context": {"from_parameter": "context"},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "context": {"factor": {"from_parameter": "factor"}},
+                },
+                "result": True,
+            },
+        },
+    }
+    user_defined_process_registry.save(user_id=TEST_USER, process_id=udp_id, spec=udp_spec)
+
+    response = api100.check_result(
+        {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-01", "2021-02-01"],
+                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                    "bands": ["Longitude"],
+                },
+            },
+            "udp": {
+                "process_id": udp_id,
+                "arguments": {"data": {"from_node": "lc"}, "factor": 123},
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "udp"}, "format": "json"},
+                "result": True,
+            },
+        }
+    )
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    expected = 123 * np.array([[np.array([[0, 0.25, 0.5, 0.75]] * 4).T]] * 3)
+    assert_equal(result["data"], expected)
+
+
+@pytest.mark.parametrize(
+    ["dimension", "expected_dims", "expected_data"],
+    [
+        ("t", ["bands", "x", "y"], 123 * np.array([np.array([[0, 0.25, 0.5, 0.75]] * 4).T])),
+        ("bands", ["t", "x", "y"], 123 * np.array([np.array([[0, 0.25, 0.5, 0.75]] * 4).T] * 3)),
+    ],
+)
+def test_reduce_dimension_run_udf_with_udp_context(
+    api100, user_defined_process_registry, dimension, expected_dims, expected_data
+):
+    """A UDP with `apply_dimension` of a UDF: can UDP parameters be passed through to the UDF context?"""
+    udf_code = textwrap.dedent(
+        """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            factor = context["factor"]
+            array = cube.get_array()
+            return XarrayDataCube(factor * array.mean(axis=0))
+    """
+    )
+    udp_id = random_name("udp")
+    udp_spec = {
+        "id": udp_id,
+        "parameters": [
+            {"name": "factor", "schema": {"type": "number"}},
+        ],
+        "process_graph": {
+            "reduce_dimension": {
+                "process_id": "reduce_dimension",
+                "arguments": {
+                    "data": {"from_parameter": "data"},
+                    "dimension": dimension,
+                    "reducer": {
+                        "process_graph": {
+                            "udf": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "data"},
+                                    "udf": udf_code,
+                                    "runtime": "Python",
+                                    "context": {"from_parameter": "context"},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "context": {"factor": {"from_parameter": "factor"}},
+                },
+                "result": True,
+            },
+        },
+    }
+    user_defined_process_registry.save(user_id=TEST_USER, process_id=udp_id, spec=udp_spec)
+
+    response = api100.check_result(
+        {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-01", "2021-02-01"],
+                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                    "bands": ["Longitude"],
+                },
+            },
+            "udp": {
+                "process_id": udp_id,
+                "arguments": {"data": {"from_node": "lc"}, "factor": 123},
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "udp"}, "format": "json"},
+                "result": True,
+            },
+        }
+    )
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == expected_dims
+    assert_equal(result["data"], expected_data)
 
 
 @pytest.mark.parametrize("set_parameters", [False, True])

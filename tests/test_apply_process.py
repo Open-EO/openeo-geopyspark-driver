@@ -1,22 +1,21 @@
 import datetime
-import math
 from typing import List
 
-import pytest
-
 import geopyspark as gps
+import math
 import numpy as np
+import pytest
 import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from openeo_driver.errors import OpenEOApiException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 

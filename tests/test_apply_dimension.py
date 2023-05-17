@@ -1,14 +1,11 @@
-import math
 import datetime
 
+import numpy as np
 import pytest
+from numpy.testing import assert_array_almost_equal
+
 from openeo_driver.errors import FeatureUnsupportedException
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from .data import get_test_data_file
-
-import numpy as np
-from numpy.testing import assert_array_almost_equal
 
 
 def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands_and_three_dates):
