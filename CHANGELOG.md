@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ### Feature
 - Add statistics to asset metadata ([#391](https://github.com/Open-EO/openeo-geopyspark-driver/issues/391))
+- Add array_apply ([openeo-geotrellis-extensions/#154](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/154))
 
 ### Changed
 - Add filtering on log_level when retrieving logs from Elasticsearch. ([Open-EO/openeo-python-driver#170](https://github.com/Open-EO/openeo-python-driver/issues/170))
