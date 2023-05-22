@@ -1069,6 +1069,11 @@ def run_job(
         format_options["batch_mode"] = True
         result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
 
+    if isinstance(result, DriverVectorCube):
+        format_options = job_specification.get('output', {})
+        format_options["batch_mode"] = True
+        result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
+
     if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
         result = JSONResult(result)
 
