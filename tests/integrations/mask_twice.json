@@ -1,0 +1,96 @@
+{
+  "process_graph": {
+    "load_collection_IYGCM4847Z": {
+      "process_id": "load_collection",
+      "arguments": {
+        "bands": [
+          "CLOUD_FRACTION"
+        ],
+        "id": "SENTINEL_5P_L2",
+        "spatial_extent": {
+          "east": 6.0,
+          "north": 46.3,
+          "south": 46.1,
+          "west": 5.65
+        },
+        "temporal_extent": [
+          "2018-07-01",
+          "2018-07-01"
+        ]
+      }
+    },
+    "load_collection_NQWJY7513T": {
+      "process_id": "load_collection",
+      "arguments": {
+        "bands": [
+          "NO2"
+        ],
+        "id": "SENTINEL_5P_L2",
+        "spatial_extent": {
+          "east": 6.0,
+          "north": 46.3,
+          "south": 46.1,
+          "west": 5.65
+        },
+        "temporal_extent": [
+          "2018-07-01",
+          "2018-07-01"
+        ]
+      }
+    },
+    "apply_VWMQX2169F": {
+      "process_id": "apply",
+      "arguments": {
+        "data": {
+          "from_node": "load_collection_IYGCM4847Z"
+        },
+        "process": {
+          "process_graph": {
+            "array_element_MJKJH5885G": {
+              "arguments": {
+                "data": {
+                  "from_parameter": "x"
+                },
+                "index": 0,
+                "return_nodata": false
+              },
+              "process_id": "array_element"
+            },
+            "gte_EUYAH8390G": {
+              "arguments": {
+                "x": {
+                  "from_node": "array_element_MJKJH5885G"
+                },
+                "y": 0.0001
+              },
+              "process_id": "gte",
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "mask_VSQIU8474G": {
+      "process_id": "mask",
+      "arguments": {
+        "data": {
+          "from_node": "load_collection_NQWJY7513T"
+        },
+        "mask": {
+          "from_node": "apply_VWMQX2169F"
+        }
+      }
+    },
+    "save_result_AJAUF5705Y": {
+      "process_id": "save_result",
+      "arguments": {
+        "data": {
+          "from_node": "mask_VSQIU8474G"
+        },
+        "format": "GTIFF"
+      },
+      "result": true
+    }
+  },
+  "parameters": []
+}

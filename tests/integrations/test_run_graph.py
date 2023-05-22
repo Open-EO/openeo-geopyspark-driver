@@ -11,7 +11,7 @@ def test_run_graph(api100):
     Could use tmp_path as argument, but to see results in CI, ./tmp is handier
     """
     containing_folder = os.path.dirname(os.path.abspath(__file__))
-    graph_file = "/home/emile/openeo/VITO/double_request/double.json"
+    graph_file = "mask_twice.json"
     process_graph = read_json(os.path.join(containing_folder, graph_file))
 
     logFile = os.path.join(containing_folder, "openeo.log")
