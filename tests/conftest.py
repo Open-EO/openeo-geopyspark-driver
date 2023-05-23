@@ -101,9 +101,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
 
-    conf.set(key='spark.driver.memory', value='2G')
-    conf.set(key='spark.executor.memory', value='2G')
-    conf.set('spark.ui.enabled', True)
+    conf.set(key="spark.driver.memory", value="2G")
+    conf.set(key="spark.executor.memory", value="2G")
+    conf.set("spark.ui.enabled", False)
 
     jars = []
     for jar_dir in additional_jar_dirs:
