@@ -103,7 +103,9 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     conf.set(key="spark.driver.memory", value="2G")
     conf.set(key="spark.executor.memory", value="2G")
-    conf.set("spark.ui.enabled", False)
+    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
+    if OPENEO_LOCAL_DEBUGGING:
+        conf.set('spark.ui.enabled', True)
 
     jars = []
     for jar_dir in additional_jar_dirs:
@@ -127,12 +129,11 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
     extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
-    extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
+    if OPENEO_LOCAL_DEBUGGING:
+        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
     conf.set('spark.driver.extraJavaOptions', extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
-    os.environ["OPENEO_BATCH_JOB_ID"] = "j-jobAbc123"
-    os.environ["OPENEO_USER_ID"] = "userId123"
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
