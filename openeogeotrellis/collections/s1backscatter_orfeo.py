@@ -142,7 +142,7 @@ class S1BackscatterOrfeo:
         attributeValues.update({
             k: v for (k, v) in extra_properties.items() if k in [
                 "orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness",
-                "polarisation", "missionTakeId",
+                "polarisation", "missionTakeId", "sat:orbit_state"
             ]
         })
         if "polarization" in extra_properties:
