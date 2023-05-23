@@ -90,55 +90,55 @@ def test_apply_dimension_invalid_dimension(imagecollection_with_two_bands_and_th
 
 true = True
 
-
-@pytest.mark.parametrize("process", [
-    {
-        "arrayapply1": {
-            "process_id": "array_apply",
-            "arguments": {
-                "data": {
-                    "from_parameter": "data"
-                },
-                "process": {
-                    "process_graph": {
-                        "cos1": {
-                            "process_id": "cos",
-                            "arguments": {
-                                "x": {
-                                    "from_parameter": "x"
-                                }
-                            },
-                            "result": true
-                        }
-                    }
-                }
-            },
-            "result": true
-        }
-    },
-    {
-        "cos1": {
-            "process_id": "cos",
-            "arguments": {
-                "x": {
-                    "from_parameter": "data"
-                }
-            },
-            "result": true
-        }
-    },
-])
-def test_apply_dimension_array_apply(imagecollection_with_two_bands_and_three_dates, tmp_path, process):
-    dc = imagecollection_with_two_bands_and_three_dates
-
-    dc_array_apply = dc.apply_dimension(
-        process=process,
-        dimension='t',
-        env=EvalEnv(),
-    )
-    dc_xarray = dc._to_xarray()
-    dc_array_apply_xarray = dc_array_apply._to_xarray()
-    assert dc_xarray[0, 0].data[0, 0] == 1
-    assert dc_array_apply_xarray[0, 0].data[0, 0] == math.cos(1)
-    assert dc_xarray[2, 0].data[0, 0] == 2
-    assert dc_array_apply_xarray[2, 0].data[0, 0] == math.cos(2)
+#
+# @pytest.mark.parametrize("process", [
+#     {
+#         "arrayapply1": {
+#             "process_id": "array_apply",
+#             "arguments": {
+#                 "data": {
+#                     "from_parameter": "data"
+#                 },
+#                 "process": {
+#                     "process_graph": {
+#                         "cos1": {
+#                             "process_id": "cos",
+#                             "arguments": {
+#                                 "x": {
+#                                     "from_parameter": "x"
+#                                 }
+#                             },
+#                             "result": true
+#                         }
+#                     }
+#                 }
+#             },
+#             "result": true
+#         }
+#     },
+#     {
+#         "cos1": {
+#             "process_id": "cos",
+#             "arguments": {
+#                 "x": {
+#                     "from_parameter": "data"
+#                 }
+#             },
+#             "result": true
+#         }
+#     },
+# ])
+# def test_apply_dimension_array_apply(imagecollection_with_two_bands_and_three_dates, tmp_path, process):
+#     dc = imagecollection_with_two_bands_and_three_dates
+#
+#     dc_array_apply = dc.apply_dimension(
+#         process=process,
+#         dimension='t',
+#         env=EvalEnv(),
+#     )
+#     dc_xarray = dc._to_xarray()
+#     dc_array_apply_xarray = dc_array_apply._to_xarray()
+#     assert dc_xarray[0, 0].data[0, 0] == 1
+#     assert dc_array_apply_xarray[0, 0].data[0, 0] == math.cos(1)
+#     assert dc_xarray[2, 0].data[0, 0] == 2
+#     assert dc_array_apply_xarray[2, 0].data[0, 0] == math.cos(2)

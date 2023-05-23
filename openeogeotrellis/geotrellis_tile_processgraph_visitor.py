@@ -58,9 +58,9 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
     def leaveArray(self, argument_id: str):
         self.builder.arrayEnd()
 
-    def _accept_dict(self, value: dict):
-        if 'process_graph' in value:
-            self.accept_process_graph(value['process_graph'])
+    # def _accept_dict(self, value: dict):
+    #     if 'process_graph' in value:
+    #         self.accept_process_graph(value['process_graph'])
 
 class FakeGeotrellisTileProcessGraphVisitor(GeotrellisTileProcessGraphVisitor):
     """
