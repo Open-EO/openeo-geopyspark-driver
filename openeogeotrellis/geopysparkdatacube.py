@@ -1026,8 +1026,9 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
 
-    def apply_neighborhood(self, process: Dict, size: List, overlap: List, env: EvalEnv) -> 'GeopysparkDataCube':
-
+    def apply_neighborhood(
+        self, process: Dict, size: List, overlap: List, env: EvalEnv, context: Optional[dict] = None
+    ) -> "GeopysparkDataCube":
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
             raise OpenEOApiException(message="Unexpected spatial dimensions in apply_neighborhood,"
