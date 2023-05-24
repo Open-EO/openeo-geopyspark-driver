@@ -13,7 +13,7 @@ def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_
         "abs": {
             "arguments": {
                 "p": {
-                    "from_argument": "data"
+                    "from_parameter": "data"
                 },
                 "base": 2
             },

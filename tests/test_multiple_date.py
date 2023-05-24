@@ -24,13 +24,13 @@ from openeogeotrellis.numpy_aggregators import max_composite
 
 def reducer(operation: str):
     return {
-        "%s1" % operation: {
+        f"{operation}1" : {
+            "process_id": operation,
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 }
             },
-            "process_id": operation,
             "result": True
         },
     }
@@ -329,7 +329,7 @@ class TestMultipleDates(TestCase):
 
     def _median_reducer(self):
         from openeo.processes import median
-        builder = median({"from_argument": "data"})
+        builder = median({"from_parameter": "data"})
         return builder.flat_graph()
 
     def test_aggregate_temporal_median(self):

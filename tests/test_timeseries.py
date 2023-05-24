@@ -280,7 +280,7 @@ def test_zonal_statistics_with_empty_mutliband_tiles(imagecollection_with_two_ba
     # Aggregate_temporal for period 2015-01-01 to 2015-02-02 will introduce a tile with no data.
     # The following aggregate_spatial call should be able to handle such tiles.
     from openeo.processes import median
-    builder = median({"from_argument": "data"})
+    builder = median({"from_parameter": "data"})
     aggregate_temporal = imagecollection_with_two_bands_and_three_dates.aggregate_temporal(
         [["2015-01-01", "2015-02-02"], ["2017-09-25", "2017-09-26"],
          ["2017-09-30", "2017-10-01"], ["2017-10-25", "2017-10-26"]],
@@ -367,19 +367,19 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
         "sum": {
             "process_id": "sum",
             "arguments": {
-                "data": {"from_argument": "data"}
+                "data": {"from_parameter": "data"}
             }
         },
         "count": {
             "process_id": "count",
             "arguments": {
-                "data": {"from_argument": "data"}
+                "data": {"from_parameter": "data"}
             }
         },
         "max": {
             "process_id": "max",
             "arguments": {
-                "data": {"from_argument": "data"}
+                "data": {"from_parameter": "data"}
             }
         },
         "array":{

@@ -169,7 +169,7 @@ def udf_noop():
         "udf_process": {
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 },
                 "udf": udf_code
             },

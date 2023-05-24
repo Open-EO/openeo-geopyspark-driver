@@ -183,7 +183,7 @@ def test_apply_complex_graph():
         "sin": {
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 }
             },
             "process_id": "sin",
@@ -224,16 +224,17 @@ def test_reduce_bands():
         "sum": {
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 },
                 "ignore_nodata":True
             },
             "process_id": "sum"
         },
+        # TODO: this does not make sense: `subtract` process on an array
         "subtract": {
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 }
             },
             "process_id": "subtract"
@@ -268,7 +269,7 @@ def test_reduce_bands_logical_ops():
         "eq": {
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 },
                 "y": 10
             },
@@ -334,7 +335,7 @@ def test_reduce_bands_comparison_ops():
         "gt": {
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 },
                 "y": 6.0
             },
@@ -360,7 +361,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 0
                     }
@@ -384,7 +385,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 1
                     }
@@ -394,7 +395,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 0
                     }
@@ -432,7 +433,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 1
                     }
@@ -505,7 +506,7 @@ def test_linear_scale_range_reduce():
             "result": True,
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 },
                 "inputMin": -1,
                 "inputMax": 1,

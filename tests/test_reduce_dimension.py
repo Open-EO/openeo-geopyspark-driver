@@ -15,7 +15,7 @@ def _simple_reducer(operation: str) -> GeotrellisTileProcessGraphVisitor:
         "sum": {
             "process_id": operation,
             "arguments": {
-                "data": {"from_argument": "dimension_data"}
+                "data": {"from_parameter": "data"}
             },
             "result": True
         }

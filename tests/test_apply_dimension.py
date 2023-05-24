@@ -17,7 +17,7 @@ def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands
         "array_interpolate_linear": {
             "arguments": {
                 "data": {
-                    "from_argument": "data"
+                    "from_parameter": "data"
                 }
             },
             "process_id": "array_interpolate_linear",

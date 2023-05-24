@@ -1501,7 +1501,7 @@ def test_apply_neighborhood_filter_spatial(api100, tmp_path):
         "abs": {
             "arguments": {
                 "p": {
-                    "from_argument": "data"
+                    "from_parameter": "data"
                 },
                 "base": 2
             },
