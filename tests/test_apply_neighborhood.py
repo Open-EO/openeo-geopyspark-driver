@@ -27,6 +27,7 @@ def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_
         size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32},
               {'dimension': 't', 'value': "P1D"}],
         overlap=[],
+        context={},
         env=EvalEnv(),
     )
     result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
@@ -43,6 +44,7 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
         process=udf_noop,
         size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32}],
         overlap=[{'dimension': 'x', 'unit': 'px', 'value': 8}, {'dimension': 'y', 'unit': 'px', 'value': 8}],
+        context={},
         env=EvalEnv()
     )
     result_xarray = result._to_xarray()

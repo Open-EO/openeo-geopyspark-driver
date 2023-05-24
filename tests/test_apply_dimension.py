@@ -25,11 +25,7 @@ def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands
         }
     }
     result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
-        process=graph,
-       dimension='t',
-        target_dimension='some_other_dim',
-        env=EvalEnv(),
-        context={'bla':'bla'}
+        process=graph, dimension="t", target_dimension="some_other_dim", context={}, env=EvalEnv()
     )
     result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
 
@@ -42,11 +38,7 @@ def test_apply_dimension_temporal_udf(imagecollection_with_two_bands_and_three_d
 
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
-        process=udf_noop,
-       dimension='t',
-        target_dimension='some_other_dim',
-        env=EvalEnv(),
-        context={'bla':'bla'}
+        process=udf_noop, dimension="t", target_dimension="some_other_dim", context={}, env=EvalEnv()
     )
     result_xarray = result._to_xarray()
     first_band = result_xarray.sel(bands='red', t=the_date)
@@ -64,9 +56,7 @@ def test_apply_dimension_bands_udf(imagecollection_with_two_bands_and_three_date
 
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
-        process=udf_noop,
-       dimension='bands',
-        env=EvalEnv()
+        process=udf_noop, dimension="bands", target_dimension=None, context={}, env=EvalEnv()
     )
     result_xarray = result._to_xarray()
     first_band = result_xarray.sel(bands='red', t=the_date)
@@ -82,9 +72,7 @@ def test_apply_dimension_invalid_dimension(imagecollection_with_two_bands_and_th
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
     with pytest.raises(FeatureUnsupportedException):
         result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
-            process=udf_noop,
-           dimension='bla',
-            env=EvalEnv()
+            process=udf_noop, dimension="bla", target_dimension=None, context={}, env=EvalEnv()
         )
 
 
