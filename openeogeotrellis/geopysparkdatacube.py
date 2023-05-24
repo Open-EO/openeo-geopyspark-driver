@@ -241,7 +241,7 @@ class GeopysparkDataCube(DriverDataCube):
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
-    def apply(self, process: dict, *, context: Optional[dict], env: EvalEnv) -> "GeopysparkDataCube":
+    def apply(self, process: dict, *, context: Optional[dict] = None, env: EvalEnv) -> "GeopysparkDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
@@ -262,7 +262,13 @@ class GeopysparkDataCube(DriverDataCube):
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
     def apply_dimension(
-        self, process: dict, *, dimension: str, target_dimension: Optional[str], context: Optional[dict], env: EvalEnv
+        self,
+        process: dict,
+        *,
+        dimension: str,
+        target_dimension: Optional[str] = None,
+        context: Optional[dict],
+        env: EvalEnv,
     ) -> "DriverDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
@@ -485,7 +491,7 @@ class GeopysparkDataCube(DriverDataCube):
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
-    def apply_tiles_spatiotemporal(self, udf_code: str, context: dict = {}) -> 'GeopysparkDataCube':
+    def apply_tiles_spatiotemporal(self, udf_code: str, context: Optional[dict] = None) -> "GeopysparkDataCube":
         """
         Group tiles by SpatialKey, then apply a Python function to every group of tiles.
         :param udf_code: A string containing a Python function that handles groups of tiles, each labeled by date.
@@ -572,9 +578,13 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def chunk_polygon(
-            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: MultiPolygon, mask_value: float,
-            env: EvalEnv, context: dict = None,
-    ) -> 'GeopysparkDataCube':
+        self,
+        reducer: Union[ProcessGraphVisitor, Dict],
+        chunks: MultiPolygon,
+        mask_value: float,
+        env: EvalEnv,
+        context: Optional[dict] = None,
+    ) -> "GeopysparkDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
@@ -614,7 +624,7 @@ class GeopysparkDataCube(DriverDataCube):
         reducer: Union[ProcessGraphVisitor, Dict],
         *,
         dimension: str,
-        context: Optional[dict],
+        context: Optional[dict] = None,
         env: EvalEnv,
         binary=False,
     ) -> "GeopysparkDataCube":
@@ -746,22 +756,22 @@ class GeopysparkDataCube(DriverDataCube):
         pass
 
     def aggregate_temporal(
-            self, intervals: List, labels: List, reducer, dimension: str = None, context:dict = None
-    ) -> 'GeopysparkDataCube':
-        """ Computes a temporal aggregation based on an array of date and/or time intervals.
+        self, intervals: List, labels: List, reducer, dimension: str = None, context: Optional[dict] = None
+    ) -> "GeopysparkDataCube":
+        """Computes a temporal aggregation based on an array of date and/or time intervals.
 
-            Calendar hierarchies such as year, month, week etc. must be transformed into specific intervals by the clients. For each interval, all data along the dimension will be passed through the reducer. The computed values will be projected to the labels, so the number of labels and the number of intervals need to be equal.
+        Calendar hierarchies such as year, month, week etc. must be transformed into specific intervals by the clients. For each interval, all data along the dimension will be passed through the reducer. The computed values will be projected to the labels, so the number of labels and the number of intervals need to be equal.
 
-            If the dimension is not set, the data cube is expected to only have one temporal dimension.
+        If the dimension is not set, the data cube is expected to only have one temporal dimension.
 
-            :param intervals: Left-closed temporal intervals, which are allowed to overlap. Each temporal interval in the array has exactly two elements:
-                                The first element is the start of the temporal interval. The specified instance in time is included in the interval.
-                                The second element is the end of the temporal interval. The specified instance in time is excluded from the interval.
-            :param labels: Labels for the intervals. The number of labels and the number of groups need to be equal.
-            :param reducer: A reducer to be applied on all values along the specified dimension. The reducer must be a callable process (or a set processes) that accepts an array and computes a single return value of the same type as the input values, for example median.
-            :param dimension: The temporal dimension for aggregation. All data along the dimension will be passed through the specified reducer. If the dimension is not set, the data cube is expected to only have one temporal dimension.
+        :param intervals: Left-closed temporal intervals, which are allowed to overlap. Each temporal interval in the array has exactly two elements:
+                            The first element is the start of the temporal interval. The specified instance in time is included in the interval.
+                            The second element is the end of the temporal interval. The specified instance in time is excluded from the interval.
+        :param labels: Labels for the intervals. The number of labels and the number of groups need to be equal.
+        :param reducer: A reducer to be applied on all values along the specified dimension. The reducer must be a callable process (or a set processes) that accepts an array and computes a single return value of the same type as the input values, for example median.
+        :param dimension: The temporal dimension for aggregation. All data along the dimension will be passed through the specified reducer. If the dimension is not set, the data cube is expected to only have one temporal dimension.
 
-            :return: A data cube containing  a result for each time window
+        :return: A data cube containing  a result for each time window
         """
         reformat_date = lambda d : pd.to_datetime(d).strftime('%Y-%m-%dT%H:%M:%SZ')
         date_list = []
@@ -1034,7 +1044,7 @@ class GeopysparkDataCube(DriverDataCube):
         return result_collection
 
     def apply_neighborhood(
-        self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict], env: EvalEnv
+        self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict] = None, env: EvalEnv
     ) -> "GeopysparkDataCube":
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
