@@ -241,7 +241,7 @@ class GeopysparkDataCube(DriverDataCube):
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
-    def apply(self, process: dict, context: Optional[dict] = None) -> "GeopysparkDataCube":
+    def apply(self, process: dict, *, context: Optional[dict], env: EvalEnv) -> "GeopysparkDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
@@ -261,8 +261,9 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
-    def apply_dimension(self, process, dimension: str, target_dimension: str = None,
-                        context: dict = None, env: EvalEnv = None) -> 'DriverDataCube':
+    def apply_dimension(
+        self, process: dict, *, dimension: str, target_dimension: Optional[str], context: Optional[dict], env: EvalEnv
+    ) -> "DriverDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
@@ -609,11 +610,17 @@ class GeopysparkDataCube(DriverDataCube):
         return result_collection
 
     def reduce_dimension(
-            self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
-            binary=False, context=None,
-    ) -> 'GeopysparkDataCube':
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
-        if isinstance(reducer,dict):
+        self,
+        reducer: Union[ProcessGraphVisitor, Dict],
+        *,
+        dimension: str,
+        context: Optional[dict],
+        env: EvalEnv,
+        binary=False,
+    ) -> "GeopysparkDataCube":
+        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+
+        if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
 
         if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
@@ -1027,7 +1034,7 @@ class GeopysparkDataCube(DriverDataCube):
         return result_collection
 
     def apply_neighborhood(
-        self, process: Dict, size: List, overlap: List, env: EvalEnv, context: Optional[dict] = None
+        self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict], env: EvalEnv
     ) -> "GeopysparkDataCube":
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
