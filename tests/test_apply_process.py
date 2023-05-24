@@ -157,7 +157,8 @@ def test_point_series():
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
     transformed_collection = cube.apply(
-        {"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}}
+        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}},
+        env=EvalEnv(),
     )
     for p in points[0:3]:
         # TODO #421 drop old unsued "point timeseries" feature
@@ -169,11 +170,13 @@ def test_apply_cos():
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
     res = cube.apply(
-        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}}
+        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}},
+        env=EvalEnv(),
     )
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(second[0]))
+
 
 def test_apply_complex_graph():
     graph = {
@@ -200,10 +203,11 @@ def test_apply_complex_graph():
 
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-    res = cube.apply(graph)
+    res = cube.apply(process=graph, env=EvalEnv())
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0*np.sin(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], 5.0*np.sin(second[0]))
+
 
 def test_reduce_bands():
     input = create_spacetime_layer()
@@ -315,7 +319,7 @@ def test_apply_if():
         }
       }
 
-    stitched = imagecollection.apply(graph).pyramid.levels[0].to_spatial_layer().stitch()
+    stitched = imagecollection.apply(process=graph, env=EvalEnv()).pyramid.levels[0].to_spatial_layer().stitch()
     print(stitched)
     assert 2.0 == stitched.cells[0][0][0]
 

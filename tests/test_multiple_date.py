@@ -142,14 +142,16 @@ class TestMultipleDates(TestCase):
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
         ref_path = str(self.temp_folder / "reproj_ref.tiff")
-        imagecollection.reduce_dimension(reducer('max'), "t", EvalEnv()).save_result(ref_path, format="GTIFF")
+        imagecollection.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv()).save_result(
+            ref_path, format="GTIFF"
+        )
 
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3395",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
-        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
+        res = resampled.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv())
         res.save_result(path, format="GTIFF")
 
         with rasterio.open(ref_path) as ref_ds:
