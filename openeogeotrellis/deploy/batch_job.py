@@ -842,6 +842,8 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
     logger.debug(f"{ds_band_names=}")
 
+    all_raster_stats = None
+
     # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
     if sorted(set(ds_band_names)) != sorted(ds_band_names):
         logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
