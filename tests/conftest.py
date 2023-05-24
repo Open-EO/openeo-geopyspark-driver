@@ -104,8 +104,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set(key="spark.driver.memory", value="2G")
     conf.set(key="spark.executor.memory", value="2G")
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
-    if OPENEO_LOCAL_DEBUGGING:
-        conf.set('spark.ui.enabled', True)
+    conf.set('spark.ui.enabled', OPENEO_LOCAL_DEBUGGING)
 
     jars = []
     for jar_dir in additional_jar_dirs:
