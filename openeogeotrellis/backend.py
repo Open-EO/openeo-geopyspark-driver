@@ -1849,7 +1849,7 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[]}))
+        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[],"node_caching":False}))
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
