@@ -827,15 +827,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         root_catalog_url = root_catalog.get_self_href()
         is_utm = False
         date_regex = None
-        bands = None
-        stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog_url, is_utm, date_regex, bands, "stac")
+        band_names = [b["name"] for b in collection.extra_fields["summaries"]["eo:bands"]]
+        stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog_url, is_utm, date_regex,
+                                                                           band_names, "stac")
 
         root_path = None
         cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # FIXME: get it from the band metadata?
         experimental = False
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
                                                                         collection_id,
-                                                                        load_params.bands,
+                                                                        band_names,
                                                                         root_path,
                                                                         cell_size,
                                                                         experimental)
@@ -879,8 +880,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         else:
             raise NotImplementedError("pyramid")
 
-        band_names = [b["name"] for b in collection.extra_fields["summaries"]["eo:bands"]]
-
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
             SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
@@ -898,9 +897,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             crs=extent_crs,
         )
 
-        if load_params.bands:
-            metadata = metadata.filter_bands(load_params.bands)
-
         temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         option = jvm.scala.Option
 
@@ -909,7 +905,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
-        return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+        if load_params.bands:
+            cube = cube.filter_bands(load_params.bands)
+
+        return cube
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
