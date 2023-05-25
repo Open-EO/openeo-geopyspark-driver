@@ -821,16 +821,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         root_catalog = collection.get_root()
         # FIXME: check conformsTo item-search (TBC)
-        search_url = root_catalog.get_single_link(rel="search").href
-        self_url = root_catalog.get_self_href()
 
-        # TODO: instantiate PyramidFactory(FileLayerProvider(STACClient(self_url)))
         jvm = get_jvm()
 
+        root_catalog_url = root_catalog.get_self_href()
         is_utm = False
         date_regex = None
         bands = None
-        stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(self_url, is_utm, date_regex, bands, "stac")  # FIXME: pass search_url iso/ self_url
+        stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog_url, is_utm, date_regex, bands, "stac")
 
         root_path = None
         cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # FIXME: get it from the band metadata?
