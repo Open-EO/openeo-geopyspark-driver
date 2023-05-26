@@ -253,9 +253,14 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             }
         else:
             # New approach: SaveResult has generated metadata already for us
-            _extract_asset_metadata(
-                job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
-            )
+            try:
+                _extract_asset_metadata(
+                    job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
+                )
+            except Exception as e:
+                error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+                user_facing_logger.exception("Error while creating asset metadata: " + error_summary.summary)
+
 
     # _extract_asset_metadata may already fill in metadata["epsg"], but only
     # if the value of epsg was None. So we don't want to overwrite it with
@@ -422,7 +427,8 @@ def _extract_asset_metadata(
         # Each asset has its different projection metadata so set it per asset.
         for asset_path, raster_md in raster_metadata.items():
             proj_md = dict(**raster_md)
-            del proj_md["raster:bands"]
+            if "raster:bands" in proj_md:
+                del proj_md["raster:bands"]
 
             asset_metadata[asset_path].update(proj_md)
             logger.debug(
