@@ -827,22 +827,26 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         jvm = get_jvm()
 
-        root_catalog_url = root_catalog.get_self_href()
-        is_utm = False
-        date_regex = None
+        # TODO: e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
+        #  (nor a resolution)
         band_names = [b["name"] for b in collection.extra_fields["summaries"]["eo:bands"]]
-        stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog_url, is_utm, date_regex,
-                                                                           band_names, "stac")
 
-        root_path = None
-        cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # FIXME: get it from the band metadata?
-        experimental = False
-        pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
-                                                                        collection_id,
-                                                                        band_names,
-                                                                        root_path,
-                                                                        cell_size,
-                                                                        experimental)
+        def create_stac_api_pyramid_factory():
+            is_utm = False
+            date_regex = None
+            bands = None
+            stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog.get_self_href(), is_utm,
+                                                                               date_regex, bands, "stac")
+
+            root_path = None
+            cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # FIXME: get it from the band metadata?
+            experimental = False
+            return jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
+                                                                 collection_id,
+                                                                 band_names,
+                                                                 root_path,
+                                                                 cell_size,
+                                                                 experimental)
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
@@ -876,10 +880,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
             getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
-            pyramid = pyramid_factory.datacube_seq(
-                            projected_polygons, from_date, to_date,
-                            metadata_properties, correlation_id, data_cube_parameters
-                        )
+            pyramid = create_stac_api_pyramid_factory().datacube_seq(
+                projected_polygons, from_date, to_date,
+                metadata_properties, correlation_id, data_cube_parameters
+            )
         else:
             raise NotImplementedError("pyramid")
 
