@@ -440,13 +440,14 @@ def _extract_asset_metadata(
     # There is no other place to store them really, and because stats are floats
     # they are very rarely going to be identical numbers.
     for asset_path, raster_md in raster_metadata.items():
-        raster_bands = raster_md["raster:bands"]
+        if "raster:bands" in raster_md:
+            raster_bands = raster_md["raster:bands"]
 
-        asset_metadata[asset_path]["raster:bands"] = raster_bands
-        logger.debug(
-            f"Updated metadata for asset {asset_path} with raster statistics: "
-            + f"{raster_bands=}, {asset_metadata[asset_path]=}"
-        )
+            asset_metadata[asset_path]["raster:bands"] = raster_bands
+            logger.debug(
+                f"Updated metadata for asset {asset_path} with raster statistics: "
+                + f"{raster_bands=}, {asset_metadata[asset_path]=}"
+            )
 
     job_result_metadata["assets"] = asset_metadata
 
