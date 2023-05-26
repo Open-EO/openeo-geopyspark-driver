@@ -646,20 +646,40 @@ def test_apply_udf_square_pixels(api100, udf_code):
     assert_equal(data, expected)
 
 
-def test_apply_run_udf_with_direct_context(api100):
-    """context directly defined in `run_udf` node."""
-    udf_code = textwrap.dedent(
+class TestApplyRunUDFWithContext:
+    """
+    Tests for handling contexts when doing apply/apply_dimension/reduce_dimension
+    with a UDF that expects configuration from context
+    """
+
+    UDF_APPLY_MULTIPLY_FACTOR = textwrap.dedent(
         """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
             factor = context["factor"]
             array = cube.get_array()
             return XarrayDataCube(factor * array)
-    """
+        """
     )
 
-    response = api100.check_result(
-        {
+    UDF_REDUCE_SUM_AXIS0 = textwrap.dedent(
+        """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            factor = context["factor"]
+            array = cube.get_array().sum(axis=0)
+            return XarrayDataCube(factor * array)
+        """
+    )
+
+    LONGITUDE4x4 = np.array([[0, 0.25, 0.5, 0.75]] * 4).T
+
+    def _build_process_graph(self, apply_something: dict) -> dict:
+        """
+        Simple helper to build a process graph by squeezing
+        an apply/apply_dimension between load_collection and save_result
+        """
+        pg = {
             "lc": {
                 "process_id": "load_collection",
                 "arguments": {
@@ -669,17 +689,119 @@ def test_apply_run_udf_with_direct_context(api100):
                     "bands": ["Longitude"],
                 },
             },
-            "apply": {
-                "process_id": "apply",
+            "apply_something": apply_something,
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply_something"}, "format": "json"},
+                "result": True,
+            },
+        }
+        _log.info(f"{self=}._build_process_graph -> {pg=}")
+        return pg
+
+    @pytest.mark.parametrize(
+        ["parent", "extra_args"],
+        [
+            ("apply", {}),
+            ("apply_dimension", {"dimension": "t"}),
+        ],
+    )
+    def test_apply_run_udf_with_direct_context(self, api100, parent, extra_args):
+        """context directly defined in `run_udf` node."""
+        pg = self._build_process_graph(
+            {
+                "process_id": parent,
+                "arguments": {
+                    **{
+                        "data": {"from_node": "lc"},
+                        "process": {
+                            "process_graph": {
+                                "udf": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "data"},
+                                        "udf": self.UDF_APPLY_MULTIPLY_FACTOR,
+                                        "runtime": "Python",
+                                        "context": {"factor": 123},
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    **extra_args,
+                },
+            }
+        )
+
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = 123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    @pytest.mark.parametrize(
+        ["parent", "extra_args"],
+        [
+            ("apply", {}),
+            ("apply_dimension", {"dimension": "t"}),
+        ],
+    )
+    def test_apply_run_udf_with_apply_context(self, api100, parent, extra_args):
+        """Context defined by parent `apply`"""
+        pg = self._build_process_graph(
+            {
+                "process_id": parent,
+                "arguments": {
+                    **{
+                        "data": {"from_node": "lc"},
+                        "process": {
+                            "process_graph": {
+                                "udf": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "data"},
+                                        "udf": self.UDF_APPLY_MULTIPLY_FACTOR,
+                                        "runtime": "Python",
+                                        "context": {"from_parameter": "context"},
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                        "context": {"factor": 123},
+                    },
+                    **extra_args,
+                },
+            }
+        )
+
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = 123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    @pytest.mark.parametrize("dimension", ["t", "bands"])
+    def test_reduce_dimension_run_udf_with_direct_context(self, api100, dimension):
+        """context directly defined in `run_udf` node."""
+        pg = self._build_process_graph(
+            {
+                "process_id": "reduce_dimension",
                 "arguments": {
                     "data": {"from_node": "lc"},
-                    "process": {
+                    "dimension": dimension,
+                    "reducer": {
                         "process_graph": {
                             "udf": {
                                 "process_id": "run_udf",
                                 "arguments": {
                                     "data": {"from_parameter": "data"},
-                                    "udf": udf_code,
+                                    "udf": self.UDF_REDUCE_SUM_AXIS0,
                                     "runtime": "Python",
                                     "context": {"factor": 123},
                                 },
@@ -688,79 +810,23 @@ def test_apply_run_udf_with_direct_context(api100):
                         }
                     },
                 },
-            },
-            "save": {
-                "process_id": "save_result",
-                "arguments": {"data": {"from_node": "apply"}, "format": "json"},
-                "result": True,
-            },
-        }
-    )
-    result = response.assert_status_code(200).json
-    _log.info(repr(result))
+            }
+        )
 
-    assert result["dims"] == ["t", "bands", "x", "y"]
-    expected = 123 * np.array([[np.array([[0, 0.25, 0.5, 0.75]] * 4).T]] * 3)
-    assert_equal(result["data"], expected)
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
 
+        if dimension == "t":
+            assert result["dims"] == ["bands", "x", "y"]
+            expected = 3 * 123 * np.array([self.LONGITUDE4x4])
+        elif dimension == "bands":
+            assert result["dims"] == ["t", "x", "y"]
+            expected = 123 * np.array([self.LONGITUDE4x4] * 3)
+        else:
+            raise ValueError(dimension)
 
-def test_apply_run_udf_with_apply_context(api100):
-    """Context defined by parent `apply`"""
-    udf_code = textwrap.dedent(
-        """
-        from openeo.udf import XarrayDataCube
-        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
-            factor = context["factor"]
-            array = cube.get_array()
-            return XarrayDataCube(factor * array)
-    """
-    )
-
-    response = api100.check_result(
-        {
-            "lc": {
-                "process_id": "load_collection",
-                "arguments": {
-                    "id": "TestCollection-LonLat4x4",
-                    "temporal_extent": ["2021-01-01", "2021-02-01"],
-                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
-                    "bands": ["Longitude"],
-                },
-            },
-            "apply": {
-                "process_id": "apply",
-                "arguments": {
-                    "data": {"from_node": "lc"},
-                    "process": {
-                        "process_graph": {
-                            "udf": {
-                                "process_id": "run_udf",
-                                "arguments": {
-                                    "data": {"from_parameter": "data"},
-                                    "udf": udf_code,
-                                    "runtime": "Python",
-                                    "context": {"from_parameter": "context"},
-                                },
-                                "result": True,
-                            }
-                        }
-                    },
-                    "context": {"factor": 123},
-                },
-            },
-            "save": {
-                "process_id": "save_result",
-                "arguments": {"data": {"from_node": "apply"}, "format": "json"},
-                "result": True,
-            },
-        }
-    )
-    result = response.assert_status_code(200).json
-    _log.info(repr(result))
-
-    assert result["dims"] == ["t", "bands", "x", "y"]
-    expected = 123 * np.array([[np.array([[0, 0.25, 0.5, 0.75]] * 4).T]] * 3)
-    assert_equal(result["data"], expected)
+        assert_equal(result["data"], expected)
 
 
 def test_apply_run_udf_with_udp_context(api100, user_defined_process_registry):
@@ -1012,8 +1078,9 @@ def test_reduce_dimension_run_udf_with_udp_context(
             offset = context.get("offset", 100)
             return XarrayDataCube(cube.get_array() + offset)
     """,
-])
-def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
+    ],
+)
+def test_udp_udf_apply_neighborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
     """Test calling a UDP with a UDF based reduce operation and fetching a UDP parameter value (EP-3781)"""
     udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
