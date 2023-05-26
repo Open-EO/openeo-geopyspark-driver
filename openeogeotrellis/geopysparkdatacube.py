@@ -1654,11 +1654,11 @@ class GeopysparkDataCube(DriverDataCube):
 
                         # noinspection PyProtectedMember
                         # TODO: contains a bbox so rename
-                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2(), timestamped_path._3())
+                        timestamped_paths = [(timestamped_path._1(), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
 
                         for path, timestamp, bbox in timestamped_paths:
-                            assets[path.name] = {
+                            assets[str(pathlib.Path(path).name)] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
