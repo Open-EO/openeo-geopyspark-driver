@@ -827,7 +827,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         conforms_to = root_catalog.extra_fields.get("conformsTo", [])
 
         if not any(conformance_class.endswith("/item-search") for conformance_class in conforms_to):
-            raise FeatureUnsupportedException(f"load_stac: static STAC catalog is not supported")
+            return self.load_result(job_id=url, user_id=None, load_params=load_params, env=env)
 
         jvm = get_jvm()
 
