@@ -820,7 +820,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         collection_id = collection.id
 
         root_catalog = collection.get_root()
-        # FIXME: check conformsTo item-search (TBC)
+        conforms_to = root_catalog.extra_fields.get("conformsTo", [])
+
+        if not any(conformance_class.endswith("/item-search") for conformance_class in conforms_to):
+            raise NotImplementedError("STAC catalog")
 
         jvm = get_jvm()
 
