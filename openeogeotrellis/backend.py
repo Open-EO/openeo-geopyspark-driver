@@ -55,7 +55,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
-                                  ServiceUnsupportedException)
+                                  ServiceUnsupportedException, FeatureUnsupportedException)
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -815,15 +815,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
-        # current assumption: url points to a STAC API Collection
-        collection = pystac.Collection.from_file(href=url)
+        stac_object = pystac.STACObject.from_file(href=url)
+
+        if not isinstance(stac_object, pystac.Collection):
+            raise FeatureUnsupportedException(f"load_stac: unsupported STAC object {stac_object.STAC_OBJECT_TYPE}")
+
+        collection: pystac.Collection = stac_object
         collection_id = collection.id
 
         root_catalog = collection.get_root()
         conforms_to = root_catalog.extra_fields.get("conformsTo", [])
 
         if not any(conformance_class.endswith("/item-search") for conformance_class in conforms_to):
-            raise NotImplementedError("STAC catalog")
+            raise FeatureUnsupportedException(f"load_stac: static STAC catalog is not supported")
 
         jvm = get_jvm()
 
