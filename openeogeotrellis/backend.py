@@ -831,9 +831,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         jvm = get_jvm()
 
-        # TODO: e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
-        #  (nor a resolution)
-        band_names = [b["name"] for b in collection.extra_fields["summaries"]["eo:bands"]]
+        band_names = [b["name"] for b in collection.extra_fields.get("summaries", {}).get("eo:bands", [])]
+
+        if not band_names:
+            # e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
+            # (nor a resolution)
+            raise FeatureUnsupportedException("load_stac: collection exposes no band names")  # TODO: different exception?
 
         def create_stac_api_pyramid_factory():
             is_utm = False
@@ -843,7 +846,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                                                                date_regex, bands, "stac")
 
             root_path = None
-            cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # FIXME: get it from the band metadata?
+            cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
             experimental = False
             return jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
                                                                  collection_id,
@@ -863,7 +866,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             )
 
             target_bbox = requested_bbox or collection_bbox
-            target_epsg = target_bbox.best_utm()
+            target_epsg = target_bbox.best_utm()  # is the default in GeoPySparkLayerCatalog as well
 
             extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
             extent_crs = target_bbox.crs
