@@ -263,11 +263,11 @@ class GeopysparkDataCube(DriverDataCube):
 
     def apply_dimension(
         self,
-        process: dict,
+        process: Union[dict, GeotrellisTileProcessGraphVisitor],
         *,
         dimension: str,
         target_dimension: Optional[str] = None,
-        context: Optional[dict],
+        context: Optional[dict] = None,
         env: EvalEnv,
     ) -> "DriverDataCube":
         from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
