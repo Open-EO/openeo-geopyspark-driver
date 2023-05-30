@@ -74,9 +74,7 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
     GeopysparkCubeMetadata,
 )
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import (
-    GeotrellisTileProcessGraphVisitor,
-)
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
@@ -304,20 +302,6 @@ class GpsSecondaryServices(backend.SecondaryServices):
         if not ConfigParams().is_ci_context:
             with zk_client() as zk:
                 Traefik(zk).unproxy_service(service_id)
-
-
-class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
-
-    def __init__(self):
-        super().__init__()
-        self.udf_args = {}
-
-
-    def enterArgument(self, argument_id: str, value):
-        self.udf_args[argument_id] = value
-
-    def constantArgument(self, argument_id: str, value):
-        self.udf_args[argument_id] = value
 
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
@@ -1829,7 +1813,6 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
-        from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
         env = EvalEnv(
             {
