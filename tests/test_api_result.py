@@ -720,7 +720,11 @@ class TestApplyRunUDFWithContext:
                     ],
                 },
             ),
-            # TODO: add variant (parameterized or with dedicated test function) for `apply_polygon` (aka `chunk_polygon`)
+            (
+                # TODO: replace `chunk_polygon` with `apply_polygon`
+                "chunk_polygon",
+                {"chunks": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}},
+            ),
         ],
     )
     def test_apply_run_udf_with_direct_context(self, api100, parent, extra_args):
@@ -779,7 +783,11 @@ class TestApplyRunUDFWithContext:
                     ],
                 },
             ),
-            # TODO: add variant (parameterized or with dedicated test function) for `apply_polygon` (aka `chunk_polygon`)
+            (
+                # TODO: replace `chunk_polygon` with `apply_polygon`
+                "chunk_polygon",
+                {"chunks": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}},
+            ),
         ],
     )
     def test_apply_run_udf_with_apply_context(self, api100, parent, extra_args):
@@ -894,7 +902,11 @@ class TestApplyRunUDFWithContext:
                     ],
                 },
             ),
-            # TODO: add variant (parameterized or with dedicated test function) for `apply_polygon` (aka `chunk_polygon`)
+            (
+                # TODO: replace `chunk_polygon` with `apply_polygon`
+                "chunk_polygon",
+                {"chunks": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}},
+            ),
         ],
     )
     @pytest.mark.parametrize(
