@@ -611,7 +611,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         result_collection = None
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
-            udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context)
+            udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
             # Polygons should use the same projection as the rdd.
             reprojected_polygons: jvm.org.openeo.geotrellis.ProjectedPolygons \
                 = to_projected_polygons(jvm, GeometryCollection(chunks))
