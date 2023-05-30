@@ -254,13 +254,16 @@ class GeopysparkDataCube(DriverDataCube):
             # also `apply` style local unary mapping operations.
             return  self._apply_bands_dimension(process)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context)
+            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
             return self.apply_tiles(udf_code=udf, context=udf_context)
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
     def _extract_udf_code_and_context(
-        self, process: SingleNodeUDFProcessGraphVisitor, context: dict
+        self,
+        process: SingleNodeUDFProcessGraphVisitor,
+        context: dict,
+        env: Optional[EvalEnv] = None,
     ) -> Tuple[str, dict]:
         """Extract UDF code and UDF context from given visitor and parent's context"""
         udf = process.udf_args.get("udf")
@@ -269,7 +272,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         udf_context = process.udf_args.get("context", {})
         # Resolve "from_parameter" references
-        udf_context = convert_node(udf_context, env=EvalEnv().push_parameters({"context": context}))
+        udf_context = convert_node(udf_context, env=(env or EvalEnv()).push_parameters({"context": context}))
 
         return udf, udf_context
 
@@ -308,7 +311,7 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 raise FeatureUnsupportedException(f"apply_dimension along dimension {dimension} is not supported. These dimensions are available: " + str(self.metadata.dimension_names()))
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context)
+            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
             return self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension)
 
         raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
@@ -598,6 +601,7 @@ class GeopysparkDataCube(DriverDataCube):
         env: EvalEnv,
         context: Optional[dict] = None,
     ) -> "GeopysparkDataCube":
+        # TODO: rename this to `apply_polygon`
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         if isinstance(reducer, dict):
@@ -643,7 +647,7 @@ class GeopysparkDataCube(DriverDataCube):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
 
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
-            udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context)
+            udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
             result_collection = self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self._apply_bands_dimension(reducer, context)
@@ -1088,7 +1092,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf, udf_context = self._extract_udf_code_and_context(process=process, context={"TODO": "TODO"})
+            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
