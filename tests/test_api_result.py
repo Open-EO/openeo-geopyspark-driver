@@ -41,6 +41,7 @@ from openeogeotrellis.utils import (
     UtcNowClock,
     drop_empty_from_aggregate_polygon_result,
     get_jvm,
+    is_package_available,
 )
 from .data import get_test_data_file
 
@@ -700,6 +701,11 @@ class TestApplyRunUDFWithContext:
         _log.info(f"{self=}._build_process_graph -> {pg=}")
         return pg
 
+    def _skip_when_no_jep_and(self, condition: bool = True):
+        """Helper to skip tests that require jep package to be installed."""
+        if condition and not is_package_available("jep"):
+            pytest.skip(reason="No 'jep' package available.")
+
     @pytest.mark.parametrize(
         ["parent", "extra_args"],
         [
@@ -729,6 +735,8 @@ class TestApplyRunUDFWithContext:
     )
     def test_apply_run_udf_with_direct_context(self, api100, parent, extra_args):
         """context directly defined in `run_udf` node."""
+        self._skip_when_no_jep_and(parent == "chunk_polygon")
+
         pg = self._build_process_graph(
             {
                 "process_id": parent,
@@ -792,6 +800,8 @@ class TestApplyRunUDFWithContext:
     )
     def test_apply_run_udf_with_apply_context(self, api100, parent, extra_args):
         """Context defined by parent `apply`"""
+        self._skip_when_no_jep_and(parent == "chunk_polygon")
+
         pg = self._build_process_graph(
             {
                 "process_id": parent,
@@ -968,6 +978,8 @@ class TestApplyRunUDFWithContext:
         udp_arguments,
         expected_factor,
     ):
+        self._skip_when_no_jep_and(parent == "chunk_polygon")
+
         udp_id = self._register_udp(
             user_defined_process_registry=user_defined_process_registry,
             parameters=[udp_parameter],

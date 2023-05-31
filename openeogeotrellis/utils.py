@@ -2,6 +2,8 @@ import collections
 import collections.abc
 import contextlib
 import datetime
+import functools
+import pkgutil
 
 import grp
 import json
@@ -590,3 +592,8 @@ class StatsReporter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.report(f"{self.name}: {json.dumps(self.stats)}")
+
+
+@functools.lru_cache
+def is_package_available(name: str) -> bool:
+    return any(m.name == name for m in pkgutil.iter_modules())
