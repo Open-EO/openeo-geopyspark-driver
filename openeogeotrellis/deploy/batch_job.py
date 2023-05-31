@@ -900,7 +900,7 @@ def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
 
-def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> Optional[(str, str)]:
+def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> Optional[Tuple[str, str]]:
     default_client_id = conf.get('spark.openeo.sentinelhub.client.id.default')
     default_client_secret = conf.get('spark.openeo.sentinelhub.client.secret.default')
 
