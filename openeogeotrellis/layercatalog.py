@@ -474,7 +474,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 if ConfigParams().is_kube_deploy:
-                    # FIXME: make this work for batch jobs as well
                     access_token = env[USER].internal_auth_data["access_token"]
 
                     pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(

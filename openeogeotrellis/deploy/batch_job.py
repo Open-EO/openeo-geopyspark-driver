@@ -900,13 +900,19 @@ def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
 
-def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> (str, str):
-    return (conf.get('spark.openeo.sentinelhub.client.id.default'),
-            conf.get('spark.openeo.sentinelhub.client.secret.default'))
+def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> Optional[(str, str)]:
+    default_client_id = conf.get('spark.openeo.sentinelhub.client.id.default')
+    default_client_secret = conf.get('spark.openeo.sentinelhub.client.secret.default')
+
+    return (default_client_id, default_client_secret) if default_client_id and default_client_secret else None
 
 
 def _get_vault_token(conf: SparkConf) -> Optional[str]:
     return conf.get('spark.openeo.vault.token')
+
+
+def _get_access_token(conf: SparkConf) -> Optional[str]:
+    return conf.get('spark.openeo.access_token')
 
 
 def main(argv: List[str]) -> None:
@@ -974,6 +980,7 @@ def main(argv: List[str]) -> None:
 
         default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
         vault_token = _get_vault_token(sc.getConf())
+        access_token = _get_access_token(sc.getConf())
 
         kerberos(principal, key_tab)
 
@@ -983,7 +990,7 @@ def main(argv: List[str]) -> None:
                 api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 default_sentinel_hub_credentials=default_sentinel_hub_credentials,
-                sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
+                sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token, access_token=access_token,
             )
 
         if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -1023,6 +1030,7 @@ def run_job(
     default_sentinel_hub_credentials=None,
     sentinel_hub_client_alias="default",
     vault_token: str = None,
+    access_token: str = None,
 ):
     # We actually expect type Path, but in reality paths as strings tend to
     # slip in anyway, so we better catch them and convert them.
@@ -1048,7 +1056,7 @@ def run_job(
     env_values = {
         'version': api_version or "1.0.0",
         'pyramid_levels': 'highest',
-        'user': User(user_id=user_id),
+        'user': User(user_id=user_id, internal_auth_data=dict_no_none(access_token=access_token)),
         'require_bounds': True,
         'correlation_id': correlation_id,
         'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
