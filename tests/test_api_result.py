@@ -1129,6 +1129,89 @@ class TestApplyRunUDFWithContext:
 
         assert_equal(result["data"], expected)
 
+    def test_usecase_279_1(self, api100):
+        """Example 1 from https://github.com/openEOPlatform/architecture-docs/issues/279#issuecomment-1302725540"""
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import XarrayDataCube
+            def apply_datacube(cube: XarrayDataCube, context) -> XarrayDataCube:
+                array = cube.get_array()
+                array.values = context['length'] * array.values
+                return cube
+        """
+        )
+        pg = self._build_process_graph(
+            apply_something={
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "process": {
+                        "process_graph": {
+                            "run1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "data"},
+                                    "runtime": "Python",
+                                    "udf": udf,
+                                    "context": {"length": {"from_parameter": "context"}},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "context": -123,
+                },
+            }
+        )
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = -123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    def test_usecase_279_2(self, api100):
+        """Example 2 from https://github.com/openEOPlatform/architecture-docs/issues/279#issuecomment-1302725540"""
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import XarrayDataCube
+            def apply_datacube(cube: XarrayDataCube, context) -> XarrayDataCube:
+                array = cube.get_array()
+                array.values = context * array.values
+                return cube
+        """
+        )
+        pg = self._build_process_graph(
+            apply_something={
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "process": {
+                        "process_graph": {
+                            "run1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "data"},
+                                    "runtime": "Python",
+                                    "udf": udf,
+                                    "context": {"from_parameter": "context"},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "context": -123,
+                },
+            }
+        )
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = -123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
 
 
 @pytest.mark.parametrize("set_parameters", [False, True])
