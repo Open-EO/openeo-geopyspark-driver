@@ -745,10 +745,13 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
     return proj_metadata
 
 
-def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
+def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None) -> RasterStatistics:
     """Helper function that parses gdal.Info output without processing subdatasets.
 
     :param gdal_info: Dictionary that contains the output from gdal.Info.
+    :band_name:
+        The band name extracted from a subdataset's name, if it was a subdataset.
+        If it is a regular file: None
 
     :return: TODO
     """
@@ -762,7 +765,12 @@ def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
         # Yes, the metadata from gdalinfo *does* contain a key that is
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
-        band_name = gdal_band_stats.get("long_name", str(band_num))
+
+        # Provide a default band name just in case we could not find one:
+        # the band number as a string.
+        # Band name really should have a value though.
+        bands_long_name = gdal_band_stats.get("long_name")
+        band_name_out = band_name or bands_long_name or str(band_num)
 
         def to_float_or_none(x):
             return None if x is None else float(x)
@@ -774,7 +782,7 @@ def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
             stddev=to_float_or_none(gdal_band_stats.get("STATISTICS_STDDEV")),
             valid_percent=to_float_or_none(gdal_band_stats.get("STATISTICS_VALID_PERCENT")),
         )
-        raster_stats[band_name] = band_stats
+        raster_stats[band_name_out] = band_stats
 
     return raster_stats
 
@@ -827,10 +835,11 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
         if key.endswith("_NAME"):
             sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
+            band_name = sub_ds_uri.split(":")[-1]
             sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
             sub_datasets_proj[sub_ds_uri] = sub_ds_md
 
-            stats_info = _get_raster_statistics(sub_ds_gdal_info)
+            stats_info = _get_raster_statistics(sub_ds_gdal_info, band_name)
             logger.info(f"_process_gdalinfo_for_netcdf_subdatasets:: {stats_info=}")
             sub_datasets_stats[sub_ds_uri] = stats_info
 
@@ -853,6 +862,19 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     all_raster_stats = None
 
     # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
+    #
+    # We can only copy each band's stats if there are no duplicate bands across
+    # the subdatasets because you can not really merge statistics in a sensible way.
+    #
+    # FIX: https://github.com/Open-EO/openeo-geopyspark-driver/issues/432
+    # Previously we could not always find a band name. If the name was missing
+    # we had to use the band number converted to string, to have at least some name.
+    # However that was not always correct, in particular with netCDF files that
+    # contain multiple subdataset which each contain a single "nameless" band.
+    # In that case the duplicate bands all named "1" are not the same band at all.
+    #
+    # Turns out we can get the band name from the the subdataset's URI which is much more reliable
+    #
     if sorted(set(ds_band_names)) != sorted(ds_band_names):
         logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
     else:
