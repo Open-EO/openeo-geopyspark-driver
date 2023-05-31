@@ -45,16 +45,8 @@ def main():
         setup_batch_jobs()
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
-    backend_implementation = GeoPySparkBackendImplementation()
 
-    sentinel_hub_client_id = os.environ.get("OPENEO_SENTINELHUB_CLIENT_ID")
-    sentinel_hub_client_secret = os.environ.get("OPENEO_SENTINELHUB_CLIENT_SECRET")
-    if sentinel_hub_client_id and sentinel_hub_client_secret:
-        backend_implementation.set_default_sentinel_hub_credentials(client_id=sentinel_hub_client_id,
-                                                                    client_secret=sentinel_hub_client_secret)
-        log.info(f"enabled Sentinel Hub access for client ID {sentinel_hub_client_id}")
-
-    app = build_app(backend_implementation)
+    app = build_app(backend_implementation=GeoPySparkBackendImplementation())
     app.config.from_object(flask_config)
     app.config.from_mapping(
         # TODO: move this VITO/CreoDIAS specific description to CreoDIAS deploy repo.

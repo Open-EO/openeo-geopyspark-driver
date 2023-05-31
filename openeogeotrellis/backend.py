@@ -1330,7 +1330,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
-            self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
+            self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
         elif all(
             status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
         ):  # all done but some partially failed
@@ -1406,11 +1406,13 @@ class GpsBatchJobs(backend.BatchJobs):
             terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
             return self._vault.login_jwt(terrascope_access_token)
 
-        self._start_job(job_id, user.user_id, _get_vault_token)
+        self._start_job(job_id, user, _get_vault_token)
 
-    def _start_job(self, job_id: str, user_id: str, get_vault_token: Callable[[str], str],
+    def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
+
+        user_id = user.user_id
 
         with self._double_job_registry as dbl_registry:
             job_info = dbl_registry.get_job(job_id, user_id)
@@ -1633,8 +1635,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     logging_threshold=logging_threshold,
                     mount_tmp=mount_tmp,
                     use_pvc=use_pvc,
-                    sentinelhub_client_id_default=self._default_sentinel_hub_client_id,
-                    sentinelhub_client_secret_default=self._default_sentinel_hub_client_secret
+                    access_token=user.internal_auth_data.get("access_token") if user.internal_auth_data else None,
                 )
 
                 api_instance = kube_client()
