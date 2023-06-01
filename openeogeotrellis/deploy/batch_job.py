@@ -31,6 +31,7 @@ from openeo_driver.save_result import (
     SaveResult,
     NullResult,
     MlModelResult,
+    VectorCubeResult,
 )
 from openeo_driver.users import User
 from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
