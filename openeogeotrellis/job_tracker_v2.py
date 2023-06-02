@@ -231,8 +231,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
         self._kubecost_url = kubecost_url or "https://opencost.openeo-cdse-staging.vgt.vito.be"
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        job_status = self._get_job_status(app_id)
-        usage = self._get_usage(job_id, app_id)
+        job_status = self._get_job_status(app_id, job_id, user_id)
+        usage = self._get_usage(app_id, job_id, user_id)
         return _JobMetadata(
             app_state=job_status.app_state,
             status=job_status.status,
@@ -241,7 +241,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             usage=usage,
         )
 
-    def _get_job_status(self, application_id: str) -> _JobMetadata:
+    def _get_job_status(self, application_id: str, job_id: str, user_id: str) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
@@ -264,7 +264,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
             finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
         else:
-            _log.warning("No K8s app status found, assuming new app")
+            _log.warning("No K8s app status found, assuming new app", extra={"job_id": job_id, "user_id": user_id})
             app_state = K8S_SPARK_APP_STATE.NEW
             start_time = finish_time = None
 
@@ -273,7 +273,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             app_state=app_state, status=job_status, start_time=start_time, finish_time=finish_time
         )
 
-    def _get_usage(self, job_id: str, application_id: str) -> Union[_Usage, None]:
+    def _get_usage(self, application_id: str, job_id: str, user_id: str) -> Union[_Usage, None]:
         try:
             url = url_join(self._kubecost_url, "/api/allocation")
             namespace = ConfigParams().pod_namespace
@@ -300,14 +300,13 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             cost = total_cost["data"][0][namespace]
             # TODO: need to iterate through "data" list?
-            _log.info(f"Successfully retrieved total cost {cost}")
+            _log.info(f"Successfully retrieved total cost {cost}", extra={"job_id": job_id, "user_id": user_id})
             return _Usage(cpu_seconds=cost["cpuCoreHours"] * 60 * 60,
                           mb_seconds=cost["ramByteHours"] * 60 * 60 / (1024 * 1024))
-        except Exception:
-            _log.error(
-                f"Failed to retrieve usage stats from kubecost",
-                exc_info=True,
-                extra={"job_id": job_id},
+        except Exception as e:
+            _log.exception(
+                f"Failed to retrieve usage stats from kubecost: {type(e).__name__}: {e}",
+                extra={"job_id": job_id, "user_id": user_id},
             )
 
 
@@ -380,7 +379,8 @@ class JobTracker:
                             age = "unknown"
                         # TODO: handle very old, non-started jobs? E.g. mark as error?
                         _log.info(
-                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}"
+                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}",
+                            extra={"job_id": job_id, "user_id": user_id}
                         )
                         stats[f"skip due to no application_id ({status=})"] += 1
                         continue
@@ -599,8 +599,8 @@ class CliApp:
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
-                _log.error(e, exc_info=True)
-                raise e
+                _log.exception(f"Failed job tracker run: {type(e).__name__}: {e}")
+                raise
 
     def parse_cli_args(self, args: Optional[List[str]] = None) -> argparse.Namespace:
         parser = argparse.ArgumentParser(
