@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 import tempfile
 from mock import MagicMock
@@ -1449,6 +1450,49 @@ def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
             ],
         }
     )
+
+
+def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
+    """Test getting STAC metadata from a netcdf with multiple bands, stored in subdatasets."""
+    netcdf_path = get_test_data_file("binary/stac_proj_extension/netcdf/multiple_bands.nc")
+
+    raster_metadata: AssetRasterMetadata = read_gdal_raster_metadata(str(netcdf_path))
+
+    assert len(raster_metadata.statistics) == 13
+    expected_band_names = {
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B11",
+        "B12",
+        "DEM",
+        "temperature_mean",
+        "VH",
+        "VV",
+    }
+    assert set(raster_metadata.statistics.keys()) == expected_band_names
+    for band_name, band_stats in raster_metadata.statistics.items():
+        assert band_stats.minimum is not None
+        assert band_stats.maximum is not None
+        assert band_stats.mean is not None
+        assert band_stats.stddev is not None
+
+        # valid_percent can be None though. gdalinfo does not always give us a value for this.
+        if band_stats.valid_percent is None:
+            logging.warning(f"band:{band_name} has no value for valid_percent: {band_stats.valid_percent=}")
+
+    assert raster_metadata.projection == {
+        "proj:epsg": 4326,
+        # for some reason gdalinfo reports the bounds in the wrong order here.
+        # Would expect this:
+        # "proj:bbox": approx([0.0, 0.0, 3.0, 49.0]),
+        "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
+        "proj:shape": [49, 3],
+    }
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:

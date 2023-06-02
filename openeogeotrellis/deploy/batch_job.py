@@ -492,22 +492,13 @@ def _extract_asset_raster_metadata(
         )
         logger.debug(f"{asset_path=}, {asset_md=}")
 
-        #
-        # TODO: Skip assets that aren't images
-        #   For now I don't want to change the functionality,
-        #   only adding logging to find why the gdalinfo receives a relative path.
-        #   If the list of images formats is correct, then this code
-        #   block should do the trick, bet test coverage should be added.
-        #
-        # Skip assets that aren't images
-        # for example metadata with "type": "application/xml"
-        # mime_type_images = ["image/tiff", "image/png", "application/x-netcdf"]
-        # if mime_type and mime_type not in mime_type_images:
-        #     logger.info(
-        #         "_export_result_metadata: Asset file is not an image, "
-        #         f"it has {mime_type=}: {asset_path=}"
-        #     )
-        #     continue
+        # TODO: Skip assets that are clearly not images.
+        # This is only to avoid having chatty error logs with errors that are
+        # not useful. So when in doubt we just try the file, but when we know
+        # it makes no sense to try then we skip it.
+        if asset_path.endswith(".json"):
+            logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
+            continue
 
         # Won't assume the asset path is relative to the current working directory.
         # It should be relative to the job directory.
@@ -726,6 +717,8 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
+    if not crs_as_wkt:
+        crs_as_wkt = gdal_info.get("metadata", {}).get("GEOLOCATION", {}).get("SRS", {})
     if crs_as_wkt:
         crs_id = pyproj.CRS.from_wkt(crs_as_wkt).to_epsg()
         if crs_id:
@@ -859,7 +852,7 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
     logger.debug(f"{ds_band_names=}")
 
-    all_raster_stats = None
+    all_raster_stats = {}
 
     # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
     #
@@ -879,7 +872,6 @@ def _process_gdalinfo_for_netcdf_subdatasets(
         logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
     else:
         logger.info(f"There are no duplicate bands in {ds_band_names=}, Will use all bands' statistics in result.")
-        all_raster_stats = {}
         for bands in sub_datasets_stats.values():
             for band_name, stats in bands.items():
                 all_raster_stats[band_name] = stats
