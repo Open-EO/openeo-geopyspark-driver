@@ -232,13 +232,13 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         job_status = self._get_job_status(app_id, job_id, user_id)
-        #usage = self._get_usage(app_id, job_id, user_id)
+        usage = self._get_usage(app_id, job_id, user_id)
         return _JobMetadata(
             app_state=job_status.app_state,
             status=job_status.status,
             start_time=job_status.start_time,
             finish_time=job_status.finish_time,
-            usage={},
+            usage=usage,
         )
 
     def _get_job_status(self, application_id: str, job_id: str, user_id: str) -> _JobMetadata:
@@ -581,7 +581,7 @@ class CliApp:
                                                                     etl_api_credentials.client_secret, requests_session)
                     job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter()
+                    app_state_getter = K8sStatusGetter(kubecost_url="opencost.opencost.svc.cluster.local:9003")
                     etl_api_client_id = environ["OPENEO_ETL_OIDC_CLIENT_ID"]
                     etl_api_client_secret = environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
                     etl_api_access_token = get_etl_api_access_token(etl_api_client_id, etl_api_client_secret,
