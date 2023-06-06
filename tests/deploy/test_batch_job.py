@@ -1487,8 +1487,15 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
 
     assert raster_metadata.projection == {
         "proj:epsg": 4326,
-        # for some reason gdalinfo reports the bounds in the wrong order here.
-        # Would expect this:
+        # For some reason gdalinfo reports the bounds in the wrong order here.
+        # Upper Left corner is below Lower Left corner. CRS is EPSG:4326, X=lon, Y=lat.
+        #   Corner Coordinates:
+        #   Upper Left  (    0.0,    0.0)
+        #   Lower Left  (    0.0,    3.0)
+        #   Upper Right (   49.0,    0.0)
+        #   Lower Right (   49.0,    3.0)
+        #   Center      (   24.5,    1.5)
+        # Would expect this with normal :
         # "proj:bbox": approx([0.0, 0.0, 3.0, 49.0]),
         "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
         "proj:shape": [49, 3],

@@ -492,10 +492,9 @@ def _extract_asset_raster_metadata(
         )
         logger.debug(f"{asset_path=}, {asset_md=}")
 
-        # TODO: Skip assets that are clearly not images.
-        # This is only to avoid having chatty error logs with errors that are
-        # not useful. So when in doubt we just try the file, but when we know
-        # it makes no sense to try then we skip it.
+        # Skip assets that are clearly not images.
+        # This is only to avoid cluttering the error logs with errors that are
+        # not useful. So when in doubt we just try to read the file.
         if asset_path.endswith(".json"):
             logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
             continue
@@ -735,6 +734,9 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
         upri = corner_coords["upperRight"]
         proj_metadata["proj:bbox"] = [*lole, *upri]
 
+    # TODO: wgs84Extent gives us a polygon in lot-long directly, so it may be worth extracting.
+    #   However since wgs84Extent is a polygon it might not be what we want after all.
+
     return proj_metadata
 
 
@@ -761,7 +763,7 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
 
         # Provide a default band name just in case we could not find one:
         # the band number as a string.
-        # Band name really should have a value though.
+        # Band name really should have a value though. This is a last resort.
         bands_long_name = gdal_band_stats.get("long_name")
         band_name_out = band_name or bands_long_name or str(band_num)
 
@@ -854,20 +856,10 @@ def _process_gdalinfo_for_netcdf_subdatasets(
 
     all_raster_stats = {}
 
-    # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
-    #
     # We can only copy each band's stats if there are no duplicate bands across
-    # the subdatasets because you can not really merge statistics in a sensible way.
-    #
-    # FIX: https://github.com/Open-EO/openeo-geopyspark-driver/issues/432
-    # Previously we could not always find a band name. If the name was missing
-    # we had to use the band number converted to string, to have at least some name.
-    # However that was not always correct, in particular with netCDF files that
-    # contain multiple subdataset which each contain a single "nameless" band.
-    # In that case the duplicate bands all named "1" are not the same band at all.
-    #
-    # Turns out we can get the band name from the the subdataset's URI which is much more reliable
-    #
+    # the subdatasets. If we find duplicate bands there is likely a bug.
+    # Besides it is not obvious how we would need to merge statistics across
+    # subdatasets, if the bands occur multiple times.
     if sorted(set(ds_band_names)) != sorted(ds_band_names):
         logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
     else:
