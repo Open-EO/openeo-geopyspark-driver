@@ -492,22 +492,12 @@ def _extract_asset_raster_metadata(
         )
         logger.debug(f"{asset_path=}, {asset_md=}")
 
-        #
-        # TODO: Skip assets that aren't images
-        #   For now I don't want to change the functionality,
-        #   only adding logging to find why the gdalinfo receives a relative path.
-        #   If the list of images formats is correct, then this code
-        #   block should do the trick, bet test coverage should be added.
-        #
-        # Skip assets that aren't images
-        # for example metadata with "type": "application/xml"
-        # mime_type_images = ["image/tiff", "image/png", "application/x-netcdf"]
-        # if mime_type and mime_type not in mime_type_images:
-        #     logger.info(
-        #         "_export_result_metadata: Asset file is not an image, "
-        #         f"it has {mime_type=}: {asset_path=}"
-        #     )
-        #     continue
+        # Skip assets that are clearly not images.
+        # This is only to avoid cluttering the error logs with errors that are
+        # not useful. So when in doubt we just try to read the file.
+        if asset_path.endswith(".json"):
+            logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
+            continue
 
         # Won't assume the asset path is relative to the current working directory.
         # It should be relative to the job directory.
@@ -726,6 +716,8 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
+    if not crs_as_wkt:
+        crs_as_wkt = gdal_info.get("metadata", {}).get("GEOLOCATION", {}).get("SRS", {})
     if crs_as_wkt:
         crs_id = pyproj.CRS.from_wkt(crs_as_wkt).to_epsg()
         if crs_id:
@@ -742,13 +734,19 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
         upri = corner_coords["upperRight"]
         proj_metadata["proj:bbox"] = [*lole, *upri]
 
+    # TODO: wgs84Extent gives us a polygon in lot-long directly, so it may be worth extracting.
+    #   However since wgs84Extent is a polygon it might not be what we want after all.
+
     return proj_metadata
 
 
-def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
+def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None) -> RasterStatistics:
     """Helper function that parses gdal.Info output without processing subdatasets.
 
     :param gdal_info: Dictionary that contains the output from gdal.Info.
+    :band_name:
+        The band name extracted from a subdataset's name, if it was a subdataset.
+        If it is a regular file: None
 
     :return: TODO
     """
@@ -762,7 +760,12 @@ def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
         # Yes, the metadata from gdalinfo *does* contain a key that is
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
-        band_name = gdal_band_stats.get("long_name", str(band_num))
+
+        # Provide a default band name just in case we could not find one:
+        # the band number as a string.
+        # Band name really should have a value though. This is a last resort.
+        bands_long_name = gdal_band_stats.get("long_name")
+        band_name_out = band_name or bands_long_name or str(band_num)
 
         def to_float_or_none(x):
             return None if x is None else float(x)
@@ -774,7 +777,7 @@ def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
             stddev=to_float_or_none(gdal_band_stats.get("STATISTICS_STDDEV")),
             valid_percent=to_float_or_none(gdal_band_stats.get("STATISTICS_VALID_PERCENT")),
         )
-        raster_stats[band_name] = band_stats
+        raster_stats[band_name_out] = band_stats
 
     return raster_stats
 
@@ -827,10 +830,11 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
         if key.endswith("_NAME"):
             sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
+            band_name = sub_ds_uri.split(":")[-1]
             sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
             sub_datasets_proj[sub_ds_uri] = sub_ds_md
 
-            stats_info = _get_raster_statistics(sub_ds_gdal_info)
+            stats_info = _get_raster_statistics(sub_ds_gdal_info, band_name)
             logger.info(f"_process_gdalinfo_for_netcdf_subdatasets:: {stats_info=}")
             sub_datasets_stats[sub_ds_uri] = stats_info
 
@@ -850,14 +854,16 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
     logger.debug(f"{ds_band_names=}")
 
-    all_raster_stats = None
+    all_raster_stats = {}
 
-    # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
+    # We can only copy each band's stats if there are no duplicate bands across
+    # the subdatasets. If we find duplicate bands there is likely a bug.
+    # Besides it is not obvious how we would need to merge statistics across
+    # subdatasets, if the bands occur multiple times.
     if sorted(set(ds_band_names)) != sorted(ds_band_names):
         logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
     else:
         logger.info(f"There are no duplicate bands in {ds_band_names=}, Will use all bands' statistics in result.")
-        all_raster_stats = {}
         for bands in sub_datasets_stats.values():
             for band_name, stats in bands.items():
                 all_raster_stats[band_name] = stats
