@@ -1191,13 +1191,14 @@ def run_job(
                 "processing:facility": "openEO Geotrellis backend",
                 "processing:software": {
                     "Geotrellis backend": __version__
-                }
+                },
+                "processing:expression": [
+                    {
+                        "format": "openeo",
+                        "expression": pg_copy
+                    }]
             }],
-        result.options["file_metadata"]["processing:expression"] = [
-            {
-                "format": "openeo",
-                "expression": pg_copy
-            }]
+
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
                             unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
