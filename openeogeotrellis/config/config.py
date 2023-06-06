@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 import attrs
+import os
 
 from openeo_driver.config import OpenEoBackendConfig
 from openeo_driver.users.oidc import OidcProvider
@@ -22,3 +23,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # Temporary feature flag for preventing to run UDFs in driver process (https://github.com/Open-EO/openeo-geopyspark-driver/issues/404)
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False
+
+    logging_es_hosts = os.environ.get("LOGGING_ES_HOSTS","https://es-infra.vgt.vito.be")
+    logging_es_index_pattern = os.environ.get("LOGGING_ES_INDEX_PATTERN","openeo-*-index-1m*")
