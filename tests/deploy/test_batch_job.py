@@ -1453,7 +1453,11 @@ def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
 
 
 def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
-    """Test getting STAC metadata from a netcdf with multiple bands, stored in subdatasets."""
+    """Test getting STAC metadata from a netcdf with multiple bands, stored in subdatasets.
+
+    Regression test for https://github.com/Open-EO/openeo-geopyspark-driver/issues/432
+    using the file that caused the error.
+    """
     netcdf_path = get_test_data_file("binary/stac_proj_extension/netcdf/multiple_bands.nc")
 
     raster_metadata: AssetRasterMetadata = read_gdal_raster_metadata(str(netcdf_path))
@@ -1488,15 +1492,19 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
     assert raster_metadata.projection == {
         "proj:epsg": 4326,
         # For some reason gdalinfo reports the bounds in the wrong order here.
-        # Upper Left corner is below Lower Left corner. CRS is EPSG:4326, X=lon, Y=lat.
+        # Upper Left corner is BELOW Lower Left corner, which is unexpected.
+        # gdalinfo reports that CRS is EPSG:4326, X=lon, Y=lat.
+        #
+        # From gdalinfo:
         #   Corner Coordinates:
         #   Upper Left  (    0.0,    0.0)
         #   Lower Left  (    0.0,    3.0)
         #   Upper Right (   49.0,    0.0)
         #   Lower Right (   49.0,    3.0)
         #   Center      (   24.5,    1.5)
-        # Would expect this with normal :
-        # "proj:bbox": approx([0.0, 0.0, 3.0, 49.0]),
+        #
+        # Would expect this proj:bbox value with the normal order of the corners:
+        # "proj:bbox": approx([0.0, 0.0, 49.0, 3.O]),
         "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
         "proj:shape": [49, 3],
     }
