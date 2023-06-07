@@ -276,7 +276,7 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata["unique_process_ids"] = list(unique_process_ids)
     global_metadata = result.options.get("file_metadata",{})
     metadata["providers"] = global_metadata.get("providers",[])
-    metadata["processing:expression"] = global_metadata.get("processing:expression", {})
+
     metadata = {**metadata, **_get_tracker_metadata("")}
 
     if ml_model_metadata is not None:
@@ -1197,7 +1197,7 @@ def run_job(
                         "format": "openeo",
                         "expression": pg_copy
                     }]
-            }],
+            }]
 
 
     _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,

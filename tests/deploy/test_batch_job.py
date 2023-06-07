@@ -34,12 +34,15 @@ EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
                                                "result": True}},
                         "format": "openeo"}]
 
-EXPECTED_PROVIDERS = [[{'description': 'This data was processed on an openEO backend ' \
+EXPECTED_PROVIDERS = [{'description': 'This data was processed on an openEO backend ' \
                                'maintained by VITO.',
                 'name': 'VITO',
+                'processing:expression': [{'expression': {'nop': {'process_id': 'discard_result',
+                                                                   'result': True}},
+                                            'format': 'openeo'}],
                 'processing:facility': 'openEO Geotrellis backend',
                 'processing:software': {'Geotrellis backend': __version__},
-                'roles': ['processor']}]]
+                'roles': ['processor']}]
 from tests.data import get_test_data_file
 
 
@@ -349,9 +352,6 @@ def test_run_job(evaluate, tmp_path):
                                          {'href': 'http://myproduct1', 'rel': 'derived_from', 'title': 'Derived from http://myproduct1'},
                                          {'href': 'http://myproduct2', 'rel': 'derived_from', 'title': 'Derived from http://myproduct2'},
                                          {'href': 'http://myproduct3', 'rel': 'derived_from', 'title': 'Derived from http://myproduct3'}],
-                               'processing:expression': [{'expression': {'nop': {'process_id': 'discard_result',
-                                                                                 'result': True}},
-                                                          'format': 'openeo'}],
                                'processing:facility': 'VITO - SPARK',
                                'processing:software': 'openeo-geotrellis-' + __version__,
                                'start_datetime': None,
