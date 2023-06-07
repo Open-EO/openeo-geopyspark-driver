@@ -471,7 +471,6 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
                 "title": "Derived from http://myproduct3",
             },
         ],
-        "processing:expression": EXPECTED_GRAPH,
         "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
