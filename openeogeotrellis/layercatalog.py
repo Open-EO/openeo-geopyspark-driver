@@ -291,6 +291,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
 
         def file_s2_pyramid():
+            if collection_id == "TERRASCOPE_S2_TOC_V2":
+                datacubeParams.setNoResampleOnRead(True)
             def pyramid_factory(
                 opensearch_endpoint,
                 opensearch_collection_id,
