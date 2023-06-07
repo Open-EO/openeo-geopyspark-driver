@@ -279,7 +279,7 @@ class KubernetesAppInfo:
 class KubernetesMock:
     """Kubernetes cluster mock."""
 
-    def __init__(self, kubecost_url: str = "https://kubecost.test"):
+    def __init__(self, kubecost_url: str = "https://kubecost.test/api/allocation"):
         self.apps: Dict[str, KubernetesAppInfo] = {}
         self.kubecost_url = kubecost_url
         self.corrupt_app_ids = set()
@@ -332,7 +332,7 @@ class KubernetesMock:
 
             # Mock kubernetes usage API
             requests_mocker.get(
-                url_join(self.kubecost_url, "/api/allocation"),
+                self.kubecost_url,
                 json=get_model_allocation,
             )
 
@@ -997,7 +997,7 @@ class TestYarnStatusGetter:
 class TestK8sJobTracker:
     @pytest.fixture
     def kubecost_url(self):
-        return "https://kubecost.test/"
+        return "https://kubecost.test/api/allocation"
 
     @pytest.fixture
     def k8s_mock(self, kubecost_url) -> KubernetesMock:

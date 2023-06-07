@@ -228,7 +228,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def __init__(self, kubecost_url: Optional[str] = None):
         self._kubernetes_api = kube_client()
         # TODO: get this url from config?
-        self._kubecost_url = kubecost_url or "https://opencost.openeo-cdse-staging.vgt.vito.be"
+        self._kubecost_url = kubecost_url or "https://opencost.openeo-cdse-staging.vgt.vito.be/api/allocation"
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         job_status = self._get_job_status(app_id, job_id, user_id)
@@ -275,7 +275,6 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
     def _get_usage(self, application_id: str, job_id: str, user_id: str) -> Union[_Usage, None]:
         try:
-            url = url_join(self._kubecost_url, "/api/allocation")
             namespace = ConfigParams().pod_namespace
             window = "5d"
             pod = application_id + "*"
@@ -286,7 +285,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 ("window", window),
                 ("accumulate", "true"),
             )
-            response = requests.get(url, params=params)
+            response = requests.get(self._kubecost_url, params=params)
             response.raise_for_status()
             total_cost = response.json()
             if not (
@@ -581,7 +580,8 @@ class CliApp:
                                                                     etl_api_credentials.client_secret, requests_session)
                     job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(kubecost_url="opencost.opencost.svc.cluster.local:9003")
+                    app_state_getter = K8sStatusGetter(
+                        kubecost_url="http://opencost.opencost.svc.cluster.local:9003/allocation")
                     etl_api_client_id = environ["OPENEO_ETL_OIDC_CLIENT_ID"]
                     etl_api_client_secret = environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
                     etl_api_access_token = get_etl_api_access_token(etl_api_client_id, etl_api_client_secret,
