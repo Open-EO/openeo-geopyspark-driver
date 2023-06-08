@@ -1561,6 +1561,19 @@ class GpsBatchJobs(backend.BatchJobs):
                 from jinja2 import Environment, FileSystemLoader
                 from kubernetes.client.rest import ApiException
 
+                api_instance = kube_client()
+                pod_namespace = ConfigParams().pod_namespace
+                concurrent_pod_limit = ConfigParams().concurrent_pod_limit
+                label_selector = f"user={user_id}"
+                pods = api_instance.list_namespaced_pod(namespace = pod_namespace, label_selector = label_selector)
+                logger.debug(
+                    f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {len(pods.items)} "
+                    f"pods running for user {user_id}."
+                )
+                if concurrent_pod_limit != 0 and len(pods.items) >= concurrent_pod_limit:
+                    raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
+                        status_code = 400)
+
                 bucket = ConfigParams().s3_bucket_name
                 s3_instance = s3_client()
 
@@ -1594,7 +1607,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 ).from_string(open(jinja_path).read())
 
                 spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
-                pod_namespace = ConfigParams().pod_namespace
 
                 rendered = jinja_template.render(
                     job_name=spark_app_id,
@@ -1637,8 +1649,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     use_pvc=use_pvc,
                     access_token=user.internal_auth_data.get("access_token") if user.internal_auth_data else None,
                 )
-
-                api_instance = kube_client()
 
                 dict_ = yaml.safe_load(rendered)
 

@@ -46,6 +46,7 @@ class ConfigParams:
         # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         self.is_kube_deploy = env.get("KUBE", False)
         self.pod_namespace = env.get("POD_NAMESPACE", "spark-jobs")
+        self.concurrent_pod_limit = int(env.get("CONCURRENT_POD_LIMIT", 0))  # 0 means no limit.
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
