@@ -252,6 +252,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
         opensearch_endpoint = layer_source_info.get('opensearch_endpoint', ConfigParams().default_opensearch_endpoint)
         max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
+        if feature_flags.get("no_resample_on_read", False):
+            datacubeParams.setNoResampleOnRead(True)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
