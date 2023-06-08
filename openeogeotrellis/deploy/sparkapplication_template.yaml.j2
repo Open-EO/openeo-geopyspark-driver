@@ -5,6 +5,8 @@ metadata:
 {%- block metadata %}
   name: {{ job_name }}
   namespace: {{ job_namespace }}
+  labels:
+    user: {{ user_id }}
 {%- endblock %}
 spec:
 {%- block spec_options %}
