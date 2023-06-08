@@ -1565,7 +1565,10 @@ class GpsBatchJobs(backend.BatchJobs):
                 pod_namespace = ConfigParams().pod_namespace
                 concurrent_pod_limit = ConfigParams().concurrent_pod_limit
                 label_selector = f"user={user_id}"
-                pods = api_instance.list_namespaced_pod(namespace = pod_namespace, label_selector = label_selector)
+                pods = api_instance.list_namespaced_custom_object(
+                    "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                    label_selector = label_selector
+                )
                 logger.debug(
                     f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {len(pods.items)} "
                     f"pods running for user {user_id}."
