@@ -76,17 +76,13 @@ class EtlApi:
             'metrics': metrics
         }
 
-        log.debug(f"logging resource usage {data}")
+        log.debug(f"logging resource usage {data} at {self._endpoint}")
 
         with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:
                 log.warning(
-                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
-                    extra={
-                        'user_id': user_id,
-                        'job_id': batch_job_id
-                    })
+                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
 
             resp.raise_for_status()
 
@@ -121,17 +117,13 @@ class EtlApi:
             'area': {'value': square_meters, 'unit': 'square_meter'}
         }
 
-        log.debug(f"logging added value {data}")
+        log.debug(f"logging added value {data} at {self._endpoint}")
 
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:
-                _log.warning(
-                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
-                    extra={
-                        'user_id': user_id,
-                        'job_id': batch_job_id
-                    })
+                log.warning(
+                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
 
             resp.raise_for_status()
 
