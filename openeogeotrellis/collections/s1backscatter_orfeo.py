@@ -315,7 +315,7 @@ class S1BackscatterOrfeo:
             set_max_memory(int(max_total_memory_in_bytes))
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
-            arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
+            arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -330,7 +330,7 @@ class S1BackscatterOrfeo:
                     ortho_rect.Execute()
                     # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
-                    np.copyto(np.frombuffer(arr).reshape((extent_height_px, extent_width_px)), localdata)
+                    np.copyto(np.frombuffer(arr,dtype=np.float32).reshape((extent_height_px, extent_width_px)), localdata,casting="same_kind")
                 except RuntimeError as e:
                     error_counter.value += 1
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
@@ -583,7 +583,7 @@ class S1BackscatterOrfeo:
         tile_rdd = grouped.flatMap(orfeo_function)
         #tile_rdd = list(map(orfeo_function,local))
         if result_dtype:
-            layer_metadata_py.cell_type = result_dtype
+            layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
         tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
             layer_type=geopyspark.LayerType.SPACETIME,
@@ -938,7 +938,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
-            layer_metadata_py.cell_type = result_dtype
+            layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
         tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
             layer_type=geopyspark.LayerType.SPACETIME,
