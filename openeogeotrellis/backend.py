@@ -1563,6 +1563,20 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 api_instance = kube_client()
                 pod_namespace = ConfigParams().pod_namespace
+                concurrent_pod_limit = ConfigParams().concurrent_pod_limit
+                if concurrent_pod_limit != 0:
+                    label_selector = f"user={user_id}"
+                    pods = api_instance.list_namespaced_custom_object(
+                        "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                        label_selector = label_selector
+                    )
+                    logger.debug(
+                        f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {len(pods.items)} "
+                        f"pods running for user {user_id}."
+                    )
+                    if len(pods.items) >= concurrent_pod_limit:
+                        raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
+                            status_code = 400)
 
                 bucket = ConfigParams().s3_bucket_name
                 s3_instance = s3_client()
