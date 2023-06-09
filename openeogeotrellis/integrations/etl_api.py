@@ -28,6 +28,20 @@ class EtlApi:
         self._endpoint = endpoint
         self._session = requests_session or requests.Session()
 
+    def validate_access_token(self, access_token: str):
+        with self._session.get(f"{self._endpoint}/validate/auth",
+                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+            _log.debug(resp.text)
+            resp.raise_for_status()
+
+    def can_execute_request(self, access_token: str) -> bool:
+        with self._session.get(f"{self._endpoint}/user/permissions",
+                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+            _log.debug(resp.text)
+            resp.raise_for_status()
+
+            return resp.json()["execution"]
+
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
                            cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
@@ -142,3 +156,28 @@ def get_etl_api_access_token(client_id: str, client_secret: str, requests_sessio
         requests_session=requests_session,
     )
     return authenticator.get_tokens().access_token
+
+
+def check_resource_logging_possible():
+    import os
+
+    logging.basicConfig(level="DEBUG")
+
+    os.environ['OPENEO_ETL_API_OIDC_ISSUER'] = "https://cdasid.cloudferro.com/auth/realms/CDAS"
+    client_id = 'openeo-job-tracker'
+    client_secret = ...
+
+    requests_session = requests.Session()
+
+    access_token = get_etl_api_access_token(client_id, client_secret, requests_session)
+    print(access_token)
+
+    etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", requests_session)
+
+    etl_api.validate_access_token(access_token)
+    can_execute_request = etl_api.can_execute_request(access_token)
+    print(f"{can_execute_request=}")
+
+
+if __name__ == '__main__':
+    check_resource_logging_possible()
