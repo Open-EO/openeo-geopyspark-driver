@@ -350,7 +350,7 @@ class S1BackscatterOrfeo:
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
-            data = np.reshape(np.frombuffer(arr), (extent_height_px, extent_width_px))
+            data = np.reshape(np.frombuffer(arr,dtype=np.float32), (extent_height_px, extent_width_px))
 
             logger.info(
                 f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
