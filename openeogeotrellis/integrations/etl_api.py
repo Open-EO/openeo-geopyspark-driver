@@ -28,19 +28,19 @@ class EtlApi:
         self._endpoint = endpoint
         self._session = requests_session or requests.Session()
 
-    def validate_access_token(self, access_token: str):
+    def assert_access_token_valid(self, access_token: str):
+        # will work regardless of ability to log resources
+        with self._session.get(f"{self._endpoint}/user/permissions",
+                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+            _log.debug(resp.text)
+            resp.raise_for_status()  # value of "execution" is unrelated
+
+    def assert_can_log_resources(self, access_token: str):
+        # will also work if able to log resources
         with self._session.get(f"{self._endpoint}/validate/auth",
                                headers={'Authorization': f"Bearer {access_token}"}) as resp:
             _log.debug(resp.text)
             resp.raise_for_status()
-
-    def can_execute_request(self, access_token: str) -> bool:
-        with self._session.get(f"{self._endpoint}/user/permissions",
-                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
-            _log.debug(resp.text)
-            resp.raise_for_status()
-
-            return resp.json()["execution"]
 
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
@@ -158,7 +158,7 @@ def get_etl_api_access_token(client_id: str, client_secret: str, requests_sessio
     return authenticator.get_tokens().access_token
 
 
-def check_resource_logging_possible():
+def assert_resource_logging_possible():
     import os
 
     logging.basicConfig(level="DEBUG")
@@ -174,10 +174,9 @@ def check_resource_logging_possible():
 
     etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", requests_session)
 
-    etl_api.validate_access_token(access_token)
-    can_execute_request = etl_api.can_execute_request(access_token)
-    print(f"{can_execute_request=}")
+    etl_api.assert_access_token_valid(access_token)
+    etl_api.assert_can_log_resources(access_token)
 
 
 if __name__ == '__main__':
-    check_resource_logging_possible()
+    assert_resource_logging_possible()
