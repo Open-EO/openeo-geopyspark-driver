@@ -24,5 +24,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False
 
-    logging_es_hosts = os.environ.get("LOGGING_ES_HOSTS","https://es-infra.vgt.vito.be")
-    logging_es_index_pattern = os.environ.get("LOGGING_ES_INDEX_PATTERN","openeo-*-index-1m*")
+    # TODO: eliminate hardcoded VITO-specific defaults?
+    logging_es_hosts: str = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be")
+    logging_es_index_pattern: str = os.environ.get("LOGGING_ES_INDEX_PATTERN", "openeo-*-index-1m*")
+
+    vault_addr: Optional[str] = os.environ.get("VAULT_ADDR")
+
+    ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
+    ejr_backend_id: str = "unknown"
+    ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")

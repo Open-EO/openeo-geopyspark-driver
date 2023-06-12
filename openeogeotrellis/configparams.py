@@ -7,7 +7,7 @@ from openeo_driver.utils import smart_bool
 
 
 class ConfigParams:
-    # TODO: start using real config files instead of this thin wrapper around env vars?
+    # TODO: port all these params to GpsBackendConfig
     #       see https://github.com/Open-EO/openeo-geopyspark-driver/issues/285
 
     def __init__(self, env=os.environ):
@@ -67,6 +67,7 @@ class ConfigParams:
 
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
 
+        # TODO #399 Eliminate these old EJR related config params
         # TODO: We need a better system for determining "which backend deploy is this?"
         self.ejr_backend_id = (
             ("creodias" if self.is_kube_deploy else "mep") + "-" + self.openeo_env
