@@ -534,7 +534,10 @@ class TestYarnJobTracker:
         yarn_app.set_finished()
         json_write(
             path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
-            data={"foo": "bar"},
+            data={
+                "foo": "bar",
+                "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125}}
+            },
         )
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
@@ -542,7 +545,9 @@ class TestYarnJobTracker:
                 "status": "finished",
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?,
+                "foo": "bar",
                 "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": 32},
                     "memory": {"unit": "mb-seconds", "value": 1234},
                 },
@@ -1130,7 +1135,10 @@ class TestK8sJobTracker:
         kube_app.set_completed()
         json_write(
             path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
-            data={"foo": "bar"},
+            data={
+                "foo": "bar",
+                "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125}}
+            },
         )
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
@@ -1138,7 +1146,9 @@ class TestK8sJobTracker:
                 "status": "finished",
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
+                "foo": "bar",
                 "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                 },
