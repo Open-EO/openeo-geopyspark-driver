@@ -119,6 +119,15 @@ class TestDoubleJobRegistry:
             elastic_job_registry=memory_jr,
         )
 
+    def test_repr(self, double_jr):
+        assert repr(double_jr) == "<DoubleJobRegistry NoneType+InMemoryJobRegistry>"
+
+    def test_context_repr(self, double_jr, caplog):
+        caplog.set_level(logging.DEBUG)
+        with double_jr:
+            pass
+        assert "Context enter <DoubleJobRegistry ZkJobRegistry+InMemoryJobRegistry>" in caplog.text
+
     def test_create_job(self, double_jr, zk_client, memory_jr):
         with double_jr:
             double_jr.create_job(

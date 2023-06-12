@@ -598,10 +598,15 @@ class DoubleJobRegistry:
         # Synchronisation lock to make sure that only one thread at a time can use this as a context manager.
         self._lock = threading.RLock()
 
+    def __repr__(self):
+        return (
+            f"<{type(self).__name__} {type(self.zk_job_registry).__name__}+{type(self.elastic_job_registry).__name__}>"
+        )
+
     def __enter__(self):
-        self._log.debug(f"Context enter {self!r}")
         self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory()
+        self._log.debug(f"Context enter {self!r}")
         self.zk_job_registry.__enter__()
         return self
 
