@@ -65,19 +65,8 @@ class ConfigParams:
         self.etl_api = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
         self.etl_api_oidc_issuer = os.environ.get("OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope")
 
+        # TODO: this param is now also available in GpsBackendConfig
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
-
-        # TODO #399 Eliminate these old EJR related config params
-        # TODO: We need a better system for determining "which backend deploy is this?"
-        self.ejr_backend_id = (
-            ("creodias" if self.is_kube_deploy else "mep") + "-" + self.openeo_env
-        )
-        self.ejr_api = env.get("OPENEO_EJR_API", "https://jobregistry.openeo.vito.be")
-
-        self.ejr_credentials_vault_path = env.get(
-            "OPENEO_EJR_CREDENTIALS_VAULT_PATH",
-            "TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
-        )
 
         _persistent_worker_count = os.environ.get("PERSISTENT_WORKER_COUNT", "0")
         try:

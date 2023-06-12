@@ -6,6 +6,7 @@ from typing import NamedTuple, Optional
 import hvac
 import requests
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeo_driver.jobregistry import ElasticJobRegistryCredentials
 
@@ -95,15 +96,8 @@ class Vault:
         self, vault_token: Optional[str] = None
     ) -> ElasticJobRegistryCredentials:
         client = self._client(token=vault_token or self.login_kerberos())
-
         secret = client.secrets.kv.v2.read_secret_version(
-            ConfigParams().ejr_credentials_vault_path,
+            get_backend_config().ejr_credentials_vault_path,
             mount_point="kv",
         )
-
-        data = secret["data"]["data"]
-        return ElasticJobRegistryCredentials(
-            oidc_issuer=data["oidc_issuer"],
-            client_id=data["client_id"],
-            client_secret=data["client_secret"],
-        )
+        return ElasticJobRegistryCredentials.from_mapping(secret["data"]["data"])

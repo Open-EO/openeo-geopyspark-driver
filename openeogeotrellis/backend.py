@@ -54,9 +54,19 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
-                                  ServiceUnsupportedException)
-from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
+from openeo_driver.errors import (
+    JobNotFinishedException,
+    OpenEOApiException,
+    InternalException,
+    ServiceUnsupportedException,
+)
+from openeo_driver.jobregistry import (
+    ElasticJobRegistry,
+    JOB_STATUS,
+    DEPENDENCY_STATUS,
+    ElasticJobRegistryCredentials,
+    EjrError,
+)
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -1084,16 +1094,20 @@ class GpsProcessing(ConcreteProcessing):
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
 ) -> Optional[ElasticJobRegistry]:
-    """Build ElasticJobRegistry instance from config and vault"""
+    """Build ElasticJobRegistry instance from config"""
     with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
-        config = ConfigParams()
+        config = get_backend_config()
         job_registry = ElasticJobRegistry(
             api_url=config.ejr_api,
             backend_id=config.ejr_backend_id,
             session=requests_session,
         )
-        vault = Vault(config.vault_addr, requests_session=requests_session)
-        ejr_creds = vault.get_elastic_job_registry_credentials()
+        # Get credentials from env (preferably) or vault (as fallback).
+        ejr_creds = ElasticJobRegistryCredentials.from_env(strict=False)
+        if not ejr_creds:
+            # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
+            vault = Vault(config.vault_addr, requests_session=requests_session)
+            ejr_creds = vault.get_elastic_job_registry_credentials()
         job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
         job_registry.health_check(log=True)
         return job_registry
