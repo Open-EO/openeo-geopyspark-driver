@@ -1580,16 +1580,24 @@ class GpsBatchJobs(backend.BatchJobs):
                 concurrent_pod_limit = ConfigParams().concurrent_pod_limit
                 if concurrent_pod_limit != 0:
                     label_selector = f"user={user_id}"
-                    result = api_instance.list_namespaced_custom_object(
-                        "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                        label_selector = label_selector
-                    )
-                    spark_apps = result['items']
+                    try:
+                        result = api_instance.list_namespaced_custom_object(
+                            "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                            label_selector = label_selector
+                        )
+                    except ApiException as e:
+                        logger.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e, extra={'job_id': job_id})
+                        result = {'items': []}
+
+                    running_count = 0
+                    for app in result['items']:
+                        if app['status']['applicationState']['state'] == 'RUNNING':
+                            running_count += 1
                     logger.debug(
-                        f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {len(spark_apps)} "
+                        f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
                         f"pods running for user {user_id}."
                     )
-                    if len(spark_apps) >= concurrent_pod_limit:
+                    if running_count >= concurrent_pod_limit:
                         raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
                             status_code = 400)
 
