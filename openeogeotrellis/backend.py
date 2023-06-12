@@ -412,11 +412,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         etl_api_client_id = etl_api_credentials.client_id
                         etl_api_client_secret = etl_api_credentials.client_secret
 
+                    source_id = get_backend_config().etl_source_id
+                    etl_api = EtlApi(ConfigParams().etl_api, source_id, requests_session)
+
                     access_token = get_etl_api_access_token(client_id=etl_api_client_id,
                                                             client_secret=etl_api_client_secret,
                                                             requests_session=requests_session)
-
-                    etl_api = EtlApi(ConfigParams().etl_api, requests_session)
 
                     costs = etl_api.log_resource_usage(batch_job_id=request_id,
                                                        title=None,

@@ -6,7 +6,6 @@ from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCr
 
 from openeogeotrellis.configparams import ConfigParams
 
-SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
 
 _log = logging.getLogger(__name__)
@@ -24,8 +23,9 @@ class ETL_API_STATE:
 
 
 class EtlApi:
-    def __init__(self, endpoint: str, requests_session: Optional[requests.Session] = None):
+    def __init__(self, endpoint: str, source_id: str, requests_session: Optional[requests.Session] = None):
         self._endpoint = endpoint
+        self._source_id = source_id
         self._session = requests_session or requests.Session()
 
     def assert_access_token_valid(self, access_token: str):
@@ -67,7 +67,7 @@ class EtlApi:
             'jobName': title,
             'executionId': execution_id,
             'userId': user_id,
-            'sourceId': SOURCE_ID,
+            'sourceId': self._source_id,
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
@@ -109,7 +109,7 @@ class EtlApi:
             'jobName': title,
             'executionId': execution_id,
             'userId': user_id,
-            'sourceId': SOURCE_ID,
+            'sourceId': self._source_id,
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
@@ -164,7 +164,8 @@ def assert_resource_logging_possible():
     access_token = get_etl_api_access_token(client_id, client_secret, requests_session)
     print(access_token)
 
-    etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", requests_session)
+    etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", source_id="cdse",
+                     requests_session=requests_session)
 
     etl_api.assert_access_token_valid(access_token)
     etl_api.assert_can_log_resources(access_token)

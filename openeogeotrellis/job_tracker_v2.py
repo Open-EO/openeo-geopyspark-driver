@@ -16,6 +16,8 @@ from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 
+from openeogeotrellis.config import get_backend_config
+
 # We only need requests_gssapi for Yarn, which uses Kerberos authentication.
 try:
     import requests_gssapi
@@ -566,7 +568,8 @@ class CliApp:
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
-                etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+                etl_api = EtlApi(ConfigParams().etl_api, source_id=get_backend_config().etl_source_id,
+                                 requests_session=requests_session)
 
                 # Elastic Job Registry (EJR)
                 elastic_job_registry = get_elastic_job_registry(requests_session)

@@ -22,6 +22,8 @@ from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
@@ -426,7 +428,8 @@ def main():
                 requests_session)
 
         elastic_job_registry = get_elastic_job_registry(requests_session)
-        etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+        etl_api = EtlApi(ConfigParams().etl_api, source_id=get_backend_config().etl_source_id,
+                         requests_session=requests_session)
 
         job_tracker = JobTracker(
             job_registry=ZkJobRegistry,
