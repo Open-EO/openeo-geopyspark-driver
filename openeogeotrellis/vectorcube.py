@@ -12,6 +12,7 @@ from openeo.util import TimingLogger
 from openeo_driver.datacube import SupportsRunUdf
 from openeo_driver.save_result import AggregatePolygonResultCSV, JSONResult
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.udf import extract_udf_functions, wrap_udf_code
 from openeogeotrellis.utils import temp_csv_dir
 
 _log = logging.getLogger(__name__)
@@ -26,10 +27,10 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
     # TODO: eliminate/simplify SaveResult class hierarchy instead of adding to it (https://github.com/Open-EO/openeo-python-driver/issues/149)
     # TODO: Move loading from CSV to a factory class method and allow creating an instance from something else too (inline data, netcdf, ...)
 
-    def supports_udf(self, udf: str, runtime:str="Python") -> bool:
-        udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
+    def supports_udf(self, udf: str, runtime: str = "Python") -> bool:
+        udf_functions = {f.name for f in extract_udf_functions(udf)}
         return any(
-            name in udf_globals
+            name in udf_functions
             for name in [
                 "udf_apply_udf_data",
                 "udf_apply_feature_dataframe",
@@ -38,16 +39,22 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
     def run_udf(self, udf: str, *, runtime: str = "Python", context: Optional[dict] = None, env: EvalEnv):
         # TODO: leverage `runtime` argument?
-        udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
+        # TODO: encapsulate this udf handling better
+        udf = wrap_udf_code(udf)
+        udf_functions = {f.name for f in extract_udf_functions(udf)}
 
         # TODO: Port this UDF detection to openeo.udf.run_code?
-        if "udf_apply_udf_data" in udf_globals:
-            udf_function = udf_globals["udf_apply_udf_data"]
+        if "udf_apply_udf_data" in udf_functions:
+
+            def udf_function(udf_data: openeo.udf.UdfData):
+                return openeo.udf.run_code.load_module_from_string(code=udf)["udf_apply_udf_data"](udf_data)
             callback = self._get_run_udf_udf_data_callback(
                 udf_function=udf_function, context=context
             )
-        elif "udf_apply_feature_dataframe" in udf_globals:
-            udf_function = udf_globals["udf_apply_feature_dataframe"]
+        elif "udf_apply_feature_dataframe" in udf_functions:
+
+            def udf_function(udf_data: openeo.udf.UdfData):
+                return openeo.udf.run_code.load_module_from_string(code=udf)["udf_apply_feature_dataframe"](udf_data)
             callback = self._get_run_udf_pandas_callback(
                 udf_function=udf_function, context=context
             )
