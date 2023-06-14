@@ -318,6 +318,7 @@ class KubernetesMock:
                         namespace: {
                             "cpuCoreHours": 2.34,
                             "ramByteHours": 5.678 * 1024 * 1024,
+                            "networkReceiveBytes": 370841160371254.75
                         }
                     }
                 ],
@@ -1151,6 +1152,7 @@ class TestK8sJobTracker:
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
+                    "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)}
                 },
                 "costs": 129.95
             }
