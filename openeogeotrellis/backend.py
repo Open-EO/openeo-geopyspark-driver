@@ -48,8 +48,14 @@ from openeo.util import (
 )
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
-from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog)
+from openeo_driver.backend import (
+    ServiceMetadata,
+    BatchJobMetadata,
+    BatchJobResultMetadata,
+    OidcProvider,
+    ErrorSummary,
+    LoadParameters,
+)
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -2338,6 +2344,8 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
+    # TODO: Maybe rename this method because openeo_driver.backend.BatchJobs has a method with almost
+    #   the same name and a different purpose. Maybe load_results_metadata ?
     def get_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
@@ -2362,6 +2370,25 @@ class GpsBatchJobs(backend.BatchJobs):
                            extra={'job_id': job_id})
 
         return {}
+
+    # TODO: should we override the get_result_metadata here? The parents's implementation does very little work.
+    def get_result_metadata(self, job_id: str, user_id: str) -> BatchJobResultMetadata:
+        """
+        Get job result metadata
+
+        https://openeo.org/documentation/1.0/developers/api/reference.html#tag/Batch-Jobs/operation/list-results
+        """
+        # Default implementation, based on existing components
+        results_metadata = self.get_results_metadata(job_id, user_id)
+        providers = results_metadata.get("providers", [])
+
+        return BatchJobResultMetadata(
+            assets=self.get_result_assets(job_id=job_id, user_id=user_id),
+            # For now, might leave links for the openeo_driver (views.py)
+            links=[],
+            # certainly need to fill in providers
+            providers=providers,
+        )
 
     def get_log_entries(
         self,
