@@ -34,5 +34,4 @@ class GpsBackendConfig(OpenEoBackendConfig):
     ejr_backend_id: str = "unknown"
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
 
-    # TODO: how to define non-default config settings? ~ ejr_api: Optional[str] but is effectively non-optional
     etl_source_id: str = "TerraScope/MEP"
