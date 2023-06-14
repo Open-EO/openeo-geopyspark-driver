@@ -1003,7 +1003,7 @@ class GeopysparkDataCube(DriverDataCube):
             gps.get_spark_context()
             ._jvm.org.openeo.geotrellis.OpenEOProcesses()
             .toSclDilationMask(
-                self.pyramid.levels[self.get_max_level().level_id].srdd.rdd(),
+                self.get_max_level().srdd.rdd(),
                 erosion_kernel_size,
                 mask1_values,
                 mask2_values,
