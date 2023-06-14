@@ -2270,7 +2270,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self.get_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2346,7 +2346,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     # TODO: Maybe rename this method because openeo_driver.backend.BatchJobs has a method with almost
     #   the same name and a different purpose. Maybe load_results_metadata ?
-    def get_results_metadata(self, job_id: str, user_id: str) -> dict:
+    def load_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
         """
@@ -2379,7 +2379,7 @@ class GpsBatchJobs(backend.BatchJobs):
         https://openeo.org/documentation/1.0/developers/api/reference.html#tag/Batch-Jobs/operation/list-results
         """
         # Default implementation, based on existing components
-        results_metadata = self.get_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id)
         providers = results_metadata.get("providers", [])
 
         return BatchJobResultMetadata(

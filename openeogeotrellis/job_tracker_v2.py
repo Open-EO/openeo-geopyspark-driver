@@ -328,7 +328,7 @@ class JobTracker:
         self._keytab = keytab
         self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
-        #       Also note that only `get_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actuall be overkill in the first place.
+        #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.
         self._batch_jobs = GpsBatchJobs(
             catalog=None,
             jvm=None,
@@ -458,7 +458,7 @@ class JobTracker:
             JOB_STATUS.CANCELED,
         }:
             stats[f"reached final status {job_metadata.status}"] += 1
-            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+            result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
             zk_job_registry.remove_dependencies(job_id, user_id)
 
