@@ -999,11 +999,10 @@ class GeopysparkDataCube(DriverDataCube):
         kernel1_size: int,
         kernel2_size: int,
     ) -> "GeopysparkDataCube":
-        return (
-            gps.get_spark_context()
-            ._jvm.org.openeo.geotrellis.OpenEOProcesses()
-            .toSclDilationMask(
-                self.get_max_level().srdd.rdd(),
+        toMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().toSclDilationMask
+        return self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: toMask(
+                rdd,
                 erosion_kernel_size,
                 mask1_values,
                 mask2_values,
