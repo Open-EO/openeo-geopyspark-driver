@@ -25,7 +25,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     allow_run_udf_in_driver: bool = False
 
     # TODO: eliminate hardcoded VITO-specific defaults?
-    logging_es_hosts: str = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
+    logging_es_hosts: [str] = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
     logging_es_index_pattern: str = os.environ.get("LOGGING_ES_INDEX_PATTERN", "openeo-*-index-1m*")
 
     vault_addr: Optional[str] = os.environ.get("VAULT_ADDR")
