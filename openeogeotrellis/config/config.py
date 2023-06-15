@@ -7,7 +7,7 @@ from openeo_driver.config import OpenEoBackendConfig
 from openeo_driver.users.oidc import OidcProvider
 
 
-@attrs.frozen
+@attrs.frozen(kw_only=True)
 class GpsBackendConfig(OpenEoBackendConfig):
     """
     Configuration for GeoPySpark backend.
