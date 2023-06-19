@@ -338,6 +338,9 @@ spec:
       - 'local:///opt/openeo-logging-static.jar'
     files:
       - 'local:///opt/layercatalog.json'
+      {%- for line in py_files %}
+      - {{ line -}}
+      {% endfor %}
 {%- endblock %}
   monitoring:
 {%- block monitoring %}

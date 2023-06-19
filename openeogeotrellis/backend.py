@@ -1554,6 +1554,7 @@ class GpsBatchJobs(backend.BatchJobs):
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
             archives = ",".join(job_options.get("udf-dependency-archives", []))
+            py_files = job_options.get("udf-dependency-files", [])
             use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
             use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
@@ -1682,6 +1683,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     eodata_mount=eodata_mount,
                     datashim=os.environ.get("DATASHIM", ""),
                     archives=archives,
+                    py_files = py_files,
                     logging_threshold=logging_threshold,
                     mount_tmp=mount_tmp,
                     use_pvc=use_pvc,
@@ -1723,6 +1725,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
                     submit_script = 'submit_batch_job_spark3.sh'
                 script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
+
+                extra_py_files=""
+                if len(py_files)>0:
+                    extra_py_files = "," + py_files.join(",")
+
+
 
                 # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
                 with tempfile.NamedTemporaryFile(
@@ -1780,7 +1788,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(queue)
                     args.append(profile)
                     args.append(serialize_dependencies())
-                    args.append(self.get_submit_py_files())
+                    args.append(self.get_submit_py_files()+extra_py_files)
                     args.append(max_executors)
                     args.append(user_id)
                     args.append(job_id)
