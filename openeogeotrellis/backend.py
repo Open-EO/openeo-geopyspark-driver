@@ -2371,24 +2371,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return {}
 
-    # TODO: should we override the get_result_metadata here? The parents's implementation does very little work.
-    def get_result_metadata(self, job_id: str, user_id: str) -> BatchJobResultMetadata:
-        """
-        Get job result metadata
-
-        https://openeo.org/documentation/1.0/developers/api/reference.html#tag/Batch-Jobs/operation/list-results
-        """
-        # Default implementation, based on existing components
+    def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
         results_metadata = self.load_results_metadata(job_id, user_id)
-        providers = results_metadata.get("providers", [])
-
-        return BatchJobResultMetadata(
-            assets=self.get_result_assets(job_id=job_id, user_id=user_id),
-            # For now, might leave links for the openeo_driver (views.py)
-            links=[],
-            # certainly need to fill in providers
-            providers=providers,
-        )
+        return results_metadata.get("providers", [])
 
     def get_log_entries(
         self,
