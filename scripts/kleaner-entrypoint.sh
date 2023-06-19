@@ -29,9 +29,6 @@ export KUBE="true"
 
 classpath="/opt/geotrellis-extensions-static.jar:$(find "$SPARK_HOME/jars" -name '*.jar' | tr '\n' ':')"
 
-# TODO: drop --user
-# TODO: fix/drop --min-age
 /opt/venv/bin/python -m openeogeotrellis.cleaner \
 --py4j-classpath "$classpath" \
---user df7ea45d-ecc4-453f-8af9-de8cfb1058b1 \
---min-age 7
+--min-age 90
