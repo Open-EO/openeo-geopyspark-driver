@@ -6,18 +6,22 @@ import logging
 import os
 import sys
 from glob import glob
+from pathlib import Path
 
+import openeo_driver.config.load
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+
 from openeogeotrellis.deploy import flask_config
 
 _log = logging.getLogger(__name__)
 
 
 def setup_local_spark(additional_jar_dirs=[]):
-    from pyspark import find_spark_home, SparkContext
+    # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
+    from pyspark import SparkContext, find_spark_home
 
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
@@ -75,14 +79,18 @@ if __name__ == '__main__':
 
     setup_local_spark()
 
+    os.environ.setdefault(
+        openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
+        str(Path(__file__).parent / "local_config.py"),
+    )
+
+    # Note: local import is necessary because `openeogeotrellis.backend` requires `SPARK_HOME` env var
+    # which we want to set up just in time
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
-    app = build_app(backend_implementation=GeoPySparkBackendImplementation())
+    app = build_app(backend_implementation=GeoPySparkBackendImplementation(use_zookeeper=False))
+    # TODO: avoid need for `.from_object(flask_config)`? Automatically handle this from OpenEoBackendConfig? (Open-EO/openeo-python-driver#204)
     app.config.from_object(flask_config)
-    app.config.from_mapping(
-        OPENEO_TITLE="Local GeoPySpark",
-        OPENEO_DESCRIPTION="Local openEO API using GeoPySpark driver",
-    )
 
     show_log_level(logging.getLogger('openeo'))
     show_log_level(logging.getLogger('openeo_driver'))

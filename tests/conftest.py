@@ -35,6 +35,9 @@ def pytest_configure(config):
     """Pytest configuration hook"""
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
 
+    # Load test GpsBackendConfig by default
+    os.environ["OPENEO_BACKEND_CONFIG"] = str(Path(__file__).parent / "backend_config.py")
+
     # TODO #285 we need a better config system, e.g. to avoid monkeypatching `os.environ` here
     os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
     os.environ["VAULT_ADDR"] = "https://vault.test"

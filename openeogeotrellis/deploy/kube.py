@@ -47,9 +47,10 @@ def main():
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     app = build_app(backend_implementation=GeoPySparkBackendImplementation())
+    # TODO avoid need for `.from_object(flask_config)`? Automatically handle this from OpenEoBackendConfig? (Open-EO/openeo-python-driver#204)
     app.config.from_object(flask_config)
     app.config.from_mapping(
-        # TODO: move this VITO/CreoDIAS specific description to CreoDIAS deploy repo.
+        # TODO: move this VITO/CreoDIAS specific description to CreoDIAS config repo. (eu-cdse/openeo-cdse-infra#18)
         OPENEO_DESCRIPTION="""
             [UNSTABLE] OpenEO API running on CreoDIAS (using GeoPySpark driver). This endpoint runs openEO on a Kubernetes cluster.
             The main component can be found here: https://github.com/Open-EO/openeo-geopyspark-driver
@@ -62,12 +63,7 @@ def main():
                 "openeo",
                 "openeo_driver",
                 "openeo-geopyspark",
-                "openeo_udf",
                 "geopyspark",
-                "cropsar",
-                "nextland_services",
-                "biopar",
-                "cropsar_px",
             ]
         ),
         SIGNED_URL=True,
