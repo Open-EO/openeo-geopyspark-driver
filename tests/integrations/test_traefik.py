@@ -1,13 +1,17 @@
 from unittest import mock
 
-from openeogeotrellis.traefik import Traefik
+from openeogeotrellis.integrations.traefik import Traefik
 
 
 def test_add_load_balanced_server():
     zk = mock.Mock()
     Traefik(zk=zk).add_load_balanced_server(
-        cluster_id="openeo-test", server_id="openeo-test-01", host="10.0.0.0", port=123,
-        rule="Host(`openeo-test.vito.be`)", health_check="/openeo/1.0/health?mode=jvm&from=TraefikLoadBalancer"
+        cluster_id="openeo-test",
+        server_id="openeo-test-01",
+        host="10.0.0.0",
+        port=123,
+        rule="Host(`openeo-test.vito.be`)",
+        health_check="/openeo/1.0/health?mode=jvm&from=TraefikLoadBalancer",
     )
     zk_sets = {c.args[0]: c.args[1] for c in zk.set.mock_calls}
     assert zk_sets == {

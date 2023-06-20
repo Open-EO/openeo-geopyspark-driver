@@ -8,7 +8,6 @@ _log = logging.getLogger(__name__)
 
 
 class Traefik:
-
     def __init__(self, zk: KazooClient, prefix: str = "traefik"):
         self._zk = zk
         self._prefix = prefix
@@ -34,7 +33,7 @@ class Traefik:
         path_prefixes = [f"`{path_prefix}`" for path_prefix in regexes]
         match_specific_service = f"PathPrefix({','.join(path_prefixes)})"
 
-        self._create_tservice_server(tservice_id=tservice_id, server_id='server1', host=host, port=port)
+        self._create_tservice_server(tservice_id=tservice_id, server_id="server1", host=host, port=port)
         self._create_middleware_strip_prefix_regexes(middleware_id, *regexes)
         self._create_router_rule(router_id, tservice_id, match_specific_service, priority, middleware_id)
 

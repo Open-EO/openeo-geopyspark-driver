@@ -13,7 +13,7 @@ from kazoo.client import KazooClient
 
 from openeo_driver.server import build_backend_deploy_metadata
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.traefik import Traefik
+from openeogeotrellis.integrations.traefik import Traefik
 
 _log = logging.getLogger(__name__)
 
