@@ -1,6 +1,5 @@
 import importlib
 import logging
-import os
 import re
 import socket
 import sys
@@ -9,11 +8,8 @@ from os import PathLike
 from pathlib import Path
 from typing import Dict, Iterable, List
 
-from kazoo.client import KazooClient
-
 from openeo_driver.server import build_backend_deploy_metadata
-from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.integrations.traefik import Traefik
+
 
 _log = logging.getLogger(__name__)
 
@@ -37,24 +33,6 @@ def get_socket() -> (str, int):
         _, port = tcp.getsockname()
 
     return local_ip, port
-
-
-def update_zookeeper(cluster_id: str, rule: str, host: str, port: int, health_check: str = None) -> None:
-    server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
-
-    zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
-    zk.start()
-    try:
-        Traefik(zk).add_load_balanced_server(
-            cluster_id=cluster_id,
-            server_id=server_id,
-            host=host, port=port,
-            rule=rule,
-            health_check=health_check
-        )
-    finally:
-        zk.stop()
-        zk.close()
 
 
 def get_jar_version_info(path: PathLike, na_value="n/a") -> str:

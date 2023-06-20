@@ -1,8 +1,11 @@
 import logging
+import os
 import uuid
 
 from kazoo.client import KazooClient
 from typing import Optional
+
+from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
 
@@ -143,3 +146,19 @@ class Traefik:
 
     def _middleware_key(self, middleware_id):
         return f"/{self._prefix}/http/middlewares/{middleware_id}"
+
+
+def update_zookeeper(cluster_id: str, rule: str, host: str, port: int, health_check: str = None) -> None:
+    # TODO: get this from GpsBackendConfig instead
+    server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
+
+    # TODO: get this from GpsBackendConfig instead
+    zk = KazooClient(hosts=",".join(ConfigParams().zookeepernodes))
+    zk.start()
+    try:
+        Traefik(zk).add_load_balanced_server(
+            cluster_id=cluster_id, server_id=server_id, host=host, port=port, rule=rule, health_check=health_check
+        )
+    finally:
+        zk.stop()
+        zk.close()
