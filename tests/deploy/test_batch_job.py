@@ -1488,6 +1488,8 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
     assert raster_metadata.projection == {
         "proj:epsg": 4326,
         # For some reason gdalinfo reports the bounds in the wrong order here.
+        # I think the reason might be that the pixels are south-up instead of
+        # north-up, i.e. the scale for the Y-axis of the pixel is negative.
         # Upper Left corner is BELOW Lower Left corner, which is unexpected.
         # gdalinfo reports that CRS is EPSG:4326, X=lon, Y=lat.
         #
@@ -1504,6 +1506,48 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
         "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
         "proj:shape": [49, 3],
     }
+
+
+def test_read_gdal_raster_metadata_from_multiband_tif_file():
+    multiband_tif_path = get_test_data_file("binary/stac_proj_extension/tif/multiband_geotiff.tif")
+
+    raster_metadata = read_gdal_raster_metadata(str(multiband_tif_path))
+
+    # Do some basic checks before we dig deeper.
+    assert raster_metadata.projection is not None
+    assert raster_metadata.statistics is not None
+
+    # TODO: get the correct band names into multiband_geotiff.tif.
+    #   Perhaps keep separate copies with and without bandnames to cover both cases.
+    # assert set(raster_metadata.statistics.keys()) == {"VV", "VH"}
+
+    # values for multiband_geotiff.tif: pixels of original file have been
+    # replaced with 1.0 and 2.0 for band 1and 2 respectively.
+    assert raster_metadata.to_dict() == DictSubSet(
+        {
+            "proj:epsg": 32631,
+            "proj:bbox": approx([471270.000, 5657500.000, 492670.000, 5674440.000]),
+            "proj:shape": [2140, 1694],
+            "raster:bands": [
+                DictSubSet(
+                    {
+                        "name": "1",
+                        "statistics": DictSubSet(
+                            {"minimum": 1.0, "maximum": 1.0, "mean": 1.0, "stddev": 0.0, "valid_percent": 100.0}
+                        ),
+                    }
+                ),
+                DictSubSet(
+                    {
+                        "name": "2",
+                        "statistics": DictSubSet(
+                            {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0}
+                        ),
+                    }
+                ),
+            ],
+        }
+    )
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:

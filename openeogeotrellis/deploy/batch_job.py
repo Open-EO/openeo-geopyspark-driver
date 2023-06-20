@@ -760,12 +760,9 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         # Yes, the metadata from gdalinfo *does* contain a key that is
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
-
-        # Provide a default band name just in case we could not find one:
-        # the band number as a string.
-        # Band name really should have a value though. This is a last resort.
-        bands_long_name = gdal_band_stats.get("long_name")
-        band_name_out = band_name or bands_long_name or str(band_num)
+        band_name_out = (
+            band_name or gdal_band_stats.get("long_name") or gdal_band_stats.get("DESCRIPTION") or str(band_num)
+        )
 
         def to_float_or_none(x):
             return None if x is None else float(x)
