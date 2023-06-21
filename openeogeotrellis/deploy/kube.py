@@ -50,22 +50,6 @@ def main():
     # TODO avoid need for `.from_object(flask_config)`? Automatically handle this from OpenEoBackendConfig? (Open-EO/openeo-python-driver#204)
     app.config.from_object(flask_config)
     app.config.from_mapping(
-        # TODO: move this VITO/CreoDIAS specific description to CreoDIAS config repo. (eu-cdse/openeo-cdse-infra#18)
-        OPENEO_DESCRIPTION="""
-            [UNSTABLE] OpenEO API running on CreoDIAS (using GeoPySpark driver). This endpoint runs openEO on a Kubernetes cluster.
-            The main component can be found here: https://github.com/Open-EO/openeo-geopyspark-driver
-            The deployment is configured using Terraform and Kubernetes configs: https://github.com/Open-EO/openeo-geotrellis-kubernetes
-            Data is read directly from the CreoDIAS data offer through object storage. Processing is limited by the processing
-            capacity of the Kubernetes cluster running on DIAS. Contact VITO for experiments with higher resource needs.
-        """,
-        OPENEO_BACKEND_DEPLOY_METADATA=build_backend_deploy_metadata(
-            packages=[
-                "openeo",
-                "openeo_driver",
-                "openeo-geopyspark",
-                "geopyspark",
-            ]
-        ),
         SIGNED_URL=True,
         SIGNED_URL_SECRET=os.environ.get("SIGNED_URL_SECRET"),
         SIGNED_URL_EXPIRATION=int(os.environ.get( "SIGNED_URL_EXPIRATION",str(7 * 24 * 60 * 60)))
