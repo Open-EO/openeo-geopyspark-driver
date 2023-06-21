@@ -324,13 +324,16 @@ def test_run_job(evaluate, tmp_path):
     #tracker reset, so get it again
     t = _get_tracker()
     PU_COUNTER = "Sentinelhub_Processing_Units"
+    PIXEL_COUNTER = "InputPixels"
     t.registerDoubleCounter(PU_COUNTER)
+    t.registerCounter(PIXEL_COUNTER)
     t.add(PU_COUNTER, 1.4)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
     ProductIdAndUrl = get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.ProductIdAndUrl
     t.addInputProductsWithUrls("other_collectionName", [ProductIdAndUrl("p4", "http://myproduct4")])
     t.add(PU_COUNTER, 0.4)
+    t.add(PIXEL_COUNTER, 3670016)
 
     run_job(
         job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
@@ -356,8 +359,8 @@ def test_run_job(evaluate, tmp_path):
                                'processing:software': 'openeo-geotrellis-' + __version__,
                                'start_datetime': None,
                                'providers': EXPECTED_PROVIDERS,
-                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
-                                                         'value': 1.7999999999999998}}
+                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit', 'value': approx(1.8)},
+                                         'input_pixel': {'unit': 'mega-pixel', 'value': 3.5}}
                                }
     t.setGlobalTracking(False)
 
@@ -397,13 +400,12 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     t.clearGlobalTracker()
     # tracker reset, so get it again
     t = _get_tracker()
-    PU_COUNTER = "Sentinelhub_Processing_Units"
-    t.registerDoubleCounter(PU_COUNTER)
-    t.add(PU_COUNTER, 1.4)
+    PIXEL_COUNTER = "InputPixels"
+    t.registerCounter(PIXEL_COUNTER)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
     t.addInputProducts("other_collectionName", ["http://myproduct4"])
-    t.add(PU_COUNTER, 0.4)
+    t.add(PIXEL_COUNTER, 3670016)
 
     run_job(
         job_specification={
@@ -476,9 +478,9 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
         "processing:software": "openeo-geotrellis-" + __version__,
         "start_datetime": None,
         "usage": {
-            "sentinelhub": {
-                "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+            "input_pixel": {
+                "unit": "mega-pixel",
+                "value": 3.5,
             }
         },
     }
@@ -631,7 +633,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         "usage": {
             "sentinelhub": {
                 "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+                "value": approx(1.8),
             }
         },
     }
@@ -912,7 +914,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         "usage": {
             "sentinelhub": {
                 "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+                "value": approx(1.8),
             }
         },
     }
@@ -1045,7 +1047,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             "usage": {
                 "sentinelhub": {
                     "unit": "sentinelhub_processing_unit",
-                    "value": 1.7999999999999998,
+                    "value": approx(1.8),
                 }
             },
         }
