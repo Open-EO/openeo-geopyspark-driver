@@ -879,25 +879,27 @@ def _get_tracker(tracker_id=""):
 
 def _get_tracker_metadata(tracker_id="") -> dict:
     tracker = _get_tracker(tracker_id)
-    t = tracker
-    if(t is not None):
-        tracker_results = t.asDict()
-        pu = tracker_results.get("Sentinelhub_Processing_Units",None)
-        usage = None
+
+    if tracker is not None:
+        tracker_results = tracker.asDict()
+
+        usage = {}
+        pu = tracker_results.get("Sentinelhub_Processing_Units", None)
         if pu is not None:
-            usage = {"sentinelhub":{"value":pu,"unit":"sentinelhub_processing_unit"}}
+            usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
 
         pixels = tracker_results.get("InputPixels", None)
         if pixels is not None:
-            usage = {"input_pixel":{"value":pixels/(1024*1024),"unit":"mega-pixel"}}
+            usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
 
         links = tracker_results.get("links", None)
         all_links = None
         if links is not None:
             all_links = list(chain(*links.values()))
-            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
+            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for
+                         link in all_links]
 
-        return dict_no_none(usage=usage,links=all_links)
+        return dict_no_none(usage=usage if usage != {} else None, links=all_links)
 
 
 def _deserialize_dependencies(arg: str) -> List[dict]:
