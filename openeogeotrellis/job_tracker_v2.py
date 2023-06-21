@@ -494,7 +494,8 @@ class JobTracker:
                 finish_time=job_metadata.finish_time,
                 cpu_seconds=job_metadata.usage.cpu_seconds,
                 mb_seconds=job_metadata.usage.mb_seconds,
-                sentinelhub_processing_units=sentinelhub_processing_units + sentinelhub_batch_processing_units,
+                sentinelhub_processing_units=(sentinelhub_processing_units +
+                                              sentinelhub_batch_processing_units) or None,
                 unique_process_ids=result_metadata.get('unique_process_ids', [])
             )
 
