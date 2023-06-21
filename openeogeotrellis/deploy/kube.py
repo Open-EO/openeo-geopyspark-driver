@@ -49,11 +49,6 @@ def main():
     app = build_app(backend_implementation=GeoPySparkBackendImplementation())
     # TODO avoid need for `.from_object(flask_config)`? Automatically handle this from OpenEoBackendConfig? (Open-EO/openeo-python-driver#204)
     app.config.from_object(flask_config)
-    app.config.from_mapping(
-        SIGNED_URL=True,
-        SIGNED_URL_SECRET=os.environ.get("SIGNED_URL_SECRET"),
-        SIGNED_URL_EXPIRATION=int(os.environ.get( "SIGNED_URL_EXPIRATION",str(7 * 24 * 60 * 60)))
-    )
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:
