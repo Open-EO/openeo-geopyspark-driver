@@ -5,12 +5,12 @@ Script to start a production server on Kubernetes. This script can serve as the 
 import logging
 import os
 
-from openeo_driver.server import run_gunicorn, build_backend_deploy_metadata
+from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.deploy import flask_config, get_socket
+from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
 
 log = logging.getLogger(__name__)
@@ -47,8 +47,6 @@ def main():
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     app = build_app(backend_implementation=GeoPySparkBackendImplementation())
-    # TODO avoid need for `.from_object(flask_config)`? Automatically handle this from OpenEoBackendConfig? (Open-EO/openeo-python-driver#204)
-    app.config.from_object(flask_config)
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:

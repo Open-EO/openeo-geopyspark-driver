@@ -14,7 +14,7 @@ from openeo_driver.util.logging import get_logging_config, setup_logging, show_l
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
-from openeogeotrellis.deploy import flask_config
+
 
 _log = logging.getLogger(__name__)
 
@@ -89,8 +89,6 @@ if __name__ == '__main__':
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     app = build_app(backend_implementation=GeoPySparkBackendImplementation(use_zookeeper=False))
-    # TODO: avoid need for `.from_object(flask_config)`? Automatically handle this from OpenEoBackendConfig? (Open-EO/openeo-python-driver#204)
-    app.config.from_object(flask_config)
 
     show_log_level(logging.getLogger('openeo'))
     show_log_level(logging.getLogger('openeo_driver'))
