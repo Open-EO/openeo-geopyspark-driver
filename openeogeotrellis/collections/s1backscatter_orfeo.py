@@ -597,7 +597,8 @@ class S1BackscatterOrfeo:
         indexReduction = datacubeParams.partitionerIndexReduction() if datacubeParams is not None else 8
 
         keys_geotrellis = [ spk(k["col"], k["row"], k["instant"]) for k in all_keys]
-        result = p.applySparseSpacetimePartitioner(tile_layer.srdd.rdd(),
+        merged_rdd = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+        result = p.applySparseSpacetimePartitioner(merged_rdd,
                                                    keys_geotrellis,
                                                    indexReduction)
 
@@ -945,7 +946,13 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             numpy_rdd=tile_rdd,
             metadata=layer_metadata_py
         )
-        return {zoom: tile_layer}
+        # Merge any keys that have more than one tile.
+        contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+        temporal_tiled_raster_layer = self.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+        srdd = temporal_tiled_raster_layer.apply(self.jvm.scala.Option.apply(zoom), contextRDD)
+        merged_tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
+
+        return {zoom: merged_tile_layer}
 
 
 def get_implementation(version: str = "1", jvm=None) -> S1BackscatterOrfeo:

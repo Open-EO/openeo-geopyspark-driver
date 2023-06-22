@@ -23,7 +23,7 @@ tests_require = [
     'scipy>=1.3.0',
     'requests-mock>=1.8.0',
     'openeo_udf>=1.0.0rc3',
-    "time_machine>=2.8.0",
+    "time_machine>=2.8.0,!=2.10.0",
     "kubernetes",
     "re-assert",
 ]
@@ -52,7 +52,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.15.0",
-        "openeo_driver>=0.56.0a1.dev",
+        "openeo_driver>=0.57.5.dev",
         'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',

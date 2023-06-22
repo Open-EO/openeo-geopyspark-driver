@@ -9,8 +9,13 @@ import pytest
 
 from openeo_driver.testing import RegexMatcher, DictSubSet
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.deploy import load_custom_processes, get_jar_version_info, get_jar_versions, \
-    build_gps_backend_deploy_metadata
+from openeogeotrellis.deploy import (
+    load_custom_processes,
+    get_jar_version_info,
+    get_jar_versions,
+    build_gps_backend_deploy_metadata,
+    find_geotrellis_jars,
+)
 from openeogeotrellis.testing import random_name
 
 
@@ -103,3 +108,23 @@ def test_build_gps_backend_deploy_metadata():
             "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
         })
     })
+
+
+def test_find_geotrellis_jars_cwd(tmp_path, monkeypatch):
+    (tmp_path / "jars").mkdir(parents=True)
+    (tmp_path / "jars" / "geotrellis-backend-assembly-1.2.3.jar").touch()
+    (tmp_path / "jars" / "geotrellis-extensions-4.5.6.jar").touch()
+    monkeypatch.chdir(tmp_path)
+    assert find_geotrellis_jars() == [
+        Path("jars/geotrellis-backend-assembly-1.2.3.jar"),
+        Path("jars/geotrellis-extensions-4.5.6.jar"),
+    ]
+
+
+def test_find_geotrellis_jars_extra(tmp_path):
+    (tmp_path / "geotrellis-backend-assembly-1.2.3.jar").touch()
+    (tmp_path / "geotrellis-extensions-4.5.6.jar").touch()
+    assert find_geotrellis_jars(extra_search_locations=[tmp_path]) == [
+        tmp_path / "geotrellis-backend-assembly-1.2.3.jar",
+        tmp_path / "geotrellis-extensions-4.5.6.jar",
+    ]

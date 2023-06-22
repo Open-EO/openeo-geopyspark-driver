@@ -1,10 +1,25 @@
+import os
 from typing import List, Optional
 
 import attrs
-import os
-
 from openeo_driver.config import OpenEoBackendConfig
 from openeo_driver.users.oidc import OidcProvider
+
+from openeogeotrellis import get_backend_version
+from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
+
+
+def _default_capabilities_deploy_metadata() -> dict:
+    metadata = build_gps_backend_deploy_metadata(
+        packages=[
+            "openeo",
+            "openeo_driver",
+            "openeo-geopyspark",
+            "geopyspark",
+        ],
+        jar_paths=find_geotrellis_jars(),
+    )
+    return metadata
 
 
 @attrs.frozen(kw_only=True)
@@ -17,6 +32,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # identifier for this config
     id: Optional[str] = None
+
+    capabilities_backend_version: str = get_backend_version()
+    capabilities_deploy_metadata: dict = attrs.Factory(_default_capabilities_deploy_metadata)
+    processing_software = f"openeo-geopyspark-driver-{get_backend_version()}"
 
     oidc_providers: List[OidcProvider] = attrs.Factory(list)
 

@@ -5,12 +5,12 @@ Script to start a production server on Kubernetes. This script can serve as the 
 import logging
 import os
 
-from openeo_driver.server import run_gunicorn, build_backend_deploy_metadata
+from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.deploy import flask_config, get_socket
+from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
 
 log = logging.getLogger(__name__)
@@ -47,33 +47,6 @@ def main():
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     app = build_app(backend_implementation=GeoPySparkBackendImplementation())
-    app.config.from_object(flask_config)
-    app.config.from_mapping(
-        # TODO: move this VITO/CreoDIAS specific description to CreoDIAS deploy repo.
-        OPENEO_DESCRIPTION="""
-            [UNSTABLE] OpenEO API running on CreoDIAS (using GeoPySpark driver). This endpoint runs openEO on a Kubernetes cluster.
-            The main component can be found here: https://github.com/Open-EO/openeo-geopyspark-driver
-            The deployment is configured using Terraform and Kubernetes configs: https://github.com/Open-EO/openeo-geotrellis-kubernetes
-            Data is read directly from the CreoDIAS data offer through object storage. Processing is limited by the processing
-            capacity of the Kubernetes cluster running on DIAS. Contact VITO for experiments with higher resource needs.
-        """,
-        OPENEO_BACKEND_DEPLOY_METADATA=build_backend_deploy_metadata(
-            packages=[
-                "openeo",
-                "openeo_driver",
-                "openeo-geopyspark",
-                "openeo_udf",
-                "geopyspark",
-                "cropsar",
-                "nextland_services",
-                "biopar",
-                "cropsar_px",
-            ]
-        ),
-        SIGNED_URL=True,
-        SIGNED_URL_SECRET=os.environ.get("SIGNED_URL_SECRET"),
-        SIGNED_URL_EXPIRATION=int(os.environ.get( "SIGNED_URL_EXPIRATION",str(7 * 24 * 60 * 60)))
-    )
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:

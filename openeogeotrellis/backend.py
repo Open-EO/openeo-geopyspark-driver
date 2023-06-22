@@ -116,7 +116,7 @@ from openeogeotrellis.service_registry import (
     SecondaryService,
     ServiceEntity,
 )
-from openeogeotrellis.traefik import Traefik
+from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,

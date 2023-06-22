@@ -31,6 +31,7 @@ from openeo_driver.testing import (
     TEST_USER_BEARER_TOKEN,
     ApiTester,
     ListSubSet,
+    RegexMatcher,
 )
 from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
 from openeogeotrellis.testing import KazooClientMock
@@ -66,21 +67,46 @@ def test_health_default(api, path, expected):
 
 def test_credentials_oidc(api):
     resp = api.get("/credentials/oidc").assert_status_code(200)
-    assert resp.json == DictSubSet(
-        {
-            "providers": ListSubSet(
-                [
-                    DictSubSet(
-                        {
-                            "id": "egi",
-                            "issuer": "https://aai.egi.eu/auth/realms/egi/",
-                            "scopes": ListSubSet(["openid"]),
-                        }
-                    )
-                ]
-            )
-        }
-    )
+    assert resp.json == {
+        "providers": [
+            {
+                "title": "Test ID",
+                "id": "testid",
+                "issuer": "https://oidc.test",
+                "scopes": ["openid"],
+                "default_clients": [
+                    {
+                        "grant_types": ["urn:ietf:params:oauth:grant-type:device_code+pkce", "refresh_token"],
+                        "id": "badcafef00d",
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def test_deploy_metadata(api100):
+    capabilities = api100.get("/").assert_status_code(200).json
+    semver_alike = RegexMatcher(r"^\d+\.\d+\.\d+")
+    assert deep_get(capabilities, "_backend_deploy_metadata") == {
+        "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
+        "versions": {
+            "openeo": semver_alike,
+            "openeo_driver": semver_alike,
+            "openeo-geopyspark": semver_alike,
+            "geopyspark": semver_alike,
+            "geotrellis-backend-assembly": semver_alike,
+            "geotrellis-extensions": semver_alike,
+        },
+    }
+    assert deep_get(capabilities, "processing:software") == {
+        "openeo": semver_alike,
+        "openeo_driver": semver_alike,
+        "openeo-geopyspark": semver_alike,
+        "geopyspark": semver_alike,
+        "geotrellis-backend-assembly": semver_alike,
+        "geotrellis-extensions": semver_alike,
+    }
 
 
 class TestCollections:

@@ -324,13 +324,16 @@ def test_run_job(evaluate, tmp_path):
     #tracker reset, so get it again
     t = _get_tracker()
     PU_COUNTER = "Sentinelhub_Processing_Units"
+    PIXEL_COUNTER = "InputPixels"
     t.registerDoubleCounter(PU_COUNTER)
+    t.registerCounter(PIXEL_COUNTER)
     t.add(PU_COUNTER, 1.4)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
     ProductIdAndUrl = get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.ProductIdAndUrl
     t.addInputProductsWithUrls("other_collectionName", [ProductIdAndUrl("p4", "http://myproduct4")])
     t.add(PU_COUNTER, 0.4)
+    t.add(PIXEL_COUNTER, 3670016)
 
     run_job(
         job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
@@ -356,8 +359,8 @@ def test_run_job(evaluate, tmp_path):
                                'processing:software': 'openeo-geotrellis-' + __version__,
                                'start_datetime': None,
                                'providers': EXPECTED_PROVIDERS,
-                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
-                                                         'value': 1.7999999999999998}}
+                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit', 'value': approx(1.8)},
+                                         'input_pixel': {'unit': 'mega-pixel', 'value': 3.5}}
                                }
     t.setGlobalTracking(False)
 
@@ -397,13 +400,12 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     t.clearGlobalTracker()
     # tracker reset, so get it again
     t = _get_tracker()
-    PU_COUNTER = "Sentinelhub_Processing_Units"
-    t.registerDoubleCounter(PU_COUNTER)
-    t.add(PU_COUNTER, 1.4)
+    PIXEL_COUNTER = "InputPixels"
+    t.registerCounter(PIXEL_COUNTER)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
     t.addInputProducts("other_collectionName", ["http://myproduct4"])
-    t.add(PU_COUNTER, 0.4)
+    t.add(PIXEL_COUNTER, 3670016)
 
     run_job(
         job_specification={
@@ -476,9 +478,9 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
         "processing:software": "openeo-geotrellis-" + __version__,
         "start_datetime": None,
         "usage": {
-            "sentinelhub": {
-                "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+            "input_pixel": {
+                "unit": "mega-pixel",
+                "value": 3.5,
             }
         },
     }
@@ -631,7 +633,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         "usage": {
             "sentinelhub": {
                 "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+                "value": approx(1.8),
             }
         },
     }
@@ -912,7 +914,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         "usage": {
             "sentinelhub": {
                 "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+                "value": approx(1.8),
             }
         },
     }
@@ -1045,7 +1047,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             "usage": {
                 "sentinelhub": {
                     "unit": "sentinelhub_processing_unit",
-                    "value": 1.7999999999999998,
+                    "value": approx(1.8),
                 }
             },
         }
@@ -1488,6 +1490,8 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
     assert raster_metadata.projection == {
         "proj:epsg": 4326,
         # For some reason gdalinfo reports the bounds in the wrong order here.
+        # I think the reason might be that the pixels are south-up instead of
+        # north-up, i.e. the scale for the Y-axis of the pixel is negative.
         # Upper Left corner is BELOW Lower Left corner, which is unexpected.
         # gdalinfo reports that CRS is EPSG:4326, X=lon, Y=lat.
         #
@@ -1504,6 +1508,48 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
         "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
         "proj:shape": [49, 3],
     }
+
+
+def test_read_gdal_raster_metadata_from_multiband_tif_file():
+    multiband_tif_path = get_test_data_file("binary/stac_proj_extension/tif/multiband_geotiff.tif")
+
+    raster_metadata = read_gdal_raster_metadata(str(multiband_tif_path))
+
+    # Do some basic checks before we dig deeper.
+    assert raster_metadata.projection is not None
+    assert raster_metadata.statistics is not None
+
+    # TODO: get the correct band names into multiband_geotiff.tif.
+    #   Perhaps keep separate copies with and without bandnames to cover both cases.
+    # assert set(raster_metadata.statistics.keys()) == {"VV", "VH"}
+
+    # values for multiband_geotiff.tif: pixels of original file have been
+    # replaced with 1.0 and 2.0 for band 1and 2 respectively.
+    assert raster_metadata.to_dict() == DictSubSet(
+        {
+            "proj:epsg": 32631,
+            "proj:bbox": approx([471270.000, 5657500.000, 492670.000, 5674440.000]),
+            "proj:shape": [2140, 1694],
+            "raster:bands": [
+                DictSubSet(
+                    {
+                        "name": "1",
+                        "statistics": DictSubSet(
+                            {"minimum": 1.0, "maximum": 1.0, "mean": 1.0, "stddev": 0.0, "valid_percent": 100.0}
+                        ),
+                    }
+                ),
+                DictSubSet(
+                    {
+                        "name": "2",
+                        "statistics": DictSubSet(
+                            {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0}
+                        ),
+                    }
+                ),
+            ],
+        }
+    )
 
 
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
