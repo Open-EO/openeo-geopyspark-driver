@@ -1503,11 +1503,15 @@ class GeopysparkDataCube(DriverDataCube):
         # get the data at highest resolution
         max_level = self.get_max_level()
 
-        def to_latlng_bbox(bbox: 'Extent') -> Tuple[float, float, float, float]:
-            latlng_extent = self._reproject_extent(src_crs=max_level.layer_metadata.crs,
-                                                   dst_crs="+init=EPSG:4326",
-                                                   xmin=bbox.xmin(), ymin=bbox.ymin(),
-                                                   xmax=bbox.xmax(), ymax=bbox.ymax())
+        def to_latlng_bbox(bbox: "Extent") -> Tuple[float, float, float, float]:
+            latlng_extent = self._reproject_extent(
+                src_crs=max_level.layer_metadata.crs,
+                dst_crs="EPSG:4326",
+                xmin=bbox.xmin(),
+                ymin=bbox.ymin(),
+                xmax=bbox.xmax(),
+                ymax=bbox.ymax(),
+            )
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
