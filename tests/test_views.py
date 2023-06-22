@@ -1341,7 +1341,8 @@ class TestBatchJobs:
                     }
                 ]
 
-    # TODO: Test is known to fail when using API v1.1.0 / api110 . Add coverage, or update the test.
+    # TODO: This test is known to fail with API v1.1.0 / api110. Add coverage, or update the test.
+    #   https://github.com/Open-EO/openeo-geopyspark-driver/issues/440
     def test_api_job_results_contains_proj_metadata_at_item_level(self, api100, batch_job_output_root):
         """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
 

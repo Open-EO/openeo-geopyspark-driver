@@ -2352,8 +2352,6 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-    # TODO: Maybe rename this method because openeo_driver.backend.BatchJobs has a method with almost
-    #   the same name and a different purpose. Maybe load_results_metadata ?
     def load_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
