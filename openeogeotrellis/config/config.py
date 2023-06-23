@@ -54,3 +54,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
 
     etl_source_id: str = "TerraScope/MEP"
+
+    prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")

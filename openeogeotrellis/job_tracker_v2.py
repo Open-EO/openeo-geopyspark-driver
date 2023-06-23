@@ -17,6 +17,7 @@ from typing import Any, List, NamedTuple, Optional, Union
 import requests
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.integrations.prometheus import Prometheus
 
 # We only need requests_gssapi for Yarn, which uses Kerberos authentication.
 try:
@@ -233,10 +234,10 @@ class K8sException(Exception):
 class K8sStatusGetter(JobMetadataGetterInterface):
     """Kubernetes app status getter"""
 
-    def __init__(self, kubecost_url: Optional[str] = None):
+    def __init__(self, prometheus_api_endpoint: str):
         self._kubernetes_api = kube_client()
         # TODO: get this url from config?
-        self._kubecost_url = kubecost_url or "https://opencost.openeo-cdse-staging.vgt.vito.be/api/allocation"
+        self._prometheus_api_endpoint = prometheus_api_endpoint
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
@@ -267,44 +268,32 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         job_status = k8s_state_to_openeo_job_status(app_state)
         return _JobMetadata(
-            app_state=app_state, status=job_status, usage=self._get_usage(app_id, job_id, user_id),
+            app_state=app_state, status=job_status, usage=self._get_usage(app_id, start_time, finish_time,
+                                                                          job_id, user_id),
             start_time=start_time, finish_time=finish_time
         )
 
-    def _get_usage(self, application_id: str, job_id: str, user_id: str) -> _Usage:
+    def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
+                   job_id: str, user_id: str) -> _Usage:
         try:
-            namespace = ConfigParams().pod_namespace
-            window = "5d"
-            pod = application_id + "*"
-            params = (
-                ("aggregate", "namespace"),
-                ("filterNamespaces", namespace),
-                ("filterPods", pod),
-                ("window", window),
-                ("accumulate", "true"),
-            )
-            response = requests.get(self._kubecost_url, params=params)
-            response.raise_for_status()
-            total_cost = response.json()
-            if not (
-                total_cost["code"] == 200
-                and len(total_cost["data"]) > 0
-                and namespace in total_cost["data"][0]
-            ):
-                raise K8sException(
-                    f"Unexpected response {repr_truncate(total_cost, width=200)}"
-                )
+            prometheus = Prometheus(self._prometheus_api_endpoint)
 
-            cost = total_cost["data"][0][namespace]
-            # TODO: need to iterate through "data" list?
-            _log.info(f"Successfully retrieved total cost {cost}", extra={"job_id": job_id, "user_id": user_id})
-            return _Usage(cpu_seconds=cost["cpuCoreHours"] * 60 * 60,
-                          mb_seconds=cost["ramByteHours"] * 60 * 60 / (1024 * 1024),
-                          network_receive_bytes=cost.get("networkReceiveBytes"),
+            if start_time is None or finish_time is None:
+                byte_seconds = None
+            else:
+                application_duration_s = (finish_time - start_time).total_seconds()
+                byte_seconds = prometheus.get_memory_usage(application_id, application_duration_s)
+
+            cpu_seconds = prometheus.get_cpu_usage(application_id)
+            network_receive_bytes = prometheus.get_network_received_usage(application_id)
+
+            return _Usage(cpu_seconds=cpu_seconds,
+                          mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
+                          network_receive_bytes=network_receive_bytes,
                           )
         except Exception as e:
             _log.exception(
-                f"Failed to retrieve usage stats from kubecost: {type(e).__name__}: {e}",
+                f"Failed to retrieve usage stats from {self._prometheus_api_endpoint}: {type(e).__name__}: {e}",
                 extra={"job_id": job_id, "user_id": user_id},
             )
 
@@ -586,8 +575,7 @@ class CliApp:
                                                                     etl_api_credentials.client_secret, requests_session)
                     job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(
-                        kubecost_url="http://opencost.opencost.svc.cluster.local:9003/allocation")
+                    app_state_getter = K8sStatusGetter(prometheus_api_endpoint=get_backend_config().prometheus_api)
                     etl_api_client_id = environ["OPENEO_ETL_OIDC_CLIENT_ID"]
                     etl_api_client_secret = environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
                     etl_api_access_token = get_etl_api_access_token(etl_api_client_id, etl_api_client_secret,
