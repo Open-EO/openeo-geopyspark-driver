@@ -16,7 +16,7 @@ class Prometheus:
         with requests.get(self._api_endpoint + "/query", params=params) as resp:
             resp.raise_for_status()
 
-            value = resp.json()['data']['result'][0]['value'][1]
+            value = float(resp.json()['data']['result'][0]['value'][1])
 
         return value
 
@@ -50,6 +50,7 @@ if __name__ == '__main__':
     application_finish_time = "2023-06-22T11:30:46Z"
 
     print(prometheus.get_cpu_usage(application_id=application_id, at=application_finish_time), "cpu-seconds")
-    print(prometheus.get_memory_usage(application_id=application_id, duration_s=52, at=application_finish_time),
-          "b-seconds")
-    print(prometheus.get_network_received_usage(application_id=application_id, at=application_finish_time), "b")
+    print(prometheus.get_memory_usage(
+        application_id=application_id, duration_s=52, at=application_finish_time) / 1024 / 1024, "mb-seconds")
+    print(prometheus.get_network_received_usage(
+        application_id=application_id, at=application_finish_time) / 1024 / 1024, "mb")
