@@ -808,8 +808,8 @@ def _get_layer_catalog(
                 os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
                 try:
                     opensearch_metadata[cid] = opensearch_instance(os_endpoint).get_metadata(collection_id=os_cid)
-                except Exception:
-                    logger.warning(traceback.format_exc())
+                except Exception as e:
+                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
             elif data_source.get("type") == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
 
