@@ -597,15 +597,15 @@ class S1BackscatterOrfeo:
         indexReduction = datacubeParams.partitionerIndexReduction() if datacubeParams is not None else 8
 
         keys_geotrellis = [ spk(k["col"], k["row"], k["instant"]) for k in all_keys]
-        merged_rdd = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
-        result = p.applySparseSpacetimePartitioner(merged_rdd,
+        result = p.applySparseSpacetimePartitioner(tile_layer.srdd.rdd(),
                                                    keys_geotrellis,
                                                    indexReduction)
-
         contextRDD = jvm.geotrellis.spark.ContextRDD(result, tile_layer.srdd.rdd().metadata())
-        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), contextRDD)
+        merged_rdd = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(contextRDD)
+
+        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), merged_rdd)
         tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
-        logger.info(f"Created {collection_id} backscatter cube with partitioner index: {str(result.partitioner().get().index())}")
+        logger.info(f"Created {collection_id} backscatter cube with partitioner index: {str(merged_rdd.partitioner().get().index())}")
         return {zoom: tile_layer}
 
     @staticmethod
