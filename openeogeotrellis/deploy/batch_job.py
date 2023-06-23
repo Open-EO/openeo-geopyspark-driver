@@ -46,6 +46,7 @@ from openeo_driver.utils import EvalEnv, temporal_extent_union
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -922,16 +923,9 @@ def _get_access_token(conf: SparkConf) -> Optional[str]:
 
 
 def main(argv: List[str]) -> None:
-    logger.info("batch_job.py argv: {a!r}".format(a=argv))
-    logger.info("batch_job.py pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
-    logger.warning("batch_job.py version info %r", build_gps_backend_deploy_metadata(
-        packages=[
-            "openeo",
-            "openeo_driver",
-            "openeo-geopyspark",
-            # TODO list more packages like in openeo-deploy?
-        ],
-    ))
+    logger.debug(f"batch_job.py argv: {argv}")
+    logger.debug(f"batch_job.py {os.getpid()=} {os.getppid()=} {os.getcwd()=}")
+    logger.debug(f"batch_job.py version info {get_backend_config().capabilities_deploy_metadata}")
 
     if len(argv) < 10:
         raise Exception(
