@@ -298,9 +298,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cost = total_cost["data"][0][namespace]
             # TODO: need to iterate through "data" list?
             _log.info(f"Successfully retrieved total cost {cost}", extra={"job_id": job_id, "user_id": user_id})
-            return _Usage(cpu_seconds=cost["cpuCoreHours"] * 60 * 60,
-                          mb_seconds=cost["ramByteHours"] * 60 * 60 / (1024 * 1024),
-                          network_receive_bytes=cost.get("networkReceiveBytes"),
+            return _Usage(cpu_seconds=0 * 60 * 60,
+                          mb_seconds=0 * 60 * 60 / (1024 * 1024),
+                          network_receive_bytes=0,
                           )
         except Exception as e:
             _log.exception(
