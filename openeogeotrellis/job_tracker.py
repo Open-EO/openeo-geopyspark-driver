@@ -127,7 +127,7 @@ class JobTracker:
                                     # TODO: do we support SHub batch processes in this environment? The AWS
                                     #  credentials conflict.
 
-                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
                                     usage = self.get_kube_usage(job_id, application_id)
                                     if usage is not None:
                                         result_metadata["usage"] = usage
@@ -167,7 +167,7 @@ class JobTracker:
                                               (job_id, current_status, new_status), extra={'job_id': job_id})
 
                                 if final_state != "UNDEFINED":
-                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
                                     # TODO: skip patching the job znode and read from this file directly?
 
                                     sentinelhub_processing_units = (result_metadata.get("usage", {})
