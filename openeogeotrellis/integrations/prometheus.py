@@ -3,7 +3,7 @@ import requests
 
 class Prometheus:
     # TODO: reconsider currently excluded time series?
-    # TODO: does filtering on pod namespace offer advantages?
+    # TODO: does filtering on pod namespace speed things up?
 
     def __init__(self, api_endpoint: str):
         """Point this to e.g. http://example.org:9090/api/v1."""
@@ -27,13 +27,13 @@ class Prometheus:
     def get_cpu_usage(self, application_id: str, at: str = None) -> float:
         """Returns CPU usage in cpu-seconds."""
 
-        query = f'sum(container_cpu_usage_seconds_total{{pod=~"{application_id}.+", container!=""}})'
+        query = f'sum(last_over_time(container_cpu_usage_seconds_total{{pod=~"{application_id}.+", container!=""}}[5d]))'
         return self._query_for_value(query, at)
 
     def get_network_received_usage(self, application_id: str, at: str = None) -> float:
         """Returns bytes received."""
 
-        query = f'sum(container_network_receive_bytes_total{{pod=~"{application_id}-.+"}})'
+        query = f'sum(last_over_time(container_network_receive_bytes_total{{pod=~"{application_id}-.+"}}[5d]))'
         return self._query_for_value(query, at)
 
     def get_memory_usage(self, application_id: str, application_duration_s: float, at: str = None) -> float:
