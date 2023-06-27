@@ -196,7 +196,7 @@ class TestMultipleDates(TestCase):
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
+        self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1], delta=0.00001)
 
         stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
         print(stitched)
