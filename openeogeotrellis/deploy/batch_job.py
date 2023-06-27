@@ -50,8 +50,8 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.utils import (
-    kerberos,
     describe_path,
     log_memory,
     get_jvm,
@@ -982,7 +982,8 @@ def main(argv: List[str]) -> None:
         vault_token = _get_vault_token(sc.getConf())
         access_token = _get_access_token(sc.getConf())
 
-        kerberos(principal, key_tab)
+        if get_backend_config().setup_kerberos_auth:
+            setup_kerberos_auth(principal, key_tab)
 
         def run_driver():
             run_job(

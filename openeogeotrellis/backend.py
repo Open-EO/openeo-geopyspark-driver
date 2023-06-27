@@ -90,6 +90,7 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
     GeopysparkCubeMetadata,
 )
+from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
@@ -123,7 +124,6 @@ from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
 )
 from openeogeotrellis.utils import (
-    kerberos,
     zk_client,
     to_projected_polygons,
     normalize_temporal_extent,
@@ -593,8 +593,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         date_regex = options['date_regex']
 
-        if glob_pattern.startswith("hdfs:"):
-            kerberos(self._principal, self._key_tab)
+        if glob_pattern.startswith("hdfs:") and get_backend_config().setup_kerberos_auth:
+            setup_kerberos_auth(self._principal, self._key_tab)
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -1576,8 +1576,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 return json.dumps([as_arg_element(dependency) for dependency in dependencies])
 
 
-            if not isKube:
-                kerberos(self._principal, self._key_tab, self._jvm)
+            if get_backend_config().setup_kerberos_auth:
+                setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
             if isKube:
                 import yaml

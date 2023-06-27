@@ -43,6 +43,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False
 
+    # TODO: avoid KUBE env var and just default to False in general
+    setup_kerberos_auth: bool = not os.environ.get("KUBE", False)
+
     # TODO: eliminate hardcoded VITO-specific defaults?
     logging_es_hosts: List[str] = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
     logging_es_index_pattern: str = os.environ.get("LOGGING_ES_INDEX_PATTERN", "openeo-*-index-1m*")
