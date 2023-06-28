@@ -26,6 +26,6 @@ config = GpsBackendConfig(
     capabilities_title="Dummy GeoPysSpark Backend",
     capabilities_description="Dummy GeoPysSpark Backend",
     opensearch_enrich=False,
-    default_opensearch_endpoint="https://catalogue.test/",
+    default_opensearch_endpoint="https://services.terrascope.be/catalogue/",
     oidc_providers=oidc_providers,
 )
