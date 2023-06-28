@@ -1,5 +1,6 @@
 import argparse
 import datetime as dt
+import functools
 import json
 import logging
 import sys
@@ -780,14 +781,10 @@ def _get_layer_catalog(
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
-        opensearch_instances = {}
 
+        @functools.lru_cache
         def opensearch_instance(endpoint: str) -> OpenSearch:
             endpoint = endpoint.lower()
-            opensearch = opensearch_instances.get(os_endpoint)
-
-            if opensearch is not None:
-                return opensearch
 
             if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint:
                 opensearch = OpenSearchOscars(endpoint=endpoint)
@@ -798,7 +795,6 @@ def _get_layer_catalog(
             else:
                 raise ValueError(endpoint)
 
-            opensearch_instances[endpoint] = opensearch
             return opensearch
 
         for cid, collection_metadata in metadata.items():
