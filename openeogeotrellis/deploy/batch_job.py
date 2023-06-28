@@ -1106,8 +1106,8 @@ def run_job(
     }
 
     assets_metadata = {}
+    ml_model_metadata = None
     for result in result_list:
-        ml_model_metadata = None
         if('write_assets' in dir(result)):
             result.options["batch_mode"] = True
             result.options["file_metadata"] = global_metadata_attributes
