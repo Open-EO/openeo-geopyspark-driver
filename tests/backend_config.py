@@ -26,6 +26,7 @@ config = GpsBackendConfig(
     capabilities_title="Dummy GeoPysSpark Backend",
     capabilities_description="Dummy GeoPysSpark Backend",
     opensearch_enrich=False,
+    # TODO: avoid hardcoded reference to VITO/Terrascope resource
     default_opensearch_endpoint="https://services.terrascope.be/catalogue/",
     oidc_providers=oidc_providers,
 )
