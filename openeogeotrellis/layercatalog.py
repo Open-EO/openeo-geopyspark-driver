@@ -37,6 +37,7 @@ from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
@@ -251,7 +252,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                          .reproject(projected_polygons, target_epsg_code))
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
-        opensearch_endpoint = layer_source_info.get('opensearch_endpoint', ConfigParams().default_opensearch_endpoint)
+        opensearch_endpoint = layer_source_info.get(
+            "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
+        )
         max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
@@ -762,7 +765,7 @@ def _get_layer_catalog(
     Get layer catalog (from JSON files)
     """
     if opensearch_enrich is None:
-        opensearch_enrich = ConfigParams().opensearch_enrich
+        opensearch_enrich = get_backend_config().opensearch_enrich
     if catalog_files is None:
         catalog_files = ConfigParams().layer_catalog_metadata_files
 
@@ -800,7 +803,7 @@ def _get_layer_catalog(
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
             os_cid = data_source.get("opensearch_collection_id")
-            os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
+            os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
             os_variant = data_source.get("opensearch_variant")
             if os_cid and os_endpoint and os_variant != "disabled":
                 try:

@@ -25,5 +25,7 @@ config = GpsBackendConfig(
     id="gps-test-dummy",
     capabilities_title="Dummy GeoPysSpark Backend",
     capabilities_description="Dummy GeoPysSpark Backend",
+    opensearch_enrich=False,
+    default_opensearch_endpoint="https://catalogue.test/",
     oidc_providers=oidc_providers,
 )

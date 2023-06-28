@@ -39,10 +39,6 @@ class ConfigParams:
         # TODO: can we avoid using env variables?
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
 
-        self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")
-
-        self.opensearch_enrich = smart_bool(env.get("OPENSEARCH_ENRICH", True))
-
         # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         self.is_kube_deploy = env.get("KUBE", False)
         self.pod_namespace = env.get("POD_NAMESPACE", "spark-jobs")
