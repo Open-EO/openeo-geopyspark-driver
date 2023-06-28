@@ -149,6 +149,8 @@ spark-submit \
  --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.executorEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
+ --conf spark.yarn.appMasterEnv.OPENEO_BACKEND_CONFIG=$OPENEO_BACKEND_CONFIG \
+ --conf spark.executorEnv.OPENEO_BACKEND_CONFIG=$OPENEO_BACKEND_CONFIG \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.dynamicAllocation.enabled=true \
  --conf spark.shuffle.service.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
