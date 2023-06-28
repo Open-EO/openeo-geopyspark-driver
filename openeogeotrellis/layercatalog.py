@@ -783,14 +783,14 @@ def _get_layer_catalog(
         sh_collection_metadatas = None
 
         @functools.lru_cache
-        def opensearch_instance(endpoint: str) -> OpenSearch:
+        def opensearch_instance(endpoint: str, variant: Optional[str] = None) -> OpenSearch:
             endpoint = endpoint.lower()
 
-            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint:
+            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint or variant == "oscars":
                 opensearch = OpenSearchOscars(endpoint=endpoint)
-            elif "creodias" in endpoint:
+            elif "creodias" in endpoint or variant == "creodias":
                 opensearch = OpenSearchCreodias(endpoint=endpoint)
-            elif "dataspace.copernicus.eu" in endpoint:
+            elif "dataspace.copernicus.eu" in endpoint or variant == "cdse":
                 opensearch = OpenSearchCdse(endpoint=endpoint)
             else:
                 raise ValueError(endpoint)
@@ -800,10 +800,13 @@ def _get_layer_catalog(
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
             os_cid = data_source.get("opensearch_collection_id")
-            if os_cid:
-                os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
+            os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
+            os_variant = data_source.get("opensearch_variant")
+            if os_cid and os_endpoint and os_variant != "disabled":
                 try:
-                    opensearch_metadata[cid] = opensearch_instance(os_endpoint).get_metadata(collection_id=os_cid)
+                    opensearch_metadata[cid] = opensearch_instance(
+                        endpoint=os_endpoint, variant=os_variant
+                    ).get_metadata(collection_id=os_cid)
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
             elif data_source.get("type") == "sentinel-hub":
