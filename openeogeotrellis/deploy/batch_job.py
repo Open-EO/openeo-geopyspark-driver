@@ -213,9 +213,9 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
     return bbox
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,
-                            unique_process_ids: Set[str], asset_metadata: Dict = None,
-                            ml_model_metadata: Dict = None) -> None:
+def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path,
+                              unique_process_ids: Set[str], asset_metadata: Dict = None,
+                              ml_model_metadata: Dict = None) -> dict:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -278,17 +278,10 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     global_metadata = result.options.get("file_metadata",{})
     metadata["providers"] = global_metadata.get("providers",[])
 
-    metadata = {**metadata, **_get_tracker_metadata("")}
-
     if ml_model_metadata is not None:
         metadata['ml_model_metadata'] = ml_model_metadata
 
-    with open(metadata_file, 'w') as f:
-        json.dump(metadata, f)
-
-    add_permissions(metadata_file, stat.S_IWGRP)
-
-    logger.info("wrote metadata to %s" % metadata_file)
+    return metadata
 
 
 GDALInfo = Dict[str, Any]
@@ -1033,183 +1026,193 @@ def run_job(
     vault_token: str = None,
     access_token: str = None,
 ):
-    # We actually expect type Path, but in reality paths as strings tend to
-    # slip in anyway, so we better catch them and convert them.
-    output_file = Path(output_file)
-    metadata_file = Path(metadata_file)
-    job_dir = Path(job_dir)
+    result_metadata = {}
 
-    logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
-    logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
-    process_graph = job_specification['process_graph']
-    job_options = job_specification.get("job_options", {})
+    try:
+        # We actually expect type Path, but in reality paths as strings tend to
+        # slip in anyway, so we better catch them and convert them.
+        output_file = Path(output_file)
+        metadata_file = Path(metadata_file)
+        job_dir = Path(job_dir)
 
-    backend_implementation = GeoPySparkBackendImplementation(
-        use_job_registry=False,
-    )
+        logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
+        logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
+        process_graph = job_specification['process_graph']
+        job_options = job_specification.get("job_options", {})
 
-    if default_sentinel_hub_credentials is not None:
-        backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
+        backend_implementation = GeoPySparkBackendImplementation(
+            use_job_registry=False,
+        )
 
-    logger.info(f"Using backend implementation {backend_implementation}")
-    correlation_id = OPENEO_BATCH_JOB_ID
-    logger.info(f"Correlation id: {correlation_id}")
-    env_values = {
-        'version': api_version or "1.0.0",
-        'pyramid_levels': 'highest',
-        'user': User(user_id=user_id, internal_auth_data=dict_no_none(access_token=access_token)),
-        'require_bounds': True,
-        'correlation_id': correlation_id,
-        'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
-        'backend_implementation': backend_implementation,
-        'max_soft_errors_ratio': max_soft_errors_ratio,
-        'sentinel_hub_client_alias': sentinel_hub_client_alias,
-        'vault_token': vault_token
-    }
-    job_option_whitelist = [
-        "data_mask_optimization",
-        "node_caching"
-    ]
-    env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
-    env = EvalEnv(env_values)
-    tracer = DryRunDataTracer()
-    logger.info("Starting process graph evaluation")
-    pg_copy = deepcopy(process_graph)
-    result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
-    logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
+        if default_sentinel_hub_credentials is not None:
+            backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
-    if isinstance(result, DelayedVector):
-        geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
-        result = JSONResult(geojsons)
+        logger.info(f"Using backend implementation {backend_implementation}")
+        correlation_id = OPENEO_BATCH_JOB_ID
+        logger.info(f"Correlation id: {correlation_id}")
+        env_values = {
+            'version': api_version or "1.0.0",
+            'pyramid_levels': 'highest',
+            'user': User(user_id=user_id, internal_auth_data=dict_no_none(access_token=access_token)),
+            'require_bounds': True,
+            'correlation_id': correlation_id,
+            'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
+            'backend_implementation': backend_implementation,
+            'max_soft_errors_ratio': max_soft_errors_ratio,
+            'sentinel_hub_client_alias': sentinel_hub_client_alias,
+            'vault_token': vault_token
+        }
+        job_option_whitelist = [
+            "data_mask_optimization",
+            "node_caching"
+        ]
+        env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
+        env = EvalEnv(env_values)
+        tracer = DryRunDataTracer()
+        logger.info("Starting process graph evaluation")
+        pg_copy = deepcopy(process_graph)
+        result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
+        logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
-    if isinstance(result, DriverDataCube):
-        format_options = job_specification.get('output', {})
-        format_options["batch_mode"] = True
-        result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
+        if isinstance(result, DelayedVector):
+            geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
+            result = JSONResult(geojsons)
 
-    if isinstance(result, DriverVectorCube):
-        format_options = job_specification.get('output', {})
-        format_options["batch_mode"] = True
-        result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
+        if isinstance(result, DriverDataCube):
+            format_options = job_specification.get('output', {})
+            format_options["batch_mode"] = True
+            result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
 
-    if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
-        result = JSONResult(result)
+        if isinstance(result, DriverVectorCube):
+            format_options = job_specification.get('output', {})
+            format_options["batch_mode"] = True
+            result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
 
-    result_list = result
-    if not isinstance(result,List):
-        result_list = [result]
+        if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
+            result = JSONResult(result)
 
-    global_metadata_attributes = {
-        "title" : job_specification.get("title",""),
-        "description": job_specification.get("description", ""),
-        "institution": "openEO platform - Geotrellis backend: " + __version__
-    }
+        result_list = result
+        if not isinstance(result,List):
+            result_list = [result]
 
-    assets_metadata = {}
-    ml_model_metadata = None
-    for result in result_list:
-        if('write_assets' in dir(result)):
-            result.options["batch_mode"] = True
-            result.options["file_metadata"] = global_metadata_attributes
-            if( result.options.get("sample_by_feature")):
-                geoms = tracer.get_last_geometry("filter_spatial")
-                if geoms == None:
-                    logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
-                else:
-                    result.options["geometries"] = geoms
-                if(result.options["geometries"] == None):
-                    logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
-            the_assets_metadata = result.write_assets(str(output_file))
-            if isinstance(result, MlModelResult):
-                ml_model_metadata = result.get_model_metadata(str(output_file))
-                logger.info("Extracted ml model metadata from %s" % output_file)
-            for name,asset in the_assets_metadata.items():
-                add_permissions(Path(asset["href"]), stat.S_IWGRP)
-            logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-            assets_metadata = {**assets_metadata,**the_assets_metadata}
-        elif isinstance(result, ImageCollectionResult):
-            result.options["batch_mode"] = True
-            result.save_result(filename=str(output_file))
-            add_permissions(output_file, stat.S_IWGRP)
-            logger.info("wrote image collection to %s" % output_file)
-        elif isinstance(result, NullResult):
-            logger.info("skipping output file %s" % output_file)
-        else:
-            raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
+        global_metadata_attributes = {
+            "title" : job_specification.get("title",""),
+            "description": job_specification.get("description", ""),
+            "institution": "openEO platform - Geotrellis backend: " + __version__
+        }
 
-    if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
-        logger.debug("awaiting Sentinel Hub CARD4L data...")
+        assets_metadata = {}
+        ml_model_metadata = None
+        for result in result_list:
+            if('write_assets' in dir(result)):
+                result.options["batch_mode"] = True
+                result.options["file_metadata"] = global_metadata_attributes
+                if( result.options.get("sample_by_feature")):
+                    geoms = tracer.get_last_geometry("filter_spatial")
+                    if geoms == None:
+                        logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
+                    else:
+                        result.options["geometries"] = geoms
+                    if(result.options["geometries"] == None):
+                        logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
+                the_assets_metadata = result.write_assets(str(output_file))
+                if isinstance(result, MlModelResult):
+                    ml_model_metadata = result.get_model_metadata(str(output_file))
+                    logger.info("Extracted ml model metadata from %s" % output_file)
+                for name,asset in the_assets_metadata.items():
+                    add_permissions(Path(asset["href"]), stat.S_IWGRP)
+                logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
+                assets_metadata = {**assets_metadata,**the_assets_metadata}
+            elif isinstance(result, ImageCollectionResult):
+                result.options["batch_mode"] = True
+                result.save_result(filename=str(output_file))
+                add_permissions(output_file, stat.S_IWGRP)
+                logger.info("wrote image collection to %s" % output_file)
+            elif isinstance(result, NullResult):
+                logger.info("skipping output file %s" % output_file)
+            else:
+                raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
-        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
+        if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
+            logger.debug("awaiting Sentinel Hub CARD4L data...")
 
-        poll_interval_secs = 10
-        max_delay_secs = 600
+            s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
 
-        card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
+            poll_interval_secs = 10
+            max_delay_secs = 600
 
-        for source_location in set(card4l_source_locations):
-            uri_parts = urlparse(source_location)
-            bucket_name = uri_parts.hostname
-            request_group_id = uri_parts.path[1:]
+            card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
 
-            try:
-                # TODO: incorporate index to make sure the files don't clash
-                s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
-                                              max_delay_secs)
-                logger.info("downloaded CARD4L data in {b}/{g} to {d}"
-                            .format(b=bucket_name, g=request_group_id, d=job_dir))
-            except Py4JJavaError as e:
-                java_exception = e.java_exception
+            for source_location in set(card4l_source_locations):
+                uri_parts = urlparse(source_location)
+                bucket_name = uri_parts.hostname
+                request_group_id = uri_parts.path[1:]
 
-                if (java_exception.getClass().getName() ==
-                        'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
-                    logger.warning("could not find CARD4L metadata to download from s3://{b}/{r} after {d}s"
-                                   .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
-                else:
-                    raise e
+                try:
+                    # TODO: incorporate index to make sure the files don't clash
+                    s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
+                                                  max_delay_secs)
+                    logger.info("downloaded CARD4L data in {b}/{g} to {d}"
+                                .format(b=bucket_name, g=request_group_id, d=job_dir))
+                except Py4JJavaError as e:
+                    java_exception = e.java_exception
 
-        _transform_stac_metadata(job_dir)
+                    if (java_exception.getClass().getName() ==
+                            'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
+                        logger.warning("could not find CARD4L metadata to download from s3://{b}/{r} after {d}s"
+                                       .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
+                    else:
+                        raise e
 
-    unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+            _transform_stac_metadata(job_dir)
 
+        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
+        if "file_metadata" in result.options:
+            result.options["file_metadata"]["providers"] = [
+                {
+                    "name": "VITO",
+                    "description": "This data was processed on an openEO backend maintained by VITO.",
+                    "roles": [
+                        "processor"
+                    ],
+                    "processing:facility": "openEO Geotrellis backend",
+                    "processing:software": {
+                        "Geotrellis backend": __version__
+                    },
+                    "processing:expression": [
+                        {
+                            "format": "openeo",
+                            "expression": pg_copy
+                        }]
+                }]
 
-    if "file_metadata" in result.options:
-        result.options["file_metadata"]["providers"] = [
-            {
-                "name": "VITO",
-                "description": "This data was processed on an openEO backend maintained by VITO.",
-                "roles": [
-                    "processor"
-                ],
-                "processing:facility": "openEO Geotrellis backend",
-                "processing:software": {
-                    "Geotrellis backend": __version__
-                },
-                "processing:expression": [
-                    {
-                        "format": "openeo",
-                        "expression": pg_copy
-                    }]
-            }]
+        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
+                                                    unique_process_ids=unique_process_ids,
+                                                    asset_metadata=assets_metadata,
+                                                    ml_model_metadata=ml_model_metadata)
+    finally:
+        metadata = {**result_metadata, **_get_tracker_metadata("")}
 
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f)
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
-                            unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
-                            ml_model_metadata=ml_model_metadata)
+        add_permissions(metadata_file, stat.S_IWGRP)
 
-    if ConfigParams().is_kube_deploy:
-        from openeogeotrellis.utils import s3_client
+        logger.info("wrote metadata to %s" % metadata_file)
 
-        _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+        if ConfigParams().is_kube_deploy:
+            from openeogeotrellis.utils import s3_client
 
-        bucket = os.environ.get('SWIFT_BUCKET')
-        s3_instance = s3_client()
+            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
-        logger.info("Writing results to object storage")
-        for file in os.listdir(job_dir):
-            full_path = str(job_dir) + "/" + file
-            s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            bucket = os.environ.get('SWIFT_BUCKET')
+            s3_instance = s3_client()
+
+            logger.info("Writing results to object storage")
+            for file in os.listdir(job_dir):
+                full_path = str(job_dir) + "/" + file
+                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
