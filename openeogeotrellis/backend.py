@@ -1678,7 +1678,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     aws_region=os.environ.get("AWS_REGION","RegionOne"),
                     swift_url=os.environ.get("SWIFT_URL"),
                     image_name=os.environ.get("IMAGE_NAME"),
-                    openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                     eodata_mount=eodata_mount,
