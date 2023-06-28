@@ -48,7 +48,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # TODO: possible to disable enrichment by default?
     opensearch_enrich: bool = True
-    default_opensearch_endpoint: str = "https://catalogue.example.com/"
+    # TODO: eliminate hardcoded VITO/Terrascope resources
+    default_opensearch_endpoint: str = "https://services.terrascope.be/catalogue"
 
     # TODO: eliminate hardcoded VITO-specific defaults?
     logging_es_hosts: List[str] = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
