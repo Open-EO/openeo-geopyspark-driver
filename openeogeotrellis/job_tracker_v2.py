@@ -287,10 +287,15 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cpu_seconds = prometheus.get_cpu_usage(application_id)
             network_receive_bytes = prometheus.get_network_received_usage(application_id)
 
-            return _Usage(cpu_seconds=cpu_seconds,
-                          mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes,
-                          )
+            usage = _Usage(cpu_seconds=cpu_seconds,
+                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
+                           network_receive_bytes=network_receive_bytes,
+                           )
+
+            _log.info(f"Successfully retrieved usage stats {usage} from {self._prometheus_api_endpoint}",
+                      extra={"job_id": job_id, "user_id": user_id})
+
+            return usage
         except Exception as e:
             _log.exception(
                 f"Failed to retrieve usage stats from {self._prometheus_api_endpoint}: {type(e).__name__}: {e}",
