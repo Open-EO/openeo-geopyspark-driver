@@ -1269,7 +1269,7 @@ if __name__ == '__main__':
     )
 
     try:
-        with TimingLogger("batch_job.py main", logger=logger):
+        with TimingLogger(f"batch_job.py main {os.getpid()=}", logger=logger):
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
