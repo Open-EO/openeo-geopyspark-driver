@@ -2,7 +2,6 @@ import requests
 
 
 class Prometheus:
-    # TODO: reconsider currently excluded time series?
     # TODO: does filtering on pod namespace speed things up?
 
     def __init__(self, api_endpoint: str):
@@ -27,7 +26,7 @@ class Prometheus:
     def get_cpu_usage(self, application_id: str, at: str = None) -> float:
         """Returns CPU usage in cpu-seconds."""
 
-        query = f'sum(last_over_time(container_cpu_usage_seconds_total{{pod=~"{application_id}.+", container!=""}}[5d]))'
+        query = f'sum(last_over_time(container_cpu_usage_seconds_total{{pod=~"{application_id}.+"}}[5d]))'
         return self._query_for_value(query, at)
 
     def get_network_received_usage(self, application_id: str, at: str = None) -> float:
@@ -40,7 +39,7 @@ class Prometheus:
         """Returns memory usage in byte-seconds."""
 
         # Prometheus doesn't expose this as a counter: do integration over time ourselves
-        query = f'sum(avg_over_time(container_memory_usage_bytes{{pod=~"{application_id}-.+", container!=""}}[5d])) ' \
+        query = f'sum(avg_over_time(container_memory_usage_bytes{{pod=~"{application_id}-.+"}}[5d])) ' \
                 f'* {application_duration_s}'
         return self._query_for_value(query, at)
 
