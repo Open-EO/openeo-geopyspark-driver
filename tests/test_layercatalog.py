@@ -7,6 +7,7 @@ import schema
 
 from openeo.util import deep_get
 from openeo_driver.utils import read_json
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name
@@ -21,7 +22,7 @@ def _get_layers() -> List[Tuple[str, dict]]:
 
 
 def test_opensearch_enrich_default():
-    assert ConfigParams().opensearch_enrich is False
+    assert get_backend_config().opensearch_enrich is False
 
 
 @pytest.mark.parametrize(["id", "layer"], _get_layers())

@@ -1699,8 +1699,9 @@ class GeopysparkDataCube(DriverDataCube):
                             } for resultfile in outputPaths}
 
             else:
-                if not filename.endswith(".png"):
-                    filename = filename + ".png"
+                if not save_filename.endswith(".png"):
+                    save_filename = save_filename + ".png"
+
                 png_options = get_jvm().org.openeo.geotrellis.png.PngOptions()
                 color_cmap = get_color_cmap()
                 if color_cmap is not None:
@@ -1711,8 +1712,8 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
                 return {
-                    str(pathlib.Path(filename).name): {
-                        "href": filename,
+                    str(pathlib.Path(save_filename).name): {
+                        "href": save_filename,
                         "type": "image/png",
                         "roles": ["data"]
                     }

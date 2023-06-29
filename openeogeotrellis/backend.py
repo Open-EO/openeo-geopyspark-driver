@@ -48,8 +48,14 @@ from openeo.util import (
 )
 from openeo_driver import backend
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
-from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog)
+from openeo_driver.backend import (
+    ServiceMetadata,
+    BatchJobMetadata,
+    BatchJobResultMetadata,
+    OidcProvider,
+    ErrorSummary,
+    LoadParameters,
+)
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -84,6 +90,7 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
     GeopysparkCubeMetadata,
 )
+from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
@@ -117,7 +124,6 @@ from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
 )
 from openeogeotrellis.utils import (
-    kerberos,
     zk_client,
     to_projected_polygons,
     normalize_temporal_extent,
@@ -587,8 +593,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         date_regex = options['date_regex']
 
-        if glob_pattern.startswith("hdfs:"):
-            kerberos(self._principal, self._key_tab)
+        if glob_pattern.startswith("hdfs:") and get_backend_config().setup_kerberos_auth:
+            setup_kerberos_auth(self._principal, self._key_tab)
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -1570,8 +1576,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 return json.dumps([as_arg_element(dependency) for dependency in dependencies])
 
 
-            if not isKube:
-                kerberos(self._principal, self._key_tab, self._jvm)
+            if get_backend_config().setup_kerberos_auth:
+                setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
             if isKube:
                 import yaml
@@ -2272,7 +2278,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self.get_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2346,7 +2352,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-    def get_results_metadata(self, job_id: str, user_id: str) -> dict:
+    def load_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
         """
@@ -2370,6 +2376,10 @@ class GpsBatchJobs(backend.BatchJobs):
                            extra={'job_id': job_id})
 
         return {}
+
+    def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
+        results_metadata = self.load_results_metadata(job_id, user_id)
+        return results_metadata.get("providers", [])
 
     def get_log_entries(
         self,

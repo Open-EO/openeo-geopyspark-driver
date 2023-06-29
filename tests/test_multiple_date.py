@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+import numpy.testing
 import pytest
 import rasterio
 import geopyspark as gps
@@ -171,7 +172,6 @@ class TestMultipleDates(TestCase):
         spatial_cube = cube.drop_dimension("t")
         assert not spatial_cube.metadata.has_temporal_dimension()
 
-
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
@@ -179,34 +179,23 @@ class TestMultipleDates(TestCase):
         env = EvalEnv()
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("max"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertEqual(2.0, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 2], [2, 2]]])
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("min"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertEqual(1.0, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 1], [1, 1]]])
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("sum"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertEqual(4.0, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 4], [4, 4]]])
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 4.0 / 3.0], [4.0 / 3.0, 4.0 / 3.0]]])
 
         stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(-1.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(0.3333333333333333, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[-1, 1.0 / 3.0], [1.0 / 3.0, 1.0 / 3.0]]])
 
         stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(-1.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(0.5773502691896257, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[-1, 0.5773503], [0.5773503, 0.5773503]]])
+
 
     def test_reduce_all_data(self):
         input = Pyramid({0: self._single_pixel_layer({
