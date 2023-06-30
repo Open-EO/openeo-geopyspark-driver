@@ -102,6 +102,9 @@ spec:
     - name: "http-credentials-configmap"
       configMap:
         name: "http-credentials"
+    - name: "backend-config-configmap"
+      configMap:
+        name: "backend-config"
 {%- if mount_tmp %}
     - name: "spark-local-dir-1"
       hostPath:
@@ -208,6 +211,8 @@ spec:
       - name: "http-credentials-configmap"
         mountPath: "/opt/http_credentials/http_credentials.json"
         subPath: "http_credentials.json"
+      - name: "backend-config-configmap"
+        mountPath: "/opt/backend_config/"
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
