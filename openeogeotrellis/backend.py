@@ -1681,7 +1681,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                     eodata_mount=eodata_mount,
-                    datashim=os.environ.get("DATASHIM", ""),
                     archives=archives,
                     py_files = py_files,
                     logging_threshold=logging_threshold,
