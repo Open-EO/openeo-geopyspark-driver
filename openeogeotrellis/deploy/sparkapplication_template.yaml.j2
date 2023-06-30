@@ -145,6 +145,8 @@ spec:
 {%- endblock %}
     env:
 {%- block driver_env %}
+      - name: OPENEO_BACKEND_CONFIG
+        value: {{ openeo_backend_config }}
       - name: OPENEO_BATCH_JOB_ID
         value: {{ job_id_full }}
       - name: OPENEO_USER_ID
@@ -249,8 +251,6 @@ spec:
 {%- endblock %}
     env:
 {%- block executor_env %}
-      - name: OPENEO_BACKEND_CONFIG
-        value: {{ openeo_backend_config }}
       - name: OPENEO_BATCH_JOB_ID
         value: {{ job_id_full }}
       - name: OPENEO_USER_ID
