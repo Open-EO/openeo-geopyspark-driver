@@ -51,6 +51,7 @@ sentinelHubClientAlias=${26}
 propertiesFile=${27}
 archives=${28}
 logging_threshold=${29}
+openeo_backend_config=${30}
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -149,8 +150,8 @@ spark-submit \
  --conf spark.executorEnv.OPENEO_USER_ID=${userId} \
  --conf spark.executorEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.executorEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
- --conf spark.yarn.appMasterEnv.OPENEO_BACKEND_CONFIG=$OPENEO_BACKEND_CONFIG \
- --conf spark.executorEnv.OPENEO_BACKEND_CONFIG=$OPENEO_BACKEND_CONFIG \
+ --conf spark.yarn.appMasterEnv.OPENEO_BACKEND_CONFIG=${openeo_backend_config} \
+ --conf spark.executorEnv.OPENEO_BACKEND_CONFIG=${openeo_backend_config} \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.dynamicAllocation.enabled=true \
  --conf spark.shuffle.service.enabled=true \
  --conf spark.ui.view.acls.groups=vito \

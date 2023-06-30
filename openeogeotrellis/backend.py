@@ -56,6 +56,7 @@ from openeo_driver.backend import (
     ErrorSummary,
     LoadParameters,
 )
+from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -1798,6 +1799,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(temp_properties_file.name)
                     args.append(archives)
                     args.append(logging_threshold)
+                    args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
+                    # TODO: this positional `args` handling is getting out of hand
 
                     persistent_worker_count = ConfigParams().persistent_worker_count
                     if persistent_worker_count != 0:
