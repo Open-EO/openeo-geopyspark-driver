@@ -358,7 +358,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     msg = e.desc
                 else:
                     msg = str(e)
-                if "Could not find data for your load_collection request with catalog ID" in msg:
+                if msg and "Could not find data for your load_collection request with catalog ID" in msg:
                     logger.error(f"create_pyramid failed: {msg}", exc_info=True)
                     raise OpenEOApiException(
                         code="NoDataAvailable", status_code=400,
