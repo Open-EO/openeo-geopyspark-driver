@@ -839,8 +839,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 band_assets = [(band_name, item.get_assets()[band_name]) for band_name in load_params.bands]
             """
             #else:  # nothing to go by so guess but in a deterministic order
-            sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]
-            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if asset.media_type == "image/jp2"]  # FIXME: improve check
+            # TODO: use an OrderedDict instead?
+            sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]  # TODO: OK to use asset ID because "title" is optional?
+            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if asset.media_type == "image/jp2"]  # FIXME: improve check (but "roles" is optional and its value "data" is only a suggestion)
 
             jvm = get_jvm()
 
@@ -851,10 +852,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 [[asset_id, asset.href] for asset_id, asset in band_assets]
             )
 
+            band_names = [asset_id for asset_id, _ in band_assets]
+
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 item.id,  # openSearchCollectionId, not important
-                [asset_id for asset_id, _ in band_assets],  # openSearchLinkTitles
+                band_names,  # openSearchLinkTitles
                 None,  # rootPath, not important
                 jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
                 False  # experimental
@@ -891,8 +894,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
                                                    correlation_id, data_cube_parameters)
-
-            band_names = ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12"]  # TODO: ad-hoc
 
             metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
                 # TODO: detect actual dimensions instead of this simple default?
