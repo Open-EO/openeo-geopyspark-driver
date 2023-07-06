@@ -759,8 +759,12 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
             band_name or gdal_band_stats.get("long_name") or gdal_band_stats.get("DESCRIPTION") or str(band_num)
         )
 
-        def to_float_or_none(x):
-            return None if x is None or not isfinite(x) else float(x)
+        def to_float_or_none(x: Optional[str]):
+            if x is None:
+                return None
+
+            x = float(x)
+            return x if isfinite(x) else None
 
         band_stats = BandStatistics(
             minimum=to_float_or_none(gdal_band_stats.get("STATISTICS_MINIMUM")),
