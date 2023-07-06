@@ -307,13 +307,20 @@ class BandStatistics:
     stddev: Optional[float] = None
     valid_percent: Optional[float] = None
 
+    @staticmethod
+    def _to_jsonable_float(x: Optional[float]) -> Union[float, str, None]:
+        if x is None:
+            return None
+
+        return x if isfinite(x) else str(x)
+
     def to_dict(self):
         return {
-            "minimum": self.minimum,
-            "maximum": self.maximum,
-            "mean": self.mean,
-            "stddev": self.stddev,
-            "valid_percent": self.valid_percent,
+            "minimum": self._to_jsonable_float(self.minimum),
+            "maximum": self._to_jsonable_float(self.maximum),
+            "mean": self._to_jsonable_float(self.mean),
+            "stddev": self._to_jsonable_float(self.stddev),
+            "valid_percent": self._to_jsonable_float(self.valid_percent),
         }
 
 
@@ -760,11 +767,7 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         )
 
         def to_float_or_none(x: Optional[str]):
-            if x is None:
-                return None
-
-            x = float(x)
-            return x if isfinite(x) else None
+            return None if x is None else float(x)
 
         band_stats = BandStatistics(
             minimum=to_float_or_none(gdal_band_stats.get("STATISTICS_MINIMUM")),
