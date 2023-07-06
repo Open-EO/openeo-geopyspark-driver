@@ -824,9 +824,31 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         #  * if there is one, just read it directly (you can assume that it belongs to this system (job ID is universally unique) and to this user)
         #  * if there isn't one (catch the exception), treat it like any other STAC (API) URL
 
+        requested_bbox = BoundingBox.from_dict_or_none(
+            load_params.spatial_extent, default_crs="EPSG:4326"
+        )
+
+        temporal_extent = load_params.temporal_extent
+        from_date, to_date = normalize_temporal_extent(temporal_extent)
+
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
-            # FIXME: implement, see load_result for spatial check + add temporal check
-            return True
+            def intersects_temporally() -> bool:
+                requested_from_date, requested_to_date = normalize_temporal_extent(temporal_extent)
+                requested_from_date = datetime.datetime.fromisoformat(requested_from_date)
+                requested_to_date = datetime.datetime.fromisoformat(requested_to_date)
+
+                return requested_from_date <= itm.datetime <= requested_to_date
+
+            def intersects_spatially() -> bool:
+                if not requested_bbox or itm.bbox is None:
+                    return True
+
+                requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
+                return requested_bbox_lonlat.as_polygon().intersects(
+                    Polygon.from_bounds(*itm.bbox)
+                )
+
+            return intersects_temporally() and intersects_spatially()
 
         if isinstance(stac_object, pystac.Item):
             item = stac_object
@@ -840,12 +862,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             """
             #else:  # nothing to go by so guess but in a deterministic order
             # TODO: use an OrderedDict instead?
+            # TODO: handle assets with multiple bands in them
             sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]  # TODO: OK to use asset ID because "title" is optional?
-            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if asset.media_type == "image/jp2"]  # FIXME: improve check (but "roles" is optional and its value "data" is only a suggestion)
+            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]  # FIXME: improve check (but "roles" is optional and its value "data" is only a suggestion)
 
             jvm = get_jvm()
 
-            opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeatureOpenSearchClient(
+            opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+            opensearch_client.addFeature(
                 item.id,
                 jvm.geotrellis.vector.Extent(*item.bbox),
                 rfc3339.datetime(item.datetime.astimezone(datetime.timezone.utc)),
@@ -863,9 +887,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 False  # experimental
             )
 
-            requested_bbox = BoundingBox.from_dict_or_none(
-                load_params.spatial_extent, default_crs="EPSG:4326"
-            )
             item_bbox = BoundingBox.from_wsen_tuple(
                 item.bbox, crs="EPSG:4326"
             )
@@ -882,9 +903,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             projected_polygons = getattr(
                 getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
             ).reproject(projected_polygons, target_epsg)
-
-            temporal_extent = load_params.temporal_extent
-            from_date, to_date = normalize_temporal_extent(temporal_extent)
 
             metadata_properties = {}
             correlation_id = env.get('correlation_id', '')
@@ -928,13 +946,101 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return cube
         elif isinstance(stac_object, pystac.Catalog) and not isinstance(stac_object, pystac.Collection):
             catalog = stac_object
-            def timestamped_uris_for_item(itm: pystac.Item) -> dict:
-                raise NotImplementedError("TODO: put the above in a dedicated function")
 
-            timestamped_uris = reduce(partial(dict_merge_recursive, overwrite=True),
-                                      (timestamped_uris_for_item(itm) for itm in catalog.get_all_items()))
+            intersecting_items = [itm for itm in catalog.get_all_items() if intersects_spatiotemporally(itm)]
 
-            raise NotImplementedError(f"TODO: create a data cube from {timestamped_uris}")
+            if len(intersecting_items) == 0:
+                raise NoDataAvailableException()
+
+            jvm = get_jvm()
+
+            opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
+            band_names = None
+            catalog_bbox = None
+
+            for itm in intersecting_items:
+                sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in sorted(itm.get_assets().keys())]
+                band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]
+
+                opensearch_client.addFeature(
+                    itm.id,
+                    jvm.geotrellis.vector.Extent(*itm.bbox),
+                    rfc3339.datetime(itm.datetime.astimezone(datetime.timezone.utc)),
+                    [[asset_id, asset.href] for asset_id, asset in band_assets]
+                )
+
+                band_names = [asset_id for asset_id, _ in band_assets]  # TODO, should be the same across items
+
+                item_bbox = BoundingBox.from_wsen_tuple(
+                    itm.bbox, crs="EPSG:4326"
+                )
+
+                catalog_bbox = (item_bbox if catalog_bbox is None
+                                else item_bbox.as_polygon().union(catalog_bbox.as_polygon()))
+
+            pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                catalog.id,  # openSearchCollectionId, not important
+                band_names,  # openSearchLinkTitles
+                None,  # rootPath, not important
+                jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
+                False  # experimental
+            )
+
+            target_bbox = requested_bbox or catalog_bbox
+            target_epsg = target_bbox.best_utm()  # is the default in GeoPySparkLayerCatalog as well
+
+            extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+            extent_crs = target_bbox.crs
+
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+                extent, extent_crs
+            )
+            projected_polygons = getattr(
+                getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
+            ).reproject(projected_polygons, target_epsg)
+
+            metadata_properties = {}
+            correlation_id = env.get('correlation_id', '')
+
+            data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+            getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
+                                                   correlation_id, data_cube_parameters)
+
+            metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
+                # TODO: detect actual dimensions instead of this simple default?
+                SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
+                TemporalDimension(name='t', extent=[]),
+                BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
+            ])
+
+            metadata = metadata.filter_temporal(from_date, to_date)
+
+            metadata = metadata.filter_bbox(
+                west=extent.xmin(),
+                south=extent.ymin(),
+                east=extent.xmax(),
+                north=extent.ymax(),
+                crs=extent_crs,
+            )
+
+            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+            option = jvm.scala.Option
+
+            # noinspection PyProtectedMember
+            levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
+                option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
+                      range(0, pyramid.size())}
+
+            cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+            if load_params.bands:
+                cube = cube.filter_bands(load_params.bands)
+
+            return cube
 
         assert isinstance(stac_object, pystac.Collection)
         collection = stac_object
