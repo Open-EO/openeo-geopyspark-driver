@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 from copy import deepcopy
+from math import isfinite
 
 import pyproj
 from osgeo import gdal
@@ -759,7 +760,7 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         )
 
         def to_float_or_none(x):
-            return None if x is None else float(x)
+            return None if x is None or not isfinite(x) else float(x)
 
         band_stats = BandStatistics(
             minimum=to_float_or_none(gdal_band_stats.get("STATISTICS_MINIMUM")),
