@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def setup_kerberos_auth(principal, key_tab, jvm: JVMView = None):
+    logger.info("Doing setup_kerberos_auth")
     if jvm is None:
         jvm = get_jvm()
 
