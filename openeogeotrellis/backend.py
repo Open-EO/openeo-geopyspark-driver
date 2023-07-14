@@ -881,7 +881,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 item.id,  # openSearchCollectionId, not important
-                band_names,  # openSearchLinkTitles
+                ["does not apply"],  # openSearchLinkTitles, not important
                 None,  # rootPath, not important
                 jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
                 False  # experimental
@@ -944,7 +944,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 cube = cube.filter_bands(load_params.bands)
 
             return cube
-        elif isinstance(stac_object, pystac.Catalog) and not isinstance(stac_object, pystac.Collection):
+        elif isinstance(stac_object, pystac.Catalog):  # TODO: and not isinstance(stac_object, pystac.Collection): but should be able to handle a Collection as well (TBC)
             catalog = stac_object
 
             intersecting_items = [itm for itm in catalog.get_all_items() if intersects_spatiotemporally(itm)]
@@ -956,21 +956,28 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
-            band_names = None
+            band_names = []
             catalog_bbox = None
 
             for itm in intersecting_items:
                 sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in sorted(itm.get_assets().keys())]
                 band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]
 
+                links = []
+                for asset_id, asset in band_assets:
+                    asset_band_names = [eo_bands["name"] for eo_bands in asset.extra_fields["eo:bands"]]
+                    for asset_band_name in asset_band_names:
+                        if asset_band_name not in band_names:
+                            band_names.append(asset_band_name)
+
+                    links.append([asset.href, asset_id] + asset_band_names)
+
                 opensearch_client.addFeature(
                     itm.id,
                     jvm.geotrellis.vector.Extent(*itm.bbox),
                     rfc3339.datetime(itm.datetime.astimezone(datetime.timezone.utc)),
-                    [[asset_id, asset.href] for asset_id, asset in band_assets]
+                    links
                 )
-
-                band_names = [asset_id for asset_id, _ in band_assets]  # TODO, should be the same across items
 
                 item_bbox = BoundingBox.from_wsen_tuple(
                     itm.bbox, crs="EPSG:4326"
@@ -982,7 +989,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 catalog.id,  # openSearchCollectionId, not important
-                band_names,  # openSearchLinkTitles
+                ["does not apply"],  # openSearchLinkTitles, not important
                 None,  # rootPath, not important
                 jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
                 False  # experimental
