@@ -855,6 +855,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
         if isinstance(stac_object, pystac.Item):
+            # TODO: reduce code duplication with pystac.Catalog
             item = stac_object
 
             if not intersects_spatiotemporally(item):
@@ -870,6 +871,28 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]  # TODO: OK to use asset ID because "title" is optional?
             band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]  # FIXME: improve check (but "roles" is optional and its value "data" is only a suggestion)
 
+            band_names = []
+
+            def get_band_names(asset: pystac.Asset) -> List[str]:
+                def get_band_name(eo_band) -> str:
+                    if isinstance(eo_band, dict):
+                        return eo_band["name"]
+
+                    # can also be an index into a list of bands elsewhere
+                    eo_bands_location = item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
+                    return get_band_name(eo_bands_location["eo:bands"][eo_band])
+
+                return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
+            links = []
+            for asset_id, asset in band_assets:
+                asset_band_names = get_band_names(asset)
+                for asset_band_name in asset_band_names:
+                    if asset_band_name not in band_names:
+                        band_names.append(asset_band_name)
+
+                links.append([asset.href, asset_id] + asset_band_names)
+
             jvm = get_jvm()
 
             opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
@@ -877,10 +900,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 item.id,
                 jvm.geotrellis.vector.Extent(*item.bbox),
                 rfc3339.datetime(item.datetime.astimezone(datetime.timezone.utc)),
-                [[asset.href, asset_id] for asset_id, asset in band_assets]
+                links
             )
-
-            band_names = [asset_id for asset_id, _ in band_assets]
 
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
