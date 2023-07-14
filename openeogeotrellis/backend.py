@@ -850,6 +850,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             return intersects_temporally() and intersects_spatially()
 
+        def is_stac_api(collection: pystac.Collection) -> bool:
+            conforms_to = collection.get_root().extra_fields.get("conformsTo", [])
+            return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
+
         if isinstance(stac_object, pystac.Item):
             item = stac_object
 
@@ -873,7 +877,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 item.id,
                 jvm.geotrellis.vector.Extent(*item.bbox),
                 rfc3339.datetime(item.datetime.astimezone(datetime.timezone.utc)),
-                [[asset_id, asset.href] for asset_id, asset in band_assets]
+                [[asset.href, asset_id] for asset_id, asset in band_assets]
             )
 
             band_names = [asset_id for asset_id, _ in band_assets]
@@ -881,7 +885,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 item.id,  # openSearchCollectionId, not important
-                ["does not apply"],  # openSearchLinkTitles, not important
+                band_names,  # openSearchLinkTitles
                 None,  # rootPath, not important
                 jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
                 False  # experimental
@@ -944,7 +948,111 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 cube = cube.filter_bands(load_params.bands)
 
             return cube
-        elif isinstance(stac_object, pystac.Catalog):  # TODO: and not isinstance(stac_object, pystac.Collection): but should be able to handle a Collection as well (TBC)
+        elif isinstance(stac_object, pystac.Collection) and is_stac_api(stac_object):
+            collection = stac_object
+            collection_id = collection.id
+
+            root_catalog = collection.get_root()
+
+            jvm = get_jvm()
+
+            band_names = [b["name"] for b in collection.extra_fields.get("summaries", {}).get("eo:bands", [])]
+
+            if not band_names:
+                # e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
+                # (nor a resolution)
+                raise FeatureUnsupportedException(
+                    "load_stac: collection exposes no band names")  # TODO: different exception?
+
+            def create_stac_api_pyramid_factory():
+                is_utm = False
+                date_regex = None
+                bands = None
+                stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog.get_self_href(), is_utm,
+                                                                                   date_regex, bands, "stac")
+
+                root_path = None
+                cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
+                experimental = False
+                return jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
+                                                                     collection_id,
+                                                                     band_names,
+                                                                     root_path,
+                                                                     cell_size,
+                                                                     experimental)
+
+            single_level = env.get('pyramid_levels', 'all') != 'all'
+
+            if single_level:
+                requested_bbox = BoundingBox.from_dict_or_none(
+                    load_params.spatial_extent, default_crs="EPSG:4326"
+                )
+                collection_bbox = BoundingBox.from_wsen_tuple(
+                    collection.extent.spatial.bboxes[0], crs="EPSG:4326"
+                )
+
+                target_bbox = requested_bbox or collection_bbox
+                target_epsg = target_bbox.best_utm()  # is the default in GeoPySparkLayerCatalog as well
+
+                extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+                extent_crs = target_bbox.crs
+
+                projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+                    extent, extent_crs
+                )
+                projected_polygons = getattr(
+                    getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
+                ).reproject(projected_polygons, target_epsg)
+
+                temporal_extent = load_params.temporal_extent
+                from_date, to_date = normalize_temporal_extent(temporal_extent)
+
+                metadata_properties = {}
+                correlation_id = env.get('correlation_id', '')
+
+                data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+                getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+                pyramid = create_stac_api_pyramid_factory().datacube_seq(
+                    projected_polygons, from_date, to_date,
+                    metadata_properties, correlation_id, data_cube_parameters
+                )
+            else:
+                raise NotImplementedError("pyramid")
+
+            metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
+                # TODO: detect actual dimensions instead of this simple default?
+                SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
+                TemporalDimension(name='t', extent=[]),
+                BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
+            ])
+
+            metadata = metadata.filter_temporal(from_date, to_date)
+
+            metadata = metadata.filter_bbox(
+                west=extent.xmin(),
+                south=extent.ymin(),
+                east=extent.xmax(),
+                north=extent.ymax(),
+                crs=extent_crs,
+            )
+
+            temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+            option = jvm.scala.Option
+
+            # noinspection PyProtectedMember
+            levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
+                option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
+                      range(0, pyramid.size())}
+
+            cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+            if load_params.bands:
+                cube = cube.filter_bands(load_params.bands)
+
+            return cube
+        else:
+            assert isinstance(stac_object, pystac.Catalog)
             catalog = stac_object
 
             intersecting_items = [itm for itm in catalog.get_all_items() if intersects_spatiotemporally(itm)]
@@ -963,9 +1071,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in sorted(itm.get_assets().keys())]
                 band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]
 
+                def get_band_names(asset: pystac.Asset) -> List[str]:
+                    def get_band_name(eo_band) -> str:
+                        if isinstance(eo_band, dict):
+                            return eo_band["name"]
+
+                        # can also be an index into a list of bands elsewhere
+                        eo_bands_location = itm.properties if "eo:bands" in itm.properties else itm.collection.summaries
+                        return get_band_name(eo_bands_location["eo:bands"][eo_band])
+
+                    return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
                 links = []
                 for asset_id, asset in band_assets:
-                    asset_band_names = [eo_bands["name"] for eo_bands in asset.extra_fields["eo:bands"]]
+                    asset_band_names = get_band_names(asset)
                     for asset_band_name in asset_band_names:
                         if asset_band_name not in band_names:
                             band_names.append(asset_band_name)
@@ -989,7 +1108,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 catalog.id,  # openSearchCollectionId, not important
-                ["does not apply"],  # openSearchLinkTitles, not important
+                band_names,  # openSearchLinkTitles
                 None,  # rootPath, not important
                 jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
                 False  # experimental
@@ -1048,113 +1167,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 cube = cube.filter_bands(load_params.bands)
 
             return cube
-
-        assert isinstance(stac_object, pystac.Collection)
-        collection = stac_object
-        collection_id = collection.id
-
-        root_catalog = collection.get_root()
-        conforms_to = root_catalog.extra_fields.get("conformsTo", [])
-
-        if not any(conformance_class.endswith("/item-search") for conformance_class in conforms_to):
-            return self.load_result(job_id=url, user_id=None, load_params=load_params, env=env)
-
-        jvm = get_jvm()
-
-        band_names = [b["name"] for b in collection.extra_fields.get("summaries", {}).get("eo:bands", [])]
-
-        if not band_names:
-            # e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
-            # (nor a resolution)
-            raise FeatureUnsupportedException("load_stac: collection exposes no band names")  # TODO: different exception?
-
-        def create_stac_api_pyramid_factory():
-            is_utm = False
-            date_regex = None
-            bands = None
-            stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog.get_self_href(), is_utm,
-                                                                               date_regex, bands, "stac")
-
-            root_path = None
-            cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
-            experimental = False
-            return jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
-                                                                 collection_id,
-                                                                 band_names,
-                                                                 root_path,
-                                                                 cell_size,
-                                                                 experimental)
-
-        single_level = env.get('pyramid_levels', 'all') != 'all'
-
-        if single_level:
-            requested_bbox = BoundingBox.from_dict_or_none(
-                load_params.spatial_extent, default_crs="EPSG:4326"
-            )
-            collection_bbox = BoundingBox.from_wsen_tuple(
-                collection.extent.spatial.bboxes[0], crs="EPSG:4326"
-            )
-
-            target_bbox = requested_bbox or collection_bbox
-            target_epsg = target_bbox.best_utm()  # is the default in GeoPySparkLayerCatalog as well
-
-            extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
-            extent_crs = target_bbox.crs
-
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
-                extent, extent_crs
-            )
-            projected_polygons = getattr(
-                getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
-            ).reproject(projected_polygons, target_epsg)
-
-            temporal_extent = load_params.temporal_extent
-            from_date, to_date = normalize_temporal_extent(temporal_extent)
-
-            metadata_properties = {}
-            correlation_id = env.get('correlation_id', '')
-
-            data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-            getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
-
-            pyramid = create_stac_api_pyramid_factory().datacube_seq(
-                projected_polygons, from_date, to_date,
-                metadata_properties, correlation_id, data_cube_parameters
-            )
-        else:
-            raise NotImplementedError("pyramid")
-
-        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
-            # TODO: detect actual dimensions instead of this simple default?
-            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[]),
-            BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
-        ])
-
-        metadata = metadata.filter_temporal(from_date, to_date)
-
-        metadata = metadata.filter_bbox(
-            west=extent.xmin(),
-            south=extent.ymin(),
-            east=extent.xmax(),
-            north=extent.ymax(),
-            crs=extent_crs,
-        )
-
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        option = jvm.scala.Option
-
-        # noinspection PyProtectedMember
-        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
-            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
-                  range(0, pyramid.size())}
-
-        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
-
-        if load_params.bands:
-            cube = cube.filter_bands(load_params.bands)
-
-        return cube
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
