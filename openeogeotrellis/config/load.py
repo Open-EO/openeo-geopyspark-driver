@@ -13,7 +13,7 @@ class GpsConfigGetter(ConfigGetter):
         return self.get(force_reload=force_reload)
 
     def _default_config(self) -> ContextManager[Path]:
-        return importlib_resources.path("openeogeotrellis.config", "default.py")
+        return importlib_resources.as_file(importlib_resources.files("openeogeotrellis.config") / "default.py")
 
 
 # Singleton getter.
