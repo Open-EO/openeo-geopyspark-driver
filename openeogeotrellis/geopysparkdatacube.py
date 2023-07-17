@@ -2200,20 +2200,40 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
-    def apply_atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
-        return self.atmospheric_correction(missionID     , sza       , vza       , raa       , gnd       , aot       , cwv       , appendDebugBands      )
+    def atmospheric_correction(
+        self,
+        method: str,
+        elevation_model: str,
+        missionID: str,
+        sza: float,
+        vza: float,
+        raa: float,
+        gnd: float,
+        aot: float,
+        cwv: float,
+        appendDebugBands: bool,
+    ) -> "GeopysparkDataCube":
+        supported_methods = ["ICOR", "SMAC"]
+        supported_missons = ["SENTINEL2", "LANDSAT8"]
 
-    def atmospheric_correction(self,method:str,elevation_model:str, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float,
-                               cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
-        if missionID is None: missionID = "SENTINEL2"
-        if method is None: method = "ICOR"
-        if elevation_model is None: elevation_model = "DEM"
-        if sza is None: sza = np.NaN
-        if vza is None: vza = np.NaN
-        if raa is None: raa = np.NaN
-        if gnd is None: gnd = np.NaN
-        if aot is None: aot = np.NaN
-        if cwv is None: cwv = np.NaN
+        if missionID is None:
+            missionID = supported_missons[0]
+        if method is None:
+            method = supported_methods[0]
+        if elevation_model is None:
+            elevation_model = "DEM"
+        if sza is None:
+            sza = np.NaN
+        if vza is None:
+            vza = np.NaN
+        if raa is None:
+            raa = np.NaN
+        if gnd is None:
+            gnd = np.NaN
+        if aot is None:
+            aot = np.NaN
+        if cwv is None:
+            cwv = np.NaN
         if appendDebugBands is not None:
             if appendDebugBands == 1:
                 appendDebugBands = True
@@ -2222,7 +2242,19 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             appendDebugBands = False
         bandIds = self.metadata.band_names
-        _log.info("Bandids: " + str(bandIds))
+        _log.info(f"atmospheric_correction: {method=} {missionID=} {bandIds=}")
+        if method.upper() not in supported_methods:
+            raise ProcessParameterInvalidException(
+                parameter="method",
+                process="atmospheric_correction",
+                reason=f"Unsupported method {method}, should be one of {supported_methods}",
+            )
+        if missionID.upper() not in supported_missons:
+            raise ProcessParameterInvalidException(
+                parameter="missionId",
+                process="atmospheric_correction",
+                reason=f"Unsupported mission id {missionID}, should be one of {supported_missons}",
+            )
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
                 # ICOR or SMAC
