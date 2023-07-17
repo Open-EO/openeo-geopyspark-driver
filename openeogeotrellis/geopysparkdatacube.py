@@ -2202,58 +2202,45 @@ class GeopysparkDataCube(DriverDataCube):
 
     def atmospheric_correction(
         self,
-        method: str,
-        elevation_model: str,
-        missionID: str,
-        sza: float,
-        vza: float,
-        raa: float,
-        gnd: float,
-        aot: float,
-        cwv: float,
-        appendDebugBands: bool,
+        method: Optional[str] = None,
+        elevation_model: Optional[str] = None,
+        options: Optional[dict] = None,
     ) -> "GeopysparkDataCube":
         supported_methods = ["ICOR", "SMAC"]
         supported_missons = ["SENTINEL2", "LANDSAT8"]
 
-        if missionID is None:
-            missionID = supported_missons[0]
-        if method is None:
-            method = supported_methods[0]
-        if elevation_model is None:
-            elevation_model = "DEM"
-        if sza is None:
-            sza = np.NaN
-        if vza is None:
-            vza = np.NaN
-        if raa is None:
-            raa = np.NaN
-        if gnd is None:
-            gnd = np.NaN
-        if aot is None:
-            aot = np.NaN
-        if cwv is None:
-            cwv = np.NaN
-        if appendDebugBands is not None:
-            if appendDebugBands == 1:
-                appendDebugBands = True
-            else:
-                appendDebugBands = False
-        else:
-            appendDebugBands = False
+        method = method or supported_methods[0]
+        elevation_model = elevation_model or "DEM"
+        options = options or {}
+        mission_id = options.get("mission_id", supported_missons[0])
+        append_debug_bands = bool(options.get("append_debug_bands"))
+
+        def get_float(d: dict, key: str, default: float = np.NaN) -> float:
+            value = d.get(key)
+            if value is None:
+                value = default
+            return value
+
+        sza = get_float(options, "sza")
+        vza = get_float(options, "vza")
+        raa = get_float(options, "raa")
+        gnd = get_float(options, "gnd")
+        aot = get_float(options, "aot")
+        cwv = get_float(options, "cwv")
+
         bandIds = self.metadata.band_names
-        _log.info(f"atmospheric_correction: {method=} {missionID=} {bandIds=}")
+        _log.info(f"atmospheric_correction: {method=} {mission_id=} {bandIds=}")
         if method.upper() not in supported_methods:
             raise ProcessParameterInvalidException(
                 parameter="method",
                 process="atmospheric_correction",
                 reason=f"Unsupported method {method}, should be one of {supported_methods}",
             )
-        if missionID.upper() not in supported_missons:
+        if mission_id.upper() not in supported_missons:
             raise ProcessParameterInvalidException(
                 parameter="missionId",
                 process="atmospheric_correction",
-                reason=f"Unsupported mission id {missionID}, should be one of {supported_missons}",
+                reason=f"Unsupported mission id {mission_id}, should be one of {supported_missons}",
             )
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
@@ -2267,8 +2254,8 @@ class GeopysparkDataCube(DriverDataCube):
                 # DEM or SRTM
                 elevation_model,
                 # SENTINEL2 or LANDSAT8 for now
-                missionID,
-                appendDebugBands
+                mission_id,
+                append_debug_bands,
             )
         )
         return atmo_corrected
