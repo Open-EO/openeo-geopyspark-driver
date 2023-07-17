@@ -2212,7 +2212,8 @@ class GeopysparkDataCube(DriverDataCube):
         method = method or supported_methods[0]
         elevation_model = elevation_model or "DEM"
         options = options or {}
-        mission_id = options.get("mission_id", supported_missons[0])
+        # TODO: smarter mission_id fallback?
+        mission_id = options.get("mission_id") or supported_missons[0]
         append_debug_bands = bool(options.get("append_debug_bands"))
 
         def get_float(d: dict, key: str, default: float = np.NaN) -> float:
