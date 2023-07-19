@@ -62,7 +62,8 @@ spec:
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
     "spark.hadoop.fs.s3a.path.style.access": "true"
-    "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.EnvironmentVariableCredentialsProvider"
+    "spark.hadoop.fs.s3a.access.key": "{{ swift_access_key_id }}"
+    "spark.hadoop.fs.s3a.secret.key": "{{ swift_secret_access_key }}"
     "spark.eventLog.enabled": "true"
     "spark.kubernetes.allocation.batch.size": "4"
     "spark.kubernetes.allocation.batch.delay": "15s"
