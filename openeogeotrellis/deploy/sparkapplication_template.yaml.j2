@@ -62,8 +62,9 @@ spec:
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
     "spark.hadoop.fs.s3a.path.style.access": "true"
-    "spark.hadoop.fs.s3a.access.key": "{{ swift_access_key_id }}"
-    "spark.hadoop.fs.s3a.secret.key": "{{ swift_secret_access_key }}"
+    "spark.hadoop.fs.s3a.access.key": {{ swift_access_key_id }}
+    "spark.hadoop.fs.s3a.secret.key": {{ swift_secret_access_key }}
+    "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
     "spark.eventLog.enabled": "true"
     "spark.kubernetes.allocation.batch.size": "4"
     "spark.kubernetes.allocation.batch.delay": "15s"
@@ -173,7 +174,7 @@ spec:
       - name: AWS_REGION
         value: "{{aws_region}}"
       - name: AWS_HTTPS
-        value: "NO"
+        value: "{{aws_https}}"
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
       - name: AWS_DIRECT
@@ -277,7 +278,7 @@ spec:
       - name: AWS_REGION
         value: "{{aws_region}}"
       - name: AWS_HTTPS
-        value: "NO"
+        value: "{{aws_https}}"
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
       - name: AWS_DIRECT

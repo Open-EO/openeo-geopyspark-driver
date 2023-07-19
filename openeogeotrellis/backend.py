@@ -1675,6 +1675,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                    aws_https=os.environ.get("AWS_HTTPS","FALSE"),
                     swift_access_key_id=os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID")),
                     swift_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY")),
                     aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
