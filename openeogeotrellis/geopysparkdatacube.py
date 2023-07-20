@@ -882,11 +882,16 @@ class GeopysparkDataCube(DriverDataCube):
                                              " are merged with %s" % str(other.pyramid.levels.keys()))
 
         if overlaps_resolver is None:
+            # TODO: checking for overlap should also consider spatial extent and temporal extent, not only bands #479
             intersection = [value for value in leftBandNames if value in rightBandNames]
             if len(intersection) > 0:
                 # Spec: https://github.com/Open-EO/openeo-processes/blob/0dd3ab0d81f67506547136532af39b5c9a16771e/merge_cubes.json#L83-L87
-                raise OpenEOApiException(f"merge_cubes: Overlapping data cubes, but no overlap resolver has been specified. Either set an overlaps_resolver or rename the bands. Left names: {leftBandNames}, right names: {rightBandNames}.")
-
+                raise OpenEOApiException(
+                    code="OverlapResolverMissing",
+                    message=f"merge_cubes: Overlapping data cubes, but no overlap resolver has been specified."
+                    + f" Either set an overlaps_resolver or rename the bands."
+                    + f" Left names: {leftBandNames}, right names: {rightBandNames}.",
+                )
 
         # TODO properly combine bbox and temporal extents in metadata?
         pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
