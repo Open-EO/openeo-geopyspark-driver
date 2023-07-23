@@ -807,7 +807,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
-            correlation_id
+            correlation_id, datacubeParams=datacubeParams
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
