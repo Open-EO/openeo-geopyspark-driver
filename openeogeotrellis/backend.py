@@ -1717,7 +1717,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
-                    if e.body.get("reason","") == "AlreadyExists":
+                    if "AlreadyExists" in e.body:
                         raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
