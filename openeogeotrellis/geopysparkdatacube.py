@@ -340,6 +340,12 @@ class GeopysparkDataCube(DriverDataCube):
         pysc = gps.get_spark_context()
         if context is None:
             context = {}
+
+        if self.metadata.has_band_dimension():
+            context["array_labels"] = self.metadata.band_names
+        else:
+            _log.warning(f"Applying callback to the bands, but no band labels available on this datacube. Available dimensions: {self.metadata}")
+
         result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level:
                 pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(
