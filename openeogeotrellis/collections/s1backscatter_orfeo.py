@@ -134,8 +134,7 @@ class S1BackscatterOrfeo:
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
         attributeValues = {
-            "productType": "GRD",
-            "sensorMode": "IW",
+            "productType": "IW_GRDH_1S",
             "processingLevel": "LEVEL1",
         }
         # Additional query values for orbit filtering
@@ -149,7 +148,7 @@ class S1BackscatterOrfeo:
             #british vs US English Sentinelhub + STAC use US variant!!
             attributeValues["polarisation"] = extra_properties["polarization"]
         opensearch_client = self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
-            "https://finder.creodias.eu/oldresto", False, "", [], ""
+            "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
         )
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
             opensearch_client, collection_id, [], attributeValues, correlation_id
