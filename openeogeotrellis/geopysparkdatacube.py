@@ -37,7 +37,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
     ProcessParameterInvalidException
-from openeo_driver.ProcessGraphDeserializer import convert_node
+from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
@@ -771,7 +771,7 @@ class GeopysparkDataCube(DriverDataCube):
         pass
 
     def aggregate_temporal(
-        self, intervals: List, labels: List, reducer, dimension: str = None, context: Optional[dict] = None
+        self, intervals: List, labels: List, reducer, dimension: str = None, context: Optional[dict] = None, reduce = True
     ) -> "GeopysparkDataCube":
         """Computes a temporal aggregation based on an array of date and/or time intervals.
 
@@ -819,7 +819,7 @@ class GeopysparkDataCube(DriverDataCube):
             return self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().aggregateTemporal(rdd,
                                                                                                           intervals_iso,
-                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {}))
+                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {}),reduce)
         else:
             raise FeatureUnsupportedException("Unsupported type of reducer in aggregate_temporal: " + str(reducer))
 
@@ -1123,6 +1123,12 @@ class GeopysparkDataCube(DriverDataCube):
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
             elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
                 result_collection = self._apply_bands_dimension(process)
+            elif temporal_size.get('value', None) != None and temporal_overlap is None and sizeX==1 and sizeY==1 and overlap_x_value==0 and overlap_y_value==0:
+                temporal_extent = self.metadata.temporal_dimension.extent
+                start = temporal_extent[0]
+                end = temporal_extent[1]
+                intervals = _period_to_intervals(start,end,temporal_size.get('value', None))
+                result_collection = self.aggregate_temporal(intervals, None, process, None, context,reduce=False)
             else:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
         else:
