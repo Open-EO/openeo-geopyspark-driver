@@ -819,7 +819,7 @@ class GeopysparkDataCube(DriverDataCube):
             return self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().aggregateTemporal(rdd,
                                                                                                           intervals_iso,
-                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {}),reduce)
+                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {},reduce))
         else:
             raise FeatureUnsupportedException("Unsupported type of reducer in aggregate_temporal: " + str(reducer))
 
