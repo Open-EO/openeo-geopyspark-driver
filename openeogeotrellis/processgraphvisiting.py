@@ -41,8 +41,12 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
     def constantArgument(self, argument_id: str, value):
         if isinstance(value, numbers.Real):
             self.builder.constantArgument(argument_id, value)
+        elif isinstance(value, str):
+            pass
+        elif isinstance(value, bool):
+            self.builder.constantArgument(argument_id, value)
         else:
-            raise ValueError("Expecting numeric value for {a!r} but got {v!r}".format(v=value, a=argument_id))
+            raise ValueError("Unexpected value for {a!r}: got {v!r}".format(v=value, a=argument_id))
         return self
 
     def enterArray(self, argument_id: str):
