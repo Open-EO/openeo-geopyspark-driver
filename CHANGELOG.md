@@ -12,6 +12,15 @@ without compromising stable operations.
 
 ## [Unreleased]
 
+## 2023-07-30 (0.9.5a1)
+
+### Feature
+
+- array_element: Support band selection by label (https://github.com/Open-EO/openeo-geopyspark-driver/issues/43)
+- apply_neigborhood: Support applying function over time intervals (https://github.com/Open-EO/openeo-geopyspark-driver/issues/415)
+
+## 2023-06-30 (0.9.5a1)
+
 ### Feature
 - Add statistics to asset metadata ([#391](https://github.com/Open-EO/openeo-geopyspark-driver/issues/391))
 - Add array_apply ([openeo-geotrellis-extensions/#154](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/154))
