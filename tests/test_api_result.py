@@ -1473,7 +1473,7 @@ def test_apply_dimension_array_concat(api100):
                         "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}
                     },
                     "lon": {
-                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 2}
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "label": "Longitude"}
                     },
                     "day": {
                         "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 3}
