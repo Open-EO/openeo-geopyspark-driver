@@ -340,6 +340,8 @@ class GeopysparkDataCube(DriverDataCube):
         pysc = gps.get_spark_context()
         if context is None:
             context = {}
+        elif not isinstance(context,dict):
+            context = {"context": context}
 
         if self.metadata.has_band_dimension():
             context["array_labels"] = self.metadata.band_names
@@ -349,7 +351,7 @@ class GeopysparkDataCube(DriverDataCube):
         result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level:
                 pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(
-                    rdd, pgVisitor.builder, context if isinstance(context, dict) else {"context": context}
+                    rdd, pgVisitor.builder, context
                 )
         )
 
