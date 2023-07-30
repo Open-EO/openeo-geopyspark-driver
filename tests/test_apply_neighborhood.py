@@ -54,3 +54,35 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
 
     subresult = result_array[:input.shape[0], :input.shape[1], :input.shape[2]]
     assert_array_almost_equal(input, subresult)
+
+
+
+def test_apply_neighborhood_on_timeseries(imagecollection_with_two_bands_and_three_dates):
+    the_date = datetime.datetime(2017, 9, 25, 11, 37)
+    graph = {
+        "power": {
+            "arguments": {
+                "p": {
+                    "from_parameter": "data"
+                },
+                "base": 2
+            },
+            "process_id": "power",
+            "result": True
+        }
+    }
+
+    result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(
+        process=graph,
+        size=[{'dimension': 'x', 'unit': 'px', 'value': 1}, {'dimension': 'y', 'unit': 'px', 'value': 1},
+              {'dimension': 't', 'value': "month"}],
+        overlap=[],
+        context={},
+        env=EvalEnv(),
+    )
+    result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
+    print(result_array)
+    input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
+    expected_result = np.power(2, input)
+    print(expected_result)
+    assert_array_almost_equal(expected_result, result_array)

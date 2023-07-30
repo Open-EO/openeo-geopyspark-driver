@@ -71,7 +71,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         super().__init__(metadata=metadata, dimensions=dimensions)
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
-        if(self.has_temporal_dimension()):
+        if(self.has_temporal_dimension() and temporal_extent is not None):
             self.temporal_dimension.extent = temporal_extent
 
 
@@ -1079,8 +1079,7 @@ class GeopysparkDataCube(DriverDataCube):
                                              " This was provided: %s" % str(size))
         sizeX = int(size_dict[x.name]['value'])
         sizeY = int(size_dict[y.name]['value'])
-        if sizeX < 32 or sizeY < 32:
-            raise OpenEOApiException(message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
+
         overlap_x = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
         overlap_y = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
         if overlap_x.get('unit', None) != 'px' or overlap_y.get('unit', None) != 'px':
@@ -1105,6 +1104,10 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
+            if sizeX < 32 or sizeY < 32:
+                raise OpenEOApiException(
+                    message="apply_neighborhood: window sizes smaller then 32 are not yet supported for UDF's.")
+
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
                 if not self.metadata.has_temporal_dimension():
@@ -1124,6 +1127,8 @@ class GeopysparkDataCube(DriverDataCube):
             elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
                 result_collection = self._apply_bands_dimension(process)
             elif temporal_size.get('value', None) != None and temporal_overlap is None and sizeX==1 and sizeY==1 and overlap_x_value==0 and overlap_y_value==0:
+                if(not self.metadata.has_temporal_dimension()):
+                    raise OpenEOApiException(message=f"apply_neighborhood: no time dimension on cube, cannot chunk on time with value {temporal_size}")
                 temporal_extent = self.metadata.temporal_dimension.extent
                 start = temporal_extent[0]
                 end = temporal_extent[1]
