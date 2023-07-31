@@ -4,6 +4,7 @@ import logging
 from openeo.util import dict_no_none
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import FeatureUnsupportedException
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 
 OG_BATCH_RESULTS_BUCKET = "openeo-sentinelhub"
 
@@ -46,15 +47,15 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
     )
 
 
-def assure_polarization_from_sentinel_bands(shub_band_names, metadata_properties: Dict[str, object],
+def assure_polarization_from_sentinel_bands(metadata:GeopysparkCubeMetadata, metadata_properties: Dict[str, object],
                                             job_id: str = None):
     """
-    @param shub_band_names:
+    @param metadata:
     @param metadata_properties: Gets modified to have polarization filter when necessary
     @param job_id: (optional) job ID to log
     """
-    if "polarization" not in metadata_properties:
-        bn = set(shub_band_names)
+    if metadata.auto_polarization() and "polarization" not in metadata_properties:
+        bn = set(metadata.band_names)
         # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
         # Only run when relevant bands are present
         if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
