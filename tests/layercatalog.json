@@ -1381,7 +1381,15 @@
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis":"x", "extent": [-26.15, 60.42], "step": 0.0002},
-      "y": {"type": "spatial", "axis":"y", "extent": [-48, 39], "step": 0.0002}
+      "y": {"type": "spatial", "axis":"y", "extent": [-48, 39], "step": 0.0002},
+      "bands": {
+        "type": "bands",
+        "values": ["VV", "VH", "AREA", "ANGLE", "MASK", "dataMask"]
+      }
+    },
+    "extent": {
+      "spatial": {"bbox": [[-26.15, -48, 60.42, 39]]},
+      "temporal": {"interval": [["2018-01-01", null]]}
     }
   }
 ]
