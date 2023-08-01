@@ -45,49 +45,56 @@ class EtlApi:
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
                            cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
-                           sentinel_hub_processing_units: Optional[float], access_token: str) -> float:
+                           sentinel_hub_processing_units: Optional[float], cost_credits: Optional[float],
+                           access_token: str) -> float:
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
-        metrics = {}
+        def _log_resource_usage(metrics: dict) -> float:
+            data = {
+                'jobId': batch_job_id,
+                'jobName': title,
+                'executionId': execution_id,
+                'userId': user_id,
+                'sourceId': self._source_id,
+                'orchestrator': ORCHESTRATOR,
+                'jobStart': started_ms,
+                'jobFinish': finished_ms,
+                'state': state,
+                'status': status,
+                'metrics': metrics
+            }
 
+            log.debug(f"logging resource usage {data} at {self._endpoint}")
+
+            with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
+                                    json=data) as resp:
+                if not resp.ok:
+                    log.warning(
+                        f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
+
+                resp.raise_for_status()
+
+                metrics_credits = sum(resource['cost'] for resource in resp.json())
+                return metrics_credits
+
+        non_credits_metrics = {}
         if cpu_seconds is not None:
-            metrics['cpu'] = {'value': cpu_seconds, 'unit': 'cpu-seconds'}
-
+            non_credits_metrics['cpu'] = {'value': cpu_seconds, 'unit': 'cpu-seconds'}
         if mb_seconds is not None:
-            metrics['memory'] = {'value': mb_seconds, 'unit': 'mb-seconds'}
-
+            non_credits_metrics['memory'] = {'value': mb_seconds, 'unit': 'mb-seconds'}
         if duration_ms is not None:
-            metrics['time'] = {'value': duration_ms, 'unit': 'milliseconds'}
-
+            non_credits_metrics['time'] = {'value': duration_ms, 'unit': 'milliseconds'}
         if sentinel_hub_processing_units is not None:
-            metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
+            non_credits_metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
 
-        data = {
-            'jobId': batch_job_id,
-            'jobName': title,
-            'executionId': execution_id,
-            'userId': user_id,
-            'sourceId': self._source_id,
-            'orchestrator': ORCHESTRATOR,
-            'jobStart': started_ms,
-            'jobFinish': finished_ms,
-            'state': state,
-            'status': status,
-            'metrics': metrics
-        }
+        total_credits = _log_resource_usage(non_credits_metrics)
 
-        log.debug(f"logging resource usage {data} at {self._endpoint}")
+        if cost_credits is not None:
+            execution_id += "-c"
+            credits_metrics = {'processing': {'value': cost_credits, 'unit': 'credits'}}
+            total_credits += _log_resource_usage(credits_metrics)
 
-        with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
-                                json=data) as resp:
-            if not resp.ok:
-                log.warning(
-                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
-
-            resp.raise_for_status()
-
-            total_credits = sum(resource['cost'] for resource in resp.json())
-            return total_credits
+        return total_credits
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
@@ -155,20 +162,41 @@ def assert_resource_logging_possible():
 
     logging.basicConfig(level="DEBUG")
 
-    os.environ['OPENEO_ETL_API_OIDC_ISSUER'] = "https://cdasid.cloudferro.com/auth/realms/CDAS"
+    os.environ['OPENEO_ETL_API_OIDC_ISSUER'] = "https://sso-int.terrascope.be/auth/realms/terrascope"
     client_id = 'openeo-job-tracker'
-    client_secret = ...
+    client_secret = "sB4crwbPiotn1m7oAtIC60hf1DyyNaja"
 
     requests_session = requests.Session()
 
     access_token = get_etl_api_access_token(client_id, client_secret, requests_session)
     print(access_token)
 
-    etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", source_id="cdse",
+    etl_api = EtlApi("https://etl-dev.terrascope.be", source_id="TerraScope/MEP",
                      requests_session=requests_session)
 
     etl_api.assert_access_token_valid(access_token)
     etl_api.assert_can_log_resources(access_token)
+
+    request_id = 'r-20b6ccdb880e472b944d2304a6e58bc1'
+    user_id = 'vdboschj'
+    success = True
+
+    costs = etl_api.log_resource_usage(batch_job_id=request_id,
+                                       title=None,
+                                       execution_id=request_id,
+                                       user_id=user_id,
+                                       started_ms=None,
+                                       finished_ms=None,
+                                       state="FINISHED" if success else "FAILED",
+                                       status="SUCCEEDED" if success else "FAILED",
+                                       cpu_seconds=None,
+                                       mb_seconds=None,
+                                       duration_ms=None,
+                                       sentinel_hub_processing_units=1.23,
+                                       cost_credits=5,
+                                       access_token=access_token)
+
+    print(costs)
 
 
 if __name__ == '__main__':
