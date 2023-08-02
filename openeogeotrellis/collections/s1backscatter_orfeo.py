@@ -814,9 +814,13 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             self._debug_show_rdd_info(feature_pyrdd)
         trackers = S1BackscatterOrfeo._get_trackers(feature_pyrdd.context)
 
+        prefix = ""
+        if "vsis3" in extra_properties:
+            prefix = "/vsis3"
+
         # Group multiple tiles by product id
         def process_feature(feature: dict) -> Tuple[str, dict]:
-            creo_path = feature["feature"]["id"]
+            creo_path = prefix + feature["feature"]["id"]
             return creo_path, {
                 "key": feature["key"],
                 "key_extent": feature["key_extent"],

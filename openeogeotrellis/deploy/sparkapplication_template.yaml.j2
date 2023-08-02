@@ -214,6 +214,8 @@ spec:
 {%- block driver_volumeMounts %}
       - name: "eodata"
         mountPath: "/eodata"
+      - name: "eodata"
+        mountPath: "/vsis3/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
       - name: "http-credentials-configmap"
@@ -331,6 +333,8 @@ spec:
 {%- block executor_volumeMounts %}
       - name: "eodata"
         mountPath: "/eodata"
+      - name: "eodata"
+        mountPath: "/vsis3/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
       - name: "http-credentials-configmap"
