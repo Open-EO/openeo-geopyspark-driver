@@ -137,6 +137,8 @@ class S1BackscatterOrfeo:
             "productType": "IW_GRDH_1S",
             "processingLevel": "LEVEL1",
         }
+        if "COG" in extra_properties:
+            attributeValues["productType"] = "IW_GRDH_1S-COG"
         # Additional query values for orbit filtering
         attributeValues.update({
             k: v for (k, v) in extra_properties.items() if k in [
