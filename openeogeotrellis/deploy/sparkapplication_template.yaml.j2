@@ -313,6 +313,10 @@ spec:
         value: "10485760"
       - name: GDAL_HTTP_TCP_KEEPALIVE
         value: "YES"
+      - name: GDAL_HTTP_MAX_RETRY
+        value: "20"
+      - name: GDAL_HTTP_RETRY_DELAY
+        value: "10"
       - name: PYTHONPATH
         value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       - name: VSI_CACHE
