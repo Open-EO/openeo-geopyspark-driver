@@ -74,8 +74,8 @@ class CreoCatalogEntry(CatalogEntryBase):
 class CreoCatalogClient(CatalogClientBase):
 
     MISSION_SENTINEL2 = 'Sentinel2'
-    LEVEL1C = 'LEVEL1C'
-    LEVEL2A = 'LEVEL2A'
+    LEVEL1C = 'S2MSI1C'
+    LEVEL2A = 'S2MSI2A'
 
     @staticmethod
     def _build_polygon(ulx, uly, brx, bry):
@@ -119,6 +119,10 @@ class CreoCatalogClient(CatalogClientBase):
         self._session.mount('https://', HTTPAdapter(max_retries=retries))
         self._session.mount('http://', HTTPAdapter(max_retries=retries))
 
+    def __del__(self):
+        del self._session
+        self._session=None
+
     def catalogEntryFromProductId(self, product_id):
         return CreoCatalogEntry(product_id, CatalogStatus.AVAILABLE)
 
@@ -148,7 +152,7 @@ class CreoCatalogClient(CatalogClientBase):
         else:
             query_params.append(('productIdentifier', '%_T' + tile_id + '_%'))
 
-        response = self._session.get('https://finder.creodias.eu/resto/api/collections/' + self.mission + '/search.json',
+        response = self._session.get('https://catalogue.dataspace.copernicus.eu/resto/api/collections/' + self.mission + '/search.json',
                                 params=query_params)
         response.raise_for_status()
 
