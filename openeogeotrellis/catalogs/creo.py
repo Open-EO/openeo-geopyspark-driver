@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 
 from openeogeotrellis.catalogs.base import CatalogClientBase, CatalogEntryBase, CatalogStatus
 from openeogeotrellis.catalogs.creo_ordering import CreoOrder
-
+from requests.adapters import HTTPAdapter, Retry
 
 class CreoCatalogEntry(CatalogEntryBase):
     # product_id expected as one of:
@@ -104,6 +104,21 @@ class CreoCatalogClient(CatalogClientBase):
         self.itemsperpage = 100
         self.maxpages = 100  # elasticsearch has a 10000 limit on the paged search
 
+        status_forcelist = [502, 503, 504]
+        MAX_RETRIES = 5
+        retries = Retry(
+            total=MAX_RETRIES,
+            read=MAX_RETRIES,
+            other=MAX_RETRIES,
+            status=MAX_RETRIES,
+            backoff_factor=0.1,
+            status_forcelist=status_forcelist,
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
+        )
+        self._session = requests.Session()
+        self._session.mount('https://', HTTPAdapter(max_retries=retries))
+        self._session.mount('http://', HTTPAdapter(max_retries=retries))
+
     def catalogEntryFromProductId(self, product_id):
         return CreoCatalogEntry(product_id, CatalogStatus.AVAILABLE)
 
@@ -133,7 +148,7 @@ class CreoCatalogClient(CatalogClientBase):
         else:
             query_params.append(('productIdentifier', '%_T' + tile_id + '_%'))
 
-        response = requests.get('https://finder.creodias.eu/resto/api/collections/' + self.mission + '/search.json',
+        response = self._session.get('https://finder.creodias.eu/resto/api/collections/' + self.mission + '/search.json',
                                 params=query_params)
         response.raise_for_status()
 
