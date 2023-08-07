@@ -978,12 +978,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
-            if not band_names:
-                # e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
-                # (nor a resolution)
-                raise FeatureUnsupportedException(
-                    "load_stac: collection exposes no band names")  # TODO: different exception?
-
             def create_stac_api_pyramid_factory():
                 is_utm = False
                 date_regex = None
