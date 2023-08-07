@@ -898,8 +898,17 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         all_links = None
         if links is not None:
             all_links = list(chain(*links.values()))
-            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for
-                         link in all_links]
+            # TODO: when in the future these links point to STAC objects we will need to update the type.
+            #   https://github.com/openEOPlatform/architecture-docs/issues/327
+            all_links = [
+                {
+                    "href": link.getSelfUrl(),
+                    "rel": "derived_from",
+                    "title": f"Derived from {link.getId()}",
+                    "type": "application/json",
+                }
+                for link in all_links
+            ]
 
         return dict_no_none(usage=usage if usage != {} else None, links=all_links)
 
