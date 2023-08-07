@@ -867,7 +867,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             """
             #else:  # nothing to go by so guess but in a deterministic order
             # TODO: use an OrderedDict instead?
-            # TODO: handle assets with multiple bands in them
             sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]  # TODO: OK to use asset ID because "title" is optional?
             band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]  # FIXME: improve check (but "roles" is optional and its value "data" is only a suggestion)
 
@@ -977,7 +976,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             jvm = get_jvm()
 
-            band_names = [b["name"] for b in collection.extra_fields.get("summaries", {}).get("eo:bands", [])]
+            band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
             if not band_names:
                 # e.g. https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l2-sr doesn't have this band info
@@ -996,6 +995,62 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
                 experimental = False
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
+                                                                     collection_id,
+                                                                     band_names,
+                                                                     root_path,
+                                                                     cell_size,
+                                                                     experimental)
+
+            def create_fixed_pyramid_factory(bbox: BoundingBox, te: (str, str)):
+                import pystac_client
+
+                client = pystac_client.Client.open(root_catalog.get_self_href())
+                results = client.search(
+                    method="GET",
+                    collections=collection_id,
+                    bbox=bbox.as_wsen_tuple(),
+                    datetime="/".join(te),
+                )
+
+                fixed_opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
+                def get_band_names(itm: pystac.Item, asset: pystac.Asset) -> List[str]:
+                    def get_band_name(eo_band) -> str:
+                        if isinstance(eo_band, dict):
+                            return eo_band["name"]
+
+                        # can also be an index into a list of bands elsewhere
+                        eo_bands_location = item.properties if "eo:bands" in itm.properties else itm.get_collection().summaries.to_dict()
+                        return get_band_name(eo_bands_location["eo:bands"][eo_band])
+
+                    return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
+                for itm in results.items():
+                    sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in
+                                     sorted(itm.get_assets().keys())]
+                    band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if
+                                   "eo:bands" in asset.extra_fields]
+
+                    links = []
+                    for asset_id, asset in band_assets:
+                        asset_band_names = get_band_names(itm, asset)
+                        for asset_band_name in asset_band_names:
+                            if asset_band_name not in band_names:
+                                band_names.append(asset_band_name)
+
+                        links.append([asset.href, asset_id] + asset_band_names)
+
+                    fixed_opensearch_client.addFeature(
+                        itm.id,
+                        jvm.geotrellis.vector.Extent(*itm.bbox),
+                        rfc3339.datetime(itm.datetime.astimezone(datetime.timezone.utc)),
+                        links
+                    )
+
+                root_path = None
+                cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
+                experimental = False
+                return jvm.org.openeo.geotrellis.file.PyramidFactory(fixed_opensearch_client,
                                                                      collection_id,
                                                                      band_names,
                                                                      root_path,
@@ -1034,7 +1089,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
                 getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
-                pyramid = create_stac_api_pyramid_factory().datacube_seq(
+                pyramid = create_fixed_pyramid_factory(target_bbox, (from_date, to_date)).datacube_seq(
                     projected_polygons, from_date, to_date,
                     metadata_properties, correlation_id, data_cube_parameters
                 )
@@ -1073,7 +1128,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             return cube
         else:
-            assert isinstance(stac_object, pystac.Catalog)
+            assert isinstance(stac_object, pystac.Catalog)  # Catalog + Collection
             catalog = stac_object
 
             intersecting_items = [itm for itm in catalog.get_all_items() if intersects_spatiotemporally(itm)]
