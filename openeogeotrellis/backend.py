@@ -1019,6 +1019,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                     return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
+                items_found = False
+
                 for itm in results.items():
                     sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in
                                      sorted(itm.get_assets().keys())]
@@ -1040,6 +1042,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         rfc3339.datetime(itm.datetime.astimezone(datetime.timezone.utc)),
                         links
                     )
+
+                    items_found = True
+
+                if not items_found:
+                    raise NoDataAvailableException()
 
                 root_path = None
                 cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
