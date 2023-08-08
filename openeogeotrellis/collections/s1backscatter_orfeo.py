@@ -134,11 +134,11 @@ class S1BackscatterOrfeo:
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
         attributeValues = {
-            "productType": "IW_GRDH_1S",
+            "productType": "IW_GRDH_1S-COG",
             "processingLevel": "LEVEL1",
         }
-        if "COG" in extra_properties:
-            attributeValues["productType"] = "IW_GRDH_1S-COG"
+        if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
+            attributeValues["productType"] = "IW_GRDH_1S"
         # Additional query values for orbit filtering
         attributeValues.update({
             k: v for (k, v) in extra_properties.items() if k in [
