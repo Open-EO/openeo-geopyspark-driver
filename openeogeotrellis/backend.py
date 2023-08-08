@@ -982,7 +982,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             jvm = get_jvm()
 
-            band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
+            band_names = []
 
             def create_stac_api_pyramid_factory():
                 is_utm = False
