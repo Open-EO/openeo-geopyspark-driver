@@ -867,14 +867,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if not intersects_spatiotemporally(item):
                 raise no_data_available_exception
 
-            """
-            if load_params.bands:  # can look for specific assets
-                band_assets = [(band_name, item.get_assets()[band_name]) for band_name in load_params.bands]
-            """
-            #else:  # nothing to go by so guess but in a deterministic order
-            # TODO: use an OrderedDict instead?
-            sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]  # TODO: OK to use asset ID because "title" is optional?
-            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if is_band_asset(asset)]
+            band_assets = {asset_id: asset for asset_id, asset
+                           in dict(sorted(item.get_assets().items())).items() if is_band_asset(asset)}
 
             band_names = []
 
@@ -890,7 +884,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
             links = []
-            for asset_id, asset in band_assets:
+            for asset_id, asset in band_assets.items():
                 asset_band_names = get_band_names(asset)
                 for asset_band_name in asset_band_names:
                     if asset_band_name not in band_names:
@@ -1028,12 +1022,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 items_found = False
 
                 for itm in results.items():
-                    sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in
-                                     sorted(itm.get_assets().keys())]
-                    band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if is_band_asset(asset)]
+                    band_assets = {asset_id: asset for asset_id, asset
+                                   in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
 
                     links = []
-                    for asset_id, asset in band_assets:
+                    for asset_id, asset in band_assets.items():
                         asset_band_names = get_band_names(itm, asset)
                         for asset_band_name in asset_band_names:
                             if asset_band_name not in band_names:
@@ -1150,8 +1143,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             catalog_bbox = None
 
             for itm in intersecting_items:
-                sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in sorted(itm.get_assets().keys())]
-                band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if is_band_asset(asset)]
+                band_assets = {asset_id: asset for asset_id, asset
+                               in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
 
                 def get_band_names(asset: pystac.Asset) -> List[str]:
                     def get_band_name(eo_band) -> str:
@@ -1165,7 +1158,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
                 links = []
-                for asset_id, asset in band_assets:
+                for asset_id, asset in band_assets.items():
                     asset_band_names = get_band_names(asset)
                     for asset_band_name in asset_band_names:
                         if asset_band_name not in band_names:
