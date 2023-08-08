@@ -857,6 +857,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             conforms_to = collection.get_root().extra_fields.get("conformsTo", [])
             return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
+        def is_band_asset(asset: pystac.Asset) -> bool:
+            return "eo:bands" in asset.extra_fields or (asset.roles is not None and "data" in asset.roles)
+
         if isinstance(stac_object, pystac.Item):
             # TODO: reduce code duplication with pystac.Catalog
             item = stac_object
@@ -871,7 +874,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             #else:  # nothing to go by so guess but in a deterministic order
             # TODO: use an OrderedDict instead?
             sorted_assets = [(asset_id, item.get_assets()[asset_id]) for asset_id in sorted(item.get_assets().keys())]  # TODO: OK to use asset ID because "title" is optional?
-            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]  # FIXME: improve check (but "roles" is optional and its value "data" is only a suggestion)
+            band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if is_band_asset(asset)]
 
             band_names = []
 
@@ -1027,8 +1030,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 for itm in results.items():
                     sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in
                                      sorted(itm.get_assets().keys())]
-                    band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if
-                                   "eo:bands" in asset.extra_fields]
+                    band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if is_band_asset(asset)]
 
                     links = []
                     for asset_id, asset in band_assets:
@@ -1149,7 +1151,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             for itm in intersecting_items:
                 sorted_assets = [(asset_id, itm.get_assets()[asset_id]) for asset_id in sorted(itm.get_assets().keys())]
-                band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if "eo:bands" in asset.extra_fields]
+                band_assets = [(asset_id, asset) for asset_id, asset in sorted_assets if is_band_asset(asset)]
 
                 def get_band_names(asset: pystac.Asset) -> List[str]:
                     def get_band_name(eo_band) -> str:
