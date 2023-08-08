@@ -56,7 +56,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
-                                  ServiceUnsupportedException, FeatureUnsupportedException, NoDataAvailableException)
+                                  ServiceUnsupportedException)
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -816,6 +816,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
+        no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
+                                                         code="NoDataAvailable", status_code=400)
+
         stac_object = pystac.STACObject.from_file(href=url)
 
         # TODO: specifically handle our own batch job results:
@@ -859,7 +862,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             item = stac_object
 
             if not intersects_spatiotemporally(item):
-                raise NoDataAvailableException()
+                raise no_data_available_exception
 
             """
             if load_params.bands:  # can look for specific assets
@@ -1046,7 +1049,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     items_found = True
 
                 if not items_found:
-                    raise NoDataAvailableException()
+                    raise no_data_available_exception
 
                 root_path = None
                 cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
@@ -1135,7 +1138,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             intersecting_items = [itm for itm in catalog.get_all_items() if intersects_spatiotemporally(itm)]
 
             if len(intersecting_items) == 0:
-                raise NoDataAvailableException()
+                raise no_data_available_exception
 
             jvm = get_jvm()
 
