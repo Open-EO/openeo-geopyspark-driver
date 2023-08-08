@@ -342,26 +342,51 @@ def test_run_job(evaluate, tmp_path):
     )
 
     cube_mock.write_assets.assert_called_once()
-    metadata_result = read_json(tmp_path/"metadata.json")
-    assert metadata_result == {'assets': asset_meta,
-                               'bbox': None,
-                               'end_datetime': None,
-                               'epsg': None,
-                               'geometry': None,
-                               'area': None,
-                               'unique_process_ids': ['discard_result'],
-                               'instruments': [],
-                               'links': [{'href': 'http://myproduct4', 'rel': 'derived_from', 'title': 'Derived from p4'},
-                                         {'href': 'http://myproduct1', 'rel': 'derived_from', 'title': 'Derived from http://myproduct1'},
-                                         {'href': 'http://myproduct2', 'rel': 'derived_from', 'title': 'Derived from http://myproduct2'},
-                                         {'href': 'http://myproduct3', 'rel': 'derived_from', 'title': 'Derived from http://myproduct3'}],
-                               'processing:facility': 'VITO - SPARK',
-                               'processing:software': 'openeo-geotrellis-' + __version__,
-                               'start_datetime': None,
-                               'providers': EXPECTED_PROVIDERS,
-                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit', 'value': approx(1.8)},
-                                         'input_pixel': {'unit': 'mega-pixel', 'value': 3.5}}
-                               }
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": asset_meta,
+        "bbox": None,
+        "end_datetime": None,
+        "epsg": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from p4",
+                "type": "application/json",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+                "type": "application/json",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+                "type": "application/json",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+                "type": "application/json",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "providers": EXPECTED_PROVIDERS,
+        "usage": {
+            "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": approx(1.8)},
+            "input_pixel": {"unit": "mega-pixel", "value": 3.5},
+        },
+    }
     t.setGlobalTracking(False)
 
 
@@ -456,21 +481,25 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
                 "href": "http://myproduct4",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct4",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct1",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct1",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct2",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct2",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct3",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct3",
+                "type": "application/json",
             },
         ],
         "providers": EXPECTED_PROVIDERS,
@@ -609,21 +638,25 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 "href": "http://myproduct4",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct4",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct1",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct1",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct2",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct2",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct3",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct3",
+                "type": "application/json",
             },
         ],
         "providers": EXPECTED_PROVIDERS,
@@ -890,21 +923,25 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "href": "http://myproduct4",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct4",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct1",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct1",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct2",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct2",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct3",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct3",
+                "type": "application/json",
             },
         ],
         "providers": EXPECTED_PROVIDERS,
@@ -1023,21 +1060,25 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                     "href": "http://myproduct4",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct4",
+                    "type": "application/json",
                 },
                 {
                     "href": "http://myproduct1",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct1",
+                    "type": "application/json",
                 },
                 {
                     "href": "http://myproduct2",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct2",
+                    "type": "application/json",
                 },
                 {
                     "href": "http://myproduct3",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct3",
+                    "type": "application/json",
                 },
             ],
             "providers": EXPECTED_PROVIDERS,
