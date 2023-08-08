@@ -494,7 +494,7 @@ class S1BackscatterOrfeo:
 
                         key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
                         cell_type = geopyspark.CellType(tile_data.dtype.name)
-                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
+                        logger.debug(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                         tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                         resultlist.append((key, tile))
 
@@ -926,7 +926,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                         tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                         if not (tile==nodata).all():
-                            logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                            if debug_mode:
+                                logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                             tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                             tiles.append((key, tile))
 
