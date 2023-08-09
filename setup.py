@@ -71,7 +71,7 @@ setup(
         'python_dateutil',
         'pytz',
         'affine',
-        'xarray~=0.16.2',
+        'xarray~=2022.03.0',
         "netcdf4",
         'Shapely<2.0',
         'epsel~=1.0.0',
