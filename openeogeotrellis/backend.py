@@ -1012,17 +1012,25 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     literal_matches = {property_name: filter_properties.extract_literal_match(condition)
                                        for property_name, condition in load_params.properties.items()}
 
-                    def eq_value(criterion: Dict[str, object]) -> object:
+                    def operator_value(criterion: Dict[str, object]) -> (str, object):
                         if len(criterion) != 1:
-                            raise ValueError(f'expected a single "eq" criterion, was {criterion}')
+                            raise ValueError(f'expected a single criterion, was {criterion}')
 
-                        return criterion['eq']
+                        (operator, value), = criterion.items()
+                        return operator, value
 
-                    eq_values = {property_name: eq_value(criterion)
-                                 for property_name, criterion in literal_matches.items()}
+                    for property_name, criterion in literal_matches.items():
+                        if property_name not in item.properties:
+                            return False
 
-                    for property_name, value in eq_values.items():
-                        if item.properties.get(property_name) != value:
+                        item_value = item.properties[property_name]
+                        operator, criterion_value = operator_value(criterion)
+
+                        if operator == 'eq' and item_value != criterion_value:
+                            return False
+                        if operator == 'lte' and item_value is not None and item_value > criterion_value:
+                            return False
+                        if operator == 'gte' and item_value is not None and item_value < criterion_value:
                             return False
 
                     return True
