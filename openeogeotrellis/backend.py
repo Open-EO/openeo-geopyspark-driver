@@ -870,7 +870,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             band_assets = {asset_id: asset for asset_id, asset
                            in dict(sorted(item.get_assets().items())).items() if is_band_asset(asset)}
 
-            band_names = []
+            summary_bands_location = item.properties if "eo:bands" in item.properties else item.get_collection().summaries.lists
+            band_names = [b["name"] for b in summary_bands_location.get("eo:bands", [])]
 
             def get_band_names(asset: pystac.Asset) -> List[str]:
                 def get_band_name(eo_band) -> str:
@@ -878,8 +879,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         return eo_band["name"]
 
                     # can also be an index into a list of bands elsewhere
-                    eo_bands_location = item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
-                    return get_band_name(eo_bands_location["eo:bands"][eo_band])
+                    assert isinstance(eo_band, int)
+                    eo_band_index = eo_band
+
+                    return get_band_name(summary_bands_location["eo:bands"][eo_band_index])
 
                 return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
@@ -976,24 +979,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             jvm = get_jvm()
 
-            band_names = []
-
-            def create_stac_api_pyramid_factory():
-                is_utm = False
-                date_regex = None
-                bands = None
-                stac_api_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(root_catalog.get_self_href(), is_utm,
-                                                                                   date_regex, bands, "stac")
-
-                root_path = None
-                cell_size = jvm.geotrellis.raster.CellSize(10.0, 10.0)  # TODO: get it from the band metadata?
-                experimental = False
-                return jvm.org.openeo.geotrellis.file.PyramidFactory(stac_api_client,
-                                                                     collection_id,
-                                                                     band_names,
-                                                                     root_path,
-                                                                     cell_size,
-                                                                     experimental)
+            band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
             def create_fixed_pyramid_factory(bbox: BoundingBox, te: (str, str)):
                 import pystac_client
@@ -1014,8 +1000,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             return eo_band["name"]
 
                         # can also be an index into a list of bands elsewhere
+                        assert isinstance(eo_band, int)
+                        eo_band_index = eo_band
+
                         eo_bands_location = item.properties if "eo:bands" in itm.properties else itm.get_collection().summaries.to_dict()
-                        return get_band_name(eo_bands_location["eo:bands"][eo_band])
+                        return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
                     return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
@@ -1139,7 +1128,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
-            band_names = []
+            band_names = catalog.extra_fields.get("summaries", {}).get("eo:bands", [])
             catalog_bbox = None
 
             for itm in intersecting_items:
@@ -1152,8 +1141,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             return eo_band["name"]
 
                         # can also be an index into a list of bands elsewhere
+                        assert isinstance(eo_band, int)
+                        eo_band_index = eo_band
+
                         eo_bands_location = itm.properties if "eo:bands" in itm.properties else itm.collection.summaries
-                        return get_band_name(eo_bands_location["eo:bands"][eo_band])
+                        return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
                     return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
