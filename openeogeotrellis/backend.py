@@ -47,7 +47,7 @@ from openeo.util import (
     str_truncate,
     TimingLogger,
 )
-from openeo_driver import backend
+from openeo_driver import backend, filter_properties
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
                                    CollectionCatalog)
@@ -1008,9 +1008,28 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                     return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
+                def matches_metadata_properties(item: pystac.Item) -> bool:
+                    literal_matches = {property_name: filter_properties.extract_literal_match(condition)
+                                       for property_name, condition in load_params.properties.items()}
+
+                    def eq_value(criterion: Dict[str, object]) -> object:
+                        if len(criterion) != 1:
+                            raise ValueError(f'expected a single "eq" criterion, was {criterion}')
+
+                        return criterion['eq']
+
+                    eq_values = {property_name: eq_value(criterion)
+                                 for property_name, criterion in literal_matches.items()}
+
+                    for property_name, value in eq_values.items():
+                        if item.properties.get(property_name) != value:
+                            return False
+
+                    return True
+
                 items_found = False
 
-                for itm in results.items():
+                for itm in filter(matches_metadata_properties, results.items()):
                     band_assets = {asset_id: asset for asset_id, asset
                                    in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
 
