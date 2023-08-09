@@ -1018,18 +1018,47 @@ def check_missing_products(
             creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
             missing = [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
         elif method == "terrascope":
-            creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
-            expected_tiles = {
-                (p.getTileId(), p.getDateStr())
-                for p in creo_catalog.query(**query_kwargs)
-            }
+            jvm = get_jvm()
+
+            def query_trough_java(open_search_client, collection_id, _query_kwargs, cloud_percent=100):
+                fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
+                toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
+                dateRange = jvm.scala.Some(jvm.scala.Tuple2(fromDate, toDate))
+                extent = jvm.geotrellis.vector.Extent(_query_kwargs["ulx"], _query_kwargs["bry"],
+                                                      _query_kwargs["brx"], _query_kwargs["uly"])
+                crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
+                bbox = jvm.geotrellis.vector.ProjectedExtent(extent, crs)
+                attributeValuesDict = {"eo:cloud_cover": cloud_percent}
+                attributeValues = jvm.PythonUtils.toScalaMap(attributeValuesDict)
+                products = open_search_client.getProducts(
+                    collection_id, dateRange,
+                    bbox, attributeValues, "", ""
+                )
+                return {
+                    (
+                        products.apply(i).tileID().getOrElse(None),
+                        products.apply(i).nominalDate().toLocalDate().toString().replace("-", "")
+                    )
+                    for i in range(products.length())
+                }
+
+            expected_tiles = query_trough_java(
+                open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
+                collection_id=check_data["creo_catalog"]["mission"],
+                _query_kwargs=query_kwargs,
+                cloud_percent=95,
+            )
+
             logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
             opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
-            oscars_catalog = OscarsCatalogClient(collection=opensearch_collection_id)
-            terrascope_tiles = {
-                (p.getTileId(), p.getDateStr())
-                for p in oscars_catalog.query(**query_kwargs)
-            }
+
+            url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
+            terrascope_tiles = query_trough_java(
+                open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
+                collection_id=opensearch_collection_id,
+                _query_kwargs=query_kwargs,
+            )
+
             logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
             return list(expected_tiles.difference(terrascope_tiles))
         else:
