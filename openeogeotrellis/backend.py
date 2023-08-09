@@ -56,7 +56,7 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
-                                  ServiceUnsupportedException)
+                                  ServiceUnsupportedException, ProcessParameterUnsupportedException)
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -819,6 +819,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                          code="NoDataAvailable", status_code=400)
 
+        properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
+
         stac_object = pystac.STACObject.from_file(href=url)
 
         # TODO: specifically handle our own batch job results:
@@ -863,6 +865,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if isinstance(stac_object, pystac.Item):
             # TODO: reduce code duplication with pystac.Catalog
             item = stac_object
+
+            if load_params.properties:
+                raise properties_unsupported_exception
 
             if not intersects_spatiotemporally(item):
                 raise no_data_available_exception
@@ -1145,6 +1150,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         else:
             assert isinstance(stac_object, pystac.Catalog)  # Catalog + Collection
             catalog = stac_object
+
+            if load_params.properties:
+                raise properties_unsupported_exception
 
             intersecting_items = [itm for itm in catalog.get_all_items() if intersects_spatiotemporally(itm)]
 
