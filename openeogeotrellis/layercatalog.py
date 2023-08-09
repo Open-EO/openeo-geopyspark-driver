@@ -1020,7 +1020,8 @@ def check_missing_products(
         elif method == "terrascope":
             jvm = get_jvm()
 
-            def query_trough_java(open_search_client, collection_id, _query_kwargs, cloud_percent=100):
+            def query_trough_java(open_search_client, collection_id, _query_kwargs, processing_level="",
+                                  cloud_percent=100):
                 fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
                 toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
                 dateRange = jvm.scala.Some(jvm.scala.Tuple2(fromDate, toDate))
@@ -1032,7 +1033,7 @@ def check_missing_products(
                 attributeValues = jvm.PythonUtils.toScalaMap(attributeValuesDict)
                 products = open_search_client.getProducts(
                     collection_id, dateRange,
-                    bbox, attributeValues, "", ""
+                    bbox, attributeValues, "", processing_level
                 )
                 return {
                     (
@@ -1046,6 +1047,7 @@ def check_missing_products(
                 open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
                 collection_id=check_data["creo_catalog"]["mission"],
                 _query_kwargs=query_kwargs,
+                processing_level=check_data["creo_catalog"]["level"],
                 cloud_percent=95,
             )
 
