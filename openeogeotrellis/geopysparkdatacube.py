@@ -560,12 +560,12 @@ class GeopysparkDataCube(DriverDataCube):
             result_array: xr.DataArray = cubes[0].array
             _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
-                result_array = result_array.transpose(*('t' ,'bands','y', 'x'), missing_dims="warn")
+                result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
                          Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
-                result_array = result_array.transpose(*( 'bands', 'y', 'x'), missing_dims="warn")
+                result_array = result_array.transpose(*( 'bands', 'y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
                          Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
