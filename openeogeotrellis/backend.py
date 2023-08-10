@@ -2186,7 +2186,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     logging_threshold=logging_threshold,
                     mount_tmp=mount_tmp,
                     use_pvc=use_pvc,
-                    access_token=user.internal_auth_data.get("access_token") if user.internal_auth_data else None,
+                    access_token=user.internal_auth_data["access_token"],
                 )
 
                 dict_ = yaml.safe_load(rendered)
