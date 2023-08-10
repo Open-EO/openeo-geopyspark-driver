@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 import tempfile
 from mock import MagicMock
@@ -33,12 +34,15 @@ EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
                                                "result": True}},
                         "format": "openeo"}]
 
-EXPECTED_PROVIDERS = [[{'description': 'This data was processed on an openEO backend ' \
+EXPECTED_PROVIDERS = [{'description': 'This data was processed on an openEO backend ' \
                                'maintained by VITO.',
                 'name': 'VITO',
+                'processing:expression': [{'expression': {'nop': {'process_id': 'discard_result',
+                                                                   'result': True}},
+                                            'format': 'openeo'}],
                 'processing:facility': 'openEO Geotrellis backend',
                 'processing:software': {'Geotrellis backend': __version__},
-                'roles': ['processor']}]]
+                'roles': ['processor']}]
 from tests.data import get_test_data_file
 
 
@@ -320,13 +324,16 @@ def test_run_job(evaluate, tmp_path):
     #tracker reset, so get it again
     t = _get_tracker()
     PU_COUNTER = "Sentinelhub_Processing_Units"
+    PIXEL_COUNTER = "InputPixels"
     t.registerDoubleCounter(PU_COUNTER)
+    t.registerCounter(PIXEL_COUNTER)
     t.add(PU_COUNTER, 1.4)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
     ProductIdAndUrl = get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.ProductIdAndUrl
     t.addInputProductsWithUrls("other_collectionName", [ProductIdAndUrl("p4", "http://myproduct4")])
     t.add(PU_COUNTER, 0.4)
+    t.add(PIXEL_COUNTER, 3670016)
 
     run_job(
         job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
@@ -335,29 +342,51 @@ def test_run_job(evaluate, tmp_path):
     )
 
     cube_mock.write_assets.assert_called_once()
-    metadata_result = read_json(tmp_path/"metadata.json")
-    assert metadata_result == {'assets': asset_meta,
-                               'bbox': None,
-                               'end_datetime': None,
-                               'epsg': None,
-                               'geometry': None,
-                               'area': None,
-                               'unique_process_ids': ['discard_result'],
-                               'instruments': [],
-                               'links': [{'href': 'http://myproduct4', 'rel': 'derived_from', 'title': 'Derived from p4'},
-                                         {'href': 'http://myproduct1', 'rel': 'derived_from', 'title': 'Derived from http://myproduct1'},
-                                         {'href': 'http://myproduct2', 'rel': 'derived_from', 'title': 'Derived from http://myproduct2'},
-                                         {'href': 'http://myproduct3', 'rel': 'derived_from', 'title': 'Derived from http://myproduct3'}],
-                               'processing:expression': [{'expression': {'nop': {'process_id': 'discard_result',
-                                                                                 'result': True}},
-                                                          'format': 'openeo'}],
-                               'processing:facility': 'VITO - SPARK',
-                               'processing:software': 'openeo-geotrellis-' + __version__,
-                               'start_datetime': None,
-                               'providers': EXPECTED_PROVIDERS,
-                               'usage': {'sentinelhub': {'unit': 'sentinelhub_processing_unit',
-                                                         'value': 1.7999999999999998}}
-                               }
+    metadata_result = read_json(tmp_path / "metadata.json")
+    assert metadata_result == {
+        "assets": asset_meta,
+        "bbox": None,
+        "end_datetime": None,
+        "epsg": None,
+        "geometry": None,
+        "area": None,
+        "unique_process_ids": ["discard_result"],
+        "instruments": [],
+        "links": [
+            {
+                "href": "http://myproduct4",
+                "rel": "derived_from",
+                "title": "Derived from p4",
+                "type": "application/json",
+            },
+            {
+                "href": "http://myproduct1",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct1",
+                "type": "application/json",
+            },
+            {
+                "href": "http://myproduct2",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct2",
+                "type": "application/json",
+            },
+            {
+                "href": "http://myproduct3",
+                "rel": "derived_from",
+                "title": "Derived from http://myproduct3",
+                "type": "application/json",
+            },
+        ],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-" + __version__,
+        "start_datetime": None,
+        "providers": EXPECTED_PROVIDERS,
+        "usage": {
+            "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": approx(1.8)},
+            "input_pixel": {"unit": "mega-pixel", "value": 3.5},
+        },
+    }
     t.setGlobalTracking(False)
 
 
@@ -396,13 +425,12 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     t.clearGlobalTracker()
     # tracker reset, so get it again
     t = _get_tracker()
-    PU_COUNTER = "Sentinelhub_Processing_Units"
-    t.registerDoubleCounter(PU_COUNTER)
-    t.add(PU_COUNTER, 1.4)
+    PIXEL_COUNTER = "InputPixels"
+    t.registerCounter(PIXEL_COUNTER)
     t.addInputProducts("collectionName", ["http://myproduct1", "http://myproduct2"])
     t.addInputProducts("collectionName", ["http://myproduct3"])
     t.addInputProducts("other_collectionName", ["http://myproduct4"])
-    t.add(PU_COUNTER, 0.4)
+    t.add(PIXEL_COUNTER, 3670016)
 
     run_job(
         job_specification={
@@ -453,32 +481,35 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
                 "href": "http://myproduct4",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct4",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct1",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct1",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct2",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct2",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct3",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct3",
+                "type": "application/json",
             },
         ],
-        "processing:expression": EXPECTED_GRAPH,
         "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
         "start_datetime": None,
         "usage": {
-            "sentinelhub": {
-                "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+            "input_pixel": {
+                "unit": "mega-pixel",
+                "value": 3.5,
             }
         },
     }
@@ -607,24 +638,27 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 "href": "http://myproduct4",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct4",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct1",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct1",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct2",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct2",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct3",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct3",
+                "type": "application/json",
             },
         ],
-        "processing:expression": EXPECTED_GRAPH,
         "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
@@ -632,7 +666,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         "usage": {
             "sentinelhub": {
                 "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+                "value": approx(1.8),
             }
         },
     }
@@ -889,24 +923,27 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "href": "http://myproduct4",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct4",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct1",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct1",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct2",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct2",
+                "type": "application/json",
             },
             {
                 "href": "http://myproduct3",
                 "rel": "derived_from",
                 "title": "Derived from http://myproduct3",
+                "type": "application/json",
             },
         ],
-        "processing:expression": EXPECTED_GRAPH,
         "providers": EXPECTED_PROVIDERS,
         "processing:facility": "VITO - SPARK",
         "processing:software": "openeo-geotrellis-" + __version__,
@@ -914,7 +951,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         "usage": {
             "sentinelhub": {
                 "unit": "sentinelhub_processing_unit",
-                "value": 1.7999999999999998,
+                "value": approx(1.8),
             }
         },
     }
@@ -1023,24 +1060,27 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                     "href": "http://myproduct4",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct4",
+                    "type": "application/json",
                 },
                 {
                     "href": "http://myproduct1",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct1",
+                    "type": "application/json",
                 },
                 {
                     "href": "http://myproduct2",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct2",
+                    "type": "application/json",
                 },
                 {
                     "href": "http://myproduct3",
                     "rel": "derived_from",
                     "title": "Derived from http://myproduct3",
+                    "type": "application/json",
                 },
             ],
-            "processing:expression": EXPECTED_GRAPH,
             "providers": EXPECTED_PROVIDERS,
             "processing:facility": "VITO - SPARK",
             "processing:software": "openeo-geotrellis-" + __version__,
@@ -1048,7 +1088,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             "usage": {
                 "sentinelhub": {
                     "unit": "sentinelhub_processing_unit",
-                    "value": 1.7999999999999998,
+                    "value": approx(1.8),
                 }
             },
         }
@@ -1446,6 +1486,108 @@ def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
                         }
                     ),
                 }
+            ],
+        }
+    )
+
+
+def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
+    """Test getting STAC metadata from a netcdf with multiple bands, stored in subdatasets.
+
+    Regression test for https://github.com/Open-EO/openeo-geopyspark-driver/issues/432
+    using the file that caused the error.
+    """
+    netcdf_path = get_test_data_file("binary/stac_proj_extension/netcdf/multiple_bands.nc")
+
+    raster_metadata: AssetRasterMetadata = read_gdal_raster_metadata(str(netcdf_path))
+
+    assert len(raster_metadata.statistics) == 13
+    expected_band_names = {
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B11",
+        "B12",
+        "DEM",
+        "temperature_mean",
+        "VH",
+        "VV",
+    }
+    assert set(raster_metadata.statistics.keys()) == expected_band_names
+    for band_name, band_stats in raster_metadata.statistics.items():
+        assert band_stats.minimum is not None
+        assert band_stats.maximum is not None
+        assert band_stats.mean is not None
+        assert band_stats.stddev is not None
+
+        # valid_percent can be None though. gdalinfo does not always give us a value for this.
+        if band_stats.valid_percent is None:
+            logging.warning(f"band:{band_name} has no value for valid_percent: {band_stats.valid_percent=}")
+
+    assert raster_metadata.projection == {
+        "proj:epsg": 4326,
+        # For some reason gdalinfo reports the bounds in the wrong order here.
+        # I think the reason might be that the pixels are south-up instead of
+        # north-up, i.e. the scale for the Y-axis of the pixel is negative.
+        # Upper Left corner is BELOW Lower Left corner, which is unexpected.
+        # gdalinfo reports that CRS is EPSG:4326, X=lon, Y=lat.
+        #
+        # From gdalinfo:
+        #   Corner Coordinates:
+        #   Upper Left  (    0.0,    0.0)
+        #   Lower Left  (    0.0,    3.0)
+        #   Upper Right (   49.0,    0.0)
+        #   Lower Right (   49.0,    3.0)
+        #   Center      (   24.5,    1.5)
+        #
+        # Would expect this proj:bbox value with the normal order of the corners:
+        # "proj:bbox": approx([0.0, 0.0, 49.0, 3.O]),
+        "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
+        "proj:shape": [49, 3],
+    }
+
+
+def test_read_gdal_raster_metadata_from_multiband_tif_file():
+    multiband_tif_path = get_test_data_file("binary/stac_proj_extension/tif/multiband_geotiff.tif")
+
+    raster_metadata = read_gdal_raster_metadata(str(multiband_tif_path))
+
+    # Do some basic checks before we dig deeper.
+    assert raster_metadata.projection is not None
+    assert raster_metadata.statistics is not None
+
+    # TODO: get the correct band names into multiband_geotiff.tif.
+    #   Perhaps keep separate copies with and without bandnames to cover both cases.
+    # assert set(raster_metadata.statistics.keys()) == {"VV", "VH"}
+
+    # values for multiband_geotiff.tif: pixels of original file have been
+    # replaced with 1.0 and 2.0 for band 1and 2 respectively.
+    assert raster_metadata.to_dict() == DictSubSet(
+        {
+            "proj:epsg": 32631,
+            "proj:bbox": approx([471270.000, 5657500.000, 492670.000, 5674440.000]),
+            "proj:shape": [2140, 1694],
+            "raster:bands": [
+                DictSubSet(
+                    {
+                        "name": "1",
+                        "statistics": DictSubSet(
+                            {"minimum": 1.0, "maximum": 1.0, "mean": 1.0, "stddev": 0.0, "valid_percent": 100.0}
+                        ),
+                    }
+                ),
+                DictSubSet(
+                    {
+                        "name": "2",
+                        "statistics": DictSubSet(
+                            {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0}
+                        ),
+                    }
+                ),
             ],
         }
     )

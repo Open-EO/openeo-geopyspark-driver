@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 from copy import deepcopy
+from math import isfinite
 
 import pyproj
 from osgeo import gdal
@@ -31,6 +32,7 @@ from openeo_driver.save_result import (
     SaveResult,
     NullResult,
     MlModelResult,
+    VectorCubeResult,
 )
 from openeo_driver.users import User
 from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
@@ -45,11 +47,12 @@ from openeo_driver.utils import EvalEnv, temporal_extent_union
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.utils import (
-    kerberos,
     describe_path,
     log_memory,
     get_jvm,
@@ -211,9 +214,9 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
     return bbox
 
 
-def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path, metadata_file: Path,
-                            unique_process_ids: Set[str], asset_metadata: Dict = None,
-                            ml_model_metadata: Dict = None) -> None:
+def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path,
+                              unique_process_ids: Set[str], asset_metadata: Dict = None,
+                              ml_model_metadata: Dict = None) -> dict:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -253,9 +256,14 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
             }
         else:
             # New approach: SaveResult has generated metadata already for us
-            _extract_asset_metadata(
-                job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
-            )
+            try:
+                _extract_asset_metadata(
+                    job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
+                )
+            except Exception as e:
+                error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+                user_facing_logger.exception("Error while creating asset metadata: " + error_summary.summary)
+
 
     # _extract_asset_metadata may already fill in metadata["epsg"], but only
     # if the value of epsg was None. So we don't want to overwrite it with
@@ -270,18 +278,11 @@ def _export_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output
     metadata["unique_process_ids"] = list(unique_process_ids)
     global_metadata = result.options.get("file_metadata",{})
     metadata["providers"] = global_metadata.get("providers",[])
-    metadata["processing:expression"] = global_metadata.get("processing:expression", {})
-    metadata = {**metadata, **_get_tracker_metadata("")}
 
     if ml_model_metadata is not None:
         metadata['ml_model_metadata'] = ml_model_metadata
 
-    with open(metadata_file, 'w') as f:
-        json.dump(metadata, f)
-
-    add_permissions(metadata_file, stat.S_IWGRP)
-
-    logger.info("wrote metadata to %s" % metadata_file)
+    return metadata
 
 
 GDALInfo = Dict[str, Any]
@@ -306,13 +307,20 @@ class BandStatistics:
     stddev: Optional[float] = None
     valid_percent: Optional[float] = None
 
+    @staticmethod
+    def _to_jsonable_float(x: Optional[float]) -> Union[float, str, None]:
+        if x is None:
+            return None
+
+        return x if isfinite(x) else str(x)
+
     def to_dict(self):
         return {
-            "minimum": self.minimum,
-            "maximum": self.maximum,
-            "mean": self.mean,
-            "stddev": self.stddev,
-            "valid_percent": self.valid_percent,
+            "minimum": self._to_jsonable_float(self.minimum),
+            "maximum": self._to_jsonable_float(self.maximum),
+            "mean": self._to_jsonable_float(self.mean),
+            "stddev": self._to_jsonable_float(self.stddev),
+            "valid_percent": self._to_jsonable_float(self.valid_percent),
         }
 
 
@@ -422,7 +430,8 @@ def _extract_asset_metadata(
         # Each asset has its different projection metadata so set it per asset.
         for asset_path, raster_md in raster_metadata.items():
             proj_md = dict(**raster_md)
-            del proj_md["raster:bands"]
+            if "raster:bands" in proj_md:
+                del proj_md["raster:bands"]
 
             asset_metadata[asset_path].update(proj_md)
             logger.debug(
@@ -434,13 +443,14 @@ def _extract_asset_metadata(
     # There is no other place to store them really, and because stats are floats
     # they are very rarely going to be identical numbers.
     for asset_path, raster_md in raster_metadata.items():
-        raster_bands = raster_md["raster:bands"]
+        if "raster:bands" in raster_md:
+            raster_bands = raster_md["raster:bands"]
 
-        asset_metadata[asset_path]["raster:bands"] = raster_bands
-        logger.debug(
-            f"Updated metadata for asset {asset_path} with raster statistics: "
-            + f"{raster_bands=}, {asset_metadata[asset_path]=}"
-        )
+            asset_metadata[asset_path]["raster:bands"] = raster_bands
+            logger.debug(
+                f"Updated metadata for asset {asset_path} with raster statistics: "
+                + f"{raster_bands=}, {asset_metadata[asset_path]=}"
+            )
 
     job_result_metadata["assets"] = asset_metadata
 
@@ -484,22 +494,12 @@ def _extract_asset_raster_metadata(
         )
         logger.debug(f"{asset_path=}, {asset_md=}")
 
-        #
-        # TODO: Skip assets that aren't images
-        #   For now I don't want to change the functionality,
-        #   only adding logging to find why the gdalinfo receives a relative path.
-        #   If the list of images formats is correct, then this code
-        #   block should do the trick, bet test coverage should be added.
-        #
-        # Skip assets that aren't images
-        # for example metadata with "type": "application/xml"
-        # mime_type_images = ["image/tiff", "image/png", "application/x-netcdf"]
-        # if mime_type and mime_type not in mime_type_images:
-        #     logger.info(
-        #         "_export_result_metadata: Asset file is not an image, "
-        #         f"it has {mime_type=}: {asset_path=}"
-        #     )
-        #     continue
+        # Skip assets that are clearly not images.
+        # This is only to avoid cluttering the error logs with errors that are
+        # not useful. So when in doubt we just try to read the file.
+        if asset_path.endswith(".json"):
+            logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
+            continue
 
         # Won't assume the asset path is relative to the current working directory.
         # It should be relative to the job directory.
@@ -718,6 +718,8 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
+    if not crs_as_wkt:
+        crs_as_wkt = gdal_info.get("metadata", {}).get("GEOLOCATION", {}).get("SRS", {})
     if crs_as_wkt:
         crs_id = pyproj.CRS.from_wkt(crs_as_wkt).to_epsg()
         if crs_id:
@@ -734,13 +736,19 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
         upri = corner_coords["upperRight"]
         proj_metadata["proj:bbox"] = [*lole, *upri]
 
+    # TODO: wgs84Extent gives us a polygon in lot-long directly, so it may be worth extracting.
+    #   However since wgs84Extent is a polygon it might not be what we want after all.
+
     return proj_metadata
 
 
-def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
+def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None) -> RasterStatistics:
     """Helper function that parses gdal.Info output without processing subdatasets.
 
     :param gdal_info: Dictionary that contains the output from gdal.Info.
+    :band_name:
+        The band name extracted from a subdataset's name, if it was a subdataset.
+        If it is a regular file: None
 
     :return: TODO
     """
@@ -754,9 +762,11 @@ def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
         # Yes, the metadata from gdalinfo *does* contain a key that is
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
-        band_name = gdal_band_stats.get("long_name", str(band_num))
+        band_name_out = (
+            band_name or gdal_band_stats.get("long_name") or gdal_band_stats.get("DESCRIPTION") or str(band_num)
+        )
 
-        def to_float_or_none(x):
+        def to_float_or_none(x: Optional[str]):
             return None if x is None else float(x)
 
         band_stats = BandStatistics(
@@ -766,7 +776,7 @@ def _get_raster_statistics(gdal_info: GDALInfo) -> RasterStatistics:
             stddev=to_float_or_none(gdal_band_stats.get("STATISTICS_STDDEV")),
             valid_percent=to_float_or_none(gdal_band_stats.get("STATISTICS_VALID_PERCENT")),
         )
-        raster_stats[band_name] = band_stats
+        raster_stats[band_name_out] = band_stats
 
     return raster_stats
 
@@ -819,10 +829,11 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
         if key.endswith("_NAME"):
             sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
+            band_name = sub_ds_uri.split(":")[-1]
             sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
             sub_datasets_proj[sub_ds_uri] = sub_ds_md
 
-            stats_info = _get_raster_statistics(sub_ds_gdal_info)
+            stats_info = _get_raster_statistics(sub_ds_gdal_info, band_name)
             logger.info(f"_process_gdalinfo_for_netcdf_subdatasets:: {stats_info=}")
             sub_datasets_stats[sub_ds_uri] = stats_info
 
@@ -842,12 +853,16 @@ def _process_gdalinfo_for_netcdf_subdatasets(
     ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
     logger.debug(f"{ds_band_names=}")
 
-    # We can only copy each band's stats if there are no duplicate bands across the subdatasets.
+    all_raster_stats = {}
+
+    # We can only copy each band's stats if there are no duplicate bands across
+    # the subdatasets. If we find duplicate bands there is likely a bug.
+    # Besides it is not obvious how we would need to merge statistics across
+    # subdatasets, if the bands occur multiple times.
     if sorted(set(ds_band_names)) != sorted(ds_band_names):
         logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
     else:
         logger.info(f"There are no duplicate bands in {ds_band_names=}, Will use all bands' statistics in result.")
-        all_raster_stats = {}
         for bands in sub_datasets_stats.values():
             for band_name, stats in bands.items():
                 all_raster_stats[band_name] = stats
@@ -866,51 +881,61 @@ def _get_tracker(tracker_id=""):
 
 def _get_tracker_metadata(tracker_id="") -> dict:
     tracker = _get_tracker(tracker_id)
-    t = tracker
-    if(t is not None):
-        tracker_results = t.asDict()
-        pu = tracker_results.get("Sentinelhub_Processing_Units",None)
-        usage = None
+
+    if tracker is not None:
+        tracker_results = tracker.asDict()
+
+        usage = {}
+        pu = tracker_results.get("Sentinelhub_Processing_Units", None)
         if pu is not None:
-            usage = {"sentinelhub":{"value":pu,"unit":"sentinelhub_processing_unit"}}
+            usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
 
         pixels = tracker_results.get("InputPixels", None)
         if pixels is not None:
-            usage = {"input_pixel":{"value":pixels/(1024*1024),"unit":"mega-pixel"}}
+            usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
 
         links = tracker_results.get("links", None)
         all_links = None
         if links is not None:
             all_links = list(chain(*links.values()))
-            all_links = [{"href": link.getSelfUrl(), "rel": "derived_from", "title": f"Derived from {link.getId()}"} for link in all_links]
+            # TODO: when in the future these links point to STAC objects we will need to update the type.
+            #   https://github.com/openEOPlatform/architecture-docs/issues/327
+            all_links = [
+                {
+                    "href": link.getSelfUrl(),
+                    "rel": "derived_from",
+                    "title": f"Derived from {link.getId()}",
+                    "type": "application/json",
+                }
+                for link in all_links
+            ]
 
-        return dict_no_none(usage=usage,links=all_links)
+        return dict_no_none(usage=usage if usage != {} else None, links=all_links)
 
 
 def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
 
-def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> (str, str):
-    return (conf.get('spark.openeo.sentinelhub.client.id.default'),
-            conf.get('spark.openeo.sentinelhub.client.secret.default'))
+def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> Optional[Tuple[str, str]]:
+    default_client_id = conf.get('spark.openeo.sentinelhub.client.id.default')
+    default_client_secret = conf.get('spark.openeo.sentinelhub.client.secret.default')
+
+    return (default_client_id, default_client_secret) if default_client_id and default_client_secret else None
 
 
 def _get_vault_token(conf: SparkConf) -> Optional[str]:
     return conf.get('spark.openeo.vault.token')
 
 
+def _get_access_token(conf: SparkConf) -> Optional[str]:
+    return conf.get('spark.openeo.access_token')
+
+
 def main(argv: List[str]) -> None:
-    logger.info("batch_job.py argv: {a!r}".format(a=argv))
-    logger.info("batch_job.py pid {p}; ppid {pp}; cwd {c}".format(p=os.getpid(), pp=os.getppid(), c=os.getcwd()))
-    logger.warning("batch_job.py version info %r", build_gps_backend_deploy_metadata(
-        packages=[
-            "openeo",
-            "openeo_driver",
-            "openeo-geopyspark",
-            # TODO list more packages like in openeo-deploy?
-        ],
-    ))
+    logger.debug(f"batch_job.py argv: {argv}")
+    logger.debug(f"batch_job.py {os.getpid()=} {os.getppid()=} {os.getcwd()=}")
+    logger.debug(f"batch_job.py version info {get_backend_config().capabilities_deploy_metadata}")
 
     if len(argv) < 10:
         raise Exception(
@@ -965,8 +990,10 @@ def main(argv: List[str]) -> None:
 
         default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
         vault_token = _get_vault_token(sc.getConf())
+        access_token = _get_access_token(sc.getConf())
 
-        kerberos(principal, key_tab)
+        if get_backend_config().setup_kerberos_auth:
+            setup_kerberos_auth(principal, key_tab)
 
         def run_driver():
             run_job(
@@ -974,7 +1001,7 @@ def main(argv: List[str]) -> None:
                 api_version=api_version, job_dir=job_dir, dependencies=dependencies, user_id=user_id,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 default_sentinel_hub_credentials=default_sentinel_hub_credentials,
-                sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token
+                sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token, access_token=access_token,
             )
 
         if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -1014,183 +1041,195 @@ def run_job(
     default_sentinel_hub_credentials=None,
     sentinel_hub_client_alias="default",
     vault_token: str = None,
+    access_token: str = None,
 ):
-    # We actually expect type Path, but in reality paths as strings tend to
-    # slip in anyway, so we better catch them and convert them.
-    output_file = Path(output_file)
-    metadata_file = Path(metadata_file)
-    job_dir = Path(job_dir)
+    result_metadata = {}
 
-    logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
-    logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
-    process_graph = job_specification['process_graph']
-    job_options = job_specification.get("job_options", {})
+    try:
+        # We actually expect type Path, but in reality paths as strings tend to
+        # slip in anyway, so we better catch them and convert them.
+        output_file = Path(output_file)
+        metadata_file = Path(metadata_file)
+        job_dir = Path(job_dir)
 
-    backend_implementation = GeoPySparkBackendImplementation(
-        use_job_registry=False,
-    )
+        logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
+        logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
+        process_graph = job_specification['process_graph']
+        job_options = job_specification.get("job_options", {})
 
-    if default_sentinel_hub_credentials is not None:
-        backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
+        backend_implementation = GeoPySparkBackendImplementation(
+            use_job_registry=False,
+        )
 
-    logger.info(f"Using backend implementation {backend_implementation}")
-    correlation_id = OPENEO_BATCH_JOB_ID
-    logger.info(f"Correlation id: {correlation_id}")
-    env_values = {
-        'version': api_version or "1.0.0",
-        'pyramid_levels': 'highest',
-        'user': User(user_id=user_id),
-        'require_bounds': True,
-        'correlation_id': correlation_id,
-        'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
-        'backend_implementation': backend_implementation,
-        'max_soft_errors_ratio': max_soft_errors_ratio,
-        'sentinel_hub_client_alias': sentinel_hub_client_alias,
-        'vault_token': vault_token
-    }
-    job_option_whitelist = [
-        "data_mask_optimization",
-        "node_caching"
-    ]
-    env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
-    env = EvalEnv(env_values)
-    tracer = DryRunDataTracer()
-    logger.info("Starting process graph evaluation")
-    pg_copy = deepcopy(process_graph)
-    result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
-    logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
+        if default_sentinel_hub_credentials is not None:
+            backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
-    if isinstance(result, DelayedVector):
-        geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
-        result = JSONResult(geojsons)
+        logger.info(f"Using backend implementation {backend_implementation}")
+        correlation_id = OPENEO_BATCH_JOB_ID
+        logger.info(f"Correlation id: {correlation_id}")
+        env_values = {
+            'version': api_version or "1.0.0",
+            'pyramid_levels': 'highest',
+            'user': User(user_id=user_id, internal_auth_data=dict_no_none(access_token=access_token)),
+            'require_bounds': True,
+            'correlation_id': correlation_id,
+            'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
+            'backend_implementation': backend_implementation,
+            'max_soft_errors_ratio': max_soft_errors_ratio,
+            'sentinel_hub_client_alias': sentinel_hub_client_alias,
+            'vault_token': vault_token
+        }
+        job_option_whitelist = [
+            "data_mask_optimization",
+            "node_caching"
+        ]
+        env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
+        env = EvalEnv(env_values)
+        tracer = DryRunDataTracer()
+        logger.info("Starting process graph evaluation")
+        pg_copy = deepcopy(process_graph)
+        result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
+        logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
-    if isinstance(result, DriverDataCube):
-        format_options = job_specification.get('output', {})
-        format_options["batch_mode"] = True
-        result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
+        if isinstance(result, DelayedVector):
+            geojsons = (mapping(geometry) for geometry in result.geometries_wgs84)
+            result = JSONResult(geojsons)
 
-    if isinstance(result, DriverVectorCube):
-        format_options = job_specification.get('output', {})
-        format_options["batch_mode"] = True
-        result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
+        if isinstance(result, DriverDataCube):
+            format_options = job_specification.get('output', {})
+            format_options["batch_mode"] = True
+            result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
 
-    if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
-        result = JSONResult(result)
+        if isinstance(result, DriverVectorCube):
+            format_options = job_specification.get('output', {})
+            format_options["batch_mode"] = True
+            result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
 
-    result_list = result
-    if not isinstance(result,List):
-        result_list = [result]
+        if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
+            result = JSONResult(result)
 
-    global_metadata_attributes = {
-        "title" : job_specification.get("title",""),
-        "description": job_specification.get("description", ""),
-        "institution": "openEO platform - Geotrellis backend: " + __version__
-    }
+        result_list = result
+        if not isinstance(result,List):
+            result_list = [result]
 
-    assets_metadata = {}
-    for result in result_list:
+        global_metadata_attributes = {
+            "title" : job_specification.get("title",""),
+            "description": job_specification.get("description", ""),
+            "institution": "openEO platform - Geotrellis backend: " + __version__
+        }
+
+        assets_metadata = {}
         ml_model_metadata = None
-        if('write_assets' in dir(result)):
-            result.options["batch_mode"] = True
-            result.options["file_metadata"] = global_metadata_attributes
-            if( result.options.get("sample_by_feature")):
-                geoms = tracer.get_last_geometry("filter_spatial")
-                if geoms == None:
-                    logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
-                else:
-                    result.options["geometries"] = geoms
-                if(result.options["geometries"] == None):
-                    logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
-            the_assets_metadata = result.write_assets(str(output_file))
-            if isinstance(result, MlModelResult):
-                ml_model_metadata = result.get_model_metadata(str(output_file))
-                logger.info("Extracted ml model metadata from %s" % output_file)
-            for name,asset in the_assets_metadata.items():
-                add_permissions(Path(asset["href"]), stat.S_IWGRP)
-            logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-            assets_metadata = {**assets_metadata,**the_assets_metadata}
-        elif isinstance(result, ImageCollectionResult):
-            result.options["batch_mode"] = True
-            result.save_result(filename=str(output_file))
-            add_permissions(output_file, stat.S_IWGRP)
-            logger.info("wrote image collection to %s" % output_file)
-        elif isinstance(result, NullResult):
-            logger.info("skipping output file %s" % output_file)
-        else:
-            raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
+        for result in result_list:
+            if('write_assets' in dir(result)):
+                result.options["batch_mode"] = True
+                result.options["file_metadata"] = global_metadata_attributes
+                if( result.options.get("sample_by_feature")):
+                    geoms = tracer.get_last_geometry("filter_spatial")
+                    if geoms == None:
+                        logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
+                    else:
+                        result.options["geometries"] = geoms
+                    if(result.options["geometries"] == None):
+                        logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
+                the_assets_metadata = result.write_assets(str(output_file))
+                if isinstance(result, MlModelResult):
+                    ml_model_metadata = result.get_model_metadata(str(output_file))
+                    logger.info("Extracted ml model metadata from %s" % output_file)
+                for name,asset in the_assets_metadata.items():
+                    add_permissions(Path(asset["href"]), stat.S_IWGRP)
+                logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
+                assets_metadata = {**assets_metadata,**the_assets_metadata}
+            elif isinstance(result, ImageCollectionResult):
+                result.options["batch_mode"] = True
+                result.save_result(filename=str(output_file))
+                add_permissions(output_file, stat.S_IWGRP)
+                logger.info("wrote image collection to %s" % output_file)
+            elif isinstance(result, NullResult):
+                logger.info("skipping output file %s" % output_file)
+            else:
+                raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
 
-    if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
-        logger.debug("awaiting Sentinel Hub CARD4L data...")
+        if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
+            logger.debug("awaiting Sentinel Hub CARD4L data...")
 
-        s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
+            s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
 
-        poll_interval_secs = 10
-        max_delay_secs = 600
+            poll_interval_secs = 10
+            max_delay_secs = 600
 
-        card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
+            card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
 
-        for source_location in set(card4l_source_locations):
-            uri_parts = urlparse(source_location)
-            bucket_name = uri_parts.hostname
-            request_group_id = uri_parts.path[1:]
+            for source_location in set(card4l_source_locations):
+                uri_parts = urlparse(source_location)
+                bucket_name = uri_parts.hostname
+                request_group_id = uri_parts.path[1:]
 
-            try:
-                # TODO: incorporate index to make sure the files don't clash
-                s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
-                                              max_delay_secs)
-                logger.info("downloaded CARD4L data in {b}/{g} to {d}"
-                            .format(b=bucket_name, g=request_group_id, d=job_dir))
-            except Py4JJavaError as e:
-                java_exception = e.java_exception
+                try:
+                    # TODO: incorporate index to make sure the files don't clash
+                    s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
+                                                  max_delay_secs)
+                    logger.info("downloaded CARD4L data in {b}/{g} to {d}"
+                                .format(b=bucket_name, g=request_group_id, d=job_dir))
+                except Py4JJavaError as e:
+                    java_exception = e.java_exception
 
-                if (java_exception.getClass().getName() ==
-                        'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
-                    logger.warning("could not find CARD4L metadata to download from s3://{b}/{r} after {d}s"
-                                   .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
-                else:
-                    raise e
+                    if (java_exception.getClass().getName() ==
+                            'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
+                        logger.warning("could not find CARD4L metadata to download from s3://{b}/{r} after {d}s"
+                                       .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
+                    else:
+                        raise e
 
-        _transform_stac_metadata(job_dir)
+            _transform_stac_metadata(job_dir)
 
-    unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
+        if "file_metadata" in result.options:
+            result.options["file_metadata"]["providers"] = [
+                {
+                    "name": "VITO",
+                    "description": "This data was processed on an openEO backend maintained by VITO.",
+                    "roles": [
+                        "processor"
+                    ],
+                    "processing:facility": "openEO Geotrellis backend",
+                    "processing:software": {
+                        "Geotrellis backend": __version__
+                    },
+                    "processing:expression": [
+                        {
+                            "format": "openeo",
+                            "expression": pg_copy
+                        }]
+                }]
 
+        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
+                                                    unique_process_ids=unique_process_ids,
+                                                    asset_metadata=assets_metadata,
+                                                    ml_model_metadata=ml_model_metadata)
+    finally:
+        metadata = {**result_metadata, **_get_tracker_metadata("")}
 
-    if "file_metadata" in result.options:
-        result.options["file_metadata"]["providers"] = [
-            {
-                "name": "VITO",
-                "description": "This data was processed on an openEO backend maintained by VITO.",
-                "roles": [
-                    "processor"
-                ],
-                "processing:facility": "openEO Geotrellis backend",
-                "processing:software": {
-                    "Geotrellis backend": __version__
-                }
-            }],
-        result.options["file_metadata"]["processing:expression"] = [
-            {
-                "format": "openeo",
-                "expression": pg_copy
-            }]
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f)
 
-    _export_result_metadata(tracer=tracer, result=result, output_file=output_file, metadata_file=metadata_file,
-                            unique_process_ids=unique_process_ids, asset_metadata=assets_metadata,
-                            ml_model_metadata=ml_model_metadata)
+        add_permissions(metadata_file, stat.S_IWGRP)
 
-    if ConfigParams().is_kube_deploy:
-        from openeogeotrellis.utils import s3_client
+        logger.info("wrote metadata to %s" % metadata_file)
 
-        _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+        if ConfigParams().is_kube_deploy:
+            from openeogeotrellis.utils import s3_client
 
-        bucket = os.environ.get('SWIFT_BUCKET')
-        s3_instance = s3_client()
+            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
-        logger.info("Writing results to object storage")
-        for file in os.listdir(job_dir):
-            full_path = str(job_dir) + "/" + file
-            s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            bucket = os.environ.get('SWIFT_BUCKET')
+            s3_instance = s3_client()
+
+            logger.info("Writing results to object storage")
+            for file in os.listdir(job_dir):
+                full_path = str(job_dir) + "/" + file
+                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
@@ -1247,7 +1286,7 @@ if __name__ == '__main__':
     )
 
     try:
-        with TimingLogger("batch_job.py main", logger=logger):
+        with TimingLogger(f"batch_job.py main {os.getpid()=}", logger=logger):
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)

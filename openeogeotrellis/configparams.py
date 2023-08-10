@@ -7,7 +7,7 @@ from openeo_driver.utils import smart_bool
 
 
 class ConfigParams:
-    # TODO: start using real config files instead of this thin wrapper around env vars?
+    # TODO: port all these params to GpsBackendConfig
     #       see https://github.com/Open-EO/openeo-geopyspark-driver/issues/285
 
     def __init__(self, env=os.environ):
@@ -39,13 +39,10 @@ class ConfigParams:
         # TODO: can we avoid using env variables?
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
 
-        self.default_opensearch_endpoint = env.get("OPENSEARCH_ENDPOINT", "https://services.terrascope.be/catalogue")
-
-        self.opensearch_enrich = smart_bool(env.get("OPENSEARCH_ENRICH", True))
-
         # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         self.is_kube_deploy = env.get("KUBE", False)
         self.pod_namespace = env.get("POD_NAMESPACE", "spark-jobs")
+        self.concurrent_pod_limit = int(env.get("CONCURRENT_POD_LIMIT", 0))  # 0 means no limit.
 
         self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
@@ -64,18 +61,8 @@ class ConfigParams:
         self.etl_api = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
         self.etl_api_oidc_issuer = os.environ.get("OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope")
 
+        # TODO: this param is now also available in GpsBackendConfig
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
-
-        # TODO: We need a better system for determining "which backend deploy is this?"
-        self.ejr_backend_id = (
-            ("creodias" if self.is_kube_deploy else "mep") + "-" + self.openeo_env
-        )
-        self.ejr_api = env.get("OPENEO_EJR_API", "https://jobregistry.openeo.vito.be")
-
-        self.ejr_credentials_vault_path = env.get(
-            "OPENEO_EJR_CREDENTIALS_VAULT_PATH",
-            "TAP/big_data_services/openeo/openeo-job-registry-elastic-api",
-        )
 
         _persistent_worker_count = os.environ.get("PERSISTENT_WORKER_COUNT", "0")
         try:

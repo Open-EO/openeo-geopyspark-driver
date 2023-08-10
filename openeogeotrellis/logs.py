@@ -9,14 +9,12 @@ from openeo.api.logs import normalize_log_level
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
+from openeogeotrellis.config import get_backend_config
 
 import logging
 
 _logger = logging.getLogger(__name__)
 
-
-ES_HOSTS = "https://es-infra.vgt.vito.be"
-ES_INDEX_PATTERN = "openeo-*-index-1m*"
 ES_TAGS = ["openeo"]
 
 
@@ -131,11 +129,12 @@ def _elasticsearch_logs(
     if level_filter:
         query["bool"]["filter"].append(level_filter)
 
-    with Elasticsearch(ES_HOSTS) as es:
+    config = get_backend_config()
+    with Elasticsearch(config.logging_es_hosts) as es:
         while True:
             try:
                 search_result = es.search(
-                    index=ES_INDEX_PATTERN,
+                    index=config.logging_es_index_pattern,
                     query=query,
                     search_after=search_after,
                     size=page_size,

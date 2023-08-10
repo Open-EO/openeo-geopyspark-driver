@@ -11,6 +11,7 @@ import openeo.udf.run_code
 from openeo.util import TimingLogger
 from openeo_driver.datacube import SupportsRunUdf
 from openeo_driver.save_result import AggregatePolygonResultCSV, JSONResult
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.utils import temp_csv_dir
 
 _log = logging.getLogger(__name__)
@@ -35,9 +36,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             ]
         )
 
-    def run_udf(
-        self, udf: str, runtime: str = "Python", context: Optional[dict] = None
-    ):
+    def run_udf(self, udf: str, *, runtime: str = "Python", context: Optional[dict] = None, env: EvalEnv):
         # TODO: leverage `runtime` argument?
         udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
 

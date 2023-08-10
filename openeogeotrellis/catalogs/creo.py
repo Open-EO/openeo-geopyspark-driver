@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 
 from openeogeotrellis.catalogs.base import CatalogClientBase, CatalogEntryBase, CatalogStatus
 from openeogeotrellis.catalogs.creo_ordering import CreoOrder
-
+from requests.adapters import HTTPAdapter, Retry
 
 class CreoCatalogEntry(CatalogEntryBase):
     # product_id expected as one of:
@@ -74,8 +74,8 @@ class CreoCatalogEntry(CatalogEntryBase):
 class CreoCatalogClient(CatalogClientBase):
 
     MISSION_SENTINEL2 = 'Sentinel2'
-    LEVEL1C = 'LEVEL1C'
-    LEVEL2A = 'LEVEL2A'
+    LEVEL1C = 'S2MSI1C'
+    LEVEL2A = 'S2MSI2A'
 
     @staticmethod
     def _build_polygon(ulx, uly, brx, bry):
@@ -103,6 +103,25 @@ class CreoCatalogClient(CatalogClientBase):
         super().__init__(mission, level, product_type)
         self.itemsperpage = 100
         self.maxpages = 100  # elasticsearch has a 10000 limit on the paged search
+
+        status_forcelist = [502, 503, 504]
+        MAX_RETRIES = 5
+        retries = Retry(
+            total=MAX_RETRIES,
+            read=MAX_RETRIES,
+            other=MAX_RETRIES,
+            status=MAX_RETRIES,
+            backoff_factor=0.1,
+            status_forcelist=status_forcelist,
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
+        )
+        self._session = requests.Session()
+        self._session.mount('https://', HTTPAdapter(max_retries=retries))
+        self._session.mount('http://', HTTPAdapter(max_retries=retries))
+
+    def __del__(self):
+        del self._session
+        self._session=None
 
     def catalogEntryFromProductId(self, product_id):
         return CreoCatalogEntry(product_id, CatalogStatus.AVAILABLE)
@@ -133,7 +152,7 @@ class CreoCatalogClient(CatalogClientBase):
         else:
             query_params.append(('productIdentifier', '%_T' + tile_id + '_%'))
 
-        response = requests.get('https://finder.creodias.eu/resto/api/collections/' + self.mission + '/search.json',
+        response = self._session.get('https://catalogue.dataspace.copernicus.eu/resto/api/collections/' + self.mission + '/search.json',
                                 params=query_params)
         response.raise_for_status()
 

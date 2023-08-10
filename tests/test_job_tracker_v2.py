@@ -279,9 +279,9 @@ class KubernetesAppInfo:
 class KubernetesMock:
     """Kubernetes cluster mock."""
 
-    def __init__(self, kubecost_url: str = "https://kubecost.test"):
+    def __init__(self, prometheus_api_endpoint: str = "https://prometheus.test/api/v1"):
         self.apps: Dict[str, KubernetesAppInfo] = {}
-        self.kubecost_url = kubecost_url
+        self.prometheus_api_endpoint = prometheus_api_endpoint
         self.corrupt_app_ids = set()
 
     @contextlib.contextmanager
@@ -307,21 +307,28 @@ class KubernetesMock:
                 }
             }
 
-        def get_model_allocation(
+        def get_prometheus_response(
             request: requests_mock.request._RequestObjectProxy, context
         ) -> dict:
-            namespace = request.qs["filternamespaces"][0]
-            return {
-                "code": 200,
-                "data": [
-                    {
-                        namespace: {
-                            "cpuCoreHours": 2.34,
-                            "ramByteHours": 5.678 * 1024 * 1024,
-                        }
+            query = request.qs["query"][0]
+
+            def single_numeric_result(value: float) -> dict:
+                return {
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [{
+                            "value": [1435781451.781, str(value)]
+                        }]
                     }
-                ],
-            }
+                }
+
+            if "container_cpu_usage_seconds_total" in query:
+                return single_numeric_result(2.34 * 3600)
+            elif "container_memory_usage_bytes" in query:
+                return single_numeric_result(5.678 * 1024 * 1024 * 3600)
+            else:
+                return single_numeric_result(370841160371254.75)
 
         with mock.patch(
             "openeogeotrellis.job_tracker_v2.kube_client"
@@ -332,8 +339,8 @@ class KubernetesMock:
 
             # Mock kubernetes usage API
             requests_mocker.get(
-                url_join(self.kubecost_url, "/api/allocation"),
-                json=get_model_allocation,
+                self.prometheus_api_endpoint + "/query",
+                json=get_prometheus_response,
             )
 
             yield
@@ -534,7 +541,10 @@ class TestYarnJobTracker:
         yarn_app.set_finished()
         json_write(
             path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
-            data={"foo": "bar"},
+            data={
+                "foo": "bar",
+                "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125}}
+            },
         )
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
@@ -542,7 +552,9 @@ class TestYarnJobTracker:
                 "status": "finished",
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?,
+                "foo": "bar",
                 "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": 32},
                     "memory": {"unit": "mb-seconds", "value": 1234},
                 },
@@ -575,7 +587,7 @@ class TestYarnJobTracker:
             finish_time=dt.datetime(2022, 12, 14, 12, 4, 40),
             cpu_seconds=32,
             mb_seconds=1234,
-            sentinelhub_processing_units=0.0,
+            sentinelhub_processing_units=None,
             unique_process_ids=[]
         )
 
@@ -996,12 +1008,12 @@ class TestYarnStatusGetter:
 
 class TestK8sJobTracker:
     @pytest.fixture
-    def kubecost_url(self):
-        return "https://kubecost.test/"
+    def prometheus_api_endpoint(self):
+        return "https://prometheus.test/api/v1"
 
     @pytest.fixture
-    def k8s_mock(self, kubecost_url) -> KubernetesMock:
-        kube = KubernetesMock(kubecost_url=kubecost_url)
+    def k8s_mock(self, prometheus_api_endpoint) -> KubernetesMock:
+        kube = KubernetesMock(prometheus_api_endpoint=prometheus_api_endpoint)
         with kube.patch():
             yield kube
 
@@ -1012,13 +1024,13 @@ class TestK8sJobTracker:
         elastic_job_registry,
         batch_job_output_root,
         k8s_mock,
-        kubecost_url,
+        prometheus_api_endpoint,
         job_costs_calculator
     ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
-            app_state_getter=K8sStatusGetter(kubecost_url=kubecost_url),
+            app_state_getter=K8sStatusGetter(prometheus_api_endpoint=prometheus_api_endpoint),
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
@@ -1130,7 +1142,11 @@ class TestK8sJobTracker:
         kube_app.set_completed()
         json_write(
             path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
-            data={"foo": "bar"},
+            data={
+                "foo": "bar",
+                "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                          "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},}
+            },
         )
         job_tracker.update_statuses()
         assert zk_job_info() == DictSubSet(
@@ -1138,9 +1154,13 @@ class TestK8sJobTracker:
                 "status": "finished",
                 "created": "2022-12-14T12:00:00Z",
                 # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
+                "foo": "bar",
                 "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
+                    "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
+                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                 },
                 "costs": 129.95
             }
@@ -1172,7 +1192,7 @@ class TestK8sJobTracker:
             finish_time=dt.datetime(2022, 12, 14, 12, 3, 30),
             cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
             mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
-            sentinelhub_processing_units=0.0,
+            sentinelhub_processing_units=1.25,
             unique_process_ids=[]
         )
 

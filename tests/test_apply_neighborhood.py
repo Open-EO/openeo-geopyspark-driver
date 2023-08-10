@@ -1,11 +1,10 @@
 import datetime
 
-from openeo_driver.utils import EvalEnv
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
-from .data import get_test_data_file
-
 import numpy as np
 from numpy.testing import assert_array_almost_equal
+
+from openeo_driver.utils import EvalEnv
+
 
 def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_dates):
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
@@ -13,7 +12,7 @@ def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_
         "abs": {
             "arguments": {
                 "p": {
-                    "from_argument": "data"
+                    "from_parameter": "data"
                 },
                 "base": 2
             },
@@ -27,6 +26,7 @@ def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_
         size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32},
               {'dimension': 't', 'value': "P1D"}],
         overlap=[],
+        context={},
         env=EvalEnv(),
     )
     result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
@@ -43,6 +43,7 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
         process=udf_noop,
         size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32}],
         overlap=[{'dimension': 'x', 'unit': 'px', 'value': 8}, {'dimension': 'y', 'unit': 'px', 'value': 8}],
+        context={},
         env=EvalEnv()
     )
     result_xarray = result._to_xarray()
@@ -53,3 +54,35 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
 
     subresult = result_array[:input.shape[0], :input.shape[1], :input.shape[2]]
     assert_array_almost_equal(input, subresult)
+
+
+
+def test_apply_neighborhood_on_timeseries(imagecollection_with_two_bands_and_three_dates):
+    the_date = datetime.datetime(2017, 9, 25, 11, 37)
+    graph = {
+        "power": {
+            "arguments": {
+                "p": {
+                    "from_parameter": "data"
+                },
+                "base": 2
+            },
+            "process_id": "power",
+            "result": True
+        }
+    }
+
+    result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(
+        process=graph,
+        size=[{'dimension': 'x', 'unit': 'px', 'value': 1}, {'dimension': 'y', 'unit': 'px', 'value': 1},
+              {'dimension': 't', 'value': "month"}],
+        overlap=[],
+        context={},
+        env=EvalEnv(),
+    )
+    result_array = result.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
+    print(result_array)
+    input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
+    expected_result = np.power(2, input)
+    print(expected_result)
+    assert_array_almost_equal(expected_result, result_array)

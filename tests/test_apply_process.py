@@ -1,22 +1,21 @@
 import datetime
-import math
 from typing import List
 
-import pytest
-
 import geopyspark as gps
+import math
 import numpy as np
+import pytest
 import pytz
 from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from openeo_driver.errors import OpenEOApiException
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
@@ -157,7 +156,8 @@ def test_point_series():
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
     transformed_collection = cube.apply(
-        {"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}}
+        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}},
+        env=EvalEnv(),
     )
     for p in points[0:3]:
         # TODO #421 drop old unsued "point timeseries" feature
@@ -169,18 +169,20 @@ def test_apply_cos():
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
     res = cube.apply(
-        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}}
+        process={"cos": {"process_id": "cos", "arguments": {"x": {"from_parameter": "x"}}, "result": True}},
+        env=EvalEnv(),
     )
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(second[0]))
+
 
 def test_apply_complex_graph():
     graph = {
         "sin": {
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 }
             },
             "process_id": "sin",
@@ -200,10 +202,11 @@ def test_apply_complex_graph():
 
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
-    res = cube.apply(graph)
+    res = cube.apply(process=graph, env=EvalEnv())
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0*np.sin(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], 5.0*np.sin(second[0]))
+
 
 def test_reduce_bands():
     input = create_spacetime_layer()
@@ -220,16 +223,17 @@ def test_reduce_bands():
         "sum": {
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 },
                 "ignore_nodata":True
             },
             "process_id": "sum"
         },
+        # TODO: this does not make sense: `subtract` process on an array
         "subtract": {
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 }
             },
             "process_id": "subtract"
@@ -264,7 +268,7 @@ def test_reduce_bands_logical_ops():
         "eq": {
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 },
                 "y": 10
             },
@@ -315,7 +319,7 @@ def test_apply_if():
         }
       }
 
-    stitched = imagecollection.apply(graph).pyramid.levels[0].to_spatial_layer().stitch()
+    stitched = imagecollection.apply(process=graph, env=EvalEnv()).pyramid.levels[0].to_spatial_layer().stitch()
     print(stitched)
     assert 2.0 == stitched.cells[0][0][0]
 
@@ -330,7 +334,7 @@ def test_reduce_bands_comparison_ops():
         "gt": {
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 },
                 "y": 6.0
             },
@@ -356,7 +360,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 0
                     }
@@ -380,7 +384,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 1
                     }
@@ -390,7 +394,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 0
                     }
@@ -428,7 +432,7 @@ def test_reduce_bands_arrayelement():
                     "result": False,
                     "arguments": {
                         "data": {
-                            "from_argument": "data"
+                            "from_parameter": "data"
                         },
                         "index": 1
                     }
@@ -501,7 +505,7 @@ def test_linear_scale_range_reduce():
             "result": True,
             "arguments": {
                 "x": {
-                    "from_argument": "data"
+                    "from_parameter": "x"
                 },
                 "inputMin": -1,
                 "inputMax": 1,

@@ -134,22 +134,23 @@ class S1BackscatterOrfeo:
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
         attributeValues = {
-            "productType": "GRD",
-            "sensorMode": "IW",
+            "productType": "IW_GRDH_1S-COG",
             "processingLevel": "LEVEL1",
         }
+        if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
+            attributeValues["productType"] = "IW_GRDH_1S"
         # Additional query values for orbit filtering
         attributeValues.update({
             k: v for (k, v) in extra_properties.items() if k in [
                 "orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness",
-                "polarisation", "missionTakeId",
+                "polarisation", "missionTakeId", "sat:orbit_state"
             ]
         })
         if "polarization" in extra_properties:
             #british vs US English Sentinelhub + STAC use US variant!!
             attributeValues["polarisation"] = extra_properties["polarization"]
         opensearch_client = self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
-            "https://finder.creodias.eu/oldresto", False, "", [], ""
+            "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
         )
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
             opensearch_client, collection_id, [], attributeValues, correlation_id
@@ -315,7 +316,7 @@ class S1BackscatterOrfeo:
             set_max_memory(int(max_total_memory_in_bytes))
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
-            arr = multiprocessing.Array(ctypes.c_double, extent_width_px*extent_height_px, lock=False)
+            arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -330,7 +331,7 @@ class S1BackscatterOrfeo:
                     ortho_rect.Execute()
                     # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
                     localdata = ortho_rect.GetImageAsNumpyArray('io.out')
-                    np.copyto(np.frombuffer(arr).reshape((extent_height_px, extent_width_px)), localdata)
+                    np.copyto(np.frombuffer(arr,dtype=np.float32).reshape((extent_height_px, extent_width_px)), localdata,casting="same_kind")
                 except RuntimeError as e:
                     error_counter.value += 1
                     logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
@@ -350,7 +351,7 @@ class S1BackscatterOrfeo:
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
-            data = np.reshape(np.frombuffer(arr), (extent_height_px, extent_width_px))
+            data = np.reshape(np.frombuffer(arr,dtype=np.float32), (extent_height_px, extent_width_px))
 
             logger.info(
                 f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
@@ -493,7 +494,7 @@ class S1BackscatterOrfeo:
 
                         key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
                         cell_type = geopyspark.CellType(tile_data.dtype.name)
-                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
+                        logger.debug(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                         tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                         resultlist.append((key, tile))
 
@@ -583,7 +584,7 @@ class S1BackscatterOrfeo:
         tile_rdd = grouped.flatMap(orfeo_function)
         #tile_rdd = list(map(orfeo_function,local))
         if result_dtype:
-            layer_metadata_py.cell_type = result_dtype
+            layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
         tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
             layer_type=geopyspark.LayerType.SPACETIME,
@@ -600,11 +601,12 @@ class S1BackscatterOrfeo:
         result = p.applySparseSpacetimePartitioner(tile_layer.srdd.rdd(),
                                                    keys_geotrellis,
                                                    indexReduction)
-
         contextRDD = jvm.geotrellis.spark.ContextRDD(result, tile_layer.srdd.rdd().metadata())
-        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), contextRDD)
+        merged_rdd = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(contextRDD)
+
+        srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(zoom), merged_rdd)
         tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
-        logger.info(f"Created {collection_id} backscatter cube with partitioner index: {str(result.partitioner().get().index())}")
+        logger.info(f"Created {collection_id} backscatter cube with partitioner index: {str(merged_rdd.partitioner().get().index())}")
         return {zoom: tile_layer}
 
     @staticmethod
@@ -806,15 +808,19 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
-            correlation_id
+            correlation_id, datacubeParams=datacubeParams
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
         trackers = S1BackscatterOrfeo._get_trackers(feature_pyrdd.context)
 
+        prefix = ""
+        if pathlib.Path("/vsis3").exists() and extra_properties.get("vsis3","TRUE") != "FALSE":
+            prefix = "/vsis3"
+
         # Group multiple tiles by product id
         def process_feature(feature: dict) -> Tuple[str, dict]:
-            creo_path = feature["feature"]["id"]
+            creo_path = prefix + feature["feature"]["id"]
             return creo_path, {
                 "key": feature["key"],
                 "key_extent": feature["key_extent"],
@@ -920,7 +926,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                         tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                         if not (tile==nodata).all():
-                            logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                            if debug_mode:
+                                logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                             tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                             tiles.append((key, tile))
 
@@ -938,14 +945,20 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
-            layer_metadata_py.cell_type = result_dtype
+            layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
         tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
             layer_type=geopyspark.LayerType.SPACETIME,
             numpy_rdd=tile_rdd,
             metadata=layer_metadata_py
         )
-        return {zoom: tile_layer}
+        # Merge any keys that have more than one tile.
+        contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+        temporal_tiled_raster_layer = self.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+        srdd = temporal_tiled_raster_layer.apply(self.jvm.scala.Option.apply(zoom), contextRDD)
+        merged_tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
+
+        return {zoom: merged_tile_layer}
 
 
 def get_implementation(version: str = "1", jvm=None) -> S1BackscatterOrfeo:

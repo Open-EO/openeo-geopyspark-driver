@@ -22,6 +22,8 @@ from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
+
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
     kube_client,
@@ -125,7 +127,7 @@ class JobTracker:
                                     # TODO: do we support SHub batch processes in this environment? The AWS
                                     #  credentials conflict.
 
-                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
                                     usage = self.get_kube_usage(job_id, application_id)
                                     if usage is not None:
                                         result_metadata["usage"] = usage
@@ -165,7 +167,7 @@ class JobTracker:
                                               (job_id, current_status, new_status), extra={'job_id': job_id})
 
                                 if final_state != "UNDEFINED":
-                                    result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+                                    result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
                                     # TODO: skip patching the job znode and read from this file directly?
 
                                     sentinelhub_processing_units = (result_metadata.get("usage", {})
@@ -426,7 +428,8 @@ def main():
                 requests_session)
 
         elastic_job_registry = get_elastic_job_registry(requests_session)
-        etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+        etl_api = EtlApi(ConfigParams().etl_api, source_id=get_backend_config().etl_source_id,
+                         requests_session=requests_session)
 
         job_tracker = JobTracker(
             job_registry=ZkJobRegistry,

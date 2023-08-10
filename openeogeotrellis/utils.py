@@ -2,6 +2,8 @@ import collections
 import collections.abc
 import contextlib
 import datetime
+import functools
+import pkgutil
 
 import grp
 import json
@@ -70,36 +72,6 @@ def mdc_remove(sc, jvm, *mdc_keys):
         jvm.org.slf4j.MDC.remove(key)
         sc.setLocalProperty(key, None)
 
-
-def kerberos(principal, key_tab, jvm: JVMView = None):
-    if jvm is None:
-        jvm = get_jvm()
-
-    if 'HADOOP_CONF_DIR' not in os.environ:
-        logger.warning('HADOOP_CONF_DIR is not set. Kerberos based authentication will probably not be set up correctly.')
-
-    hadoop_auth = jvm.org.apache.hadoop.conf.Configuration().get('hadoop.security.authentication')
-    if hadoop_auth != 'kerberos':
-        logger.warning('Hadoop client does not have hadoop.security.authentication=kerberos.')
-
-    currentUser = jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser()
-    if currentUser.hasKerberosCredentials():
-        return
-    logger.info("Kerberos currentUser={u!r} isSecurityEnabled={s!r}".format(
-        u=currentUser.toString(), s=jvm.org.apache.hadoop.security.UserGroupInformation.isSecurityEnabled()
-    ))
-    # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().getAuthenticationMethod().toString())
-
-    if principal is not None and key_tab is not None:
-        jvm.org.apache.hadoop.security.UserGroupInformation.loginUserFromKeytab(principal, key_tab)
-        jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().setAuthenticationMethod(
-            jvm.org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS)
-    # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().toString())
-    # loginUser = jvm.org.apache.hadoop.security.UserGroupInformation.getLoginUser()
-    # print(loginUser.toString())
-    # print(loginUser.hasKerberosCredentials())
-    # currentUser.addCredentials(loginUser.getCredentials())
-    # print(jvm.org.apache.hadoop.security.UserGroupInformation.getCurrentUser().hasKerberosCredentials())
 
 
 def dict_merge_recursive(a: collections.abc.Mapping, b: collections.abc.Mapping, overwrite=False) -> collections.abc.Mapping:
@@ -302,8 +274,8 @@ def s3_client():
     # TODO: move this to openeogeotrellis.integrations.s3?
     import boto3
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
-    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
-    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    aws_access_key_id = os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID"))
+    aws_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY"))
     swift_url = os.environ.get("SWIFT_URL")
     s3_client = boto3.client("s3",
         aws_access_key_id=aws_access_key_id,
@@ -317,8 +289,8 @@ def download_s3_dir(bucketName, directory):
     import boto3
 
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
-    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
-    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    aws_access_key_id = os.environ.get("SWIFT_ACCESS_KEY_ID", os.environ.get("AWS_ACCESS_KEY_ID"))
+    aws_secret_access_key = os.environ.get("SWIFT_SECRET_ACCESS_KEY", os.environ.get("AWS_SECRET_ACCESS_KEY"))
     swift_url = os.environ.get("SWIFT_URL")
 
     s3_resource = boto3.resource("s3",
@@ -590,3 +562,8 @@ class StatsReporter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.report(f"{self.name}: {json.dumps(self.stats)}")
+
+
+@functools.lru_cache
+def is_package_available(name: str) -> bool:
+    return any(m.name == name for m in pkgutil.iter_modules())

@@ -152,13 +152,13 @@ def test_point_series_apply_tile(imagecollection_with_two_bands_and_one_date, ud
 
     reducer = GeoPySparkBackendImplementation().visit_process_graph({
         "udf_process": {
+            "process_id": "run_udf",
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 },
                 "udf": udf_code
             },
-            "process_id": "run_udf",
             "result": True
         },
     })

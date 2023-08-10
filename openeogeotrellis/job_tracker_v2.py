@@ -16,6 +16,9 @@ from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.integrations.prometheus import Prometheus
+
 # We only need requests_gssapi for Yarn, which uses Kerberos authentication.
 try:
     import requests_gssapi
@@ -41,7 +44,7 @@ from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCostsCalculator, YarnJobCostsCalculator,
                                                    K8sJobCostsCalculator, CostsDetails)
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.utils import StatsReporter
+from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 from openeogeotrellis.vault import Vault
 
 
@@ -50,14 +53,21 @@ _log = logging.getLogger("openeogeotrellis.job_tracker_v2")
 
 
 class _Usage(NamedTuple):
-    cpu_seconds: float
-    mb_seconds: float
+    cpu_seconds: Optional[float] = None
+    mb_seconds: Optional[float] = None
+    network_receive_bytes: Optional[float] = None
 
     def to_dict(self) -> dict:
-        return {
-            "cpu": {"value": self.cpu_seconds, "unit": "cpu-seconds"},
-            "memory": {"value": self.mb_seconds, "unit": "mb-seconds"}
-        }
+        result = {}
+
+        if self.cpu_seconds:
+            result["cpu"] = {"value": self.cpu_seconds, "unit": "cpu-seconds"}
+        if self.mb_seconds:
+            result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
+        if self.network_receive_bytes:
+            result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
+
+        return result
 
 
 class _JobMetadata(NamedTuple):
@@ -69,14 +79,14 @@ class _JobMetadata(NamedTuple):
     # Job status, following the openEO API spec (see `openeo_driver.jobregistry.JOB_STATUS`)
     status: str
 
+    # Resource usage stats
+    usage: _Usage
+
     # UTC datetime (or None if not started yet)
     start_time: Optional[dt.datetime] = None
 
     # UTC datetime (or None if not finished yet)
     finish_time: Optional[dt.datetime] = None
-
-    # Resource usage stats (if any)
-    usage: Optional[_Usage] = None
 
 
 class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
@@ -204,8 +214,7 @@ class YarnStatusGetter(JobMetadataGetterInterface):
 
             memory_seconds = report.get("memorySeconds")
             vcore_seconds = report.get("vcoreSeconds")
-            usage = (_Usage(cpu_seconds=vcore_seconds, mb_seconds=memory_seconds)
-                     if vcore_seconds is not None and memory_seconds is not None else None)
+            usage = _Usage(cpu_seconds=vcore_seconds, mb_seconds=memory_seconds)
 
             return _JobMetadata(
                 app_state=state,
@@ -225,23 +234,12 @@ class K8sException(Exception):
 class K8sStatusGetter(JobMetadataGetterInterface):
     """Kubernetes app status getter"""
 
-    def __init__(self, kubecost_url: Optional[str] = None):
+    def __init__(self, prometheus_api_endpoint: str):
         self._kubernetes_api = kube_client()
         # TODO: get this url from config?
-        self._kubecost_url = kubecost_url or "https://opencost.openeo-cdse-staging.vgt.vito.be"
+        self._prometheus_api_endpoint = prometheus_api_endpoint
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
-        job_status = self._get_job_status(app_id)
-        usage = self._get_usage(job_id, app_id)
-        return _JobMetadata(
-            app_state=job_status.app_state,
-            status=job_status.status,
-            start_time=job_status.start_time,
-            finish_time=job_status.finish_time,
-            usage=usage,
-        )
-
-    def _get_job_status(self, application_id: str) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
         import kubernetes.client.exceptions
         try:
@@ -250,7 +248,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 version="v1beta2",
                 namespace=ConfigParams().pod_namespace,
                 plural="sparkapplications",
-                name=application_id,
+                name=app_id,
             )
         except kubernetes.client.exceptions.ApiException as e:
             if e.status == 404:
@@ -264,51 +262,47 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
             finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
         else:
-            _log.warning("No K8s app status found, assuming new app")
+            _log.warning("No K8s app status found, assuming new app", extra={"job_id": job_id, "user_id": user_id})
             app_state = K8S_SPARK_APP_STATE.NEW
             start_time = finish_time = None
 
         job_status = k8s_state_to_openeo_job_status(app_state)
         return _JobMetadata(
-            app_state=app_state, status=job_status, start_time=start_time, finish_time=finish_time
+            app_state=app_state, status=job_status, usage=self._get_usage(app_id, start_time, finish_time,
+                                                                          job_id, user_id),
+            start_time=start_time, finish_time=finish_time
         )
 
-    def _get_usage(self, job_id: str, application_id: str) -> Union[_Usage, None]:
+    def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
+                   job_id: str, user_id: str) -> _Usage:
         try:
-            url = url_join(self._kubecost_url, "/api/allocation")
-            namespace = ConfigParams().pod_namespace
-            window = "5d"
-            pod = application_id + "*"
-            params = (
-                ("aggregate", "namespace"),
-                ("filterNamespaces", namespace),
-                ("filterPods", pod),
-                ("window", window),
-                ("accumulate", "true"),
-            )
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            total_cost = response.json()
-            if not (
-                total_cost["code"] == 200
-                and len(total_cost["data"]) > 0
-                and namespace in total_cost["data"][0]
-            ):
-                raise K8sException(
-                    f"Unexpected response {repr_truncate(total_cost, width=200)}"
-                )
+            prometheus = Prometheus(self._prometheus_api_endpoint)
 
-            cost = total_cost["data"][0][namespace]
-            # TODO: need to iterate through "data" list?
-            _log.info(f"Successfully retrieved total cost {cost}")
-            return _Usage(cpu_seconds=cost["cpuCoreHours"] * 60 * 60,
-                          mb_seconds=cost["ramByteHours"] * 60 * 60 / (1024 * 1024))
-        except Exception:
-            _log.error(
-                f"Failed to retrieve usage stats from kubecost",
-                exc_info=True,
-                extra={"job_id": job_id},
+            if start_time is None or finish_time is None:
+                byte_seconds = None
+            else:
+                application_duration_s = (finish_time - start_time).total_seconds()
+                byte_seconds = prometheus.get_memory_usage(application_id, application_duration_s)
+
+            cpu_seconds = prometheus.get_cpu_usage(application_id)
+            network_receive_bytes = prometheus.get_network_received_usage(application_id)
+
+            usage = _Usage(cpu_seconds=cpu_seconds,
+                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
+                           network_receive_bytes=network_receive_bytes,
+                           )
+
+            _log.info(f"Successfully retrieved usage stats {usage} from {self._prometheus_api_endpoint}",
+                      extra={"job_id": job_id, "user_id": user_id})
+
+            return usage
+        except Exception as e:
+            _log.exception(
+                f"Failed to retrieve usage stats from {self._prometheus_api_endpoint}: {type(e).__name__}: {e}",
+                extra={"job_id": job_id, "user_id": user_id},
             )
+
+        return _Usage()
 
 
 class JobTracker:
@@ -328,7 +322,7 @@ class JobTracker:
         self._keytab = keytab
         self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
-        #       Also note that only `get_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actuall be overkill in the first place.
+        #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.
         self._batch_jobs = GpsBatchJobs(
             catalog=None,
             jvm=None,
@@ -380,7 +374,8 @@ class JobTracker:
                             age = "unknown"
                         # TODO: handle very old, non-started jobs? E.g. mark as error?
                         _log.info(
-                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}"
+                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}",
+                            extra={"job_id": job_id, "user_id": user_id}
                         )
                         stats[f"skip due to no application_id ({status=})"] += 1
                         continue
@@ -457,7 +452,7 @@ class JobTracker:
             JOB_STATUS.CANCELED,
         }:
             stats[f"reached final status {job_metadata.status}"] += 1
-            result_metadata = self._batch_jobs.get_results_metadata(job_id, user_id)
+            result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
             zk_job_registry.remove_dependencies(job_id, user_id)
 
@@ -491,19 +486,23 @@ class JobTracker:
                 job_title=job_info.get("title"),
                 start_time=job_metadata.start_time,
                 finish_time=job_metadata.finish_time,
-                cpu_seconds=job_metadata.usage.cpu_seconds if job_metadata.usage is not None else None,
-                mb_seconds=job_metadata.usage.mb_seconds if job_metadata.usage is not None else None,
-                sentinelhub_processing_units=sentinelhub_processing_units + sentinelhub_batch_processing_units,
-                unique_process_ids=result_metadata.get('unique_process_ids', [])
+                cpu_seconds=job_metadata.usage.cpu_seconds,
+                mb_seconds=job_metadata.usage.mb_seconds,
+                sentinelhub_processing_units=(sentinelhub_processing_units + sentinelhub_batch_processing_units)
+                or None,
+                unique_process_ids=result_metadata.get("unique_process_ids", []),
             )
 
             try:
                 job_costs = self._job_costs_calculator.calculate_costs(costs_details)
                 # TODO: skip patching the job znode and read from this file directly?
-                zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs))
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
                 stats["failed cost calculation"] += 1
+                job_costs = None
+
+            usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
+            zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs, usage=usage))
 
         datetime_formatter = Rfc3339(propagate_none=True)
 
@@ -513,7 +512,6 @@ class JobTracker:
             status=job_metadata.status,
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
-            usage=job_metadata.usage.to_dict() if job_metadata.usage is not None else None,
         )
         with ElasticJobRegistry.just_log_errors(
             f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
@@ -557,7 +555,8 @@ class CliApp:
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
-                etl_api = EtlApi(ConfigParams().etl_api, requests_session)
+                etl_api = EtlApi(ConfigParams().etl_api, source_id=get_backend_config().etl_source_id,
+                                 requests_session=requests_session)
 
                 # Elastic Job Registry (EJR)
                 elastic_job_registry = get_elastic_job_registry(requests_session)
@@ -581,7 +580,7 @@ class CliApp:
                                                                     etl_api_credentials.client_secret, requests_session)
                     job_costs_calculator = YarnJobCostsCalculator(etl_api, etl_api_access_token)
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter()
+                    app_state_getter = K8sStatusGetter(prometheus_api_endpoint=get_backend_config().prometheus_api)
                     etl_api_client_id = environ["OPENEO_ETL_OIDC_CLIENT_ID"]
                     etl_api_client_secret = environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
                     etl_api_access_token = get_etl_api_access_token(etl_api_client_id, etl_api_client_secret,
@@ -599,8 +598,8 @@ class CliApp:
                 )
                 job_tracker.update_statuses(fail_fast=args.fail_fast)
             except Exception as e:
-                _log.error(e, exc_info=True)
-                raise e
+                _log.exception(f"Failed job tracker run: {type(e).__name__}: {e}")
+                raise
 
     def parse_cli_args(self, args: Optional[List[str]] = None) -> argparse.Namespace:
         parser = argparse.ArgumentParser(

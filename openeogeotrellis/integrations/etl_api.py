@@ -6,7 +6,6 @@ from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCr
 
 from openeogeotrellis.configparams import ConfigParams
 
-SOURCE_ID = "TerraScope/MEP"
 ORCHESTRATOR = "openeo"
 
 _log = logging.getLogger(__name__)
@@ -24,9 +23,24 @@ class ETL_API_STATE:
 
 
 class EtlApi:
-    def __init__(self, endpoint: str, requests_session: Optional[requests.Session] = None):
+    def __init__(self, endpoint: str, source_id: str, requests_session: Optional[requests.Session] = None):
         self._endpoint = endpoint
+        self._source_id = source_id
         self._session = requests_session or requests.Session()
+
+    def assert_access_token_valid(self, access_token: str):
+        # will work regardless of ability to log resources
+        with self._session.get(f"{self._endpoint}/user/permissions",
+                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+            _log.debug(resp.text)
+            resp.raise_for_status()  # value of "execution" is unrelated
+
+    def assert_can_log_resources(self, access_token: str):
+        # will also work if able to log resources
+        with self._session.get(f"{self._endpoint}/validate/auth",
+                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+            _log.debug(resp.text)
+            resp.raise_for_status()
 
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
@@ -53,7 +67,7 @@ class EtlApi:
             'jobName': title,
             'executionId': execution_id,
             'userId': user_id,
-            'sourceId': SOURCE_ID,
+            'sourceId': self._source_id,
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
@@ -62,17 +76,13 @@ class EtlApi:
             'metrics': metrics
         }
 
-        log.debug(f"logging resource usage {data}")
+        log.debug(f"logging resource usage {data} at {self._endpoint}")
 
         with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:
                 log.warning(
-                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
-                    extra={
-                        'user_id': user_id,
-                        'job_id': batch_job_id
-                    })
+                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
 
             resp.raise_for_status()
 
@@ -99,7 +109,7 @@ class EtlApi:
             'jobName': title,
             'executionId': execution_id,
             'userId': user_id,
-            'sourceId': SOURCE_ID,
+            'sourceId': self._source_id,
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
@@ -107,17 +117,13 @@ class EtlApi:
             'area': {'value': square_meters, 'unit': 'square_meter'}
         }
 
-        log.debug(f"logging added value {data}")
+        log.debug(f"logging added value {data} at {self._endpoint}")
 
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:
-                _log.warning(
-                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}",
-                    extra={
-                        'user_id': user_id,
-                        'job_id': batch_job_id
-                    })
+                log.warning(
+                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
 
             resp.raise_for_status()
 
@@ -142,3 +148,28 @@ def get_etl_api_access_token(client_id: str, client_secret: str, requests_sessio
         requests_session=requests_session,
     )
     return authenticator.get_tokens().access_token
+
+
+def assert_resource_logging_possible():
+    import os
+
+    logging.basicConfig(level="DEBUG")
+
+    os.environ['OPENEO_ETL_API_OIDC_ISSUER'] = "https://cdasid.cloudferro.com/auth/realms/CDAS"
+    client_id = 'openeo-job-tracker'
+    client_secret = ...
+
+    requests_session = requests.Session()
+
+    access_token = get_etl_api_access_token(client_id, client_secret, requests_session)
+    print(access_token)
+
+    etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", source_id="cdse",
+                     requests_session=requests_session)
+
+    etl_api.assert_access_token_valid(access_token)
+    etl_api.assert_can_log_resources(access_token)
+
+
+if __name__ == '__main__':
+    assert_resource_logging_possible()

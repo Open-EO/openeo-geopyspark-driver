@@ -1,19 +1,17 @@
 import importlib
 import logging
-import os
 import re
 import socket
 import sys
 import zipfile
 from os import PathLike
 from pathlib import Path
-from typing import Dict, Iterable, List
-
-from kazoo.client import KazooClient
+from typing import Dict, Iterable, List, Optional
 
 from openeo_driver.server import build_backend_deploy_metadata
-from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.traefik import Traefik
+
+import openeogeotrellis
+
 
 _log = logging.getLogger(__name__)
 
@@ -37,24 +35,6 @@ def get_socket() -> (str, int):
         _, port = tcp.getsockname()
 
     return local_ip, port
-
-
-def update_zookeeper(cluster_id: str, rule: str, host: str, port: int, health_check: str = None) -> None:
-    server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
-
-    zk = KazooClient(hosts=','.join(ConfigParams().zookeepernodes))
-    zk.start()
-    try:
-        Traefik(zk).add_load_balanced_server(
-            cluster_id=cluster_id,
-            server_id=server_id,
-            host=host, port=port,
-            rule=rule,
-            health_check=health_check
-        )
-    finally:
-        zk.stop()
-        zk.close()
 
 
 def get_jar_version_info(path: PathLike, na_value="n/a") -> str:
@@ -82,6 +62,29 @@ def get_jar_versions(paths: Iterable[PathLike]) -> Dict[str, str]:
         re.match("[a-zA-Z_-]*[a-zA-Z]", p.name).group(0): get_jar_version_info(p)
         for p in paths
     }
+
+
+def find_geotrellis_jars(
+    extra_search_locations: Optional[List[Path]] = None, from_cwd: bool = True, from_project_root: bool = True
+) -> List[Path]:
+    """Find paths to geotrellis-backend-assembly and geotrellis-extensions jars"""
+    search_locations = extra_search_locations or []
+    if from_cwd:
+        search_locations.append(Path("jars"))
+    if from_project_root:
+        search_locations.append(
+            Path(openeogeotrellis.__file__).parent.parent / "jars",
+        )
+    _log.debug(f"Looking for geotrellis jars in {search_locations=}")
+
+    jars = []
+    for search_location in search_locations:
+        jars.extend(search_location.glob("geotrellis-backend-assembly-*.jar"))
+        jars.extend(search_location.glob("geotrellis-extensions-*.jar"))
+        if jars:
+            break
+    _log.debug(f"Found geotrellis jars: {jars}")
+    return jars
 
 
 def build_gps_backend_deploy_metadata(packages: List[str], jar_paths: Iterable[PathLike] = ()) -> dict:

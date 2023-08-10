@@ -37,10 +37,11 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
     ProcessParameterInvalidException
+from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import (
     to_projected_polygons,
@@ -70,7 +71,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         super().__init__(metadata=metadata, dimensions=dimensions)
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
-        if(self.has_temporal_dimension()):
+        if(self.has_temporal_dimension() and temporal_extent is not None):
             self.temporal_dimension.extent = temporal_extent
 
 
@@ -114,6 +115,9 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
     def provider_backend(self) -> Union[str, None]:
         return self.get("_vito", "data_source", "provider:backend", default=None)
+
+    def auto_polarization(self) -> Union[str, None]:
+        return self.get("_vito", "data_source", "auto_polarization", default=False)
 
     def common_name_priority(self) -> int:
         priority = self.get("_vito", "data_source", "common_name_priority", default=None)
@@ -205,19 +209,20 @@ class GeopysparkDataCube(DriverDataCube):
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
         return self.filter_spatial(geometries=box(west,south,east,north),geometry_crs=crs,mask=False)
 
-
-    def filter_spatial(self, geometries: Union[Polygon, MultiPolygon,DriverVectorCube],geometry_crs="+init=EPSG:4326",mask=True) -> 'GeopysparkDataCube':
+    def filter_spatial(
+        self, geometries: Union[Polygon, MultiPolygon, DriverVectorCube], geometry_crs="EPSG:4326", mask=True
+    ) -> "GeopysparkDataCube":
         # TODO: support more geometry types but geopyspark.geotrellis.layer.TiledRasterLayer.mask doesn't seem to work
         #  with e.g. GeometryCollection
 
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
 
-        if( isinstance(geometries,DriverVectorCube)):
+        if isinstance(geometries, DriverVectorCube):
             geometry_crs = geometries.get_crs()
             geometries = geometries.to_multipolygon()
 
-        reprojected_polygon = self.__reproject_polygon(geometries, geometry_crs , layer_crs)
+        reprojected_polygon = self.__reproject_polygon(polygon=geometries, srs=geometry_crs, dest_srs=layer_crs)
 
         if mask:
             masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
@@ -241,8 +246,9 @@ class GeopysparkDataCube(DriverDataCube):
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
-    def apply(self, process: dict, context: Optional[dict] = None) -> "GeopysparkDataCube":
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+    def apply(self, process: dict, *, context: Optional[dict] = None, env: EvalEnv) -> "GeopysparkDataCube":
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
+
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
 
@@ -252,23 +258,43 @@ class GeopysparkDataCube(DriverDataCube):
             # also `apply` style local unary mapping operations.
             return  self._apply_bands_dimension(process)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf = process.udf_args.get("udf", None)
-            # TODO: resolve parameters from context in udf_context
-            udf_context = process.udf_args.get("context", {})
-            if not isinstance(udf, str):
-                raise ValueError(f"The 'run_udf' process requires at least a 'udf' string argument, but got: {udf!r}.")
+            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
             return self.apply_tiles(udf_code=udf, context=udf_context)
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
-    def apply_dimension(self, process, dimension: str, target_dimension: str = None,
-                        context: dict = None, env: EvalEnv = None) -> 'DriverDataCube':
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+    def _extract_udf_code_and_context(
+        self,
+        process: SingleNodeUDFProcessGraphVisitor,
+        context: dict,
+        env: Optional[EvalEnv] = None,
+    ) -> Tuple[str, dict]:
+        """Extract UDF code and UDF context from given visitor and parent's context"""
+        udf = process.udf_args.get("udf")
+        if not isinstance(udf, str):
+            raise ValueError(f"The 'run_udf' process requires at least a 'udf' string argument, but got: {udf!r}.")
+
+        udf_context = process.udf_args.get("context", {})
+        # Resolve "from_parameter" references
+        udf_context = convert_node(udf_context, env=(env or EvalEnv()).push_parameters({"context": context}))
+
+        return udf, udf_context
+
+    def apply_dimension(
+        self,
+        process: Union[dict, GeotrellisTileProcessGraphVisitor],
+        *,
+        dimension: str,
+        target_dimension: Optional[str] = None,
+        context: Optional[dict] = None,
+        env: EvalEnv,
+    ) -> "DriverDataCube":
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
+
         if isinstance(process, dict):
             process = GeoPySparkBackendImplementation.accept_process_graph(process)
         if isinstance(process, GeotrellisTileProcessGraphVisitor):
             if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
-                from openeo_driver.ProcessGraphDeserializer import convert_node
                 context = convert_node(context, env=env)
                 pysc = gps.get_spark_context()
                 if target_dimension == self.metadata.band_dimension.name:
@@ -289,8 +315,9 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 raise FeatureUnsupportedException(f"apply_dimension along dimension {dimension} is not supported. These dimensions are available: " + str(self.metadata.dimension_names()))
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf = process.udf_args.get('udf', None)
-            return self._run_udf_dimension(udf, context, dimension, env)
+            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
+            return self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension)
+
         raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
 
     def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
@@ -316,10 +343,18 @@ class GeopysparkDataCube(DriverDataCube):
         pysc = gps.get_spark_context()
         if context is None:
             context = {}
+        elif not isinstance(context,dict):
+            context = {"context": context}
+
+        if self.metadata.has_band_dimension():
+            context["array_labels"] = self.metadata.band_names
+        else:
+            _log.warning(f"Applying callback to the bands, but no band labels available on this datacube.")
+
         result_cube: GeopysparkDataCube = float_datacube._apply_to_levels_geotrellis_rdd(
             lambda rdd, level:
                 pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().mapBands(
-                    rdd, pgVisitor.builder, context if isinstance(context, dict) else {"context": context}
+                    rdd, pgVisitor.builder, context
                 )
         )
 
@@ -484,7 +519,7 @@ class GeopysparkDataCube(DriverDataCube):
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
-    def apply_tiles_spatiotemporal(self, udf_code: str, context: dict = {}) -> 'GeopysparkDataCube':
+    def apply_tiles_spatiotemporal(self, udf_code: str, udf_context: Optional[dict] = None) -> "GeopysparkDataCube":
         """
         Group tiles by SpatialKey, then apply a Python function to every group of tiles.
         :param udf_code: A string containing a Python function that handles groups of tiles, each labeled by date.
@@ -516,19 +551,21 @@ class GeopysparkDataCube(DriverDataCube):
                 time_coordinates=pd.DatetimeIndex(dates)
             )
 
-            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
-            _log.debug(f"[apply_tiles_spatiotemporal] running UDF {str_truncate(udf_code, width=1000)!r} on {data}!r")
+            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=udf_context)
+            _log.debug(f"[apply_tiles_spatiotemporal] running UDF {str_truncate(udf_code, width=1000)!r} on {datacube!r} with context {udf_context}")
             result_data = run_udf_code(code=udf_code, data=data)
-            _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_data}!r")
             cubes = result_data.get_datacube_list()
             if len(cubes) != 1:
-                raise ValueError("The provided UDF should return one datacube, but got: " + str(cubes))
+                raise ValueError(f"The provided UDF should return one datacube, but got: {result_data}")
             result_array: xr.DataArray = cubes[0].array
+            _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
+                result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
                          Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
+                result_array = result_array.transpose(*( 'bands', 'y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
                          Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 
@@ -571,10 +608,16 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
     def chunk_polygon(
-            self, reducer: Union[ProcessGraphVisitor, Dict], chunks: MultiPolygon, mask_value: float,
-            env: EvalEnv, context: dict = None,
-    ) -> 'GeopysparkDataCube':
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        self,
+        reducer: Union[ProcessGraphVisitor, Dict],
+        chunks: MultiPolygon,
+        mask_value: float,
+        env: EvalEnv,
+        context: Optional[dict] = None,
+    ) -> "GeopysparkDataCube":
+        # TODO: rename this to `apply_polygon`
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
+
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
         chunks: List[Polygon] = chunks.geoms
@@ -582,12 +625,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         result_collection = None
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
-            from openeo_driver.ProcessGraphDeserializer import convert_node
-            udf = reducer.udf_args.get('udf', None)
-            context: dict = reducer.udf_args.get('context', {})
-            context: dict = convert_node(context, env=env) # Resolve "from_parameter" references in context object
-            if not isinstance(udf, str):
-                raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
             # Polygons should use the same projection as the rdd.
             reprojected_polygons: jvm.org.openeo.geotrellis.ProjectedPolygons \
                 = to_projected_polygons(jvm, GeometryCollection(chunks))
@@ -595,7 +633,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             def rdd_function(rdd, _zoom):
                 return jvm.org.openeo.geotrellis.udf.Udf.runChunkPolygonUserCode(
-                    udf, rdd, reprojected_polygons, band_names, context, mask_value
+                    udf, rdd, reprojected_polygons, band_names, udf_context, mask_value
                 )
 
             # All JEP implementation work with float cell types.
@@ -609,17 +647,22 @@ class GeopysparkDataCube(DriverDataCube):
         return result_collection
 
     def reduce_dimension(
-            self, reducer: Union[ProcessGraphVisitor, Dict], dimension: str, env: EvalEnv,
-            binary=False, context=None,
-    ) -> 'GeopysparkDataCube':
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor,GeoPySparkBackendImplementation
-        if isinstance(reducer,dict):
+        self,
+        reducer: Union[ProcessGraphVisitor, Dict],
+        *,
+        dimension: str,
+        context: Optional[dict] = None,
+        env: EvalEnv,
+        binary=False,
+    ) -> "GeopysparkDataCube":
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
+
+        if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
 
-        if isinstance(reducer,SingleNodeUDFProcessGraphVisitor):
-            udf = reducer.udf_args.get('udf',None)
-            context = reducer.udf_args.get('context', {})
-            result_collection = self._run_udf_dimension(udf, context, dimension, env)
+        if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
+            udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
+            result_collection = self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self._apply_bands_dimension(reducer, context)
         elif self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
@@ -638,18 +681,14 @@ class GeopysparkDataCube(DriverDataCube):
                 result_collection = result_collection.apply_to_levels(lambda rdd:  rdd.to_spatial_layer() if rdd.layer_type != gps.LayerType.SPATIAL else rdd)
         return result_collection
 
-    def _run_udf_dimension(self, udf, context, dimension, env):
-        # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
-        from openeo_driver.ProcessGraphDeserializer import convert_node
-        # Resolve "from_parameter" references in context object
-        context = convert_node(context, env=env)
+    def _run_udf_dimension(self, udf: str, udf_context: dict, dimension: str):
         if not isinstance(udf, str):
             raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
         if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
             # EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
-            return self.apply_tiles_spatiotemporal(udf_code=udf, context=context)
+            return self.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
-            return self.apply_tiles(udf_code=udf, context=context)
+            return self.apply_tiles(udf_code=udf, context=udf_context)
         else:
             raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
@@ -739,22 +778,22 @@ class GeopysparkDataCube(DriverDataCube):
         pass
 
     def aggregate_temporal(
-            self, intervals: List, labels: List, reducer, dimension: str = None, context:dict = None
-    ) -> 'GeopysparkDataCube':
-        """ Computes a temporal aggregation based on an array of date and/or time intervals.
+        self, intervals: List, labels: List, reducer, dimension: str = None, context: Optional[dict] = None, reduce = True
+    ) -> "GeopysparkDataCube":
+        """Computes a temporal aggregation based on an array of date and/or time intervals.
 
-            Calendar hierarchies such as year, month, week etc. must be transformed into specific intervals by the clients. For each interval, all data along the dimension will be passed through the reducer. The computed values will be projected to the labels, so the number of labels and the number of intervals need to be equal.
+        Calendar hierarchies such as year, month, week etc. must be transformed into specific intervals by the clients. For each interval, all data along the dimension will be passed through the reducer. The computed values will be projected to the labels, so the number of labels and the number of intervals need to be equal.
 
-            If the dimension is not set, the data cube is expected to only have one temporal dimension.
+        If the dimension is not set, the data cube is expected to only have one temporal dimension.
 
-            :param intervals: Left-closed temporal intervals, which are allowed to overlap. Each temporal interval in the array has exactly two elements:
-                                The first element is the start of the temporal interval. The specified instance in time is included in the interval.
-                                The second element is the end of the temporal interval. The specified instance in time is excluded from the interval.
-            :param labels: Labels for the intervals. The number of labels and the number of groups need to be equal.
-            :param reducer: A reducer to be applied on all values along the specified dimension. The reducer must be a callable process (or a set processes) that accepts an array and computes a single return value of the same type as the input values, for example median.
-            :param dimension: The temporal dimension for aggregation. All data along the dimension will be passed through the specified reducer. If the dimension is not set, the data cube is expected to only have one temporal dimension.
+        :param intervals: Left-closed temporal intervals, which are allowed to overlap. Each temporal interval in the array has exactly two elements:
+                            The first element is the start of the temporal interval. The specified instance in time is included in the interval.
+                            The second element is the end of the temporal interval. The specified instance in time is excluded from the interval.
+        :param labels: Labels for the intervals. The number of labels and the number of groups need to be equal.
+        :param reducer: A reducer to be applied on all values along the specified dimension. The reducer must be a callable process (or a set processes) that accepts an array and computes a single return value of the same type as the input values, for example median.
+        :param dimension: The temporal dimension for aggregation. All data along the dimension will be passed through the specified reducer. If the dimension is not set, the data cube is expected to only have one temporal dimension.
 
-            :return: A data cube containing  a result for each time window
+        :return: A data cube containing  a result for each time window
         """
         reformat_date = lambda d : pd.to_datetime(d).strftime('%Y-%m-%dT%H:%M:%SZ')
         date_list = []
@@ -772,7 +811,7 @@ class GeopysparkDataCube(DriverDataCube):
 
 
         pysc = gps.get_spark_context()
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
 
@@ -787,7 +826,7 @@ class GeopysparkDataCube(DriverDataCube):
             return self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().aggregateTemporal(rdd,
                                                                                                           intervals_iso,
-                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {}))
+                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {},reduce))
         else:
             raise FeatureUnsupportedException("Unsupported type of reducer in aggregate_temporal: " + str(reducer))
 
@@ -856,11 +895,16 @@ class GeopysparkDataCube(DriverDataCube):
                                              " are merged with %s" % str(other.pyramid.levels.keys()))
 
         if overlaps_resolver is None:
+            # TODO: checking for overlap should also consider spatial extent and temporal extent, not only bands #479
             intersection = [value for value in leftBandNames if value in rightBandNames]
             if len(intersection) > 0:
                 # Spec: https://github.com/Open-EO/openeo-processes/blob/0dd3ab0d81f67506547136532af39b5c9a16771e/merge_cubes.json#L83-L87
-                raise OpenEOApiException(f"merge_cubes: Overlapping data cubes, but no overlap resolver has been specified. Either set an overlaps_resolver or rename the bands. Left names: {leftBandNames}, right names: {rightBandNames}.")
-
+                raise OpenEOApiException(
+                    code="OverlapResolverMissing",
+                    message=f"merge_cubes: Overlapping data cubes, but no overlap resolver has been specified."
+                    + f" Either set an overlaps_resolver or rename the bands."
+                    + f" Left names: {leftBandNames}, right names: {rightBandNames}.",
+                )
 
         # TODO properly combine bbox and temporal extents in metadata?
         pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
@@ -974,11 +1018,10 @@ class GeopysparkDataCube(DriverDataCube):
         kernel1_size: int,
         kernel2_size: int,
     ) -> "GeopysparkDataCube":
-        return (
-            gps.get_spark_context()
-            ._jvm.org.openeo.geotrellis.OpenEOProcesses()
-            .toSclDilationMask(
-                self.pyramid.levels[self.get_max_level().level_id].srdd.rdd(),
+        toMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().toSclDilationMask
+        return self._apply_to_levels_geotrellis_rdd(
+            lambda rdd, level: toMask(
+                rdd,
                 erosion_kernel_size,
                 mask1_values,
                 mask2_values,
@@ -1026,8 +1069,9 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
 
-    def apply_neighborhood(self, process: Dict, size: List, overlap: List, env: EvalEnv) -> 'GeopysparkDataCube':
-
+    def apply_neighborhood(
+        self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict] = None, env: EvalEnv
+    ) -> "GeopysparkDataCube":
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
             raise OpenEOApiException(message="Unexpected spatial dimensions in apply_neighborhood,"
@@ -1042,8 +1086,7 @@ class GeopysparkDataCube(DriverDataCube):
                                              " This was provided: %s" % str(size))
         sizeX = int(size_dict[x.name]['value'])
         sizeY = int(size_dict[y.name]['value'])
-        if sizeX < 32 or sizeY < 32:
-            raise OpenEOApiException(message="apply_neighborhood: window sizes smaller then 32 are not yet supported.")
+
         overlap_x = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
         overlap_y = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
         if overlap_x.get('unit', None) != 'px' or overlap_y.get('unit', None) != 'px':
@@ -1056,7 +1099,7 @@ class GeopysparkDataCube(DriverDataCube):
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x_value, overlap_y_value))
 
-        from openeogeotrellis.backend import SingleNodeUDFProcessGraphVisitor, GeoPySparkBackendImplementation
+        from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         process = GeoPySparkBackendImplementation.accept_process_graph(process)
         temporal_size = temporal_overlap = None
@@ -1066,23 +1109,20 @@ class GeopysparkDataCube(DriverDataCube):
 
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
-            udf = process.udf_args.get('udf', None)
-            context = process.udf_args.get('context', {})
-            # TODO Putting this import at toplevel breaks things at the moment (circular import issues)
-            from openeo_driver.ProcessGraphDeserializer import convert_node
-            # Resolve "from_parameter" references in context object
-            context = convert_node(context, env=env)
-            if not isinstance(udf, str):
-                raise ValueError(
-                    "The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
+            udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
+
+            if sizeX < 32 or sizeY < 32:
+                raise OpenEOApiException(
+                    message="apply_neighborhood: window sizes smaller then 32 are not yet supported for UDF's.")
+
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
                 if not self.metadata.has_temporal_dimension():
                     raise OpenEOApiException(
                         message="apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
-                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code=udf, context=context)
+                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context)
             elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
-                result_collection = retiled_collection.apply_tiles(udf_code=udf, context=context)
+                result_collection = retiled_collection.apply_tiles(udf_code=udf, context=udf_context)
             else:
                 raise OpenEOApiException(
                     message="apply_neighborhood: for temporal dimension,"
@@ -1093,6 +1133,14 @@ class GeopysparkDataCube(DriverDataCube):
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
             elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
                 result_collection = self._apply_bands_dimension(process)
+            elif temporal_size.get('value', None) != None and temporal_overlap is None and sizeX==1 and sizeY==1 and overlap_x_value==0 and overlap_y_value==0:
+                if(not self.metadata.has_temporal_dimension()):
+                    raise OpenEOApiException(message=f"apply_neighborhood: no time dimension on cube, cannot chunk on time with value {temporal_size}")
+                temporal_extent = self.metadata.temporal_dimension.extent
+                start = temporal_extent[0]
+                end = temporal_extent[1]
+                intervals = _period_to_intervals(start,end,temporal_size.get('value', None))
+                result_collection = self.aggregate_temporal(intervals, None, process, None, context,reduce=False)
             else:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
         else:
@@ -1484,11 +1532,15 @@ class GeopysparkDataCube(DriverDataCube):
         # get the data at highest resolution
         max_level = self.get_max_level()
 
-        def to_latlng_bbox(bbox: 'Extent') -> Tuple[float, float, float, float]:
-            latlng_extent = self._reproject_extent(src_crs=max_level.layer_metadata.crs,
-                                                   dst_crs="+init=EPSG:4326",
-                                                   xmin=bbox.xmin(), ymin=bbox.ymin(),
-                                                   xmax=bbox.xmax(), ymax=bbox.ymax())
+        def to_latlng_bbox(bbox: "Extent") -> Tuple[float, float, float, float]:
+            latlng_extent = self._reproject_extent(
+                src_crs=max_level.layer_metadata.crs,
+                dst_crs="EPSG:4326",
+                xmin=bbox.xmin(),
+                ymin=bbox.ymin(),
+                xmax=bbox.xmax(),
+                ymax=bbox.ymax(),
+            )
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
@@ -1636,11 +1688,11 @@ class GeopysparkDataCube(DriverDataCube):
 
                         # noinspection PyProtectedMember
                         # TODO: contains a bbox so rename
-                        timestamped_paths = [(pathlib.Path(timestamped_path._1()), timestamped_path._2(), timestamped_path._3())
+                        timestamped_paths = [(timestamped_path._1(), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
 
                         for path, timestamp, bbox in timestamped_paths:
-                            assets[path.name] = {
+                            assets[str(pathlib.Path(path).name)] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
@@ -1676,8 +1728,9 @@ class GeopysparkDataCube(DriverDataCube):
                             } for resultfile in outputPaths}
 
             else:
-                if not filename.endswith(".png"):
-                    filename = filename + ".png"
+                if not save_filename.endswith(".png"):
+                    save_filename = save_filename + ".png"
+
                 png_options = get_jvm().org.openeo.geotrellis.png.PngOptions()
                 color_cmap = get_color_cmap()
                 if color_cmap is not None:
@@ -1688,8 +1741,8 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
                 return {
-                    str(pathlib.Path(filename).name): {
-                        "href": filename,
+                    str(pathlib.Path(save_filename).name): {
+                        "href": save_filename,
                         "type": "image/png",
                         "roles": ["data"]
                     }
@@ -2172,34 +2225,53 @@ class GeopysparkDataCube(DriverDataCube):
             },
         }
 
-        from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
         visitor = GeotrellisTileProcessGraphVisitor()
 
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
-    def apply_atmospheric_correction(self, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float, cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
-        return self.atmospheric_correction(missionID     , sza       , vza       , raa       , gnd       , aot       , cwv       , appendDebugBands      )
+    def atmospheric_correction(
+        self,
+        method: Optional[str] = None,
+        elevation_model: Optional[str] = None,
+        options: Optional[dict] = None,
+    ) -> "GeopysparkDataCube":
+        supported_methods = ["ICOR", "SMAC"]
+        supported_missons = ["SENTINEL2", "LANDSAT8"]
 
-    def atmospheric_correction(self,method:str,elevation_model:str, missionID: str, sza: float, vza: float, raa: float, gnd: float, aot: float,
-                               cwv: float, appendDebugBands: bool) -> 'GeopysparkDataCube':
-        if missionID is None: missionID = "SENTINEL2"
-        if method is None: method = "ICOR"
-        if elevation_model is None: elevation_model = "DEM"
-        if sza is None: sza = np.NaN
-        if vza is None: vza = np.NaN
-        if raa is None: raa = np.NaN
-        if gnd is None: gnd = np.NaN
-        if aot is None: aot = np.NaN
-        if cwv is None: cwv = np.NaN
-        if appendDebugBands is not None:
-            if appendDebugBands == 1:
-                appendDebugBands = True
-            else:
-                appendDebugBands = False
-        else:
-            appendDebugBands = False
+        method = method or supported_methods[0]
+        elevation_model = elevation_model or "DEM"
+        options = options or {}
+        # TODO: smarter mission_id fallback?
+        mission_id = options.get("mission_id") or supported_missons[0]
+        append_debug_bands = bool(options.get("append_debug_bands"))
+
+        def get_float(d: dict, key: str, default: float = np.NaN) -> float:
+            value = d.get(key)
+            if value is None:
+                value = default
+            return value
+
+        sza = get_float(options, "sza")
+        vza = get_float(options, "vza")
+        raa = get_float(options, "raa")
+        gnd = get_float(options, "gnd")
+        aot = get_float(options, "aot")
+        cwv = get_float(options, "cwv")
+
         bandIds = self.metadata.band_names
-        _log.info("Bandids: " + str(bandIds))
+        _log.info(f"atmospheric_correction: {method=} {mission_id=} {bandIds=}")
+        if method.upper() not in supported_methods:
+            raise ProcessParameterInvalidException(
+                parameter="method",
+                process="atmospheric_correction",
+                reason=f"Unsupported method {method}, should be one of {supported_methods}",
+            )
+        if mission_id.upper() not in supported_missons:
+            raise ProcessParameterInvalidException(
+                parameter="missionId",
+                process="atmospheric_correction",
+                reason=f"Unsupported mission id {mission_id}, should be one of {supported_missons}",
+            )
         atmo_corrected = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: gps.get_spark_context()._jvm.org.openeo.geotrellis.icor.AtmosphericCorrection().correct(
                 # ICOR or SMAC
@@ -2212,8 +2284,8 @@ class GeopysparkDataCube(DriverDataCube):
                 # DEM or SRTM
                 elevation_model,
                 # SENTINEL2 or LANDSAT8 for now
-                missionID,
-                appendDebugBands
+                mission_id,
+                append_debug_bands,
             )
         )
         return atmo_corrected

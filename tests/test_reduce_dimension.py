@@ -7,7 +7,7 @@ from numpy.testing import assert_array_almost_equal
 
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 
 
 def _simple_reducer(operation: str) -> GeotrellisTileProcessGraphVisitor:
@@ -15,7 +15,7 @@ def _simple_reducer(operation: str) -> GeotrellisTileProcessGraphVisitor:
         "sum": {
             "process_id": operation,
             "arguments": {
-                "data": {"from_argument": "dimension_data"}
+                "data": {"from_parameter": "data"}
             },
             "result": True
         }

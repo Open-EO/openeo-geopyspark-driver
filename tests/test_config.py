@@ -99,3 +99,8 @@ class TestGetGpsBackendConfig:
         # Force reload should fail
         with pytest.raises(FileNotFoundError):
             _ = get_backend_config(force_reload=True)
+
+    def test_default_config(self, monkeypatch):
+        monkeypatch.delenv("OPENEO_BACKEND_CONFIG")
+        config = get_backend_config()
+        assert config.id == "gps-default"

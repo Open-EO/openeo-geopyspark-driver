@@ -5,6 +5,8 @@ metadata:
 {%- block metadata %}
   name: {{ job_name }}
   namespace: {{ job_namespace }}
+  labels:
+    user: {{ user_id }}
 {%- endblock %}
 spec:
 {%- block spec_options %}
@@ -60,7 +62,9 @@ spec:
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
     "spark.hadoop.fs.s3a.path.style.access": "true"
-    "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.EnvironmentVariableCredentialsProvider"
+    "spark.hadoop.fs.s3a.access.key": {{ swift_access_key_id }}
+    "spark.hadoop.fs.s3a.secret.key": {{ swift_secret_access_key }}
+    "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
     "spark.eventLog.enabled": "true"
     "spark.kubernetes.allocation.batch.size": "4"
     "spark.kubernetes.allocation.batch.delay": "15s"
@@ -69,8 +73,7 @@ spec:
     "spark.kubernetes.allocation.maxPendingPods": "8"
     "spark.task.cpus": "{{ task_cpus }}"
     "spark.archives": "{{ archives }}"
-    "spark.openeo.sentinelhub.client.id.default": "{{ sentinelhub_client_id_default }}"
-    "spark.openeo.sentinelhub.client.secret.default": "{{ sentinelhub_client_secret_default }}"
+    "spark.openeo.access_token": "{{ access_token }}"
 {%- if use_pvc %}
     spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.claimName: "OnDemand"
     spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.storageClass: "csi-cinder-sc-delete"
@@ -90,14 +93,6 @@ spec:
 {%- endblock %}
   volumes:
 {%- block volumes %}
-{%- if datashim %}
-    - name: "eodata"
-      persistentVolumeClaim:
-        claimName: "eodata"
-    - name: "shared-pod-volume"
-      persistentVolumeClaim:
-        claimName: "shared-pod-volume"
-{%- else %}
     - name: "eodata"
       hostPath:
         path: {{eodata_mount}}
@@ -106,7 +101,12 @@ spec:
       hostPath:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
-{%- endif %}
+    - name: "http-credentials-configmap"
+      configMap:
+        name: "http-credentials"
+    - name: "backend-config-configmap"
+      configMap:
+        name: "backend-config"
 {%- if mount_tmp %}
     - name: "spark-local-dir-1"
       hostPath:
@@ -147,6 +147,8 @@ spec:
 {%- endblock %}
     env:
 {%- block driver_env %}
+      - name: OPENEO_BACKEND_CONFIG
+        value: {{ openeo_backend_config }}
       - name: OPENEO_BATCH_JOB_ID
         value: {{ job_id_full }}
       - name: OPENEO_USER_ID
@@ -161,6 +163,10 @@ spec:
         value: {{ aws_access_key_id }}
       - name: AWS_SECRET_ACCESS_KEY
         value: {{ aws_secret_access_key }}
+      - name: SWIFT_ACCESS_KEY_ID
+        value: {{ swift_access_key_id }}
+      - name: SWIFT_SECRET_ACCESS_KEY
+        value: {{ swift_secret_access_key }}
       - name: AWS_S3_ENDPOINT
         value: "{{aws_endpoint}}"
       - name: AWS_DEFAULT_REGION
@@ -168,7 +174,7 @@ spec:
       - name: AWS_REGION
         value: "{{aws_region}}"
       - name: AWS_HTTPS
-        value: "NO"
+        value: "{{aws_https}}"
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
       - name: AWS_DIRECT
@@ -202,16 +208,21 @@ spec:
 {%- block driver_labels %}
       version: 3.2.0
       name: {{ job_id_short }}-driver
+      openeo-role: "batch-driver"
 {%- endblock %}
     volumeMounts:
 {%- block driver_volumeMounts %}
       - name: "eodata"
         mountPath: "/eodata"
+      - name: "eodata"
+        mountPath: "/vsis3/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
       - name: "http-credentials-configmap"
         mountPath: "/opt/http_credentials/http_credentials.json"
         subPath: "http_credentials.json"
+      - name: "backend-config-configmap"
+        mountPath: "/opt/backend_config/"
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
@@ -269,7 +280,7 @@ spec:
       - name: AWS_REGION
         value: "{{aws_region}}"
       - name: AWS_HTTPS
-        value: "NO"
+        value: "{{aws_https}}"
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
       - name: AWS_DIRECT
@@ -278,6 +289,10 @@ spec:
         value: {{ swift_url }}
       - name: SWIFT_BUCKET
         value: {{ swift_bucket }}
+      - name: SWIFT_ACCESS_KEY_ID
+        value: {{ swift_access_key_id }}
+      - name: SWIFT_SECRET_ACCESS_KEY
+        value: {{ swift_secret_access_key }}
       - name: ZOOKEEPERNODES
         value: {{ zookeeper_nodes }}
       - name: OPENEO_S1BACKSCATTER_ELEV_GEOID
@@ -298,6 +313,10 @@ spec:
         value: "10485760"
       - name: GDAL_HTTP_TCP_KEEPALIVE
         value: "YES"
+      - name: GDAL_HTTP_MAX_RETRY
+        value: "20"
+      - name: GDAL_HTTP_RETRY_DELAY
+        value: "10"
       - name: PYTHONPATH
         value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       - name: VSI_CACHE
@@ -312,11 +331,14 @@ spec:
     labels:
 {%- block executor_labels %}
       version: 3.2.0
+      openeo-role: "executor"
 {%- endblock %}
     volumeMounts:
 {%- block executor_volumeMounts %}
       - name: "eodata"
         mountPath: "/eodata"
+      - name: "eodata"
+        mountPath: "/vsis3/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
       - name: "http-credentials-configmap"
@@ -335,6 +357,9 @@ spec:
       - 'local:///opt/openeo-logging-static.jar'
     files:
       - 'local:///opt/layercatalog.json'
+      {%- for line in py_files %}
+      - {{ line -}}
+      {% endfor %}
 {%- endblock %}
   monitoring:
 {%- block monitoring %}

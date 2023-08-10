@@ -23,13 +23,13 @@ def test_chunk_polygon(imagecollection_with_two_bands_and_three_dates):
         udf_code = f.read()
     udf_add_to_bands = {
         "udf_process": {
+            "process_id": "run_udf",
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 },
                 "udf": udf_code
             },
-            "process_id": "run_udf",
             "result": True
         },
     }

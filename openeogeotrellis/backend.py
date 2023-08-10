@@ -49,15 +49,34 @@ from openeo.util import (
 )
 from openeo_driver import backend, filter_properties
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
-from openeo_driver.backend import (ServiceMetadata, BatchJobMetadata, OidcProvider, ErrorSummary, LoadParameters,
-                                   CollectionCatalog)
+from openeo_driver.backend import (
+    ServiceMetadata,
+    BatchJobMetadata,
+    BatchJobResultMetadata,
+    OidcProvider,
+    ErrorSummary,
+    LoadParameters,
+)
+from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.errors import (JobNotFoundException, JobNotFinishedException, OpenEOApiException, InternalException,
-                                  ServiceUnsupportedException, ProcessParameterUnsupportedException)
-from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
+from openeo_driver.errors import (
+    JobNotFoundException,
+    JobNotFinishedException,
+    OpenEOApiException,
+    InternalException,
+    ServiceUnsupportedException,
+    ProcessParameterUnsupportedException,
+)
+from openeo_driver.jobregistry import (
+    ElasticJobRegistry,
+    JOB_STATUS,
+    DEPENDENCY_STATUS,
+    ElasticJobRegistryCredentials,
+    EjrError,
+)
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -75,9 +94,8 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
     GeopysparkCubeMetadata,
 )
-from openeogeotrellis.geotrellis_tile_processgraph_visitor import (
-    GeotrellisTileProcessGraphVisitor,
-)
+from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
 from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
@@ -103,14 +121,13 @@ from openeogeotrellis.service_registry import (
     SecondaryService,
     ServiceEntity,
 )
-from openeogeotrellis.traefik import Traefik
+from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis.user_defined_process_repository import (
     ZooKeeperUserDefinedProcessRepository,
     InMemoryUserDefinedProcessRepository,
 )
 from openeogeotrellis.utils import (
-    kerberos,
     zk_client,
     to_projected_polygons,
     normalize_temporal_extent,
@@ -307,20 +324,6 @@ class GpsSecondaryServices(backend.SecondaryServices):
                 Traefik(zk).unproxy_service(service_id)
 
 
-class SingleNodeUDFProcessGraphVisitor(ProcessGraphVisitor):
-
-    def __init__(self):
-        super().__init__()
-        self.udf_args = {}
-
-
-    def enterArgument(self, argument_id: str, value):
-        self.udf_args[argument_id] = value
-
-    def constantArgument(self, argument_id: str, value):
-        self.udf_args[argument_id] = value
-
-
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def __init__(
             self,
@@ -419,11 +422,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         etl_api_client_id = etl_api_credentials.client_id
                         etl_api_client_secret = etl_api_credentials.client_secret
 
+                    source_id = get_backend_config().etl_source_id
+                    etl_api = EtlApi(ConfigParams().etl_api, source_id, requests_session)
+
                     access_token = get_etl_api_access_token(client_id=etl_api_client_id,
                                                             client_secret=etl_api_client_secret,
                                                             requests_session=requests_session)
-
-                    etl_api = EtlApi(ConfigParams().etl_api, requests_session)
 
                     costs = etl_api.log_resource_usage(batch_job_id=request_id,
                                                        title=None,
@@ -593,8 +597,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         date_regex = options['date_regex']
 
-        if glob_pattern.startswith("hdfs:"):
-            kerberos(self._principal, self._key_tab)
+        if glob_pattern.startswith("hdfs:") and get_backend_config().setup_kerberos_auth:
+            setup_kerberos_auth(self._principal, self._key_tab)
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
@@ -1593,16 +1597,24 @@ class GpsProcessing(ConcreteProcessing):
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
 ) -> Optional[ElasticJobRegistry]:
-    """Build ElasticJobRegistry instance from config and vault"""
+    """Build ElasticJobRegistry instance from config"""
     with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
-        config = ConfigParams()
+        config = get_backend_config()
         job_registry = ElasticJobRegistry(
             api_url=config.ejr_api,
             backend_id=config.ejr_backend_id,
             session=requests_session,
         )
-        vault = Vault(config.vault_addr, requests_session=requests_session)
-        ejr_creds = vault.get_elastic_job_registry_credentials()
+        # Get credentials from env (preferably) or vault (as fallback).
+        ejr_creds = ElasticJobRegistryCredentials.from_env(strict=False)
+        if not ejr_creds:
+            if config.ejr_credentials_vault_path:
+                # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
+                vault = Vault(config.vault_addr, requests_session=requests_session)
+                ejr_creds = vault.get_elastic_job_registry_credentials()
+            else:
+                # Fail harder
+                ejr_creds = ElasticJobRegistryCredentials.from_env(strict=True)
         job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
         job_registry.health_check(log=True)
         return job_registry
@@ -1839,7 +1851,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
-            self._start_job(job_id, user_id, lambda _: vault_token, dependencies)
+            self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
         elif all(
             status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
         ):  # all done but some partially failed
@@ -1915,11 +1927,13 @@ class GpsBatchJobs(backend.BatchJobs):
             terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
             return self._vault.login_jwt(terrascope_access_token)
 
-        self._start_job(job_id, user.user_id, _get_vault_token)
+        self._start_job(job_id, user, _get_vault_token)
 
-    def _start_job(self, job_id: str, user_id: str, get_vault_token: Callable[[str], str],
+    def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
                    batch_process_dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
+
+        user_id = user.user_id
 
         with self._double_job_registry as dbl_registry:
             job_info = dbl_registry.get_job(job_id, user_id)
@@ -2036,6 +2050,7 @@ class GpsBatchJobs(backend.BatchJobs):
             max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
             task_cpus = str(job_options.get("task-cpus", 1))
             archives = ",".join(job_options.get("udf-dependency-archives", []))
+            py_files = job_options.get("udf-dependency-files", [])
             use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
             use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
@@ -2057,8 +2072,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 return json.dumps([as_arg_element(dependency) for dependency in dependencies])
 
 
-            if not isKube:
-                kerberos(self._principal, self._key_tab, self._jvm)
+            if get_backend_config().setup_kerberos_auth:
+                setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
             if isKube:
                 import yaml
@@ -2067,6 +2082,32 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 from jinja2 import Environment, FileSystemLoader
                 from kubernetes.client.rest import ApiException
+
+                api_instance = kube_client()
+                pod_namespace = ConfigParams().pod_namespace
+                concurrent_pod_limit = ConfigParams().concurrent_pod_limit
+                if concurrent_pod_limit != 0:
+                    label_selector = f"user={user_id}"
+                    try:
+                        result = api_instance.list_namespaced_custom_object(
+                            "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                            label_selector = label_selector
+                        )
+                    except ApiException as e:
+                        logger.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e, extra={'job_id': job_id})
+                        result = {'items': []}
+
+                    running_count = 0
+                    for app in result['items']:
+                        if app['status']['applicationState']['state'] == 'RUNNING':
+                            running_count += 1
+                    logger.debug(
+                        f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
+                        f"pods running for user {user_id}."
+                    )
+                    if running_count >= concurrent_pod_limit:
+                        raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
+                            status_code = 400)
 
                 bucket = ConfigParams().s3_bucket_name
                 s3_instance = s3_client()
@@ -2101,7 +2142,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 ).from_string(open(jinja_path).read())
 
                 spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
-                pod_namespace = ConfigParams().pod_namespace
 
                 rendered = jinja_template.render(
                     job_name=spark_app_id,
@@ -2130,23 +2170,24 @@ class GpsBatchJobs(backend.BatchJobs):
                     current_time=int(time.time()),
                     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                    aws_https=os.environ.get("AWS_HTTPS","FALSE"),
+                    swift_access_key_id=os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID")),
+                    swift_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY")),
                     aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
                     aws_region=os.environ.get("AWS_REGION","RegionOne"),
                     swift_url=os.environ.get("SWIFT_URL"),
                     image_name=os.environ.get("IMAGE_NAME"),
+                    openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
                     swift_bucket=bucket,
                     zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                     eodata_mount=eodata_mount,
-                    datashim=os.environ.get("DATASHIM", ""),
                     archives=archives,
+                    py_files = py_files,
                     logging_threshold=logging_threshold,
                     mount_tmp=mount_tmp,
                     use_pvc=use_pvc,
-                    sentinelhub_client_id_default=self._default_sentinel_hub_client_id,
-                    sentinelhub_client_secret_default=self._default_sentinel_hub_client_secret
+                    access_token=user.internal_auth_data.get("access_token") if user.internal_auth_data else None,
                 )
-
-                api_instance = kube_client()
 
                 dict_ = yaml.safe_load(rendered)
 
@@ -2171,6 +2212,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 except ApiException as e:
                     logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
+                    if "AlreadyExists" in e.body:
+                        raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             else:
@@ -2181,6 +2224,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
                     submit_script = 'submit_batch_job_spark3.sh'
                 script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
+
+                extra_py_files=""
+                if len(py_files)>0:
+                    extra_py_files = "," + py_files.join(",")
+
+
 
                 # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
                 with tempfile.NamedTemporaryFile(
@@ -2238,7 +2287,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(queue)
                     args.append(profile)
                     args.append(serialize_dependencies())
-                    args.append(self.get_submit_py_files())
+                    args.append(self.get_submit_py_files()+extra_py_files)
                     args.append(max_executors)
                     args.append(user_id)
                     args.append(job_id)
@@ -2248,6 +2297,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(temp_properties_file.name)
                     args.append(archives)
                     args.append(logging_threshold)
+                    args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
+                    # TODO: this positional `args` handling is getting out of hand
 
                     persistent_worker_count = ConfigParams().persistent_worker_count
                     if persistent_worker_count != 0:
@@ -2322,7 +2373,6 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
-        from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 
         env = EvalEnv(
             {
@@ -2342,7 +2392,7 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[]}))
+        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[],"node_caching":False}))
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
@@ -2505,7 +2555,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
 
                         metadata_properties_return = {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
-                        sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names,
+                        sentinel_hub.assure_polarization_from_sentinel_bands(metadata,
                                                                              metadata_properties_return, job_id)
                         return metadata_properties_return
 
@@ -2729,7 +2779,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self.get_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2803,7 +2853,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-    def get_results_metadata(self, job_id: str, user_id: str) -> dict:
+    def load_results_metadata(self, job_id: str, user_id: str) -> dict:
         """
         Reads the metadata json file from the job directory and returns it.
         """
@@ -2827,6 +2877,10 @@ class GpsBatchJobs(backend.BatchJobs):
                            extra={'job_id': job_id})
 
         return {}
+
+    def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
+        results_metadata = self.load_results_metadata(job_id, user_id)
+        return results_metadata.get("providers", [])
 
     def get_log_entries(
         self,

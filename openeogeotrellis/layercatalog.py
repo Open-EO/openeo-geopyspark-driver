@@ -1,5 +1,6 @@
 import argparse
 import datetime as dt
+import functools
 import json
 import logging
 import sys
@@ -36,9 +37,11 @@ from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
     calculate_rough_area
 from openeogeotrellis.vault import Vault
@@ -249,8 +252,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                          .reproject(projected_polygons, target_epsg_code))
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
-        opensearch_endpoint = layer_source_info.get('opensearch_endpoint', ConfigParams().default_opensearch_endpoint)
+        opensearch_endpoint = layer_source_info.get(
+            "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
+        )
         max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
+        if feature_flags.get("no_resample_on_read", False):
+            logger.info("Setting NoResampleOnRead to true")
+            datacubeParams.setNoResampleOnRead(True)
 
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
@@ -350,7 +358,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     msg = e.desc
                 else:
                     msg = str(e)
-                if "Could not find data for your load_collection request with catalog ID" in msg:
+                if msg and "Could not find data for your load_collection request with catalog ID" in msg:
                     logger.error(f"create_pyramid failed: {msg}", exc_info=True)
                     raise OpenEOApiException(
                         code="NoDataAvailable", status_code=400,
@@ -473,13 +481,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 if ConfigParams().is_kube_deploy:
-                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withCustomAuthApi(
+                    access_token = env[USER].internal_auth_data["access_token"]
+
+                    pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(
                         endpoint,
                         shub_collection_id,
                         dataset_id,
-                        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
-                        self._default_sentinel_hub_client_id,
-                        self._default_sentinel_hub_client_secret,
+                        access_token,
                         sentinel_hub.processing_options(collection_id,
                                                         sar_backscatter_arguments) if sar_backscatter_arguments else {},
                         sample_type,
@@ -517,7 +525,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
-                sentinel_hub.assure_polarization_from_sentinel_bands(shub_band_names, unflattened_metadata_properties)
+                sentinel_hub.assure_polarization_from_sentinel_bands(metadata, unflattened_metadata_properties)
 
                 return (
                     pyramid_factory.datacube_seq(projected_polygons_native_crs.polygons(),
@@ -676,10 +684,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata=metadata
         )
 
-        if (postprocessing_band_graph != None):
-            from openeogeotrellis.geotrellis_tile_processgraph_visitor import GeotrellisTileProcessGraphVisitor
+        if postprocessing_band_graph != None:
             visitor = GeotrellisTileProcessGraphVisitor()
-            image_collection = image_collection.apply_dimension(visitor.accept_process_graph(postprocessing_band_graph),image_collection.metadata.band_dimension.name)
+            image_collection = image_collection.apply_dimension(
+                process=visitor.accept_process_graph(postprocessing_band_graph),
+                dimension=image_collection.metadata.band_dimension.name,
+                context={},
+                env=EvalEnv(),
+            )
 
         if still_needs_band_filter:
             # TODO: avoid this `still_needs_band_filter` ugliness.
@@ -753,7 +765,7 @@ def _get_layer_catalog(
     Get layer catalog (from JSON files)
     """
     if opensearch_enrich is None:
-        opensearch_enrich = ConfigParams().opensearch_enrich
+        opensearch_enrich = get_backend_config().opensearch_enrich
     if catalog_files is None:
         catalog_files = ConfigParams().layer_catalog_metadata_files
 
@@ -772,36 +784,34 @@ def _get_layer_catalog(
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
-        opensearch_instances = {}
 
-        def opensearch_instance(endpoint: str) -> OpenSearch:
+        @functools.lru_cache
+        def opensearch_instance(endpoint: str, variant: Optional[str] = None) -> OpenSearch:
             endpoint = endpoint.lower()
-            opensearch = opensearch_instances.get(os_endpoint)
 
-            if opensearch is not None:
-                return opensearch
-
-            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint:
+            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint or variant == "oscars":
                 opensearch = OpenSearchOscars(endpoint=endpoint)
-            elif "creodias" in endpoint:
+            elif "creodias" in endpoint or variant == "creodias":
                 opensearch = OpenSearchCreodias(endpoint=endpoint)
-            elif "dataspace.copernicus.eu" in endpoint:
+            elif "dataspace.copernicus.eu" in endpoint or variant == "cdse":
                 opensearch = OpenSearchCdse(endpoint=endpoint)
             else:
                 raise ValueError(endpoint)
 
-            opensearch_instances[endpoint] = opensearch
             return opensearch
 
         for cid, collection_metadata in metadata.items():
             data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
             os_cid = data_source.get("opensearch_collection_id")
-            if os_cid:
-                os_endpoint = data_source.get("opensearch_endpoint") or ConfigParams().default_opensearch_endpoint
+            os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
+            os_variant = data_source.get("opensearch_variant")
+            if os_cid and os_endpoint and os_variant != "disabled":
                 try:
-                    opensearch_metadata[cid] = opensearch_instance(os_endpoint).get_metadata(collection_id=os_cid)
-                except Exception:
-                    logger.warning(traceback.format_exc())
+                    opensearch_metadata[cid] = opensearch_instance(
+                        endpoint=os_endpoint, variant=os_variant
+                    ).get_metadata(collection_id=os_cid)
+                except Exception as e:
+                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
             elif data_source.get("type") == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
 

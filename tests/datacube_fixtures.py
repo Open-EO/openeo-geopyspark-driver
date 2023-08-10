@@ -151,7 +151,11 @@ def imagecollection_with_two_bands_and_three_dates(request):
 
     geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata).convert_data_type('int32',no_data_value=-1)
 
-    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata))
+    import copy
+    openeo_metadata_copy = copy.deepcopy(openeo_metadata)
+    openeo_metadata_copy["cube:dimensions"]["t"]["extent"] = [date1,date3]
+
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata_copy))
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube

@@ -44,14 +44,15 @@ setup(
             "scripts/cleaner-entrypoint.sh",
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
-            "scripts/async_task_log4j2.xml"
+            "scripts/async_task_log4j2.xml",
+            "scripts/kleaner-entrypoint.sh",
         ]),
     ],
     setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.15.0",
-        "openeo_driver>=0.49.0a1.dev",
+        "openeo_driver>=0.59.0.dev",
         'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',

@@ -17,6 +17,7 @@ from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 
 import openeo
 import openeo.processes
+from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
     TEST_USER,
@@ -40,6 +41,7 @@ from openeogeotrellis.utils import (
     UtcNowClock,
     drop_empty_from_aggregate_polygon_result,
     get_jvm,
+    is_package_available,
 )
 from .data import get_test_data_file
 
@@ -225,6 +227,8 @@ def test_load_collection_netcdf_extent(api100, tmp_path):
         ],
     )
     assert_equal(ds["Day"].values, np.full((1, 7, 12), fill_value=5))
+
+
 def test_udp_simple_temporal_reduce(api100, user_defined_process_registry):
     """Test calling a UDP with simple temporal reduce operation"""
     udp_id = random_name("udp")
@@ -644,39 +648,211 @@ def test_apply_udf_square_pixels(api100, udf_code):
     assert_equal(data, expected)
 
 
-def test_apply_run_udf_with_context(api100):
-    udf_code = textwrap.dedent(
+class TestApplyRunUDFWithContext:
+    """
+    Tests for handling contexts when doing apply/apply_dimension/reduce_dimension
+    with a UDF that expects configuration from context
+    """
+
+    UDF_APPLY_MULTIPLY_FACTOR = textwrap.dedent(
         """
         from openeo.udf import XarrayDataCube
         def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
             factor = context["factor"]
             array = cube.get_array()
             return XarrayDataCube(factor * array)
-    """
+        """
     )
 
-    response = api100.check_result(
-        {
+    UDF_REDUCE_SUM_AXIS0 = textwrap.dedent(
+        """
+        from openeo.udf import XarrayDataCube
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            factor = context["factor"]
+            array = cube.get_array().sum(axis=0)
+            return XarrayDataCube(factor * array)
+        """
+    )
+
+    LONGITUDE4x4 = np.array([[0, 0.25, 0.5, 0.75]] * 4).T
+
+    def _build_process_graph(self, apply_something: dict) -> dict:
+        """
+        Simple helper to build a process graph by squeezing
+        an apply/apply_dimension between load_collection and save_result
+        """
+        pg = {
             "lc": {
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "TestCollection-LonLat4x4",
                     "temporal_extent": ["2021-01-01", "2021-02-01"],
                     "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
-                    "bands": ["Longitude", "Day"],
+                    "bands": ["Longitude"],
                 },
             },
-            "apply": {
-                "process_id": "apply",
+            "apply_something": apply_something,
+            "save": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply_something"}, "format": "json"},
+                "result": True,
+            },
+        }
+        _log.info(f"{self=}._build_process_graph -> {pg=}")
+        return pg
+
+    def _skip_when_no_jep_and(self, condition: bool = True):
+        """Helper to skip tests that require jep package to be installed."""
+        if condition and not is_package_available("jep"):
+            pytest.skip(reason="No 'jep' package available.")
+
+    @pytest.mark.parametrize(
+        ["parent", "extra_args"],
+        [
+            ("apply", {}),
+            ("apply_dimension", {"dimension": "t"}),
+            ("apply_dimension", {"dimension": "bands"}),
+            # ("apply_dimension", {"dimension": "x"}),  # TODO?
+            (
+                "apply_neighborhood",
+                {
+                    "size": [
+                        {"dimension": "x", "unit": "px", "value": 32},
+                        {"dimension": "y", "unit": "px", "value": 32},
+                    ],
+                    "overlap": [
+                        {"dimension": "x", "unit": "px", "value": 8},
+                        {"dimension": "y", "unit": "px", "value": 8},
+                    ],
+                },
+            ),
+            (
+                # TODO: replace `chunk_polygon` with `apply_polygon`
+                "chunk_polygon",
+                {"chunks": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}},
+            ),
+        ],
+    )
+    def test_apply_run_udf_with_direct_context(self, api100, parent, extra_args):
+        """context directly defined in `run_udf` node."""
+        self._skip_when_no_jep_and(parent == "chunk_polygon")
+
+        pg = self._build_process_graph(
+            {
+                "process_id": parent,
+                "arguments": {
+                    **{
+                        "data": {"from_node": "lc"},
+                        "process": {
+                            "process_graph": {
+                                "udf": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "data"},
+                                        "udf": self.UDF_APPLY_MULTIPLY_FACTOR,
+                                        "runtime": "Python",
+                                        "context": {"factor": 123},
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    **extra_args,
+                },
+            }
+        )
+
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = 123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    @pytest.mark.parametrize(
+        ["parent", "extra_args"],
+        [
+            ("apply", {}),
+            ("apply_dimension", {"dimension": "t"}),
+            ("apply_dimension", {"dimension": "bands"}),
+            # ("apply_dimension", {"dimension": "x"}),  # TODO?
+            (
+                "apply_neighborhood",
+                {
+                    "size": [
+                        {"dimension": "x", "unit": "px", "value": 32},
+                        {"dimension": "y", "unit": "px", "value": 32},
+                    ],
+                    "overlap": [
+                        {"dimension": "x", "unit": "px", "value": 8},
+                        {"dimension": "y", "unit": "px", "value": 8},
+                    ],
+                },
+            ),
+            (
+                # TODO: replace `chunk_polygon` with `apply_polygon`
+                "chunk_polygon",
+                {"chunks": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}},
+            ),
+        ],
+    )
+    def test_apply_run_udf_with_apply_context(self, api100, parent, extra_args):
+        """Context defined by parent `apply`"""
+        self._skip_when_no_jep_and(parent == "chunk_polygon")
+
+        pg = self._build_process_graph(
+            {
+                "process_id": parent,
+                "arguments": {
+                    **{
+                        "data": {"from_node": "lc"},
+                        "process": {
+                            "process_graph": {
+                                "udf": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "data"},
+                                        "udf": self.UDF_APPLY_MULTIPLY_FACTOR,
+                                        "runtime": "Python",
+                                        "context": {"from_parameter": "context"},
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                        "context": {"factor": 123},
+                    },
+                    **extra_args,
+                },
+            }
+        )
+
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = 123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    @pytest.mark.parametrize("dimension", ["t", "bands"])
+    def test_reduce_dimension_run_udf_with_direct_context(self, api100, dimension):
+        """context directly defined in `run_udf` node."""
+        pg = self._build_process_graph(
+            {
+                "process_id": "reduce_dimension",
                 "arguments": {
                     "data": {"from_node": "lc"},
-                    "process": {
+                    "dimension": dimension,
+                    "reducer": {
                         "process_graph": {
                             "udf": {
                                 "process_id": "run_udf",
                                 "arguments": {
                                     "data": {"from_parameter": "data"},
-                                    "udf": udf_code,
+                                    "udf": self.UDF_REDUCE_SUM_AXIS0,
                                     "runtime": "Python",
                                     "context": {"factor": 123},
                                 },
@@ -685,27 +861,369 @@ def test_apply_run_udf_with_context(api100):
                         }
                     },
                 },
-            },
-            "save": {
-                "process_id": "save_result",
-                "arguments": {"data": {"from_node": "apply"}, "format": "json"},
-                "result": True,
-            },
-        }
-    )
-    result = response.assert_status_code(200).json
-    _log.info(repr(result))
+            }
+        )
 
-    assert result["dims"] == ["t", "bands", "x", "y"]
-    data = result["data"]
-    expected = 123 * np.array(
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        if dimension == "t":
+            assert result["dims"] == ["bands", "x", "y"]
+            expected = 3 * 123 * np.array([self.LONGITUDE4x4])
+        elif dimension == "bands":
+            assert result["dims"] == ["t", "x", "y"]
+            expected = 123 * np.array([self.LONGITUDE4x4] * 3)
+        else:
+            raise ValueError(dimension)
+
+        assert_equal(result["data"], expected)
+
+    def _register_udp(
+        self, *, user_defined_process_registry: UserDefinedProcesses, process_graph: dict, parameters: List[dict]
+    ) -> str:
+        udp_id = random_name("udp")
+        udp_spec = {
+            "id": udp_id,
+            "parameters": parameters,
+            "process_graph": process_graph,
+        }
+        _log.info(f"{self=}._register_udp -> {udp_spec=}")
+        user_defined_process_registry.save(user_id=TEST_USER, process_id=udp_id, spec=udp_spec)
+        return udp_id
+
+    @pytest.mark.parametrize(
+        ["parent", "extra_parent_args"],
         [
-            [np.array([[0, 0.25, 0.5, 0.75]] * 4).T, np.full((4, 4), fill_value=5)],
-            [np.array([[0, 0.25, 0.5, 0.75]] * 4).T, np.full((4, 4), fill_value=15)],
-            [np.array([[0, 0.25, 0.5, 0.75]] * 4).T, np.full((4, 4), fill_value=25)],
-        ]
+            ("apply", {}),
+            ("apply_dimension", {"dimension": "t"}),
+            ("apply_dimension", {"dimension": "bands"}),
+            # ("apply_dimension", {"dimension": "x"}),  # TODO?
+            (
+                "apply_neighborhood",
+                {
+                    "size": [
+                        {"dimension": "x", "unit": "px", "value": 32},
+                        {"dimension": "y", "unit": "px", "value": 32},
+                    ],
+                    "overlap": [
+                        {"dimension": "x", "unit": "px", "value": 8},
+                        {"dimension": "y", "unit": "px", "value": 8},
+                    ],
+                },
+            ),
+            (
+                # TODO: replace `chunk_polygon` with `apply_polygon`
+                "chunk_polygon",
+                {"chunks": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}},
+            ),
+        ],
     )
-    assert_equal(data, expected)
+    @pytest.mark.parametrize(
+        ["udp_parameter", "apply_context", "run_udf_context", "udp_arguments", "expected_factor"],
+        [
+            (
+                {"name": "factor", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                {"factor": {"from_parameter": "factor"}},
+                {"from_parameter": "context"},
+                {"factor": 123},
+                123,
+            ),
+            (
+                {"name": "factor", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                {"factor": {"from_parameter": "factor"}},
+                {"from_parameter": "context"},
+                {},
+                1000,
+            ),
+            (
+                {"name": "multiplier", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                {"factor": {"from_parameter": "multiplier"}},
+                {"from_parameter": "context"},
+                {"multiplier": 123},
+                123,
+            ),
+            (
+                {"name": "factor", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                None,
+                {"factor": {"from_parameter": "factor"}},
+                {"factor": 123},
+                123,
+            ),
+            (
+                {"name": "multiplier", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                None,
+                {"factor": {"from_parameter": "multiplier"}},
+                {"multiplier": 123},
+                123,
+            ),
+            (
+                {"name": "multiplier", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                None,
+                {"factor": {"from_parameter": "multiplier"}},
+                {},
+                1000,
+            ),
+        ],
+    )
+    def test_udp_parameter_to_apply_run_udf_context(
+        self,
+        api100,
+        user_defined_process_registry,
+        parent,
+        extra_parent_args,
+        udp_parameter,
+        apply_context,
+        run_udf_context,
+        udp_arguments,
+        expected_factor,
+    ):
+        self._skip_when_no_jep_and(parent == "chunk_polygon")
+
+        udp_id = self._register_udp(
+            user_defined_process_registry=user_defined_process_registry,
+            parameters=[udp_parameter],
+            process_graph={
+                "apply": {
+                    "process_id": parent,
+                    "arguments": {
+                        **{
+                            "data": {"from_parameter": "data"},
+                            "process": {
+                                "process_graph": {
+                                    "udf": {
+                                        "process_id": "run_udf",
+                                        "arguments": {
+                                            "data": {"from_parameter": "data"},
+                                            "udf": self.UDF_APPLY_MULTIPLY_FACTOR,
+                                            "runtime": "Python",
+                                            "context": run_udf_context,
+                                        },
+                                        "result": True,
+                                    }
+                                }
+                            },
+                            "context": apply_context,
+                        },
+                        **extra_parent_args,
+                    },
+                    "result": True,
+                },
+            },
+        )
+
+        response = api100.check_result(
+            process_graph=self._build_process_graph(
+                apply_something={
+                    "process_id": udp_id,
+                    "arguments": {**{"data": {"from_node": "lc"}}, **udp_arguments},
+                }
+            )
+        )
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = expected_factor * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    @pytest.mark.parametrize(
+        "dimension",
+        ["t", "bands"],
+    )
+    @pytest.mark.parametrize(
+        ["udp_parameter", "apply_context", "run_udf_context", "udp_arguments", "expected_factor"],
+        [
+            (
+                {"name": "factor", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                {"factor": {"from_parameter": "factor"}},
+                {"from_parameter": "context"},
+                {"factor": 123},
+                123,
+            ),
+            (
+                {"name": "factor", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                {"factor": {"from_parameter": "factor"}},
+                {"from_parameter": "context"},
+                {},
+                1000,
+            ),
+            (
+                {"name": "multiplier", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                {"factor": {"from_parameter": "multiplier"}},
+                {"from_parameter": "context"},
+                {"multiplier": 123},
+                123,
+            ),
+            (
+                {"name": "factor", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                None,
+                {"factor": {"from_parameter": "factor"}},
+                {"factor": 123},
+                123,
+            ),
+            (
+                {"name": "multiplier", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                None,
+                {"factor": {"from_parameter": "multiplier"}},
+                {"multiplier": 123},
+                123,
+            ),
+            (
+                {"name": "multiplier", "default": 1000, "optional": True, "schema": {"type": "number"}},
+                None,
+                {"factor": {"from_parameter": "multiplier"}},
+                {},
+                1000,
+            ),
+        ],
+    )
+    def test_udp_parameter_to_reduce_dimension_run_udf_context(
+        self,
+        api100,
+        user_defined_process_registry,
+        dimension,
+        udp_parameter,
+        apply_context,
+        run_udf_context,
+        udp_arguments,
+        expected_factor,
+    ):
+        udp_id = self._register_udp(
+            user_defined_process_registry=user_defined_process_registry,
+            parameters=[udp_parameter],
+            process_graph={
+                "apply": {
+                    "process_id": "reduce_dimension",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "dimension": dimension,
+                        "reducer": {
+                            "process_graph": {
+                                "udf": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "data"},
+                                        "udf": self.UDF_REDUCE_SUM_AXIS0,
+                                        "runtime": "Python",
+                                        "context": run_udf_context,
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                        "context": apply_context,
+                    },
+                    "result": True,
+                },
+            },
+        )
+
+        response = api100.check_result(
+            process_graph=self._build_process_graph(
+                apply_something={
+                    "process_id": udp_id,
+                    "arguments": {**{"data": {"from_node": "lc"}}, **udp_arguments},
+                }
+            )
+        )
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        if dimension == "t":
+            assert result["dims"] == ["bands", "x", "y"]
+            expected = 3 * expected_factor * np.array([self.LONGITUDE4x4])
+        elif dimension == "bands":
+            assert result["dims"] == ["t", "x", "y"]
+            expected = expected_factor * np.array([self.LONGITUDE4x4] * 3)
+        else:
+            raise ValueError(dimension)
+
+        assert_equal(result["data"], expected)
+
+    def test_usecase_279_1(self, api100):
+        """Example 1 from https://github.com/openEOPlatform/architecture-docs/issues/279#issuecomment-1302725540"""
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import XarrayDataCube
+            def apply_datacube(cube: XarrayDataCube, context) -> XarrayDataCube:
+                array = cube.get_array()
+                array.values = context['length'] * array.values
+                return cube
+        """
+        )
+        pg = self._build_process_graph(
+            apply_something={
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "process": {
+                        "process_graph": {
+                            "run1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "data"},
+                                    "runtime": "Python",
+                                    "udf": udf,
+                                    "context": {"length": {"from_parameter": "context"}},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "context": -123,
+                },
+            }
+        )
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = -123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
+
+    def test_usecase_279_2(self, api100):
+        """Example 2 from https://github.com/openEOPlatform/architecture-docs/issues/279#issuecomment-1302725540"""
+        udf = textwrap.dedent(
+            """
+            from openeo.udf import XarrayDataCube
+            def apply_datacube(cube: XarrayDataCube, context) -> XarrayDataCube:
+                array = cube.get_array()
+                array.values = context * array.values
+                return cube
+        """
+        )
+        pg = self._build_process_graph(
+            apply_something={
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "process": {
+                        "process_graph": {
+                            "run1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "data"},
+                                    "runtime": "Python",
+                                    "udf": udf,
+                                    "context": {"from_parameter": "context"},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "context": -123,
+                },
+            }
+        )
+        response = api100.check_result(pg)
+        result = response.assert_status_code(200).json
+        _log.info(repr(result))
+
+        assert result["dims"] == ["t", "bands", "x", "y"]
+        expected = -123 * np.array([[self.LONGITUDE4x4]] * 3)
+        assert_equal(result["data"], expected)
 
 
 @pytest.mark.parametrize("set_parameters", [False, True])
@@ -724,8 +1242,9 @@ def test_apply_run_udf_with_context(api100):
             offset = context.get("offset", 100)
             return XarrayDataCube(cube.get_array() + offset)
     """,
-])
-def test_udp_udf_apply_neirghborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
+    ],
+)
+def test_udp_udf_apply_neighborhood_with_parameter(api100, user_defined_process_registry, set_parameters, udf_code):
     """Test calling a UDP with a UDF based reduce operation and fetching a UDP parameter value (EP-3781)"""
     udf_code = textwrap.dedent(udf_code)
     udp_id = random_name("udp")
@@ -954,7 +1473,7 @@ def test_apply_dimension_array_concat(api100):
                         "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}
                     },
                     "lon": {
-                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 2}
+                        "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "label": "Longitude"}
                     },
                     "day": {
                         "process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 3}
@@ -1388,11 +1907,11 @@ def test_extra_validation_creo(api100, requests_mock):
     }}
 
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEV"}, {"tile_id": "16WDA", "status": 31}]),
     )
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json=CreoApiMocker.feature_collection(features=[]),
     )
 
@@ -1418,11 +1937,11 @@ def test_extra_validation_terrascope(api100, requests_mock):
     }}
 
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEA"}, {"tile_id": "16WDA"}]),
     )
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
         json=CreoApiMocker.feature_collection(features=[]),
     )
     requests_mock.get(
@@ -1501,7 +2020,7 @@ def test_apply_neighborhood_filter_spatial(api100, tmp_path):
         "abs": {
             "arguments": {
                 "p": {
-                    "from_argument": "data"
+                    "from_parameter": "data"
                 },
                 "base": 2
             },

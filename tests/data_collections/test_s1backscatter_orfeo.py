@@ -402,6 +402,20 @@ class TestOrfeoPipeline:
                 elevation_model=elevation_model,
                 options={"dem_zoom_level": 6, "implementation_version": implementation_version, "debug": True},
             ),
+            properties={"COG":{
+                "process_graph": {
+                  "eq3": {
+                    "arguments": {
+                      "x": {
+                        "from_parameter": "value"
+                      },
+                      "y": "FALSE"
+                    },
+                    "process_id": "eq",
+                    "result": True
+                  }
+                }
+              }}
         )
         datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
 

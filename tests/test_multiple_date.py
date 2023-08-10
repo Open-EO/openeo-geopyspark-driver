@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+import numpy.testing
 import pytest
 import rasterio
 import geopyspark as gps
@@ -24,13 +25,13 @@ from openeogeotrellis.numpy_aggregators import max_composite
 
 def reducer(operation: str):
     return {
-        "%s1" % operation: {
+        f"{operation}1" : {
+            "process_id": operation,
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 }
             },
-            "process_id": operation,
             "result": True
         },
     }
@@ -142,14 +143,16 @@ class TestMultipleDates(TestCase):
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
         ref_path = str(self.temp_folder / "reproj_ref.tiff")
-        imagecollection.reduce_dimension(reducer('max'), "t", EvalEnv()).save_result(ref_path, format="GTIFF")
+        imagecollection.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv()).save_result(
+            ref_path, format="GTIFF"
+        )
 
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3395",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
         self.assertTrue("proj=merc" in metadata.crs)
         path = str(self.temp_folder / "reprojected.tiff")
-        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
+        res = resampled.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv())
         res.save_result(path, format="GTIFF")
 
         with rasterio.open(ref_path) as ref_ds:
@@ -169,7 +172,6 @@ class TestMultipleDates(TestCase):
         spatial_cube = cube.drop_dimension("t")
         assert not spatial_cube.metadata.has_temporal_dimension()
 
-
     def test_reduce(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
@@ -177,34 +179,23 @@ class TestMultipleDates(TestCase):
         env = EvalEnv()
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("max"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertEqual(2.0, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 2], [2, 2]]])
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("min"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertEqual(1.0, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 1], [1, 1]]])
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("sum"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertEqual(4.0, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 4], [4, 4]]])
 
         stitched = cube.reduce_dimension(dimension="t", reducer=reducer("mean"), env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(2.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(1.3333333, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 4.0 / 3.0], [4.0 / 3.0, 4.0 / 3.0]]])
 
         stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(-1.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(0.3333333333333333, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[-1, 1.0 / 3.0], [1.0 / 3.0, 1.0 / 3.0]]])
 
         stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
-        print(stitched)
-        self.assertEqual(-1.0, stitched.cells[0][0][0])
-        self.assertAlmostEqual(0.5773502691896257, stitched.cells[0][0][1])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[-1, 0.5773503], [0.5773503, 0.5773503]]])
+
 
     def test_reduce_all_data(self):
         input = Pyramid({0: self._single_pixel_layer({
@@ -327,7 +318,7 @@ class TestMultipleDates(TestCase):
 
     def _median_reducer(self):
         from openeo.processes import median
-        builder = median({"from_argument": "data"})
+        builder = median({"from_parameter": "data"})
         return builder.flat_graph()
 
     def test_aggregate_temporal_median(self):

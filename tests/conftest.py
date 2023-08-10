@@ -35,10 +35,12 @@ def pytest_configure(config):
     """Pytest configuration hook"""
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
 
+    # Load test GpsBackendConfig by default
+    os.environ["OPENEO_BACKEND_CONFIG"] = str(Path(__file__).parent / "backend_config.py")
+
     # TODO #285 we need a better config system, e.g. to avoid monkeypatching `os.environ` here
     os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
     os.environ["VAULT_ADDR"] = "https://vault.test"
-    os.environ["OPENSEARCH_ENRICH"] = "no"
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
@@ -101,9 +103,10 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
 
-    conf.set(key='spark.driver.memory', value='2G')
-    conf.set(key='spark.executor.memory', value='2G')
-    conf.set('spark.ui.enabled', True)
+    conf.set(key="spark.driver.memory", value="2G")
+    conf.set(key="spark.executor.memory", value="2G")
+    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
+    conf.set('spark.ui.enabled', OPENEO_LOCAL_DEBUGGING)
 
     jars = []
     for jar_dir in additional_jar_dirs:
@@ -127,12 +130,11 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
     extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
-    extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
+    if OPENEO_LOCAL_DEBUGGING:
+        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
     conf.set('spark.driver.extraJavaOptions', extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
-    os.environ["OPENEO_BATCH_JOB_ID"] = "j-jobAbc123"
-    os.environ["OPENEO_USER_ID"] = "userId123"
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
@@ -169,7 +171,7 @@ def udf_noop():
         "udf_process": {
             "arguments": {
                 "data": {
-                    "from_argument": "dimension_data"
+                    "from_parameter": "data"
                 },
                 "udf": udf_code
             },

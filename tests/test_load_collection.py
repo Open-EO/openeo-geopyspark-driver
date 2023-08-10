@@ -363,11 +363,11 @@ def test_load_collection_common_name_by_missing_products(
     )
 
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
         json=CreoApiMocker.feature_collection(features=creo_features)
     )
     requests_mock.get(
-        "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
         json=CreoApiMocker.feature_collection(features=[])
     )
 

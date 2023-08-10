@@ -431,6 +431,7 @@
         "endpoint": "https://services.sentinel-hub.com",
         "dataset_id": "sentinel-1-grd",
         "collection_id": "sentinel-1-grd",
+        "auto_polarization": true,
         "cacheable": true,
         "sample_type": "FLOAT32",
         "sar_backscatter_compatible": true
@@ -1366,5 +1367,29 @@
         "title": "Legal notice on the use of Copernicus Sentinel Data and Service Information"
       }
     ]
+  },
+  {
+    "id": "SENTINEL1_CARD4L",
+    "_vito": {
+      "data_source": {
+        "type": "sentinel-hub",
+        "endpoint": "https://creodias.sentinel-hub.com",
+        "dataset_id": "byoc-608bffb4-5012-4489-abec-71e134a7a609",
+        "collection_id": "byoc-608bffb4-5012-4489-abec-71e134a7a609",
+        "sample_type": "FLOAT32"
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis":"x", "extent": [-26.15, 60.42], "step": 0.0002},
+      "y": {"type": "spatial", "axis":"y", "extent": [-48, 39], "step": 0.0002},
+      "bands": {
+        "type": "bands",
+        "values": ["VV", "VH", "AREA", "ANGLE", "MASK", "dataMask"]
+      }
+    },
+    "extent": {
+      "spatial": {"bbox": [[-26.15, -48, 60.42, 39]]},
+      "temporal": {"interval": [["2018-01-01", null]]}
+    }
   }
 ]
