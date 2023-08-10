@@ -55,7 +55,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.errors import (JobNotFinishedException, OpenEOApiException, InternalException,
+from openeo_driver.errors import (JobNotFoundException, JobNotFinishedException, OpenEOApiException, InternalException,
                                   ServiceUnsupportedException, ProcessParameterUnsupportedException)
 from openeo_driver.jobregistry import ElasticJobRegistry, JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.save_result import ImageCollectionResult
@@ -816,6 +816,40 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
+        user = env['user']
+
+        def is_own_unsigned_job_results_url() -> bool:
+            path_segments = urlparse(url).path.split('/')
+
+            if len(path_segments) < 3:
+                return False
+
+            jobs_segment, job_id, results_segment = path_segments[-3:]
+            if jobs_segment != "jobs" or results_segment != "results":
+                return False
+
+            try:
+                self.batch_jobs.get_job_info(job_id=job_id, user_id=user.user_id)
+            except JobNotFoundException:
+                return False
+
+            return True
+
+        if is_own_unsigned_job_results_url():  # TODO: bypass HTTP and load the job results directly (~ load_result)
+            internal_auth_data = user.internal_auth_data
+            oidc_authenticated = internal_auth_data['authentication_method'] == "OIDC"
+
+            bearer_type = "oidc" if oidc_authenticated else "basic"
+            provider_id = internal_auth_data['oidc_provider_id'] if oidc_authenticated else ""
+            access_token = internal_auth_data['access_token']
+            bearer_token = "/".join([bearer_type, provider_id, access_token])
+
+            with requests_with_retry().get(url, headers={"Authorization": f"Bearer {bearer_token}"}) as resp:
+                resp.raise_for_status()
+
+                canonical_url = [link for link in resp.json()["links"] if link.get("rel") == "canonical"][0]["href"]
+                url = canonical_url
+
         no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                          code="NoDataAvailable", status_code=400)
 
@@ -1042,6 +1076,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                 items_found = False
 
+                # TODO: use server-side filtering instead (which STAC API extension?)
                 for itm in filter(matches_metadata_properties, results.items()):
                     band_assets = {asset_id: asset for asset_id, asset
                                    in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
