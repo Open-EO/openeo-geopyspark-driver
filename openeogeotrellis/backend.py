@@ -2252,7 +2252,8 @@ class GpsBatchJobs(backend.BatchJobs):
                                                  #  Removing the workaround in load_stac should also solve this.
                                                  access_token=user.internal_auth_data['access_token']
                                                  if user.internal_auth_data is not None else None,
-                                                 oidc_provider_id=user.internal_auth_data.get('oidc_provider_id'),
+                                                 oidc_provider_id=user.internal_auth_data.get('oidc_provider_id')
+                                                 if user.internal_auth_data is not None else None,
                                                  vault_token=None if sentinel_hub_client_alias == 'default'
                                                  else get_vault_token(sentinel_hub_client_alias))
                     temp_properties_file.flush()
