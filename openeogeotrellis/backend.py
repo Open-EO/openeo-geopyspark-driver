@@ -828,8 +828,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if len(path_segments) < 3:
                 return False
 
-            jobs_segment, job_id, results_segment = path_segments[-3:]
-            if jobs_segment != "jobs" or results_segment != "results":
+            jobs_position_segment, job_id, results_position_segment = path_segments[-3:]
+            if jobs_position_segment != "jobs" or results_position_segment != "results":
                 return False
 
             try:
@@ -841,10 +841,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         if is_own_unsigned_job_results_url():  # TODO: bypass HTTP and load the job results directly (~ load_result)
             internal_auth_data = user.internal_auth_data
-            oidc_authenticated = internal_auth_data['authentication_method'] == "OIDC"
 
-            bearer_type = "oidc" if oidc_authenticated else "basic"
-            provider_id = internal_auth_data['oidc_provider_id'] if oidc_authenticated else ""
+            provider_id = internal_auth_data.get('oidc_provider_id', "")
+            bearer_type = "oidc" if provider_id else "basic"
             access_token = internal_auth_data['access_token']
             bearer_token = "/".join([bearer_type, provider_id, access_token])
 
@@ -2249,11 +2248,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     temp_input_file.flush()
 
                     self._write_sensitive_values(temp_properties_file,
+                                                 # TODO: do SHub batch processes and load_stac play well together?
+                                                 #  Removing the workaround in load_stac should also solve this.
+                                                 access_token=user.internal_auth_data['access_token']
+                                                 if user.internal_auth_data is not None else None,
+                                                 oidc_provider_id=user.internal_auth_data.get('oidc_provider_id'),
                                                  vault_token=None if sentinel_hub_client_alias == 'default'
                                                  else get_vault_token(sentinel_hub_client_alias))
                     temp_properties_file.flush()
 
-                    # TODO: implement a saner way of passing arguments
                     job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
                     args = [script_location,
                             job_name,
@@ -2298,7 +2301,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(archives)
                     args.append(logging_threshold)
                     args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
-                    # TODO: this positional `args` handling is getting out of hand
+                    # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
                     persistent_worker_count = ConfigParams().persistent_worker_count
                     if persistent_worker_count != 0:
@@ -2342,9 +2345,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
-    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
+    def _write_sensitive_values(self, output_file, access_token: str, oidc_provider_id: Optional[str],
+                                vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
         output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
+        output_file.write(f"spark.openeo.access_token={access_token}\n")
+
+        # not particularly sensitive but a temporary situation anyway
+        if oidc_provider_id is not None:
+            output_file.write(f"spark.openeo.oidc_provider_id={oidc_provider_id}\n")
 
         if vault_token is not None:
             output_file.write(f"spark.openeo.vault.token={vault_token}\n")
