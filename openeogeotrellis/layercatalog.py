@@ -717,7 +717,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
                 if missing:
                     logger.info(
-                        f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products."
+                        f"(common_name) {collection_id!r}: skipping {m.provider_backend()!r} because of {len(missing)} missing products: {str_truncate(repr(missing), 1000)}"
                     )
                     continue
             logger.info(f"(common_name) {collection_id!r}: using {m.provider_backend()!r}.")
@@ -972,6 +972,32 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
     return metadata
 
 
+def query_jvm_opensearchclient(open_search_client, collection_id, _query_kwargs, processing_level=""):
+    jvm = get_jvm()
+    fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
+    toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
+    dateRange = jvm.scala.Some(jvm.scala.Tuple2(fromDate, toDate))
+    extent = jvm.geotrellis.vector.Extent(float(_query_kwargs["ulx"]), float(_query_kwargs["bry"]),
+                                          float(_query_kwargs["brx"]), float(_query_kwargs["uly"]))
+    crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
+    bbox = jvm.geotrellis.vector.ProjectedExtent(extent, crs)
+    attributeValuesDict = {}
+    if "cldPrcnt" in _query_kwargs:
+        attributeValuesDict["eo:cloud_cover"] = _query_kwargs["cldPrcnt"]
+    attributeValues = jvm.PythonUtils.toScalaMap(attributeValuesDict)
+    products = open_search_client.getProducts(
+        collection_id, dateRange,
+        bbox, attributeValues, "", processing_level
+    )
+    return {
+        (
+            products.apply(i).tileID().getOrElse(None),
+            products.apply(i).nominalDate().toLocalDate().toString().replace("-", "")
+        )
+        for i in range(products.length())
+    }
+
+
 def check_missing_products(
         collection_metadata: Union[GeopysparkCubeMetadata, dict],
         temporal_extent: Tuple[str, str], spatial_extent: dict,
@@ -1020,47 +1046,33 @@ def check_missing_products(
         elif method == "terrascope":
             jvm = get_jvm()
 
-            def query_trough_java(open_search_client, collection_id, _query_kwargs, processing_level="",
-                                  cloud_percent=100):
-                fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
-                toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
-                dateRange = jvm.scala.Some(jvm.scala.Tuple2(fromDate, toDate))
-                extent = jvm.geotrellis.vector.Extent(_query_kwargs["ulx"], _query_kwargs["bry"],
-                                                      _query_kwargs["brx"], _query_kwargs["uly"])
-                crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
-                bbox = jvm.geotrellis.vector.ProjectedExtent(extent, crs)
-                attributeValuesDict = {"eo:cloud_cover": cloud_percent}
-                attributeValues = jvm.PythonUtils.toScalaMap(attributeValuesDict)
-                products = open_search_client.getProducts(
-                    collection_id, dateRange,
-                    bbox, attributeValues, "", processing_level
-                )
-                return {
-                    (
-                        products.apply(i).tileID().getOrElse(None),
-                        products.apply(i).nominalDate().toLocalDate().toString().replace("-", "")
-                    )
-                    for i in range(products.length())
-                }
-
-            expected_tiles = query_trough_java(
+            # creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
+            # expected_tiles_python = {
+            #     (p.getTileId(), p.getDateStr())
+            #     for p in creo_catalog.query(**query_kwargs)
+            # }
+            expected_tiles = query_jvm_opensearchclient(
                 open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
                 collection_id=check_data["creo_catalog"]["mission"],
                 _query_kwargs=query_kwargs,
                 processing_level=check_data["creo_catalog"]["level"],
-                cloud_percent=95,
             )
 
             logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
             opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
 
             url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
-            terrascope_tiles = query_trough_java(
+            terrascope_tiles = query_jvm_opensearchclient(
                 open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
                 collection_id=opensearch_collection_id,
                 _query_kwargs=query_kwargs,
             )
 
+            # oscars_catalog = OscarsCatalogClient(collection=opensearch_collection_id)
+            # terrascope_tiles_python = {
+            #     (p.getTileId(), p.getDateStr())
+            #     for p in oscars_catalog.query(**query_kwargs)
+            # }
             logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
             return list(expected_tiles.difference(terrascope_tiles))
         else:
