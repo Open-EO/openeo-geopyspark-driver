@@ -1000,7 +1000,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                 links.append([asset.href, asset_id] + asset_band_names)
 
-            opensearch_client.addFeature(
+            opensearch_client.add_feature(
                 itm.id,
                 jvm.geotrellis.vector.Extent(*itm.bbox),
                 rfc3339.datetime(itm.datetime.astimezone(dt.timezone.utc)),
