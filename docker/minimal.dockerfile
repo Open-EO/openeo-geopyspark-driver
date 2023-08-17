@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1
 
 
 RUN apt-get update \
-    && apt-get install -y openjdk-${JAVA_VERSION}-jdk \  
+    && apt-get install -y openjdk-${JAVA_VERSION}-jdk \
     && apt-get install -y proj-bin proj-data \
     && apt-get install -y gdal-bin gdal-data libgdal-dev \
     && apt-get clean
