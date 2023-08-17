@@ -240,7 +240,7 @@ class S1BackscatterOrfeo:
             # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
             band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
             band_tiffs = {}
-            for tiff in creo_path.glob("measurement/*.tiff"):
+            for tiff in creo_path.glob("*/measurement/*.tiff"):
                 match = band_regex.match(tiff.name)
                 if match:
                     band_tiffs[match.group(1).lower()] = tiff

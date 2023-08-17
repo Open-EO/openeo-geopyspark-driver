@@ -372,6 +372,10 @@ class TestOrfeoPipeline:
             "./data/binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif": [
                 "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N51_00_E003_00_DEM/Copernicus_DSM_COG_10_N51_00_E003_00_DEM.tif"
             ],
+            "./data/binary/s1backscatter_orfeo/Sentinel-1/zeebrugge_2020_06_06_SAR.SAFE": [
+                "/eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_094C_COG.SAFE/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_094C_COG.SAFE",
+                "/eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_1FC2_COG.SAFE/S1B_IW_GRDH_1SDV_20200606T060612_20200606T060637_021909_029944_1FC2_COG.SAFE",
+            ],
         }
         for dest_path, source_paths in symlinks.items():
             dest_path = Path(__file__).parent.parent / dest_path
