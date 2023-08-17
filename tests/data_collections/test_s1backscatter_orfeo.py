@@ -366,6 +366,9 @@ class TestOrfeoPipeline:
                 "/eodata/Sentinel-1/SAR/GRD/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E12B.SAFE",
                 "/eodata/Sentinel-1/SAR/GRD/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_E424.SAFE",
             ],
+            "./data/binary/s1backscatter_orfeo/Sentinel-1/laroche_2020_07_29_SAR.SAFE": [
+                "/eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2020/07/29/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_B0A1_COG.SAFE/S1B_IW_GRDH_1SDV_20200729T172345_20200729T172410_022689_02B10A_B0A1_COG.SAFE/",
+            ],
             "./data/binary/s1backscatter_orfeo/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif": [
                 "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/Copernicus_DSM_COG_10_N50_00_E005_00_DEM/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"
             ],
