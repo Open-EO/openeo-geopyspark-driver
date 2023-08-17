@@ -881,9 +881,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             return intersects_temporally() and intersects_spatially()
 
-        def is_stac_api(collection: pystac.Collection) -> bool:  # TODO: rename to supports_item_search?
+        def supports_item_search(coll: pystac.Collection) -> bool:
             # TODO: use pystac_client instead?
-            conforms_to = collection.get_root().extra_fields.get("conformsTo", [])
+            conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
             return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
         def is_band_asset(asset: pystac.Asset) -> bool:
@@ -950,7 +950,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
             intersecting_items = [item]
-        elif isinstance(stac_object, pystac.Collection) and is_stac_api(stac_object):
+        elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id
 
