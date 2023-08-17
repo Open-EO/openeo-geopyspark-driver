@@ -1,3 +1,5 @@
+import json
+
 from unittest.mock import MagicMock
 import pytest
 
@@ -28,3 +30,17 @@ def test_from_parquet(file):
     fromWktMethod = mockjvm.org.openeo.geotrellis.ProjectedPolygons.fromWkt
     fromWktMethod.assert_called_once()
     assert fromWktMethod.call_args[0][1] == "EPSG:4326"
+
+
+def test_filter_bands():
+    with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
+        geojson = json.load(f)
+    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
+    assert(input_vector_cube.get_cube().shape == (2,2))
+    output_cube = input_vector_cube.filter_bands(["id"])
+    cube = output_cube.get_cube()
+    assert(cube.dims == ('geometries', 'properties'))
+    labels = cube.properties.values
+    assert(len(labels) == 1)
+    assert(labels[0] == "id")
+    assert(cube.shape == (2,1))
