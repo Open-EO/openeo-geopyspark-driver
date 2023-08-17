@@ -1,0 +1,33 @@
+**/__pycache__
+**/.venv
+**/.venv*
+**/venv*
+**/.classpath
+**/.dockerignore
+**/.env
+# You may want git files when you use docker as a devcontainer in VSCode
+# **/.git
+# **/.gitignore
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+**/bin
+**/charts
+**/docker-compose*
+**/compose*
+**/Dockerfile*
+**/node_modules
+**/npm-debug.log
+**/obj
+**/secrets.dev.yaml
+**/values.dev.yaml
+README.md
+# jars/
+build/
+.eggs/
+openeo_geopyspark.egg-info/
