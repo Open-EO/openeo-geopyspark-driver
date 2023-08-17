@@ -52,7 +52,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.15.0",
-        "openeo_driver>=0.59.0.dev",
+        "openeo_driver>=0.62.0.dev",
         'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
@@ -83,7 +83,7 @@ setup(
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
-        'pystac>=1.0.0',
+        'pystac_client~=0.7.2',
         'boto3==1.16.25',
         "hvac>=1.0.2",
         "pyarrow>=1.0.0",  # For pyspark.pandas
