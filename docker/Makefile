@@ -37,7 +37,7 @@ docker_tag := latest
 #
 # Allowed values for buildkit_supported are : 1 and 0
 #
-buildkit_supported := 0
+buildkit_supported := 1
 
 # ==============================================================================
 # Load file with environment variables, to override default config
