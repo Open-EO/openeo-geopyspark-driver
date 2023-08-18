@@ -27,7 +27,7 @@ import pkg_resources
 import requests
 import shapely.geometry.base
 from deprecated import deprecated
-from geopyspark import TiledRasterLayer, LayerType
+from geopyspark import TiledRasterLayer, LayerType, Pyramid
 from py4j.java_gateway import JVMView, JavaObject
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
@@ -38,7 +38,7 @@ import pystac_client
 from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension
+from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension, Dimension
 import openeo.udf
 from openeo.util import (
     dict_no_none,
@@ -48,6 +48,8 @@ from openeo.util import (
     str_truncate,
     TimingLogger,
 )
+from xarray import DataArray
+
 from openeo_driver import backend, filter_properties
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (
@@ -59,7 +61,7 @@ from openeo_driver.backend import (
     LoadParameters,
 )
 from openeo_driver.config.load import ConfigGetter
-from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.datacube import DriverVectorCube, DriverDataCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
@@ -1170,6 +1172,70 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)
             return model
+
+    def vector_to_raster(self, input_vector_cube: DriverVectorCube, target_raster_cube: DriverDataCube) -> DriverDataCube:
+        """
+        Rasterize all bands of the input vector cube into a DriverDataCube.
+
+        :param input_vector_cube: DriverVectorCube that contains at least one band.
+        :param target_raster_cube: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
+        :return: DriverDataCube with the rasterized bands.
+        """
+        cube: DataArray = input_vector_cube.get_cube()
+
+        # Remove all non-numeric bands and convert to float.
+        band_dim = str(cube.dims[1])
+        selected_bands = []
+        contains_int = False
+        for band in cube[band_dim].values:
+            coord_data = cube.sel({band_dim: band}).values[0]
+            if isinstance(coord_data, (int, float)):
+                contains_int = contains_int or isinstance(coord_data, int)
+                selected_bands.append(band)
+        float_cube = cube.sel({band_dim: selected_bands})
+        if contains_int:
+            float_cube = float_cube.astype(float)
+
+        input_vector_cube = input_vector_cube.with_cube(float_cube)
+
+        # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
+        file_name = "input_vector_cube.geojson"
+        # tmp_dir = tempfile.TemporaryDirectory()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / file_name
+            with open(str(file_path), 'w') as f:
+                json.dump(input_vector_cube.to_geojson(include_properties = False), f)
+            spatial_dim: SpatialDimension = target_raster_cube.metadata.spatial_dimensions[0]
+            target_resolution = spatial_dim.step
+            target_crs = spatial_dim.crs
+            vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRaster
+            layer = vector_to_raster(str(file_path), target_resolution, target_crs)
+        spatial_tiled_raster_layer = get_jvm().geopyspark.geotrellis.SpatialTiledRasterLayer
+
+        raster_layer = gps.TiledRasterLayer(LayerType.SPATIAL, spatial_tiled_raster_layer.apply(0, layer))
+        pyramid: Pyramid = Pyramid({0: raster_layer})
+
+        # Create metadata.
+        dimensions: List[Dimension] = [
+            SpatialDimension(name = "x", extent = []),
+            SpatialDimension(name = "y", extent = []),
+            BandDimension(name="bands",  bands = [Band(b, b, None, None, None) for b in selected_bands]),
+        ]
+        # TODO: Get spatial extent from target_raster_cube if present.
+        bounding_box = input_vector_cube.get_bounding_box()
+        spatial_extent = {
+            "west": bounding_box[0],
+            "east": bounding_box[2],
+            "north": bounding_box[3],
+            "south": bounding_box[1],
+        }
+        metadata: GeopysparkCubeMetadata = GeopysparkCubeMetadata(
+            metadata={},
+            dimensions=dimensions,
+            spatial_extent=spatial_extent,
+            temporal_extent=None,
+        )
+        return GeopysparkDataCube(pyramid, metadata)
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
