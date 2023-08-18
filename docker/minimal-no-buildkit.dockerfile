@@ -30,20 +30,18 @@ VOLUME $SRC_DIR
 
 COPY docker/apt-install-dependencies.sh .
 
-RUN --mount=type=cache,target=/var/cache/apt/ ./apt-install-dependencies.sh
+RUN ./apt-install-dependencies.sh
 
-# RUN --mount=type=cache,target=/var/cache/apt/ apt-get update \
+# RUN apt-get update \
 #     && apt-get install -y openjdk-${JAVA_VERSION}-jdk \
 #     && apt-get install -y proj-bin proj-data \
 #     && apt-get install -y gdal-bin gdal-data libgdal-dev \
 #     && apt-get clean
 
-RUN --mount=type=cache,target=~/.cache/pip \
-    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
 
 # GDAL is always a difficult one to install properly so we do this early on.
-RUN --mount=type=cache,target=~/.cache/pip \
-    python3 -m pip install --no-cache-dir pygdal=="`gdal-config --version`.*"
+RUN python3 -m pip install --no-cache-dir pygdal=="`gdal-config --version`.*"
 
 
 ENV REQUIREMENTS_FILE_DOCKER=./requirements-docker.txt
@@ -70,8 +68,7 @@ RUN mkdir /eodata
 
 COPY ${REQUIREMENTS_FILE_DOCKER} ${REQUIREMENTS_FILE_DOCKER}
 
-RUN --mount=type=cache,target=~/.cache/pip \
-    python3 -m  pip --no-cache-dir install -r  ${REQUIREMENTS_FILE_DOCKER}
+RUN python3 -m  pip --no-cache-dir install -r  ${REQUIREMENTS_FILE_DOCKER}
 
 
 #
@@ -80,8 +77,7 @@ RUN --mount=type=cache,target=~/.cache/pip \
 
 COPY . $SRC_DIR
 
-RUN --mount=type=cache,target=~/.cache/pip \
-    python3 -m  pip install --no-cache-dir -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+RUN python3 -m  pip install --no-cache-dir -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
 
 
 # TODO: decide: do we integrate getting jars inside the docker file or leave it up to the Makefile?

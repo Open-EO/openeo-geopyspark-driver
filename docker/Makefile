@@ -20,6 +20,21 @@
 docker_image_basename := openeo-geopyspark-driver
 docker_tag := latest
 
+
+#
+# buildkit_supported:
+#
+# This lets you choose between the version of the dockerfile that leverages
+# buildkit's `RUN --mount` syntax to reduces rebuild times and the 
+# version that leaves out `--mount` if your docker version doesn't support that.
+# But on Terrascope we have an old Docker version where this does not work.
+# And we can expect some people may be stuck with locked-down old docker 
+# versions as well.
+#
+# Allowed values for buildkit_supported are : 1 and 0
+# 
+buildkit_supported := 0
+
 # ==============================================================================
 # Load file with environment variables, to override default config
 # ==============================================================================
@@ -40,14 +55,20 @@ endif
 # ==============================================================================
 
 docker_image := $(docker_image_basename):$(docker_tag)
-docker_image_piptools_stage := $(docker_image_basename)-piptools:$(docker_tag)
 docker_image_base_stage := $(docker_image_basename)-base:$(docker_tag) 
 
 # Find the workspace directory
 my_workspace_dir := $(realpath  $(my_docker_dir)/..)
 
 # Path to the dockerfile.
+# Normally we want the version that use buildkit and RUN --mount"
+# But if your Docker installation does not allow it we have a nearly identical
+# dockerfile that leaves out the --mount option in the RUN commands.
+ifeq ($(buildkit_supported),1)
 docker_file_minimal := $(realpath $(my_docker_dir)/minimal.dockerfile)
+else
+docker_file_minimal := $(realpath $(my_docker_dir)/minimal-no-buildkit.dockerfile)
+endif
 
 # Path to the requirements file for docker container, to be exported.
 docker_requirements_file := $(realpath $(my_docker_dir)/requirements-docker.txt)
@@ -64,21 +85,23 @@ default: help
 
 .PHONY: all
 all: build test
+## Build and run the unit tests
 
 
 # ------------------------------------------------------------------------------
 # Targets for showing help and displaying setup information
 # ------------------------------------------------------------------------------
 
-
 .PHONY: help
-## Show this help (for Linux and git-bash, requires grep and sed)
-# ifeq ($(has_grep), 1)
+help:
+## Show this help. This command looks for comments on the first line after a target
+## and these comments should start with a double hash ##  to distinguish them 
+## from regular comments. Much like "docstrings" as we call it in Python.
+
 ifeq ($(OS),Windows_NT)
 help: help-rg
 else
 help: help-grep
-	@grep -A1 -e '^[a-z][a-zA-Z0-9\\\-]*:' $(MAKEFILE_LIST) | sed -s 's/^##/  /g' | sed -e 's/\-\-//g'
 endif
 
 
@@ -112,7 +135,6 @@ show-vars:
 	@echo ""
 	@echo "=== Derived variables ==="
 	@echo docker_image=$(docker_image)
-	@echo docker_image_piptools_stage=$(docker_image_piptools_stage)
 	@echo docker_image_base_stage=$(docker_image_base_stage)
 
 	@echo my_docker_dir=$(my_docker_dir)
@@ -130,10 +152,6 @@ show-image-names:
 ## Show the names of the docker image for all the stages/targets in the multi-stage build, for troubleshooting the makefile.
 	@echo base-image stage: 
 	@echo $(docker_image_base_stage)
-	@echo ""
-	@echo piptools-image stage: 
-	@echo $(docker_image_piptools_stage)
-	@echo ""
 	@echo final stage: 
 	@echo $(docker_image)
 
@@ -142,36 +160,36 @@ show-image-names:
 .PHONY: help-pip-compile
 help-pip-compile:
 ## Show pip-compile help (is actually more of a test for the docker container)
-	docker run  --rm -ti --entrypoint pip-compile $(docker_image_piptools_stage) --help
+	docker run  --rm -ti --entrypoint pip-compile $(docker_image_base_stage) --help
 
 
 # ------------------------------------------------------------------------------
 # Targets for building
 # ------------------------------------------------------------------------------
 
-
 .PHONY: build
-# build: build-main
-build: build-piptools pip-compile build-main get-jars
+build: build-base pip-compile build-main get-jars
 ## Run all the build steps in order.
 
 
 .PHONY: build-main
 build-main:
 ## Build the main docker image.
-	docker build -t $(docker_image) -f $(docker_file_minimal) $(my_workspace_dir)
+	docker buildx build -t $(docker_image) -f $(docker_file_minimal) $(my_workspace_dir)
 
 
-.PHONY: build-piptools
-build-piptools:
-## Build the docker image for pip-tools (target: piptools)
-	docker build -t $(docker_image_piptools_stage) --target piptools -f $(docker_file_minimal) $(my_workspace_dir)
+.PHONY: build-base
+build-base:
+## Build the main docker image.
+	docker buildx build -t $(docker_image_base_stage) --target base -f $(docker_file_minimal) $(my_workspace_dir)
 
 
 .PHONY: pip-compile
 pip-compile:
 ## Run pip-compile in its docker container.
-	docker run  --rm -ti -v $(my_workspace_dir):/src $(docker_image_piptools_stage) pip-compile \
+	docker run  --rm -ti \
+		-v $(my_workspace_dir):/src \
+		$(docker_image_base_stage) pip-compile \
 		-o ./requirements-docker.txt  \
 		--verbose \
 		--pip-args use-pep517 \
@@ -198,12 +216,6 @@ test:
 	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) pytest -ra -vv
 
 
-.PHONY: brief-test
-brief-test:
-## Run the entire pytest test suite.
-	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) pytest -ra -vv tests/test_utils.py
-
-
 # ------------------------------------------------------------------------------
 # Helpful but less important targets:
 # to make it easy to run bash in containers for troubleshooting and debugging.
@@ -215,13 +227,6 @@ bash:
 	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) bash
 
 
-# TODO: bash-piptools is temporary, to troubleshoot the pip-tools container. 
-.PHONY: bash-piptools
-bash-piptools:
-## Open a bash shell in the pip-tools docker container
-	docker run  -ti  --entrypoint bash  --rm  -v $(my_workspace_dir):/src  $(docker_image_piptools_stage)
-
-
 # ------------------------------------------------------------------------------
 # Targets for cleaning up
 # ------------------------------------------------------------------------------
@@ -229,7 +234,6 @@ bash-piptools:
 .PHONY: clean
 clean:
 ## Remove the docker images that were built via this makefile
-	@echo "docker image ls -q $(docker_image) && docker rmi $(docker_image)"
-	@echo "docker image ls -q $(docker_image_piptools_stage) && docker rmi $(docker_image_piptools_stage)"
-	@echo "docker image ls -q $(docker_image_base_stage) && docker rmi $(docker_image_base_stage)"
-	
+	docker image ls -q $(docker_image) && docker rmi $(docker_image)
+	docker image ls -q $(docker_image_base_stage) && docker rmi $(docker_image_base_stage)
+

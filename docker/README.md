@@ -83,6 +83,20 @@ scoop install ripgrep
 The provided makefile should be compatible with GNU make and run on both Linux and Windows.
 (And keep it compatible, please)
 
+### Showing help about what target you can build/run
+
+You can show help about the different makefile targets.
+The default make target is also "help" actually.
+
+```shell
+make help
+
+# or with the path to Makefile:
+make -f docker/Makefile all
+```
+
+### Regular build and test
+
 To build a container and run the test suite, run the following command:
 
 ```shell
@@ -96,15 +110,51 @@ Or specifying the path to this makefile if you run make in the root of your git 
 make -f docker/Makefile all
 ```
 
-You can show help about the different makefile targets.
-The default make target is also "help" actually.
+You don't need to run "build" every the time. In fact we try to avoid rebuilding
+images and image layers as much as we can.
+
+1. You should use the `-v` option in your `docker run` command to map your source code / working repository to the /src folder in the container.
+
+That way the container sees your source code and it doesn't need to be rebuild every time you changed a line of code.
+All our makefile targets that do a `docker run` use volumne mapping.
+For an example see the target `test` in docker\Makefile
+
+2. The main point of this makefile was to be able to extract a pip requirements file from setup.py and install the python depenencies only when they change.
+
+Therefor, if you have already done a "full build" once, and none of the 
+Python dependencies have changed in setup.py, then it should be enough 
+to build just the main image, like so:
 
 ```shell
-make help
-
-# or with the path to Makefile:
-make -f docker/Makefile all
+make -f docker/Makefile build-main
 ```
+
+### If you just want to see the docker command to run
+
+Make has a `--dry-run` option, or use the short option `-n`.
+Then make will only print what commands it would run.
+
+For example
+```shell
+make -f .\docker\Makefile --dry-run build
+```
+
+Would give output similar to this:
+
+```log
+docker buildx build -t openeo-geopyspark-driver-base:latest  --target base -f  C:/development/projects/VITO/codebases/openeo-geopyspark-driver
+docker run  --rm -ti \
+        -v C:/development/projects/VITO/codebases/openeo-geopyspark-driver:/src \
+        openeo-geopyspark-driver-base:latest  pip-compile \
+        -o ./requirements-docker.txt  \
+        --verbose \
+        --pip-args use-pep517 \
+        -P rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib \
+        --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple \
+        setup.py
+docker build -t openeo-geopyspark-driver:latest -f  C:/development/projects/VITO/codebases/openeo-geopyspark-driver
+docker run --rm -ti -v C:/development/projects/VITO/codebases/openeo-geopyspark-driver:/src  openeo-geopyspark-driver:latest python3 scripts/get-jars.py
+``` 
 
 
 ## Configuration variables
