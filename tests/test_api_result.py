@@ -1960,7 +1960,7 @@ def test_extra_validation_terrascope(jvm_mock, api100):
     jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
     jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
 
-    def mock_query_jvm_opensearchclient(open_search_client, collection_id, _query_kwargs, processing_level=""):
+    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
         if "CreodiasClient" in str(open_search_client):
             mock_collection = [{"tile_id": "16WEA", "date": '20200301'}, {"tile_id": "16WDA", "date": '20200301'}]
         elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
@@ -1972,7 +1972,7 @@ def test_extra_validation_terrascope(jvm_mock, api100):
             for p in mock_collection
         }
 
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearchclient", new=mock_query_jvm_opensearchclient):
+    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
 
         response = api100.validation(pg)
         expected = {'errors': [

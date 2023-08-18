@@ -371,7 +371,7 @@ def test_load_collection_common_name_by_missing_products(
     else:
         tfs = creo_features
 
-    def mock_query_jvm_opensearchclient(open_search_client, collection_id, _query_kwargs, processing_level=""):
+    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
         if "CreodiasClient" in str(open_search_client):
             mock_collection = creo_features
         elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
@@ -391,7 +391,7 @@ def test_load_collection_common_name_by_missing_products(
                 for p in mock_collection
             }
 
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearchclient", new=mock_query_jvm_opensearchclient):
+    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
 
         collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
         assert collection.metadata.get('id') == expected_source
