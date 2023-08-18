@@ -815,7 +815,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         trackers = S1BackscatterOrfeo._get_trackers(feature_pyrdd.context)
 
         prefix = ""
-        if "vsis3" in extra_properties:
+        if pathlib.Path("/vsis3").exists() and extra_properties.get("vsis3","TRUE") != "FALSE":
             prefix = "/vsis3"
 
         # Group multiple tiles by product id

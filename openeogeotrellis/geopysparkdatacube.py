@@ -552,18 +552,20 @@ class GeopysparkDataCube(DriverDataCube):
             )
 
             data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=udf_context)
-            _log.debug(f"[apply_tiles_spatiotemporal] running UDF {str_truncate(udf_code, width=1000)!r} on {data}!r")
+            _log.debug(f"[apply_tiles_spatiotemporal] running UDF {str_truncate(udf_code, width=1000)!r} on {datacube!r} with context {udf_context}")
             result_data = run_udf_code(code=udf_code, data=data)
-            _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_data}!r")
             cubes = result_data.get_datacube_list()
             if len(cubes) != 1:
-                raise ValueError("The provided UDF should return one datacube, but got: " + str(cubes))
+                raise ValueError(f"The provided UDF should return one datacube, but got: {result_data}")
             result_array: xr.DataArray = cubes[0].array
+            _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
+                result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
                          Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
+                result_array = result_array.transpose(*( 'bands', 'y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
                          Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
 

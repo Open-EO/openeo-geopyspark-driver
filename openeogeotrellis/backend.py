@@ -1,6 +1,6 @@
 import random
 
-import datetime
+import datetime as dt
 import json
 import logging
 import os
@@ -14,6 +14,7 @@ import traceback
 import uuid
 from decimal import Decimal
 from functools import lru_cache, partial, reduce
+
 from pandas import Timedelta
 from pathlib import Path
 from subprocess import CalledProcessError
@@ -33,6 +34,7 @@ from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
 import pystac
+import pystac_client
 from shapely.geometry import box, Polygon
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
@@ -46,7 +48,7 @@ from openeo.util import (
     str_truncate,
     TimingLogger,
 )
-from openeo_driver import backend
+from openeo_driver import backend, filter_properties
 from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
 from openeo_driver.backend import (
     ServiceMetadata,
@@ -62,10 +64,12 @@ from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (
+    JobNotFoundException,
     JobNotFinishedException,
     OpenEOApiException,
     InternalException,
     ServiceUnsupportedException,
+    ProcessParameterUnsupportedException,
 )
 from openeo_driver.jobregistry import (
     ElasticJobRegistry,
@@ -186,7 +190,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         self.service_registry.stop_service(user_id=user_id, service_id=service_id)
         self._unproxy_service(service_id)
 
-    def remove_services_before(self, upper: datetime.datetime) -> None:
+    def remove_services_before(self, upper: dt.datetime) -> None:
         user_services = self.service_registry.get_metadata_all_before(upper)
 
         for user_id, service in user_services:
@@ -229,7 +233,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
             enabled=True,
             attributes={},
             configuration=configuration,
-            created=datetime.datetime.utcnow()), api_version)
+            created=dt.datetime.utcnow()), api_version)
 
         secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
 
@@ -303,7 +307,7 @@ class GpsSecondaryServices(backend.SecondaryServices):
         return SecondaryService(host=host, port=wmts.getPort(), server=wmts)
 
     def restore_services(self):
-        for user_id, service_metadata in self.service_registry.get_metadata_all_before(upper=datetime.datetime.max):
+        for user_id, service_metadata in self.service_registry.get_metadata_all_before(upper=dt.datetime.max):
             if service_metadata.enabled:
                 try:
                     self.start_service(user_id=user_id, service_id=service_metadata.id)
@@ -790,6 +794,270 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             pyramid = pyramid_factory.pyramid_seq(
                 extent, extent_crs, from_date, to_date
             )
+
+        metadata = metadata.filter_bbox(
+            west=extent.xmin(),
+            south=extent.ymin(),
+            east=extent.xmax(),
+            north=extent.ymax(),
+            crs=extent_crs,
+        )
+
+        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+        option = jvm.scala.Option
+
+        # noinspection PyProtectedMember
+        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
+            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
+                  range(0, pyramid.size())}
+
+        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+        if load_params.bands:
+            cube = cube.filter_bands(load_params.bands)
+
+        return cube
+
+    def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+        logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
+
+        no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
+                                                         code="NoDataAvailable", status_code=400)
+        properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
+
+        user = env['user']
+
+        def is_own_unsigned_job_results_url() -> bool:
+            path_segments = urlparse(url).path.split('/')
+
+            if len(path_segments) < 3:
+                return False
+
+            jobs_position_segment, job_id, results_position_segment = path_segments[-3:]
+            if jobs_position_segment != "jobs" or results_position_segment != "results":
+                return False
+
+            try:
+                self.batch_jobs.get_job_info(job_id=job_id, user_id=user.user_id)
+            except JobNotFoundException:
+                return False
+
+            return True
+
+        def signed_results_url() -> str:
+            internal_auth_data = user.internal_auth_data
+
+            provider_id = internal_auth_data.get('oidc_provider_id', "")
+            bearer_type = "oidc" if provider_id else "basic"
+            access_token = internal_auth_data['access_token']
+            bearer_token = "/".join([bearer_type, provider_id, access_token])
+
+            with requests_with_retry().get(url, headers={"Authorization": f"Bearer {bearer_token}"}) as resp:
+                resp.raise_for_status()
+
+                canonical_url = [link for link in resp.json()["links"] if link.get("rel") == "canonical"][0]["href"]
+
+            return canonical_url
+
+        requested_bbox = BoundingBox.from_dict_or_none(
+            load_params.spatial_extent, default_crs="EPSG:4326"
+        )
+
+        temporal_extent = load_params.temporal_extent
+        from_date, to_date = normalize_temporal_extent(temporal_extent)
+
+        def intersects_spatiotemporally(itm: pystac.Item) -> bool:
+            def intersects_temporally() -> bool:
+                return dt.datetime.fromisoformat(from_date) <= itm.datetime <= dt.datetime.fromisoformat(to_date)
+
+            def intersects_spatially() -> bool:
+                if not requested_bbox or itm.bbox is None:
+                    return True
+
+                requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
+                return requested_bbox_lonlat.as_polygon().intersects(
+                    Polygon.from_bounds(*itm.bbox)
+                )
+
+            return intersects_temporally() and intersects_spatially()
+
+        def supports_item_search(coll: pystac.Collection) -> bool:
+            # TODO: use pystac_client instead?
+            conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
+            return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
+
+        def is_band_asset(asset: pystac.Asset) -> bool:
+            return "eo:bands" in asset.extra_fields or (asset.roles is not None and "data" in asset.roles)
+
+        def get_band_names(itm: pystac.Item, asset: pystac.Asset) -> List[str]:
+            def get_band_name(eo_band) -> str:
+                if isinstance(eo_band, dict):
+                    return eo_band["name"]
+
+                # can also be an index into a list of bands elsewhere
+                assert isinstance(eo_band, int)
+                eo_band_index = eo_band
+
+                eo_bands_location = (itm.properties if "eo:bands" in itm.properties
+                                     else itm.get_collection().summaries.to_dict())
+                return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
+
+            return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
+        def matches_metadata_properties(itm: pystac.Item) -> bool:
+            literal_matches = {property_name: filter_properties.extract_literal_match(condition)
+                               for property_name, condition in load_params.properties.items()}
+
+            def operator_value(criterion: Dict[str, object]) -> (str, object):
+                if len(criterion) != 1:
+                    raise ValueError(f'expected a single criterion, was {criterion}')
+
+                (operator, value), = criterion.items()
+                return operator, value
+
+            for property_name, criterion in literal_matches.items():
+                if property_name not in itm.properties:
+                    return False
+
+                item_value = itm.properties[property_name]
+                operator, criterion_value = operator_value(criterion)
+
+                if operator == 'eq' and item_value != criterion_value:
+                    return False
+                if operator == 'lte' and item_value is not None and item_value > criterion_value:
+                    return False
+                if operator == 'gte' and item_value is not None and item_value < criterion_value:
+                    return False
+
+            return True
+
+        if is_own_unsigned_job_results_url():
+            url = signed_results_url()  # TODO: remove HTTP workaround, load job results directly (~ load_result)
+
+        stac_object = pystac.STACObject.from_file(href=url)
+
+        if isinstance(stac_object, pystac.Item):
+            if load_params.properties:
+                raise properties_unsupported_exception
+
+            item = stac_object
+
+            if not intersects_spatiotemporally(item):
+                raise no_data_available_exception
+
+            eo_bands_location = (item.properties if "eo:bands" in item.properties
+                                 else item.get_collection().summaries.lists)
+            band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
+
+            intersecting_items = [item]
+        elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
+            collection = stac_object
+            collection_id = collection.id
+
+            root_catalog = collection.get_root()
+
+            band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
+
+            client = pystac_client.Client.open(root_catalog.get_self_href())
+            results = client.search(
+                method="GET",
+                collections=collection_id,
+                bbox=requested_bbox.as_wsen_tuple(),
+                datetime=f"{from_date}/{to_date}",
+            )
+
+            # TODO: use server-side filtering instead (which STAC API extension?)
+            intersecting_items = filter(matches_metadata_properties, results.items())
+        else:
+            assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
+            catalog = stac_object
+
+            if load_params.properties:
+                raise properties_unsupported_exception
+
+            band_names = (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
+                          else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])
+
+            intersecting_items = [itm for itm in catalog.get_items(recursive=True) if intersects_spatiotemporally(itm)]
+
+        jvm = get_jvm()
+
+        opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
+        stac_bbox = None
+        items_found = False
+
+        for itm in intersecting_items:
+            band_assets = {asset_id: asset for asset_id, asset
+                           in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
+
+            links = []
+            for asset_id, asset in band_assets.items():
+                asset_band_names = get_band_names(itm, asset)
+                for asset_band_name in asset_band_names:
+                    if asset_band_name not in band_names:
+                        band_names.append(asset_band_name)
+
+                links.append([asset.href, asset_id] + asset_band_names)
+
+            opensearch_client.add_feature(
+                itm.id,
+                jvm.geotrellis.vector.Extent(*itm.bbox),
+                rfc3339.datetime(itm.datetime.astimezone(dt.timezone.utc)),
+                links
+            )
+
+            item_bbox = BoundingBox.from_wsen_tuple(
+                itm.bbox, crs="EPSG:4326"
+            )
+
+            stac_bbox = (item_bbox if stac_bbox is None
+                         else item_bbox.as_polygon().union(stac_bbox.as_polygon()))
+
+            items_found = True
+
+        if not items_found:
+            raise no_data_available_exception
+
+        pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+            opensearch_client,
+            url,  # openSearchCollectionId, not important
+            band_names,  # openSearchLinkTitles
+            None,  # rootPath, not important
+            jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
+            False  # experimental
+        )
+
+        target_bbox = requested_bbox or stac_bbox
+        target_epsg = target_bbox.best_utm()  # is the default in GeoPySparkLayerCatalog as well
+
+        extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+        extent_crs = target_bbox.crs
+
+        projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
+            extent, extent_crs
+        )
+        projected_polygons = getattr(
+            getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
+        ).reproject(projected_polygons, target_epsg)
+
+        metadata_properties = {}
+        correlation_id = env.get('correlation_id', '')
+
+        data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+        getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+        pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
+                                               correlation_id, data_cube_parameters)
+
+        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
+            # TODO: detect actual dimensions instead of this simple default?
+            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
+            TemporalDimension(name='t', extent=[]),
+            BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
+        ])
+
+        metadata = metadata.filter_temporal(from_date, to_date)
 
         metadata = metadata.filter_bbox(
             west=extent.xmin(),
@@ -1691,7 +1959,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     logging_threshold=logging_threshold,
                     mount_tmp=mount_tmp,
                     use_pvc=use_pvc,
-                    access_token=user.internal_auth_data.get("access_token") if user.internal_auth_data else None,
+                    access_token=user.internal_auth_data["access_token"],
                 )
 
                 dict_ = yaml.safe_load(rendered)
@@ -1754,11 +2022,16 @@ class GpsBatchJobs(backend.BatchJobs):
                     temp_input_file.flush()
 
                     self._write_sensitive_values(temp_properties_file,
+                                                 # TODO: do SHub batch processes and load_stac play well together?
+                                                 #  Removing the workaround in load_stac should also solve this.
+                                                 access_token=user.internal_auth_data['access_token']
+                                                 if user.internal_auth_data is not None else None,
+                                                 oidc_provider_id=user.internal_auth_data.get('oidc_provider_id')
+                                                 if user.internal_auth_data is not None else None,
                                                  vault_token=None if sentinel_hub_client_alias == 'default'
                                                  else get_vault_token(sentinel_hub_client_alias))
                     temp_properties_file.flush()
 
-                    # TODO: implement a saner way of passing arguments
                     job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
                     args = [script_location,
                             job_name,
@@ -1803,7 +2076,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append(archives)
                     args.append(logging_threshold)
                     args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
-                    # TODO: this positional `args` handling is getting out of hand
+                    # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
                     persistent_worker_count = ConfigParams().persistent_worker_count
                     if persistent_worker_count != 0:
@@ -1847,9 +2120,15 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
-    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
+    def _write_sensitive_values(self, output_file, access_token: str, oidc_provider_id: Optional[str],
+                                vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
         output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
+        output_file.write(f"spark.openeo.access_token={access_token}\n")
+
+        # not particularly sensitive but a temporary situation anyway
+        if oidc_provider_id is not None:
+            output_file.write(f"spark.openeo.oidc_provider_id={oidc_provider_id}\n")
 
         if vault_token is not None:
             output_file.write(f"spark.openeo.vault.token={vault_token}\n")
@@ -2570,7 +2849,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def delete_jobs_before(
         self,
-        upper: datetime,
+        upper: dt.datetime,
         *,
         user_ids: Optional[List[str]] = None,
         dry_run: bool = True,
