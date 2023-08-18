@@ -12,6 +12,10 @@
 # ==============================================================================
 # Configuration variables
 # ==============================================================================
+# Override these by creating the file "makenv.env", in dotenv format, i.e.
+# key=value
+# as described in docker\README.md
+# ==============================================================================
 
 # For testing purposes, we are using different image names in the makefile versus the docker-compose file.
 # TODO: When makefile and docker-compose is fully equivalent we should make the image names the same.
@@ -25,14 +29,14 @@ docker_tag := latest
 # buildkit_supported:
 #
 # This lets you choose between the version of the dockerfile that leverages
-# buildkit's `RUN --mount` syntax to reduces rebuild times and the 
+# buildkit's `RUN --mount` syntax to reduces rebuild times and the
 # version that leaves out `--mount` if your docker version doesn't support that.
 # But on Terrascope we have an old Docker version where this does not work.
-# And we can expect some people may be stuck with locked-down old docker 
+# And we can expect some people may be stuck with locked-down old docker
 # versions as well.
 #
 # Allowed values for buildkit_supported are : 1 and 0
-# 
+#
 buildkit_supported := 0
 
 # ==============================================================================
@@ -55,7 +59,7 @@ endif
 # ==============================================================================
 
 docker_image := $(docker_image_basename):$(docker_tag)
-docker_image_base_stage := $(docker_image_basename)-base:$(docker_tag) 
+docker_image_base_stage := $(docker_image_basename)-base:$(docker_tag)
 
 # Find the workspace directory
 my_workspace_dir := $(realpath  $(my_docker_dir)/..)
@@ -95,7 +99,7 @@ all: build test
 .PHONY: help
 help:
 ## Show this help. This command looks for comments on the first line after a target
-## and these comments should start with a double hash ##  to distinguish them 
+## and these comments should start with a double hash ##  to distinguish them
 ## from regular comments. Much like "docstrings" as we call it in Python.
 
 ifeq ($(OS),Windows_NT)
@@ -141,7 +145,7 @@ show-vars:
 	@echo my_workspace_dir=$(my_workspace_dir)
 	@echo docker_file_minimal=$(docker_file_minimal)
 	@echo path to makenv.env (if it exists)=$(_makenv_file)
-	
+
 	@echo ""
 	@echo "=== Variable from make ==="
 	@echo CURDIR=$(CURDIR)
@@ -150,9 +154,9 @@ show-vars:
 
 show-image-names:
 ## Show the names of the docker image for all the stages/targets in the multi-stage build, for troubleshooting the makefile.
-	@echo base-image stage: 
+	@echo base-image stage:
 	@echo $(docker_image_base_stage)
-	@echo final stage: 
+	@echo final stage:
 	@echo $(docker_image)
 
 
@@ -192,7 +196,6 @@ pip-compile:
 		$(docker_image_base_stage) pip-compile \
 		-o ./requirements-docker.txt  \
 		--verbose \
-		--pip-args use-pep517 \
 		-P rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib \
 		--extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple \
 		setup.py
@@ -209,11 +212,17 @@ get-jars:
 # ------------------------------------------------------------------------------
 
 # We don't want to rebuild every time we run pytest.
-# That's what mapping the source directory to a docker volume serves for, to avoid that long rebuild. 
+# That's what mapping the source directory to a docker volume serves for, to avoid that long rebuild.
 .PHONY: test
 test:
 ## Run the entire pytest test suite.
 	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) pytest -ra -vv
+
+
+.PHONY: brief-test
+brief-test:
+## Run the entire pytest test suite.
+	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) pytest -ra -vv tests/test_utils.py
 
 
 # ------------------------------------------------------------------------------
@@ -236,4 +245,3 @@ clean:
 ## Remove the docker images that were built via this makefile
 	docker image ls -q $(docker_image) && docker rmi $(docker_image)
 	docker image ls -q $(docker_image_base_stage) && docker rmi $(docker_image_base_stage)
-

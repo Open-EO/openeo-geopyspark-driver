@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.2
 
 # TODO: Add build-arg for python version
-# TODO: FIX: would prefer the slim version "python:3.8-slim-bookworm" but then gdal wheels can't be built. 
+# TODO: FIX: would prefer the slim version "python:3.8-slim-bookworm" but then gdal wheels can't be built.
 # At the time of writing, the latest debian version was: debian 12 bookworm
 FROM python:3.8-bookworm AS base
 
@@ -32,16 +32,10 @@ COPY docker/apt-install-dependencies.sh .
 
 RUN ./apt-install-dependencies.sh
 
-# RUN apt-get update \
-#     && apt-get install -y openjdk-${JAVA_VERSION}-jdk \
-#     && apt-get install -y proj-bin proj-data \
-#     && apt-get install -y gdal-bin gdal-data libgdal-dev \
-#     && apt-get clean
-
 RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
 
 # GDAL is always a difficult one to install properly so we do this early on.
-RUN python3 -m pip install --no-cache-dir pygdal=="`gdal-config --version`.*"
+RUN python3 -m pip install --no-cache-dir pygdal=="$(gdal-config --version).*"
 
 
 ENV REQUIREMENTS_FILE_DOCKER=./requirements-docker.txt
@@ -53,7 +47,7 @@ ENV REQUIREMENTS_FILE_DOCKER=./requirements-docker.txt
 
 FROM base AS final
 
-# To be added: a user for running tests, and that user should own certain directories. 
+# To be added: a user for running tests, and that user should own certain directories.
 #    See also: tests\pre-test.sh
 # RUN adduser jenkins -uid 900 --group --system
 
@@ -68,7 +62,7 @@ RUN mkdir /eodata
 
 COPY ${REQUIREMENTS_FILE_DOCKER} ${REQUIREMENTS_FILE_DOCKER}
 
-RUN python3 -m  pip --no-cache-dir install -r  ${REQUIREMENTS_FILE_DOCKER}
+RUN python3 -m pip --no-cache-dir install -r  "${REQUIREMENTS_FILE_DOCKER}"
 
 
 #
