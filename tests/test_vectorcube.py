@@ -45,7 +45,7 @@ def test_filter_bands():
     assert(input_vector_cube.get_cube().shape == (2,2))
     output_cube = input_vector_cube.filter_bands(["id"])
     cube = output_cube.get_cube()
-    assert(cube.dims == ('geometries', 'properties'))
+    assert(cube.dims == ('geometry', 'properties'))
     labels = cube.properties.values
     assert(len(labels) == 1)
     assert(labels[0] == "id")
@@ -60,7 +60,7 @@ def test_vector_to_raster():
     input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
     input_cube = input_vector_cube.get_cube()
     assert(input_cube.shape == (2,2))
-    assert(input_cube.dims == ('geometries', 'properties'))
+    assert(input_cube.dims == ('geometry', 'properties'))
     assert(input_cube.properties.values.tolist() == ['id', 'pop'])
     output_cube: GeopysparkDataCube = GeoPySparkBackendImplementation().vector_to_raster(
         input_vector_cube = input_vector_cube,
