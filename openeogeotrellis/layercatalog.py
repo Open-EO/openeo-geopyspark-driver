@@ -984,10 +984,6 @@ def query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs
     attribute_values_dict = {}
     if "cldPrcnt" in _query_kwargs:
         attribute_values_dict["eo:cloud_cover"] = _query_kwargs["cldPrcnt"]
-    if "eo:cloud_cover" not in attribute_values_dict:
-        # Terrascope only has <95% clouded tiles, so use as default
-        # So we will not get missing warnings for totally clouded tiles.
-        attribute_values_dict["eo:cloud_cover"] = 95
     attributeV_values = jvm.PythonUtils.toScalaMap(attribute_values_dict)
     products = open_search_client.getProducts(
         collection_id, dateRange,
