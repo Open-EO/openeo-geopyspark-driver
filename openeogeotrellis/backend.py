@@ -2187,11 +2187,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     # TODO: why reraise as CalledProcessError?
                     raise CalledProcessError(1, str(args), output=output_string)
 
-    def _write_sensitive_values(self, output_file, access_token: str, oidc_provider_id: Optional[str],
+    def _write_sensitive_values(self, output_file, access_token: Optional[str], oidc_provider_id: Optional[str],
                                 vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
         output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
-        output_file.write(f"spark.openeo.access_token={access_token}\n")
+
+        if access_token is not None:
+            output_file.write(f"spark.openeo.access_token={access_token}\n")
 
         # not particularly sensitive but a temporary situation anyway
         if oidc_provider_id is not None:
