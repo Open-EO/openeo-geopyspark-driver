@@ -354,7 +354,7 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     [{"tile_id": "16WEA", "date": "20200302"}, {"tile_id": "16WEA", "date": "20200307"}],
 ])
 def test_load_collection_common_name_by_missing_products(
-        jvm_mock, requests_mock, missing_products, expected_source, creo_features, catalog
+        jvm_mock, missing_products, expected_source, creo_features, catalog
 ):
     load_params = LoadParameters(
         temporal_extent=('2020-03-01', '2020-03-03'),
@@ -362,32 +362,39 @@ def test_load_collection_common_name_by_missing_products(
         bands=['B03'],
     )
 
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
-        json=CreoApiMocker.feature_collection(features=creo_features)
-    )
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C100%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-03T23%3A59%3A59.999999&geometry=POLYGON+%28%284+52%2C+4.001+52%2C+4.001+51.9999%2C+4+51.9999%2C+4+52%29%29",
-        json=CreoApiMocker.feature_collection(features=[])
-    )
+    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
+    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
+    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
 
     if missing_products:
         tfs = creo_features[1::2]
     else:
         tfs = creo_features
-    from_index = 1
-    requests_mock.get(
-        f"https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=4%2C51.9999%2C4.001%2C52&sortKeys=title&startIndex={from_index}&start=2020-03-01T00%3A00%3A00&end=2020-03-03T23%3A59%3A59.999999&cloudCover=%5B0%2C100.0%5D",
-        json=TerrascopeApiMocker.feature_collection(features=tfs),
-    )
-    from_index += len(tfs)
-    requests_mock.get(
-        f"https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=4%2C51.9999%2C4.001%2C52&sortKeys=title&startIndex={from_index}&start=2020-03-01T00%3A00%3A00&end=2020-03-03T23%3A59%3A59.999999&cloudCover=%5B0%2C100.0%5D",
-        json=TerrascopeApiMocker.feature_collection(features=[]),
-    )
 
-    collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-    assert collection.metadata.get('id') == expected_source
+    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
+        if "CreodiasClient" in str(open_search_client):
+            mock_collection = creo_features
+        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
+            mock_collection = tfs
+        else:
+            raise Exception("Unknown open_search_client: " + str(open_search_client))
+        if len(mock_collection) == 0:
+            return {}
+        elif "date" in mock_collection[0]:
+            return {
+                (p["tile_id"], p["date"])
+                for p in mock_collection
+            }
+        else:
+            return {
+                (p["tile_id"])
+                for p in mock_collection
+            }
+
+    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
+
+        collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
+        assert collection.metadata.get('id') == expected_source
 
 
 def test_load_disk_collection_pyramid(
