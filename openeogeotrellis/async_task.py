@@ -33,10 +33,11 @@ ARG_USER_ID = 'user_id'
 # TODO: include job_id in log statements not issued by our own code e.g. Py4J  # 141
 _log = logging.getLogger(__name__)
 
-SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S = 60
+DEPENDENCIES_POLL_INTERVAL_S = 60
 
 TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES = 'delete_batch_process_dependency_sources'
-TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'
+TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'  # TODO: deprecated, remove this eventually
+TASK_AWAIT_DEPENDENCIES = 'await_dependencies'
 
 
 def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id: str, dependency_sources: List[str]):
@@ -48,9 +49,9 @@ def schedule_delete_batch_process_dependency_sources(batch_job_id: str, user_id:
                    }, job_id=batch_job_id, user_id=user_id)
 
 
-def schedule_poll_sentinelhub_batch_processes(batch_job_id: str, user_id: str, sentinel_hub_client_alias: str,
-                                              vault_token: Optional[str]):
-    _schedule_task(task_id=TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
+def schedule_await_job_dependencies(batch_job_id: str, user_id: str, sentinel_hub_client_alias: str,
+                                    vault_token: Optional[str]):
+    _schedule_task(task_id=TASK_AWAIT_DEPENDENCIES,
                    arguments={
                        ARG_BATCH_JOB_ID: batch_job_id,
                        ARG_USER_ID: user_id,
@@ -165,7 +166,11 @@ def main():
 
     try:
         task_id = task['task_id']
-        if task_id not in [TASK_POLL_SENTINELHUB_BATCH_PROCESSES, TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES]:
+        if task_id not in [
+            TASK_POLL_SENTINELHUB_BATCH_PROCESSES,
+            TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES,
+            TASK_AWAIT_DEPENDENCIES
+        ]:
             raise ValueError(f'unsupported task_id "{task_id}"')
 
         java_opts = [
@@ -217,7 +222,7 @@ def main():
                     job_id=batch_job_id,
                     dependency_sources=dependency_sources,
                     propagate_errors=True)
-            elif task_id == TASK_POLL_SENTINELHUB_BATCH_PROCESSES:
+            elif task_id in [TASK_POLL_SENTINELHUB_BATCH_PROCESSES, TASK_AWAIT_DEPENDENCIES]:
                 batch_job_id = arguments[ARG_BATCH_JOB_ID]
                 user_id = arguments[ARG_USER_ID]
                 sentinel_hub_client_alias = arguments.get('sentinel_hub_client_alias', 'default')
@@ -226,7 +231,7 @@ def main():
                 batch_jobs = get_batch_jobs(batch_job_id, user_id)
 
                 while True:
-                    time.sleep(SENTINEL_HUB_BATCH_PROCESSES_POLL_INTERVAL_S)
+                    time.sleep(DEPENDENCIES_POLL_INTERVAL_S)
 
                     with ZkJobRegistry() as registry:
                         job_info = registry.get_job(batch_job_id, user_id)
@@ -238,10 +243,10 @@ def main():
                         break
                     else:
                         try:
-                            batch_jobs.poll_sentinelhub_batch_processes(job_info, sentinel_hub_client_alias, vault_token)
+                            batch_jobs.poll_job_dependencies(job_info, sentinel_hub_client_alias, vault_token)
                         except Exception:
                             # TODO: retry in Nifi? How to mark this job as 'error' then?
-                            _log.error("failed to handle polling batch processes", exc_info=True,
+                            _log.error("failed to handle polling job dependencies", exc_info=True,
                                        extra={'job_id': batch_job_id, 'user_id': user_id})
 
                             with ZkJobRegistry() as registry:

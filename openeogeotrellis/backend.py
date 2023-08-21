@@ -1465,7 +1465,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return zk_job_info_to_metadata(job_info)
 
-    def poll_sentinelhub_batch_processes(
+    def poll_job_dependencies(
         self,
         job_info: dict,
         sentinel_hub_client_alias: str,
@@ -1523,15 +1523,36 @@ class GpsBatchJobs(backend.BatchJobs):
             return {request_id: (batch_processing_service.get_batch_process(request_id), temporal_step,
                                  retrier(request_id)) for request_id in batch_request_ids if request_id is not None}
 
-        dependencies = job_info.get('dependencies') or []
-        batch_processes = reduce(partial(dict_merge_recursive, overwrite=True),
-                                 (batch_request_details(dependency) for dependency in dependencies))
+        def job_results_status(job_results_dependency: dict) -> (str, Optional[str]):
+            """returns URL and (possibly empty) status for this job results dependency"""
+            url = job_results_dependency['job_results_url']
 
+            with requests_with_retry().get(url) as stac_resp:  # TODO: re-use requests.Session
+                stac_json = stac_resp.json()
+
+            return url, stac_json.get('openeo:status')
+
+        def fail_job():
+            with self._double_job_registry as registry:
+                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
+                registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+
+            job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
+
+        dependencies = job_info.get('dependencies') or []
+
+        # check 1: SHub batch processes
+        batch_process_dependencies = (dependency for dependency in dependencies
+                                      if 'batch_request_ids' in dependency or 'batch_request_id' in dependency)
+        batch_processes = reduce(partial(dict_merge_recursive, overwrite=True),
+                                 (batch_request_details(dependency) for dependency in batch_process_dependencies))
         batch_process_statuses = {batch_request_id: details.status()
                                   for batch_request_id, (details, _, _) in batch_processes.items()}
 
         logger.debug("Sentinel Hub batch process statuses for batch job {j}: {ss}"
                      .format(j=job_id, ss=batch_process_statuses), extra={'job_id': job_id, 'user_id': user_id})
+
+        batch_processes_done = False
 
         if any(status == "FAILED" for status in batch_process_statuses.values()):  # at least one failed: not recoverable
             batch_process_errors = {batch_request_id: details.errorMessage() or "<no error details>"
@@ -1541,15 +1562,54 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.error(f"Failing batch job because one or more Sentinel Hub batch processes failed: "
                          f"{batch_process_errors}", extra={'job_id': job_id, 'user_id': user_id})
 
-            with self._double_job_registry as registry:
-                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
-                registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+            return fail_job()
+        elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: check batch job results dependencies
+            batch_processes_done = True
+        elif all(
+            status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
+        ):  # all done but some partially failed
+            if (
+                job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
+            ):  # haven't retried yet: retry
+                with self._double_job_registry as registry:
+                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
 
-            job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
-        elif all(status == "DONE" for status in batch_process_statuses.values()):  # all good: resume batch job with available data
+                retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
+
+                for retry in retries:
+                    retry()
+                # the assumption is that a successful /restartpartial request means that processing has
+                # effectively restarted and a different status (PROCESSING) is published; otherwise the next poll might
+                # still see the previous status (PARTIAL), consider it the new status and immediately mark it as
+                # unrecoverable.
+            else:  # still some PARTIALs after one retry: not recoverable
+                logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
+                             f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
+
+                return fail_job()
+        else:  # still some in progress and none FAILED yet: check batch job results dependencies
+            pass
+
+        # check 2: OpenEO batch job results
+        job_results_dependencies = (dependency for dependency in dependencies if 'job_results_url' in dependency)
+        job_results_statuses = {url: status for url, status in
+                                (job_results_status(dependency) for dependency in job_results_dependencies)}
+
+        logger.debug("OpenEO batch job results statuses for batch job {j}: {ss}"
+                     .format(j=job_id, ss=job_results_statuses), extra={'job_id': job_id, 'user_id': user_id})
+
+        if any(status in ["error", "canceled"] for status in job_results_statuses.values()):
+            job_results_failures = {url: status for url, status in job_results_statuses.items()
+                                    if status in ["error", "canceled"]}
+
+            logger.error(f"Failing batch job because one or more OpenEO batch jobs failed: "
+                         f"{job_results_failures}", extra={'job_id': job_id, 'user_id': user_id})
+
+            return fail_job()
+        elif batch_processes_done and all(status in [None, "finished"] for status in job_results_statuses.values()):  # resume batch job with available data
             assembled_location_cache = {}
 
-            for dependency in dependencies:
+            for dependency in batch_process_dependencies:
                 collecting_folder = dependency.get('collecting_folder')
 
                 if collecting_folder:  # the collection is at least partially cached
@@ -1625,33 +1685,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
-        elif all(
-            status in ["DONE", "PARTIAL"] for status in batch_process_statuses.values()
-        ):  # all done but some partially failed
-            if (
-                job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
-            ):  # haven't retried yet: retry
-                with self._double_job_registry as registry:
-                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
-
-                retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
-
-                for retry in retries:
-                    retry()
-                # TODO: the assumption is that a successful /restartpartial request means that processing has
-                #  effectively restarted and a different status (PROCESSING) is published; otherwise the next poll might
-                #  still see the previous status (PARTIAL), consider it the new status and immediately mark it as
-                #  unrecoverable.
-            else:  # still some PARTIALs after one retry: not recoverable
-                logger.error(f"Retrying did not fix PARTIAL Sentinel Hub batch processes, aborting job: "
-                             f"{batch_process_statuses}", extra={'job_id': job_id, 'user_id': user_id})
-
-                with self._double_job_registry as registry:
-                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
-                    registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-
-                job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
-        else:  # still some in progress and none FAILED yet: continue polling
+        else:  # still some running: continue polling
             pass
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
@@ -1703,7 +1737,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self._start_job(job_id, user, _get_vault_token)
 
     def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
-                   batch_process_dependencies: Union[list, None] = None):
+                   dependencies: Union[list, None] = None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
@@ -1712,7 +1746,7 @@ class GpsBatchJobs(backend.BatchJobs):
             job_info = dbl_registry.get_job(job_id, user_id)
             api_version = job_info.get('api_version')
 
-            if batch_process_dependencies is None:
+            if dependencies is None:
                 # restart logic
                 current_status = job_info['status']
 
@@ -1731,14 +1765,14 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.debug("job_options: {o!r}".format(o=job_options), extra={'job_id': job_id, 'user_id': user_id})
 
             if (
-                batch_process_dependencies is None
+                dependencies is None
                 and job_info.get("dependency_status")
                 not in [
                     DEPENDENCY_STATUS.AWAITING,
                     DEPENDENCY_STATUS.AWAITING_RETRY,
                     DEPENDENCY_STATUS.AVAILABLE,
                 ]
-                and self._scheduled_sentinelhub_batch_processes(
+                and self._has_dependencies(
                     process_graph=spec["process_graph"],
                     api_version=api_version,
                     dbl_registry=dbl_registry,
@@ -1749,7 +1783,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     get_vault_token=get_vault_token,
                 )
             ):
-                async_task.schedule_poll_sentinelhub_batch_processes(
+                async_task.schedule_await_job_dependencies(
                     batch_job_id=job_id,
                     user_id=user_id,
                     sentinel_hub_client_alias=sentinel_hub_client_alias,
@@ -1830,7 +1864,7 @@ class GpsBatchJobs(backend.BatchJobs):
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
-                dependencies = batch_process_dependencies or job_info.get('dependencies') or []
+                dependencies = dependencies or job_info.get('dependencies') or []
 
                 def as_arg_element(dependency: dict) -> dict:
                     source_location = (dependency.get('assembled_location')  # cached
@@ -2143,7 +2177,7 @@ class GpsBatchJobs(backend.BatchJobs):
             raise _BatchJobError(stream)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
-    def _scheduled_sentinelhub_batch_processes(
+    def _has_dependencies(
         self,
         process_graph: dict,
         api_version: Union[str, None],
@@ -2182,7 +2216,7 @@ class GpsBatchJobs(backend.BatchJobs):
         logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
                     extra={'job_id': job_id})
 
-        batch_process_dependencies = []
+        job_dependencies = []
         batch_request_cache = {}
 
         for (process, arguments), constraints in source_constraints:
@@ -2531,17 +2565,32 @@ class GpsBatchJobs(backend.BatchJobs):
                                 else:
                                     raise e
 
-                    batch_process_dependencies.append(dict_no_none(
+                    job_dependencies.append(dict_no_none(
                         collection_id=collection_id,
                         batch_request_ids=batch_request_ids,  # to poll SHub
                         collecting_folder=collecting_folder,  # temporary cached and new single band tiles, also a flag
                         results_location=f"s3://{bucket_name}/{subfolder}",  # new multiband tiles
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
+            elif process == 'load_stac':
+                url, properties_criteria = arguments  # TODO: handle properties_criteria (how?)
 
-        if batch_process_dependencies:
+                with requests_with_retry().get(url) as stac_resp:
+                    stac_json = stac_resp.json()
+
+                openeo_status = stac_json.get('openeo:status')
+
+                if openeo_status == "running":
+                    job_dependencies.append({
+                        "job_results_url": url,
+                    })
+
+                # TODO: immediately abort if "error" or "canceled?"
+                # no "openeo:status" or "finished": just proceed
+
+        if job_dependencies:
             dbl_registry.set_dependencies(
-                job_id=job_id, user_id=user_id, dependencies=batch_process_dependencies
+                job_id=job_id, user_id=user_id, dependencies=job_dependencies
             )
             return True
 

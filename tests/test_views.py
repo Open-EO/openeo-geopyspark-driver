@@ -2015,7 +2015,7 @@ class TestSentinelHubBatchJobs:
 
             gps_batch_jobs: GpsBatchJobs = backend_implementation.batch_jobs
             job_info = job_registry.db[job_id]
-            gps_batch_jobs.poll_sentinelhub_batch_processes(
+            gps_batch_jobs.poll_job_dependencies(
                 job_info=job_info, sentinel_hub_client_alias="default"
             )
 
