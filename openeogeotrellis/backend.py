@@ -934,7 +934,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return True
 
         if is_own_unsigned_job_results_url():
-            url = signed_results_url()  # TODO: remove HTTP workaround, load job results directly (~ load_result)
+            url = signed_results_url()  # FIXME: remove HTTP workaround, load job results directly (~ load_result)
 
         stac_object = pystac.STACObject.from_file(href=url)
 
@@ -1049,6 +1049,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
+        # FIXME: support pyramid as well
         pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
                                                correlation_id, data_cube_parameters)
 
