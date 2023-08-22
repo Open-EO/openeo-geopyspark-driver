@@ -245,7 +245,8 @@ class S1BackscatterOrfeo:
                 if match:
                     band_tiffs[match.group(1).lower()] = tiff
             if not band_tiffs:
-                raise OpenEOApiException(f"sar_backscatter: No tiffs found in ${str(creo_path)}")
+                logger.error(f"{log_prefix} sar_backscatter: No tiffs found in ${str(creo_path)}")
+                return {}
             logger.info(f"{log_prefix} Detected band tiffs: {band_tiffs}")
         return band_tiffs
 
@@ -878,6 +879,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             )
 
             band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
+            if not band_tiffs:
+                return []
+
 
             dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
                 sar_backscatter_arguments=sar_backscatter_arguments,
