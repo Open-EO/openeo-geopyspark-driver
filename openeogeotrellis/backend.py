@@ -855,7 +855,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
             def intersects_temporally() -> bool:
-                return dt.datetime.fromisoformat(from_date) <= itm.datetime <= dt.datetime.fromisoformat(to_date)
+                nominal_date = itm.datetime or dt.datetime.fromisoformat(itm.properties["start_datetime"])
+                return dt.datetime.fromisoformat(from_date) <= nominal_date <= dt.datetime.fromisoformat(to_date)
 
             def intersects_spatially() -> bool:
                 if not requested_bbox or itm.bbox is None:
@@ -1004,7 +1005,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             opensearch_client.add_feature(
                 itm.id,
                 jvm.geotrellis.vector.Extent(*itm.bbox),
-                rfc3339.datetime(itm.datetime.astimezone(dt.timezone.utc)),
+                itm.properties.get("datetime") or itm.properties["start_datetime"],
                 links
             )
 
