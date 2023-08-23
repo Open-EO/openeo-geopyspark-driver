@@ -1014,7 +1014,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             )
 
             stac_bbox = (item_bbox if stac_bbox is None
-                         else item_bbox.as_polygon().union(stac_bbox.as_polygon()))
+                         else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds))
 
             items_found = True
 
