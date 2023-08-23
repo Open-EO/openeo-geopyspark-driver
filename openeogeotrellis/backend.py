@@ -959,17 +959,40 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 root_catalog = collection.get_root()
 
                 band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
+                from pystac_client import Modifiable
 
-                client = pystac_client.Client.open(root_catalog.get_self_href())
+                def modify(modifiable: Modifiable) -> None:
+                    if isinstance(modifiable, dict):
+                        if modifiable["type"] == "FeatureCollection":
+                            for item_dict in modifiable["features"]:
+                                modify(item_dict)
+                        elif modifiable["type"] == "Feature":
+                            product_identifier: str = modifiable["properties"]["productIdentifier"]
+                            year = product_identifier.split('_')[-1]
+                            modifiable["properties"]["datetime"] = f"{year}-01-01T00:00:00+00:00"
+
+                            itm = pystac.Item.from_dict(modifiable)
+                            modify(itm)
+                            modifiable.update(itm.to_dict())
+                    elif isinstance(modifiable, pystac.Item):
+                        for asst_id, asst in modifiable.assets.items():
+                            band_count = 6 if url.endswith("/BVLPROBA_v1") else 1
+                            injected_bands = [{"name": f"band{i}"} for i in range(1, band_count + 1)]
+                            asst.extra_fields["eo:bands"] = injected_bands
+
+                incorporate_temporary_workarounds = url.startswith("https://vlcc.geoville.com/resto/collections/")
+
+                client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modify if incorporate_temporary_workarounds else None)  # TODO: remove workaround
                 results = client.search(
                     method="GET",
                     collections=collection_id,
                     bbox=requested_bbox.as_wsen_tuple(),
-                    datetime=f"{from_date}/{to_date}",
+                    limit=20,
+                    datetime=None if incorporate_temporary_workarounds else f"{from_date}/{to_date}",  # TODO: remove workaround
                 )
 
                 # TODO: use server-side filtering instead (which STAC API extension?)
-                intersecting_items = filter(matches_metadata_properties, results.items())
+                intersecting_items = filter(lambda itm: matches_metadata_properties(itm) and True if not incorporate_temporary_workarounds else intersects_spatiotemporally(itm), results.items())  # TODO: remove workaround
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
                 catalog = stac_object
