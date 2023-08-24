@@ -926,7 +926,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             for asset_id, asset in self.batch_jobs.get_result_assets(job_id=job_id, user_id=user.user_id).items():
                 pystac_item = pystac.Item(id=asset_id, geometry=asset["geometry"], bbox=asset["bbox"],
                                           datetime=rfc3339.parse_datetime(asset["datetime"], with_timezone=True),
-                                          properties={})
+                                          properties={"datetime": asset["datetime"]})
 
                 if intersects_spatiotemporally(pystac_item) and "data" in asset.get("roles", []):
                     eo_bands = [{"name": b.name} for b in asset["bands"]]
