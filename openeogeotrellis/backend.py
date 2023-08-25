@@ -1637,7 +1637,7 @@ class GpsBatchJobs(backend.BatchJobs):
         batch_process_dependencies = (dependency for dependency in dependencies
                                       if 'batch_request_ids' in dependency or 'batch_request_id' in dependency)
         batch_processes = reduce(partial(dict_merge_recursive, overwrite=True),
-                                 (batch_request_details(dependency) for dependency in batch_process_dependencies))
+                                 (batch_request_details(dependency) for dependency in batch_process_dependencies), {})
         batch_process_statuses = {batch_request_id: details.status()
                                   for batch_request_id, (details, _, _) in batch_processes.items()}
 
@@ -1774,7 +1774,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 registry.set_dependencies(job_id, user_id, dependencies)
                 registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
-                registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
+
+                if batch_process_processing_units:
+                    registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
 
             self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
         else:  # still some running: continue polling
