@@ -10,6 +10,7 @@ from typing import List, Union, Sequence
 import mock
 import numpy as np
 import pytest
+from mock import MagicMock
 import rasterio
 import xarray
 from numpy.testing import assert_equal
@@ -1922,7 +1923,26 @@ def test_extra_validation_creo(api100, requests_mock):
     ]}
 
 
-def test_extra_validation_terrascope(api100, requests_mock):
+@pytest.fixture
+def jvm_mock():
+    with mock.patch('openeogeotrellis.layercatalog.get_jvm') as get_jvm:
+        jvm_mock = get_jvm.return_value
+        raster_layer = MagicMock()
+        jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+        raster_layer.layerMetadata.return_value = """{
+            "crs": "EPSG:4326",
+            "cellType": "uint8",
+            "bounds": {"minKey": {"col":0, "row":0}, "maxKey": {"col": 1, "row": 1}},
+            "extent": {"xmin": 0,"ymin": 0, "xmax": 1,"ymax": 1},
+            "layoutDefinition": {
+                "extent": {"xmin": 0, "ymin": 0,"xmax": 1,"ymax": 1},
+                "tileLayout": {"layoutCols": 1, "layoutRows": 1, "tileCols": 256, "tileRows": 256}
+            }
+        }"""
+        yield jvm_mock
+
+
+def test_extra_validation_terrascope(jvm_mock, api100):
     pg = {"lc": {
         "process_id": "load_collection",
         "arguments": {
@@ -1936,27 +1956,30 @@ def test_extra_validation_terrascope(api100, requests_mock):
         "result": True
     }}
 
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEA"}, {"tile_id": "16WDA"}]),
-    )
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?processingLevel=LEVEL1C&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json=CreoApiMocker.feature_collection(features=[]),
-    )
-    requests_mock.get(
-        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=1&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999&cloudCover=[0,50]",
-        json=TerrascopeApiMocker.feature_collection(features=[{"tile_id": "16WEA"}]),
-    )
-    requests_mock.get(
-        "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_TOC_V2&bbox=-87%2C67%2C-86%2C68&sortKeys=title&startIndex=2&start=2020-03-01T00%3A00%3A00&end=2020-03-10T23%3A59%3A59.999999&cloudCover=[0,50]",
-        json=TerrascopeApiMocker.feature_collection(features=[]),
-    )
+    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
+    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
+    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
 
-    response = api100.validation(pg)
-    assert response.json == {'errors': [
-        {'code': 'MissingProduct', 'message': "Tile ('16WDA', '20200301') in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
-    ]}
+    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
+        if "CreodiasClient" in str(open_search_client):
+            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}, {"tile_id": "16WDA", "date": '20200301'}]
+        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
+            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}]
+        else:
+            raise Exception("Unknown open_search_client: " + str(open_search_client))
+        return {
+            (p["tile_id"], p["date"])
+            for p in mock_collection
+        }
+
+    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
+
+        response = api100.validation(pg)
+        expected = {'errors': [
+            {'code': 'MissingProduct',
+             'message': "Tile ('16WDA', '20200301') in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
+        ]}
+        assert list(sorted(map(str, response.json["errors"]))) == list(sorted(map(str, expected["errors"])))
 
 
 @pytest.mark.parametrize(["lc_args", "expected"], [

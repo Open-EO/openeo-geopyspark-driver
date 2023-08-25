@@ -932,10 +932,6 @@ def _get_access_token(conf: SparkConf) -> Optional[str]:
     return conf.get('spark.openeo.access_token')
 
 
-def _get_oidc_provider_id(conf: SparkConf) -> Optional[str]:
-    return conf.get('spark.openeo.oidc_provider_id')
-
-
 def main(argv: List[str]) -> None:
     logger.debug(f"batch_job.py argv: {argv}")
     logger.debug(f"batch_job.py {os.getpid()=} {os.getppid()=} {os.getcwd()=}")
@@ -995,7 +991,6 @@ def main(argv: List[str]) -> None:
         default_sentinel_hub_credentials = _get_sentinel_hub_credentials_from_spark_conf(sc.getConf())
         vault_token = _get_vault_token(sc.getConf())
         access_token = _get_access_token(sc.getConf())
-        oidc_provider_id = _get_oidc_provider_id(sc.getConf())
 
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(principal, key_tab)
@@ -1007,7 +1002,6 @@ def main(argv: List[str]) -> None:
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 default_sentinel_hub_credentials=default_sentinel_hub_credentials,
                 sentinel_hub_client_alias=sentinel_hub_client_alias, vault_token=vault_token, access_token=access_token,
-                oidc_provider_id=oidc_provider_id,
             )
 
         if sc.getConf().get('spark.python.profile', 'false').lower() == 'true':
@@ -1048,7 +1042,6 @@ def run_job(
     sentinel_hub_client_alias="default",
     vault_token: str = None,
     access_token: str = None,
-    oidc_provider_id: str = None,
 ):
     result_metadata = {}
 
@@ -1078,7 +1071,7 @@ def run_job(
             'version': api_version or "1.0.0",
             'pyramid_levels': 'highest',
             'user': User(user_id=user_id,
-                         internal_auth_data=dict_no_none(access_token=access_token, oidc_provider_id=oidc_provider_id)),
+                         internal_auth_data=dict_no_none(access_token=access_token)),
             'require_bounds': True,
             'correlation_id': correlation_id,
             'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
