@@ -2664,9 +2664,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 openeo_status = stac_json.get('openeo:status')
 
-                if openeo_status == "running":
+                if openeo_status == 'running':
                     job_dependencies.append({
-                        "job_results_url": url,
+                        'job_results_url': url,  # TODO: rename to partial_job_results_url?
                     })
                 else:  # just proceed
                     # TODO: this design choice allows the user to load partial results (their responsibility);
