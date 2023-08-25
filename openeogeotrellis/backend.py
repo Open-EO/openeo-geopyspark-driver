@@ -2663,9 +2663,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     job_dependencies.append({
                         "job_results_url": url,
                     })
-
-                # TODO: immediately abort if "error" or "canceled?"
-                # no "openeo:status" or "finished": just proceed
+                else:  # just proceed
+                    # TODO: this design choice allows the user to load partial results (their responsibility);
+                    #  another option is to abort this job if status is "error" or "canceled".
+                    pass
 
         if job_dependencies:
             dbl_registry.set_dependencies(
