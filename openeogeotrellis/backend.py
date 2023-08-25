@@ -1954,20 +1954,19 @@ class GpsBatchJobs(backend.BatchJobs):
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
-                dependencies = dependencies or job_info.get('dependencies') or []
-
                 def as_arg_element(dependency: dict) -> dict:
                     source_location = (dependency.get('assembled_location')  # cached
                                        or dependency.get('results_location')  # not cached
-                                       or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
+                                       or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
+                                          f"/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
 
                     return {
                         'source_location': source_location,
                         'card4l': dependency.get('card4l', False)
                     }
 
-                return json.dumps([as_arg_element(dependency) for dependency in dependencies])
-
+                return json.dumps([as_arg_element(dependency)
+                                   for dependency in dependencies or job_info.get('dependencies') or []])
 
             if get_backend_config().setup_kerberos_auth:
                 setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
