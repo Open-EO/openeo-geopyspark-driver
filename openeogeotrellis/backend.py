@@ -2573,7 +2573,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
             elif process == 'load_stac':
-                url, properties_criteria = arguments  # TODO: handle properties_criteria (how?)
+                url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
                 with requests_with_retry().get(url) as stac_resp:
                     stac_json = stac_resp.json()
