@@ -1560,8 +1560,10 @@ class GpsBatchJobs(backend.BatchJobs):
         job_info: dict,
         sentinel_hub_client_alias: str,
         vault_token: Optional[str] = None,
+        requests_session: requests.Session = None,
     ):
-        # TODO: split polling logic and resuming logic?
+        requests_session = requests_session or requests.Session()
+
         job_id, user_id = job_info['job_id'], job_info['user_id']
 
         def batch_request_details(batch_process_dependency: dict) -> Dict[str, Tuple[str, Callable[[], None]]]:
@@ -1617,7 +1619,7 @@ class GpsBatchJobs(backend.BatchJobs):
             """returns URL and (possibly empty) status for this job results dependency"""
             url = job_results_dependency['job_results_url']
 
-            with requests_with_retry().get(url) as stac_resp:  # TODO: re-use requests.Session
+            with requests_session.get(url) as stac_resp:
                 stac_json = stac_resp.json()
 
             return url, stac_json.get('openeo:status')

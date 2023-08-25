@@ -17,6 +17,7 @@ import openeogeotrellis
 from openeo.util import dict_no_none
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS, DEPENDENCY_STATUS
+from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
@@ -229,6 +230,7 @@ def main():
                 vault_token = arguments.get('vault_token')
 
                 batch_jobs = get_batch_jobs(batch_job_id, user_id)
+                requests_session = requests_with_retry()
 
                 while True:
                     time.sleep(DEPENDENCIES_POLL_INTERVAL_S)
@@ -243,7 +245,8 @@ def main():
                         break
                     else:
                         try:
-                            batch_jobs.poll_job_dependencies(job_info, sentinel_hub_client_alias, vault_token)
+                            batch_jobs.poll_job_dependencies(job_info, sentinel_hub_client_alias, vault_token,
+                                                             requests_session)
                         except Exception:
                             # TODO: retry in Nifi? How to mark this job as 'error' then?
                             _log.error("failed to handle polling job dependencies", exc_info=True,
