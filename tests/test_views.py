@@ -2191,7 +2191,7 @@ class TestSentinelHubBatchJobs:
                 "dependency_status": "awaiting",
                 "dependencies": [
                     {
-                        "job_results_url": partial_job_results_url,
+                        "partial_job_results_url": partial_job_results_url,
                     }
                 ],
             }
@@ -2207,7 +2207,7 @@ class TestSentinelHubBatchJobs:
                 "dependency_status": "awaiting",
                 "dependencies": [
                     {
-                        "job_results_url": partial_job_results_url,
+                        "partial_job_results_url": partial_job_results_url,
                     }
                 ],
                 "process": {
@@ -2253,7 +2253,7 @@ class TestSentinelHubBatchJobs:
                 "dependency_status": "available",
                 "dependencies": [
                     {
-                        "job_results_url": partial_job_results_url,
+                        "partial_job_results_url": partial_job_results_url,
                     }
                 ],
             }
@@ -2269,7 +2269,7 @@ class TestSentinelHubBatchJobs:
                 "dependency_status": "available",
                 "dependencies": [
                     {
-                        "job_results_url": partial_job_results_url,
+                        "partial_job_results_url": partial_job_results_url,
                     }
                 ],
                 "process": {

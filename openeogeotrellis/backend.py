@@ -1617,7 +1617,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         def job_results_status(job_results_dependency: dict) -> (str, Optional[str]):
             """returns URL and (possibly empty) status for this job results dependency"""
-            url = job_results_dependency['job_results_url']
+            url = job_results_dependency['partial_job_results_url']
 
             with requests_session.get(url) as stac_resp:
                 stac_json = stac_resp.json()
@@ -1683,7 +1683,7 @@ class GpsBatchJobs(backend.BatchJobs):
             pass
 
         # check 2: OpenEO batch job results
-        job_results_dependencies = (dependency for dependency in dependencies if 'job_results_url' in dependency)
+        job_results_dependencies = (dependency for dependency in dependencies if 'partial_job_results_url' in dependency)
         job_results_statuses = {url: status for url, status in
                                 (job_results_status(dependency) for dependency in job_results_dependencies)}
 
@@ -2666,7 +2666,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 if openeo_status == 'running':
                     job_dependencies.append({
-                        'job_results_url': url,  # TODO: rename to partial_job_results_url?
+                        'partial_job_results_url': url,
                     })
                 else:  # just proceed
                     # TODO: this design choice allows the user to load partial results (their responsibility);
