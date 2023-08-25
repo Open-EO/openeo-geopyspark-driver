@@ -1956,6 +1956,10 @@ class GpsBatchJobs(backend.BatchJobs):
             logging_threshold = as_logging_threshold_arg()
 
             def serialize_dependencies() -> str:
+                batch_process_dependencies = [dependency for dependency in
+                                              (dependencies or job_info.get('dependencies') or [])
+                                              if 'collection_id' in dependency]
+
                 def as_arg_element(dependency: dict) -> dict:
                     source_location = (dependency.get('assembled_location')  # cached
                                        or dependency.get('results_location')  # not cached
@@ -1967,8 +1971,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         'card4l': dependency.get('card4l', False)
                     }
 
-                return json.dumps([as_arg_element(dependency)
-                                   for dependency in dependencies or job_info.get('dependencies') or []])
+                return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
 
             if get_backend_config().setup_kerberos_auth:
                 setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
