@@ -52,12 +52,11 @@ def test_filter_bands():
     assert(cube.shape == (2,1))
 
 
-def test_vector_to_raster():
+def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
     with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
         geojson = json.load(f)
-    dimension = SpatialDimension(name="sample", extent=[0, 0, 1, 1], crs="EPSG:4326", step=1)
-    target_raster_cube = DriverDataCube(metadata = CollectionMetadata(metadata = {}, dimensions = [dimension]))
-    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
+    target_raster_cube = imagecollection_with_two_bands_and_one_date
+    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = ['id', 'pop'])
     input_cube = input_vector_cube.get_cube()
     assert(input_cube.shape == (2,2))
     assert(input_cube.dims == ('geometry', 'properties'))

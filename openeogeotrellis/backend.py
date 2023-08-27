@@ -1205,6 +1205,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         :param target_raster_cube: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
         :return: DriverDataCube with the rasterized bands.
         """
+        if not isinstance(target_raster_cube, GeopysparkDataCube):
+            raise OpenEOApiException(
+                message=f"Target raster cube {target_raster_cube} is not a GeopysparkDataCube.",
+                status_code=400)
+        if len(target_raster_cube.pyramid.levels) == 0:
+            raise OpenEOApiException(
+                message=f"Target raster cube {target_raster_cube} does not contain any data.",
+                status_code=400)
+        top_layer = target_raster_cube.pyramid.levels[0].srdd.rdd()
         cube: DataArray = input_vector_cube.get_cube()
 
         # Remove all non-numeric bands and convert to float.
@@ -1229,11 +1238,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             file_path = Path(tmp_dir) / file_name
             with open(str(file_path), 'w') as f:
                 json.dump(input_vector_cube.to_geojson(include_properties = False), f)
-            spatial_dim: SpatialDimension = target_raster_cube.metadata.spatial_dimensions[0]
-            target_resolution = spatial_dim.step
-            target_crs = spatial_dim.crs
             vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRaster
-            layer = vector_to_raster(str(file_path), target_resolution, target_crs)
+            layer = vector_to_raster(str(file_path), top_layer)
         spatial_tiled_raster_layer = get_jvm().geopyspark.geotrellis.SpatialTiledRasterLayer
 
         raster_layer = gps.TiledRasterLayer(LayerType.SPATIAL, spatial_tiled_raster_layer.apply(0, layer))
