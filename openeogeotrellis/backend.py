@@ -1302,6 +1302,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
             if no_data_found:
                 summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
+            elif "outofmemoryerror" in java_exception_class_name.lower():
+                summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
             elif is_spark_exception:
                 udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
                 if udf_stacktrace:
