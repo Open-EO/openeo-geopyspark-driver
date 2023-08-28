@@ -983,7 +983,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 incorporate_temporary_workarounds = url.startswith("https://vlcc.geoville.com/resto/collections/")
 
                 client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modify if incorporate_temporary_workarounds else None)  # TODO: remove workaround
-                results = client.search(
+                search_request = client.search(
                     method="GET",
                     collections=collection_id,
                     bbox=requested_bbox.as_wsen_tuple(),
@@ -991,8 +991,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     datetime=None if incorporate_temporary_workarounds else f"{from_date}/{to_date}",  # TODO: remove workaround
                 )
 
+                logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
+
                 # TODO: use server-side filtering instead (which STAC API extension?)
-                intersecting_items = filter(lambda itm: matches_metadata_properties(itm) and True if not incorporate_temporary_workarounds else intersects_spatiotemporally(itm), results.items())  # TODO: remove workaround
+                intersecting_items = filter(lambda itm: matches_metadata_properties(itm) and True if not incorporate_temporary_workarounds else intersects_spatiotemporally(itm), search_request.items())  # TODO: remove workaround
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
                 catalog = stac_object
