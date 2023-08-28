@@ -383,7 +383,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 output_string = subprocess.check_output(args, stderr = subprocess.STDOUT, universal_newlines = True)
                 logger.info(f"Submitted persistent worker {i}, output was: {output_string}")
 
-
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
@@ -394,6 +393,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 vault=vault,
                 output_root_dir=batch_job_output_root,
                 elastic_job_registry=elastic_job_registry,
+                requests_session=requests_session,
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
@@ -1494,6 +1494,7 @@ class GpsBatchJobs(backend.BatchJobs):
         vault: Vault,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        requests_session: Optional[requests.Session] = None,
     ):
         super().__init__()
         self._catalog = catalog
@@ -1504,6 +1505,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self._default_sentinel_hub_client_secret = None
         self._get_terrascope_access_token: Optional[Callable[[User, str], str]] = None
         self._vault = vault
+        self._requests_session = requests_session or requests.Session()
 
         # TODO: Generalize assumption that output_dir == local FS? (e.g. results go to non-local S3)
         self._output_root_dir = Path(
@@ -2659,7 +2661,7 @@ class GpsBatchJobs(backend.BatchJobs):
             elif process == 'load_stac':
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
-                with requests_with_retry().get(url) as stac_resp:
+                with self._requests_session.get(url) as stac_resp:
                     stac_json = stac_resp.json()
 
                 openeo_status = stac_json.get('openeo:status')
