@@ -1870,8 +1870,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
             logger.debug("job_options: {o!r}".format(o=job_options), extra={'job_id': job_id, 'user_id': user_id})
 
+            async_tasks_supported = not ConfigParams().is_kube_deploy
+
             if (
-                dependencies is None
+                async_tasks_supported
+                and dependencies is None
                 and job_info.get("dependency_status")
                 not in [
                     DEPENDENCY_STATUS.AWAITING,
