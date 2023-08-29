@@ -5,7 +5,7 @@ import random
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Callable, Union, Optional
+from typing import List, Dict, Callable, Union, Optional, Iterator
 
 import kazoo
 import kazoo.exceptions
@@ -77,18 +77,6 @@ class ZkJobRegistry:
         }
         self._create(job_info)
         return job_info
-
-    @staticmethod
-    def get_dependency_sources(job_info: dict) -> List[str]:
-        """Returns dependency source locations as URIs."""
-        def sources(dependency: dict) -> List[str]:
-            results_location = (dependency.get('results_location')
-                                or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{dependency.get('subfolder') or dependency['batch_request_id']}")
-            assembled_location = dependency.get('assembled_location')
-
-            return [results_location, assembled_location] if assembled_location else [results_location]
-
-        return [source for dependency in (job_info.get('dependencies') or []) for source in sources(dependency)]
 
     def set_application_id(self, job_id: str, user_id: str, application_id: str) -> None:
         """Updates a registered batch job with its Spark application ID."""
@@ -426,6 +414,22 @@ class ZkJobRegistry:
                             self._zk.delete(
                                 done_path, version=done_stat.version, recursive=False
                             )
+
+
+def get_dependency_sources(job_info: dict) -> List[str]:
+    """Returns dependency source locations as URIs."""
+
+    def sources(dependency: dict) -> Iterator[str]:
+        if "results_location" in dependency:
+            yield dependency.get("results_location")
+        else:
+            subfolder = dependency.get("subfolder") or dependency["batch_request_id"]
+            yield f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
+
+        if "assembled_location" in dependency:
+            yield dependency.get("assembled_location")
+
+    return [source for dependency in (job_info.get("dependencies") or []) for source in sources(dependency)]
 
 
 def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:

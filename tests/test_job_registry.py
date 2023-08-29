@@ -6,11 +6,7 @@ from unittest import mock
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
-from openeogeotrellis.job_registry import (
-    ZkJobRegistry,
-    InMemoryJobRegistry,
-    DoubleJobRegistry,
-)
+from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry, DoubleJobRegistry, get_dependency_sources
 from openeogeotrellis.testing import KazooClientMock
 
 
@@ -29,6 +25,54 @@ def test_basic(zk_client):
     assert data == DictSubSet(
         user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created"
     )
+
+
+@pytest.mark.parametrize(
+    ["job_info", "expected"],
+    [
+        ({}, []),
+        (
+            {
+                "dependencies": [
+                    {
+                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                        "card4l": False,
+                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    }
+                ]
+            },
+            ["s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83"],
+        ),
+        (
+            {"dependencies": [{"batch_request_id": "98029-652-3423"}]},
+            ["s3://openeo-sentinelhub/98029-652-3423"],
+        ),
+        (
+            {"dependencies": [{"subfolder": "foo", "batch_request_id": "98029-652-3423"}, {"subfolder": "bar"}]},
+            [
+                "s3://openeo-sentinelhub/foo",
+                "s3://openeo-sentinelhub/bar",
+            ],
+        ),
+        (
+            {
+                "dependencies": [
+                    {
+                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                        "assembled_location": "s3://foo/bar",
+                    }
+                ]
+            },
+            [
+                "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                "s3://foo/bar",
+            ],
+        ),
+    ],
+)
+def test_get_dependency_sources(job_info, expected):
+    assert get_dependency_sources(job_info) == expected
 
 
 @pytest.mark.parametrize(

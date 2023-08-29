@@ -107,8 +107,8 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.job_registry import (
     ZkJobRegistry,
-    zk_job_info_to_metadata,
     DoubleJobRegistry,
+    get_dependency_sources,
 )
 from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
                                            is_layer_too_large)
@@ -2926,7 +2926,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
-        dependency_sources = ZkJobRegistry.get_dependency_sources(job_info)
+        dependency_sources = get_dependency_sources(job_info)
 
         if dependency_sources:
             # Only for SentinelHub batch processes.

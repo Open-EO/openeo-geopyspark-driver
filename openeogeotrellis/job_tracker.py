@@ -30,7 +30,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status, K8S_SPARK_APP_STATE,
 )
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_registry import ZkJobRegistry, get_dependency_sources
 from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.vault import Vault
@@ -216,7 +216,7 @@ class JobTracker:
                                     registry.remove_dependencies(job_id, user_id)
 
                                     # there can be duplicates if batch processes are recycled
-                                    dependency_sources = list(set(ZkJobRegistry.get_dependency_sources(job_info)))
+                                    dependency_sources = list(set(get_dependency_sources(job_info)))
 
                                     if dependency_sources:
                                         async_task.schedule_delete_batch_process_dependency_sources(
