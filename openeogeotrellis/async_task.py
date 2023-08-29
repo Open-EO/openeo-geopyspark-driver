@@ -80,12 +80,14 @@ def _schedule_task(task_id: str, arguments: dict, job_id: str, user_id: str):
     )
 
     try:
+        log = logging.LoggerAdapter(_log, extra={'job_id': job_id, 'user_id': user_id})
+        redacted_task_str = json.dumps(_redact(task))
+
+        log.debug(f"scheduling task {redacted_task_str} on env {env}...")
         producer.send(topic="openeo-async-tasks",
                       value=encode(json.dumps(task)),
                       headers=[('env', encode(env))] if env else None).get(timeout=120)
-
-        _log.info(f"scheduled task {json.dumps(_redact(task))} on env {env}", extra={'job_id': job_id,
-                                                                                     'user_id': user_id})
+        log.info(f"scheduled task {redacted_task_str} on env {env}")
     finally:
         producer.close()
 
