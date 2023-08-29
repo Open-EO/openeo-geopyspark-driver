@@ -109,6 +109,7 @@ from openeogeotrellis.job_registry import (
     ZkJobRegistry,
     DoubleJobRegistry,
     get_dependency_sources,
+    zk_job_info_to_metadata,
 )
 from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
                                            is_layer_too_large)
@@ -1564,7 +1565,7 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
         with self._double_job_registry as registry:
             job_info = registry.get_job(job_id, user_id)
-
+        # TODO #236 eliminate these ZK specifics
         return zk_job_info_to_metadata(job_info)
 
     def poll_job_dependencies(
