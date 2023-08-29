@@ -2674,14 +2674,14 @@ class GpsBatchJobs(backend.BatchJobs):
             elif process == 'load_stac':
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
-                logger.debug(f'load_stac({url}): attempting to extract "openeo:status"...')
+                logger.debug(f'load_stac({url}): attempting to extract "openeo:status"...', extra={'job_id': job_id})
 
                 with self._requests_session.get(url, timeout=60) as stac_resp:  # TODO: increase timeout to e.g. 600
                     stac_json = stac_resp.json()
 
                 openeo_status = stac_json.get('openeo:status')
 
-                logger.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
+                logger.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"', extra={'job_id': job_id})
 
                 if openeo_status == 'running':
                     job_dependencies.append({
@@ -2693,7 +2693,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     pass
 
         if job_dependencies:
-            logger.debug(f"job_dependencies: {job_dependencies}")
+            logger.debug(f"job_dependencies: {job_dependencies}", extra={'job_id': job_id})
 
             dbl_registry.set_dependencies(
                 job_id=job_id, user_id=user_id, dependencies=job_dependencies
