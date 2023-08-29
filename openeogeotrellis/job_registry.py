@@ -579,6 +579,10 @@ class InMemoryJobRegistry(JobRegistryInterface):
         return [job for job in self.db.values() if job["status"] in active]
 
 
+class DoubleJobRegistryException(Exception):
+    pass
+
+
 class DoubleJobRegistry:
     """
     Adapter to simultaneously keep track of jobs in two job registries:
@@ -611,13 +615,15 @@ class DoubleJobRegistry:
         self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory()
         self._log.debug(f"Context enter {self!r}")
-        self.zk_job_registry.__enter__()
+        if self.zk_job_registry:
+            self.zk_job_registry.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._log.debug(f"Context exit {self!r} ({exc_type=})")
         try:
-            self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
+            if self.zk_job_registry:
+                self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
         finally:
             self.zk_job_registry = None
             self._lock.release()
@@ -642,20 +648,23 @@ class DoubleJobRegistry:
         title: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict:
-        job_info = self.zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version=api_version,
-            specification=dict_no_none(
-                process_graph=process["process_graph"],
-                job_options=job_options,
-            ),
-            title=title,
-            description=description,
-        )
+        zk_job_info = None
+        ejr_job_info = None
+        if self.zk_job_registry:
+            zk_job_info = self.zk_job_registry.register(
+                job_id=job_id,
+                user_id=user_id,
+                api_version=api_version,
+                specification=dict_no_none(
+                    process_graph=process["process_graph"],
+                    job_options=job_options,
+                ),
+                title=title,
+                description=description,
+            )
         if self.elastic_job_registry:
             with self._just_log_errors("create_job", job_id=job_id):
-                self.elastic_job_registry.create_job(
+                ejr_job_info = self.elastic_job_registry.create_job(
                     process=process,
                     user_id=user_id,
                     job_id=job_id,
@@ -664,7 +673,9 @@ class DoubleJobRegistry:
                     api_version=api_version,
                     job_options=job_options,
                 )
-        return job_info
+        if zk_job_info is None and ejr_job_info is None:
+            raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
+        return zk_job_info or ejr_job_info
 
     def get_job(self, job_id: str, user_id: str) -> dict:
         # TODO: eliminate get_job/get_job_metadata duplication?

@@ -206,9 +206,7 @@ class TestDoubleJobRegistry:
             "parent_id": None,
         }
 
-    def test_create_job_just_log_errors(
-        self, double_jr, zk_client, memory_jr, caplog, monkeypatch
-    ):
+    def test_create_job_ejr_fail_just_log_errors(self, double_jr, zk_client, memory_jr, caplog, monkeypatch):
         """Check `_just_log_errors` + "job_id" extra feature with broken memory_jr"""
 
         class Formatter:
@@ -232,6 +230,30 @@ class TestDoubleJobRegistry:
         assert memory_jr.db == {}
         expected = "[j-123] WARNING In context 'DoubleJobRegistry.create_job': caught RuntimeError('Nope!')\n"
         assert caplog.text == expected
+
+    def test_create_job_no_zk(self, zk_client, memory_jr):
+        double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: None),
+            elastic_job_registry=memory_jr,
+        )
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+
+        assert zk_client.dump() == {"/": b""}
+        assert memory_jr.db["j-123"] == {
+            "job_id": "j-123",
+            "user_id": "john",
+            "process": self.DUMMY_PROCESS,
+            "created": "2023-02-15T17:17:17Z",
+            "status": "created",
+            "updated": "2023-02-15T17:17:17Z",
+            "api_version": None,
+            "application_id": None,
+            "title": None,
+            "description": None,
+            "job_options": None,
+            "parent_id": None,
+        }
 
     def test_get_job(self, double_jr, caplog):
         with double_jr:
