@@ -34,7 +34,8 @@ ARG_USER_ID = 'user_id'
 # TODO: include job_id in log statements not issued by our own code e.g. Py4J  # 141
 _log = logging.getLogger(__name__)
 
-DEPENDENCIES_POLL_INTERVAL_S = 60
+DEPENDENCIES_POLL_INTERVAL_S = 60  # poll every x seconds
+DEPENDENCIES_MAX_POLL_DELAY_S = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
 TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES = 'delete_batch_process_dependency_sources'
 TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'  # TODO: deprecated, remove this eventually
@@ -234,6 +235,9 @@ def main():
                 batch_jobs = get_batch_jobs(batch_job_id, user_id)
                 requests_session = requests_with_retry()
 
+                log = logging.LoggerAdapter(_log, extra={'job_id': batch_job_id, 'user_id': user_id})
+                max_poll_time = time.time() + DEPENDENCIES_MAX_POLL_DELAY_S
+
                 while True:
                     time.sleep(DEPENDENCIES_POLL_INTERVAL_S)
 
@@ -251,13 +255,22 @@ def main():
                                                              requests_session)
                         except Exception:
                             # TODO: retry in Nifi? How to mark this job as 'error' then?
-                            _log.error("failed to handle polling job dependencies", exc_info=True,
-                                       extra={'job_id': batch_job_id, 'user_id': user_id})
+                            log.exception("failed to handle polling job dependencies")
 
                             with ZkJobRegistry() as registry:
                                 registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
 
                             raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
+
+                    if time.time() >= max_poll_time:
+                        max_poll_delay_reached_error = f"job dependencies were not satisfied after" \
+                                                       f" {DEPENDENCIES_MAX_POLL_DELAY_S} s, aborting"
+                        log.error(max_poll_delay_reached_error)
+
+                        with ZkJobRegistry() as registry:
+                            registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
+
+                        raise Exception(max_poll_delay_reached_error)
             else:
                 raise AssertionError(f'unexpected task_id "{task_id}"')
         except JobNotFoundException as e:
@@ -272,7 +285,7 @@ def main():
             user_id=arguments.get(ARG_USER_ID)
         )
 
-        _log.error(f"failed to handle task {json.dumps(_redact(task))}", exc_info=True, extra=extra)
+        _log.exception(f"failed to handle task {json.dumps(_redact(task))}", extra=extra)
         raise e
 
 
