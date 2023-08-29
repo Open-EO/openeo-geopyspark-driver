@@ -1,8 +1,9 @@
 import logging
-
+import datetime
 import pytest
 from unittest import mock
 
+from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
@@ -235,21 +236,39 @@ class TestDoubleJobRegistry:
     def test_get_job(self, double_jr, caplog):
         with double_jr:
             double_jr.create_job(
-                job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
             )
             job = double_jr.get_job("j-123", user_id="john")
+            job_metadata = double_jr.get_job_metadata("j-123", user_id="john")
         assert job == {
             "job_id": "j-123",
             "user_id": "john",
-            "specification": '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}}',
+            "specification": '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}',
             "created": "2023-02-15T17:17:17Z",
             "status": "created",
             "updated": "2023-02-15T17:17:17Z",
             "api_version": None,
             "application_id": None,
-            "title": None,
+            "title": "John's job",
             "description": None,
         }
+        assert job_metadata == BatchJobMetadata(
+            id="j-123",
+            status="created",
+            created=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            process={"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}},
+            job_options={"prio": "low"},
+            title="John's job",
+            description=None,
+            updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            started=None,
+            finished=None,
+        )
+
         assert caplog.messages == []
 
     def test_get_job_mismatch(self, double_jr, memory_jr, caplog):
