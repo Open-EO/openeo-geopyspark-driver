@@ -312,6 +312,72 @@ class TestDoubleJobRegistry:
             " ejr_job_info={'job_id': 'j-123', 'status': 'c0rRupt', 'created': '2023-02-15T17:17:17Z'}"
         ]
 
+    @pytest.mark.parametrize(
+        ["with_zk", "with_ejr", "expected_process_extra"],
+        [
+            (True, True, {}),
+            (False, True, {"title": "dummy"}),
+            (True, False, {}),
+        ],
+    )
+    def test_get_job_consistency(
+        self, double_jr, caplog, zk_client, memory_jr, with_zk, with_ejr, expected_process_extra
+    ):
+        """Consistent user job info (dict) and metadata (BatchJobMetadata) when ZK or EJR is broken?"""
+        with double_jr:
+            double_jr.create_job(
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+
+        other_double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else (lambda: None),
+            elastic_job_registry=memory_jr if with_ejr else None,
+        )
+        with other_double_jr:
+            job = other_double_jr.get_job("j-123", user_id="john")
+            job_metadata = other_double_jr.get_job_metadata("j-123", user_id="john")
+        expected_job = {
+            "job_id": "j-123",
+            "user_id": "john",
+            "created": "2023-02-15T17:17:17Z",
+            "status": "created",
+            "updated": "2023-02-15T17:17:17Z",
+            "api_version": None,
+            "application_id": None,
+            "title": "John's job",
+            "description": None,
+        }
+        if with_zk:
+            expected_job[
+                "specification"
+            ] = '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}'
+        elif with_ejr:
+            expected_job["process"] = self.DUMMY_PROCESS
+            expected_job["job_options"] = {"prio": "low"}
+            expected_job["parent_id"] = None
+        assert job == expected_job
+        assert job_metadata == BatchJobMetadata(
+            id="j-123",
+            status="created",
+            created=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            process=dict(
+                process_graph={"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+                **expected_process_extra,
+            ),
+            job_options={"prio": "low"},
+            title="John's job",
+            description=None,
+            updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            started=None,
+            finished=None,
+        )
+
+        assert caplog.messages == []
+
     def test_set_status(self, double_jr, zk_client, memory_jr, time_machine):
         with double_jr:
             double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
