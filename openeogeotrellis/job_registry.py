@@ -706,7 +706,8 @@ class DoubleJobRegistry:
             self._log.warning(f"DoubleJobRegistry mismatch {zk_job_info=} {ejr_job_info=}")
 
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
-        self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
+        if self.zk_job_registry:
+            self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
         if self.elastic_job_registry:
             with self._just_log_errors("set_status", job_id=job_id):
                 self.elastic_job_registry.set_status(job_id=job_id, status=status)

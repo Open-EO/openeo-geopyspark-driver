@@ -164,6 +164,13 @@ class TestDoubleJobRegistry:
             elastic_job_registry=memory_jr,
         )
 
+    @pytest.fixture
+    def double_jr_no_zk(self, memory_jr) -> DoubleJobRegistry:
+        return DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: None),
+            elastic_job_registry=memory_jr,
+        )
+
     def test_repr(self, double_jr):
         assert repr(double_jr) == "<DoubleJobRegistry NoneType+InMemoryJobRegistry>"
 
@@ -231,13 +238,9 @@ class TestDoubleJobRegistry:
         expected = "[j-123] WARNING In context 'DoubleJobRegistry.create_job': caught RuntimeError('Nope!')\n"
         assert caplog.text == expected
 
-    def test_create_job_no_zk(self, zk_client, memory_jr):
-        double_jr = DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: None),
-            elastic_job_registry=memory_jr,
-        )
-        with double_jr:
-            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+    def test_create_job_no_zk(self, double_jr_no_zk, zk_client, memory_jr):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
 
         assert zk_client.dump() == {"/": b""}
         assert memory_jr.db["j-123"] == {
@@ -309,15 +312,9 @@ class TestDoubleJobRegistry:
 
     def test_set_status(self, double_jr, zk_client, memory_jr, time_machine):
         with double_jr:
-            double_jr.create_job(
-                job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
-            )
-            time_machine.move_to(
-                "2023-02-15T18:18:18Z",
-            )
-            double_jr.set_status(
-                job_id="j-123", user_id="john", status=JOB_STATUS.RUNNING
-            )
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            time_machine.move_to("2023-02-15T18:18:18Z")
+            double_jr.set_status(job_id="j-123", user_id="john", status=JOB_STATUS.RUNNING)
 
         expected = DictSubSet(
             {
@@ -327,10 +324,24 @@ class TestDoubleJobRegistry:
                 "updated": "2023-02-15T18:18:18Z",
             }
         )
-        assert (
-            zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123")
-            == expected
+        assert zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123") == expected
+        assert memory_jr.db["j-123"] == expected
+
+    def test_set_status_no_zk(self, double_jr_no_zk, zk_client, memory_jr, time_machine):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            time_machine.move_to("2023-02-15T18:18:18Z")
+            double_jr_no_zk.set_status(job_id="j-123", user_id="john", status=JOB_STATUS.RUNNING)
+
+        expected = DictSubSet(
+            {
+                "job_id": "j-123",
+                "created": "2023-02-15T17:17:17Z",
+                "status": "running",
+                "updated": "2023-02-15T18:18:18Z",
+            }
         )
+        assert zk_client.dump() == {"/": b""}
         assert memory_jr.db["j-123"] == expected
 
     def test_get_user_jobs(self, double_jr, caplog):
