@@ -359,7 +359,10 @@ class TestDoubleJobRegistry:
         assert len(jobs) == 2
         assert jobs[0].id == "j-123"
         assert jobs[1].id == "j-456"
-        assert caplog.messages == []
+        assert caplog.messages == [
+            "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=2 ejr_jobs=2",
+            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=[] ejr_jobs=[]",
+        ]
 
     def test_get_user_jobs_mismatch(self, double_jr, memory_jr, caplog):
         with double_jr:
@@ -376,6 +379,65 @@ class TestDoubleJobRegistry:
         assert jobs[0].id == "j-123"
         assert jobs[1].id == "j-456"
 
+        assert caplog.messages == ["DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=2 ejr_jobs=1"]
+
+    def test_get_user_jobs_no_zk(self, double_jr_no_zk, caplog):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr_no_zk.create_job(job_id="j-456", user_id="john", process=self.DUMMY_PROCESS)
+            jobs = double_jr_no_zk.get_user_jobs(user_id="john")
+            alice_jobs = double_jr_no_zk.get_user_jobs(user_id="alice")
+
+        assert alice_jobs == []
+        assert len(jobs) == 2
+        assert jobs[0].id == "j-123"
+        assert jobs[1].id == "j-456"
         assert caplog.messages == [
-            "DoubleJobRegistry.get_user_jobs(user_id='john') mismatch Zk:len(zk_job_ids)=2 EJR:len(ejr_job_ids)=1"
+            "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=2",
+            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=None ejr_jobs=[]",
         ]
+
+    @pytest.mark.parametrize(
+        ["with_zk", "with_ejr", "expected_process_extra", "expected_log"],
+        [
+            (True, True, {}, "zk_jobs=1 ejr_jobs=1"),
+            (False, True, {"title": "dummy"}, "zk_jobs=None ejr_jobs=1"),
+            (True, False, {}, "zk_jobs=1 ejr_jobs=None"),
+        ],
+    )
+    def test_get_user_jobs_consistency(
+        self, double_jr, zk_client, memory_jr, caplog, with_zk, with_ejr, expected_process_extra, expected_log
+    ):
+        """Consistent user job listings (using BatchJobMetadata) when ZK or EJR is broken?"""
+        with double_jr:
+            double_jr.create_job(
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+
+        other_double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else (lambda: None),
+            elastic_job_registry=memory_jr if with_ejr else None,
+        )
+        with other_double_jr:
+            jobs = other_double_jr.get_user_jobs(user_id="john")
+
+        assert jobs == [
+            BatchJobMetadata(
+                id="j-123",
+                status="created",
+                created=datetime.datetime(2023, 2, 15, 17, 17, 17),
+                updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
+                process=dict(
+                    process_graph={"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+                    **expected_process_extra,
+                ),
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+        ]
+
+        assert caplog.messages == [f"DoubleJobRegistry.get_user_jobs(user_id='john') {expected_log}"]

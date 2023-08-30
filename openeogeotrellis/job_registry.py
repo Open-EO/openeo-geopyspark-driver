@@ -434,6 +434,7 @@ def get_dependency_sources(job_info: dict) -> List[str]:
 
 def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     """Convert job info dict (from ZkJobRegistry) to BatchJobMetadata"""
+    # TODO: eliminate zk_job_info_to_metadata/ejr_job_info_to_metadata duplication?
     status = job_info.get("status")
     if status == "submitted":
         # TODO: is conversion of "submitted" still necessary?
@@ -464,6 +465,41 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
         cpu_time=map_safe(
             "cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)
         ),
+        geometry=job_info.get("geometry"),
+        bbox=job_info.get("bbox"),
+        start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
+        end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
+        instruments=job_info.get("instruments"),
+        epsg=job_info.get("epsg"),
+        links=job_info.get("links"),
+        usage=job_info.get("usage"),
+        costs=job_info.get("costs"),
+        proj_shape=job_info.get("proj:shape"),
+        proj_bbox=job_info.get("proj:bbox"),
+    )
+
+
+def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
+    """Convert job info dict (from JobRegistryInterface) to BatchJobMetadata"""
+    # TODO: eliminate zk_job_info_to_metadata/ejr_job_info_to_metadata duplication?
+
+    def map_safe(prop: str, f):
+        value = job_info.get(prop)
+        return f(value) if value else None
+
+    return BatchJobMetadata(
+        id=job_info["job_id"],
+        status=job_info["status"],
+        created=map_safe("created", rfc3339.parse_datetime),
+        process=job_info.get("process"),
+        job_options=job_info.get("job_options"),
+        title=job_info.get("title"),
+        description=job_info.get("description"),
+        updated=map_safe("updated", rfc3339.parse_datetime),
+        started=map_safe("started", rfc3339.parse_datetime),
+        finished=map_safe("finished", rfc3339.parse_datetime),
+        memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
+        cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
         geometry=job_info.get("geometry"),
         bbox=job_info.get("bbox"),
         start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
@@ -789,24 +825,25 @@ class DoubleJobRegistry:
     def get_user_jobs(
         self, user_id: str, fields: Optional[List[str]] = None
     ) -> List[BatchJobMetadata]:
-        jobs = [
-            zk_job_info_to_metadata(job_info)
-            for job_info in self.zk_job_registry.get_user_jobs(user_id)
-        ]
+        zk_jobs = None
+        ejr_jobs = None
+        if self.zk_job_registry:
+            zk_jobs = [zk_job_info_to_metadata(j) for j in self.zk_job_registry.get_user_jobs(user_id)]
         if self.elastic_job_registry:
             with self._just_log_errors("get_user_jobs"):
-                ejr_jobs = self.elastic_job_registry.list_user_jobs(
-                    user_id=user_id, fields=fields
-                )
-                # TODO: only look at recent jobs (e.g. max 1 week old)
-                zk_job_ids = set(j.id for j in jobs)
-                ejr_job_ids = set(j["job_id"] for j in ejr_jobs)
-                if zk_job_ids != ejr_job_ids:
-                    self._log.warning(
-                        f"DoubleJobRegistry.get_user_jobs({user_id=}) mismatch Zk:{len(zk_job_ids)=} EJR:{len(ejr_job_ids)=}"
-                    )
+                ejr_jobs = [
+                    ejr_job_info_to_metadata(j)
+                    for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
+                ]
 
-        return jobs
+        # TODO: more insightful comparison? (e.g. only consider recent jobs)
+        self._log.log(
+            level=logging.WARNING if (zk_jobs is None or ejr_jobs is None) else logging.INFO,
+            msg=f"DoubleJobRegistry.get_user_jobs({user_id=}) zk_jobs={zk_jobs and len(zk_jobs)} ejr_jobs={ejr_jobs and len(ejr_jobs)}",
+        )
+        # TODO #236: eror if both sources failed?
+
+        return zk_jobs or ejr_jobs or []
 
     def get_all_jobs_before(
         self,
