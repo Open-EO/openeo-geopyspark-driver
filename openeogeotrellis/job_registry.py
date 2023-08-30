@@ -771,9 +771,8 @@ class DoubleJobRegistry:
     def set_dependencies(
         self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
     ):
-        self.zk_job_registry.set_dependencies(
-            job_id=job_id, user_id=user_id, dependencies=dependencies
-        )
+        if self.zk_job_registry:
+            self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
         if self.elastic_job_registry:
             with self._just_log_errors("set_dependencies", job_id=job_id):
                 self.elastic_job_registry.set_dependencies(
@@ -781,7 +780,8 @@ class DoubleJobRegistry:
                 )
 
     def remove_dependencies(self, job_id: str, user_id: str):
-        self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+        if self.zk_job_registry:
+            self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             with self._just_log_errors("remove_dependencies", job_id=job_id):
                 self.elastic_job_registry.remove_dependencies(job_id=job_id)
