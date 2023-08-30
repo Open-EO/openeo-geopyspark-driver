@@ -762,7 +762,8 @@ class DoubleJobRegistry:
                 self.elastic_job_registry.set_status(job_id=job_id, status=status)
 
     def delete(self, job_id: str, user_id: str) -> None:
-        self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
+        if self.zk_job_registry:
+            self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             # TODO support for deletion in EJR (https://github.com/Open-EO/openeo-python-driver/issues/163)
             self._log.warning(f"EJR TODO: support job deletion ({job_id=})")
