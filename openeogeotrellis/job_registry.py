@@ -834,7 +834,8 @@ class DoubleJobRegistry:
                 )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
-        self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
+        if self.zk_job_registry:
+            self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
     def get_user_jobs(
         self, user_id: str, fields: Optional[List[str]] = None
