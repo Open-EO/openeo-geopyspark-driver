@@ -789,9 +789,10 @@ class DoubleJobRegistry:
     def set_dependency_status(
         self, job_id: str, user_id: str, dependency_status: str
     ) -> None:
-        self.zk_job_registry.set_dependency_status(
-            job_id=job_id, user_id=user_id, dependency_status=dependency_status
-        )
+        if self.zk_job_registry:
+            self.zk_job_registry.set_dependency_status(
+                job_id=job_id, user_id=user_id, dependency_status=dependency_status
+            )
         if self.elastic_job_registry:
             with self._just_log_errors("set_dependency_status", job_id=job_id):
                 self.elastic_job_registry.set_dependency_status(
@@ -801,9 +802,8 @@ class DoubleJobRegistry:
     def set_dependency_usage(
         self, job_id: str, user_id: str, dependency_usage: Decimal
     ):
-        self.zk_job_registry.set_dependency_usage(
-            job_id=job_id, user_id=user_id, processing_units=dependency_usage
-        )
+        if self.zk_job_registry:
+            self.zk_job_registry.set_dependency_usage(job_id=job_id, user_id=user_id, processing_units=dependency_usage)
         if self.elastic_job_registry:
             with self._just_log_errors("set_dependency_usage", job_id=job_id):
                 self.elastic_job_registry.set_dependency_usage(
@@ -812,9 +812,8 @@ class DoubleJobRegistry:
 
     def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
         # TODO: add dedicated method
-        self.zk_job_registry.patch(
-            job_id=job_id, user_id=user_id, proxy_user=proxy_user
-        )
+        if self.zk_job_registry:
+            self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
         if self.elastic_job_registry:
             with self._just_log_errors("set_proxy_user", job_id=job_id):
                 self.elastic_job_registry.set_proxy_user(
@@ -824,9 +823,8 @@ class DoubleJobRegistry:
     def set_application_id(
         self, job_id: str, user_id: str, application_id: str
     ) -> None:
-        self.zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=application_id
-        )
+        if self.zk_job_registry:
+            self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
             with self._just_log_errors("set_application_id", job_id=job_id):
                 self.elastic_job_registry.set_application_id(
@@ -869,6 +867,7 @@ class DoubleJobRegistry:
         include_done: bool = True,
         user_limit: Optional[int] = 1000,
     ) -> List[dict]:
+        # TODO #236/#498 Need to have EJR implementation for this? This is only necessary for ZK cleaner script anyway.
         jobs = self.zk_job_registry.get_all_jobs_before(
             upper=upper,
             user_ids=user_ids,
@@ -876,8 +875,6 @@ class DoubleJobRegistry:
             include_done=include_done,
             user_limit=user_limit,
         )
-        # TODO #236 add elastic_job_registry implementation
-        self._log.warning(f"EJR TODO: get_all_jobs_before implementation")
         return jobs
 
 
