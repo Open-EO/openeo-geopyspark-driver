@@ -632,7 +632,7 @@ class DoubleJobRegistry:
 
     def __init__(
         self,
-        zk_job_registry_factory: Callable[[], ZkJobRegistry] = ZkJobRegistry,
+        zk_job_registry_factory: Optional[Callable[[], ZkJobRegistry]] = ZkJobRegistry,
         elastic_job_registry: Optional[JobRegistryInterface] = None,
     ):
         # Note: we use a factory here because current implementation (and test coverage) heavily depends on
@@ -650,7 +650,7 @@ class DoubleJobRegistry:
 
     def __enter__(self):
         self._lock.acquire()
-        self.zk_job_registry = self._zk_job_registry_factory()
+        self.zk_job_registry = self._zk_job_registry_factory() if self._zk_job_registry_factory else None
         self._log.debug(f"Context enter {self!r}")
         if self.zk_job_registry:
             try:

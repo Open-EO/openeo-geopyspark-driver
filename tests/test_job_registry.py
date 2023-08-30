@@ -169,7 +169,7 @@ class TestDoubleJobRegistry:
     @pytest.fixture
     def double_jr_no_zk(self, memory_jr) -> DoubleJobRegistry:
         return DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: None),
+            zk_job_registry_factory=None,
             elastic_job_registry=memory_jr,
         )
 
@@ -334,7 +334,7 @@ class TestDoubleJobRegistry:
             )
 
         other_double_jr = DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else (lambda: None),
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
             elastic_job_registry=memory_jr if with_ejr else None,
         )
         with other_double_jr:
@@ -487,7 +487,7 @@ class TestDoubleJobRegistry:
             )
 
         other_double_jr = DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else (lambda: None),
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
             elastic_job_registry=memory_jr if with_ejr else None,
         )
         with other_double_jr:
