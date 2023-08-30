@@ -40,6 +40,7 @@ from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
@@ -1479,7 +1480,7 @@ class GeopysparkDataCube(DriverDataCube):
         return get_jvm().org.openeo.geotrellis.ComputeStatsGeotrellisAdapter(self._zookeepers(), accumulo_instance_name)
 
     def _zookeepers(self):
-        return ','.join(ConfigParams().zookeepernodes)
+        return ",".join(get_backend_config().zookeeper_nodes)
 
     # FIXME: define this somewhere else?
     def _as_python(self, java_object):

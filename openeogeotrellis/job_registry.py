@@ -24,6 +24,7 @@ from openeo_driver.jobregistry import (
 )
 from openeo_driver.util.logging import just_log_exceptions
 from openeogeotrellis import sentinel_hub
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import StatsReporter
@@ -38,12 +39,10 @@ class ZkJobRegistry:
         root_path: Optional[str] = None,
         zk_client: Union[str, KazooClient, KazooClientMock, None] = None,
     ):
-        self._root = (
-            root_path or ConfigParams().batch_jobs_zookeeper_root_path
-        ).rstrip("/")
+        self._root = (root_path or get_backend_config().batch_jobs_zookeeper_root_path).rstrip("/")
         _log.debug(f"Using batch job zk root path {self._root}")
         if zk_client is None:
-            zk_client = KazooClient(hosts=",".join(ConfigParams().zookeepernodes))
+            zk_client = KazooClient(hosts=",".join(get_backend_config().zookeeper_nodes))
         elif isinstance(zk_client, str):
             zk_client = KazooClient(hosts=zk_client)
         self._zk = zk_client

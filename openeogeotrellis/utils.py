@@ -39,6 +39,7 @@ from openeo_driver.util.logging import (
     FlaskUserIdLogging,
     LOGGING_CONTEXT_BATCH_JOB,
 )
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,9 @@ def to_projected_polygons(
 
 
 @contextlib.contextmanager
-def zk_client(hosts: str = ','.join(ConfigParams().zookeepernodes)):
+def zk_client(hosts: Optional[str] = None):
+    if hosts is None:
+        hosts = ",".join(get_backend_config().zookeeper_nodes)
     zk = KazooClient(hosts)
     zk.start()
 

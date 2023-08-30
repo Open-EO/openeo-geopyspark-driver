@@ -2,9 +2,9 @@ import os
 from typing import List, Optional
 
 import attrs
-from openeo_driver.config import OpenEoBackendConfig
-from openeo_driver.users.oidc import OidcProvider
 
+from openeo_driver.config import OpenEoBackendConfig, from_env_list, from_env
+from openeo_driver.users.oidc import OidcProvider
 from openeogeotrellis import get_backend_version
 from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
 
@@ -52,7 +52,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_opensearch_endpoint: str = "https://services.terrascope.be/catalogue"
 
     # TODO: eliminate hardcoded VITO-specific defaults?
-    logging_es_hosts: List[str] = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
+    logging_es_hosts: List[str] = attrs.Factory(
+        from_env_list("LOGGING_ES_HOSTS", default="https://es-infra.vgt.vito.be")
+    )
     logging_es_index_pattern: str = os.environ.get("LOGGING_ES_INDEX_PATTERN", "openeo-*-index-1m*")
 
     vault_addr: Optional[str] = os.environ.get("VAULT_ADDR")
@@ -64,3 +66,15 @@ class GpsBackendConfig(OpenEoBackendConfig):
     etl_source_id: str = "TerraScope/MEP"
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
+
+    # TODO: can this be an optional list?
+    zookeeper_nodes: List[str] = attrs.Factory(
+        from_env_list(
+            "ZOOKEEPERNODES",
+            # TODO: eliminate hardcoded VITO references
+            default="epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
+        )
+    )
+    batch_jobs_zookeeper_root_path: str = attrs.Factory(
+        from_env("BATCH_JOBS_ZOOKEEPER_ROOT_PATH", default="/openeo/jobs")
+    )

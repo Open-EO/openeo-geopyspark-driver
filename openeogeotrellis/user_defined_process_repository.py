@@ -8,6 +8,7 @@ from kazoo.exceptions import NodeExistsError, NoNodeError
 
 from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
 from openeo_driver.errors import ProcessGraphNotFoundException
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 
@@ -109,7 +110,7 @@ class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
 
 
 def main():
-    repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
+    repo = ZooKeeperUserDefinedProcessRepository(hosts=get_backend_config().zookeeper_nodes)
 
     user_id = 'vdboschj'
     process_graph_id = 'evi'

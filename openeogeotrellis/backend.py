@@ -345,7 +345,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         user_defined_processes = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
             InMemoryUserDefinedProcessRepository() if not use_zookeeper or ConfigParams().is_ci_context
-            else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
+            else ZooKeeperUserDefinedProcessRepository(hosts=get_backend_config().zookeeper_nodes)
         )
 
         requests_session = requests_with_retry(total=3, backoff_factor=2)

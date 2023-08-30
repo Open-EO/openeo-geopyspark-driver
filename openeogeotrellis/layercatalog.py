@@ -278,8 +278,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     if flatten_eqs else all_properties)
 
         def accumulo_pyramid():
-            pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance",
-                                                                              ','.join(ConfigParams().zookeepernodes))
+            pyramidFactory = jvm.org.openeo.geotrellisaccumulo.PyramidFactory(
+                "hdp-accumulo-instance", ",".join(get_backend_config().zookeeper_nodes)
+            )
             if layer_source_info.get("split", False):
                 pyramidFactory.setSplitRanges(True)
 
@@ -506,7 +507,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         sentinel_hub_client_id, sentinel_hub_client_secret = (
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
-                    zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
+                    zookeeper_connection_string = ",".join(get_backend_config().zookeeper_nodes)
                     zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
 
                     pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withoutGuardedRateLimiting(

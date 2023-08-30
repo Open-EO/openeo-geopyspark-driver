@@ -12,14 +12,15 @@ class ConfigParams:
 
     def __init__(self, env=os.environ):
         self.openeo_env = env.get("OPENEO_ENV", "unknown")
-        self.zookeepernodes = env.get(
-            "ZOOKEEPERNODES",
-            'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181'
-        ).split(',')
-
-        self.batch_jobs_zookeeper_root_path = env.get(
-            "BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs"
-        )
+        # self.zookeepernodes = env.get(
+        #     "ZOOKEEPERNODES",
+        #     #     TODO: eliminate hardcoded VITO references
+        #     'epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181',
+        # ).split(',')
+        #
+        # self.batch_jobs_zookeeper_root_path = env.get(
+        #     "BATCH_JOBS_ZOOKEEPER_ROOT_PATH", "/openeo/jobs"
+        # )
         self.async_task_handler_environment = env.get("ASYNC_TASK_HANDLER_ENV")
         self.cache_shub_batch_results = ConfigParams._as_boolean(env.get("CACHE_SHUB_BATCH_RESULTS"))
 

@@ -9,6 +9,7 @@ from kazoo.client import KazooClient, NoNodeError
 
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.errors import ServiceNotFoundException
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 _log = logging.getLogger(__name__)
@@ -116,8 +117,8 @@ class InMemoryServiceRegistry(AbstractServiceRegistry):
 
 class ZooKeeperServiceRegistry(AbstractServiceRegistry):  # currently a combination of registry (runtime) and persistent store
     def __init__(self):
-        self._root = '/openeo/services'
-        self._hosts = ','.join(ConfigParams().zookeepernodes)
+        self._root = "/openeo/services"
+        self._hosts = ",".join(get_backend_config().zookeeper_nodes)
         with self._zk_client() as zk:
             zk.ensure_path(self._root)
         # Additional in memory storage of server instances that were registered in current process.

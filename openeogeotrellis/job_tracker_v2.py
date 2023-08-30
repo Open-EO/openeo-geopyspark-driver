@@ -634,7 +634,7 @@ class CliApp:
         )
         parser.add_argument(
             "--zk-job-registry-root-path",
-            default=ConfigParams().batch_jobs_zookeeper_root_path,
+            default=get_backend_config().batch_jobs_zookeeper_root_path,
             help="ZooKeeper root path for the job registry",
         )
         # TODO: also allow setting zk_root_path through "env" setting (prod, dev, integration tests, ...)?
