@@ -1846,6 +1846,7 @@ class GpsBatchJobs(backend.BatchJobs):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
+        log = logging.LoggerAdapter(logger, extra={'job_id': job_id, 'user_id': user_id})
 
         with self._double_job_registry as dbl_registry:
             job_info = dbl_registry.get_job(job_id, user_id)
@@ -1867,7 +1868,7 @@ class GpsBatchJobs(backend.BatchJobs):
             job_options = spec.get('job_options', {})
             sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-            logger.debug("job_options: {o!r}".format(o=job_options), extra={'job_id': job_id, 'user_id': user_id})
+            log.debug("job_options: {o!r}".format(o=job_options))
 
             async_tasks_supported = not ConfigParams().is_kube_deploy
 
@@ -1889,6 +1890,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     job_options=job_options,
                     sentinel_hub_client_alias=sentinel_hub_client_alias,
                     get_vault_token=get_vault_token,
+                    logger_adapter=log,
                 )
             ):
                 async_task.schedule_await_job_dependencies(
@@ -2011,14 +2013,14 @@ class GpsBatchJobs(backend.BatchJobs):
                             label_selector = label_selector
                         )
                     except ApiException as e:
-                        logger.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e, extra={'job_id': job_id})
+                        log.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e)
                         result = {'items': []}
 
                     running_count = 0
                     for app in result['items']:
                         if app['status']['applicationState']['state'] == 'RUNNING':
                             running_count += 1
-                    logger.debug(
+                    log.debug(
                         f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
                         f"pods running for user {user_id}."
                     )
@@ -2110,7 +2112,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
-                    logger.info(f"mapped job_id {job_id} to application ID {spark_app_id}", extra={'job_id': job_id})
+                    log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
                     retry=0
@@ -2121,14 +2123,14 @@ class GpsBatchJobs(backend.BatchJobs):
                             status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
                                                                                         spark_app_id)
                         except ApiException as e:
-                            logger.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
+                            log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
                     if('status' not in status_response):
-                        logger.warning(f"invalid status response: {status_response}, assuming it is queued.", extra={'job_id': job_id})
+                        log.warning(f"invalid status response: {status_response}, assuming it is queued.")
                         dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 except ApiException as e:
-                    logger.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e, extra={'job_id': job_id})
+                    log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
                     if "AlreadyExists" in e.body:
                         raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
@@ -2237,18 +2239,16 @@ class GpsBatchJobs(backend.BatchJobs):
                         output_string = f"Application report for application_{application_id} (state: running)"
                     else:
                         try:
-                            logger.info(f"Submitting job with command {args!r}", extra={'job_id': job_id})
+                            log.info(f"Submitting job with command {args!r}")
                             output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                            logger.info(f"Submitted job, output was: {output_string}", extra={'job_id': job_id})
+                            log.info(f"Submitted job, output was: {output_string}")
                         except CalledProcessError as e:
-                            logger.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True,
-                                         extra={'job_id': job_id})
+                            log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
                             raise e
 
                 try:
                     application_id = self._extract_application_id(output_string)
-                    logger.info("mapped job_id %s to application ID %s" % (job_id, application_id),
-                                extra={'job_id': job_id})
+                    log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                     dbl_registry.set_application_id(job_id, user_id, application_id)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
@@ -2285,6 +2285,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_options: dict,
         sentinel_hub_client_alias: str,
         get_vault_token: Callable[[str], str],
+        logger_adapter: logging.LoggerAdapter,
     ) -> bool:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
@@ -2311,8 +2312,7 @@ class GpsBatchJobs(backend.BatchJobs):
         convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[],"node_caching":False}))
 
         source_constraints = dry_run_tracer.get_source_constraints()
-        logger.info("Dry run extracted these source constraints: {s}".format(s=source_constraints),
-                    extra={'job_id': job_id})
+        logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
 
         job_dependencies = []
         batch_request_cache = {}
@@ -2378,7 +2378,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
                             return area_in_square_meters(geometries, crs)
                         else:
-                            logger.error(f"GpsBatchJobs._scheduled_sentinelhub_batch_processes:area Unhandled geometry type {type(geometries)}")
+                            logger_adapter.error(f"GpsBatchJobs._scheduled_sentinelhub_batch_processes:area Unhandled geometry type {type(geometries)}")
                             raise ValueError(geometries)
 
                     actual_area = area()
@@ -2394,10 +2394,10 @@ class GpsBatchJobs(backend.BatchJobs):
                         batch_process_threshold_area = 50 * 1000 * 50 * 1000  # 50x50 km²
                         large_enough = actual_area >= batch_process_threshold_area
 
-                        logger.info("deemed collection {c} AOI ({a} m²) {s} for batch processing (threshold {t} m²)"
+                        logger_adapter.info("deemed collection {c} AOI ({a} m²) {s} for batch processing (threshold {t} m²)"
                                     .format(c=collection_id, a=actual_area,
                                             s="large enough" if large_enough else "too small",
-                                            t=batch_process_threshold_area), extra={'job_id': job_id})
+                                            t=batch_process_threshold_area))
 
                         return large_enough
 
@@ -2408,19 +2408,16 @@ class GpsBatchJobs(backend.BatchJobs):
                     shub_input_approach = deep_get(job_options, 'sentinel-hub', 'input', default=None)
 
                     if not supports_batch_processes:  # always sync approach
-                        logger.info("endpoint {e} does not support batch processing".format(e=endpoint),
-                                    extra={'job_id': job_id})
+                        logger_adapter.info("endpoint {e} does not support batch processing".format(e=endpoint))
                         continue
                     elif card4l:  # always batch approach
-                        logger.info("deemed collection {c} request CARD4L compliant ({s})"
-                                    .format(c=collection_id, s=sar_backscatter_arguments), extra={'job_id': job_id})
+                        logger_adapter.info("deemed collection {c} request CARD4L compliant ({s})"
+                                    .format(c=collection_id, s=sar_backscatter_arguments))
                     elif shub_input_approach == 'sync':
-                        logger.info("forcing sync input processing for collection {c}".format(c=collection_id),
-                                    extra={'job_id': job_id})
+                        logger_adapter.info("forcing sync input processing for collection {c}".format(c=collection_id))
                         continue
                     elif shub_input_approach == 'batch':
-                        logger.info("forcing batch input processing for collection {c}".format(c=collection_id),
-                                    extra={'job_id': job_id})
+                        logger_adapter.info("forcing batch input processing for collection {c}".format(c=collection_id))
                     elif not large_area():  # 'auto'
                         continue  # skip SHub batch process and use sync approach instead
 
@@ -2437,7 +2434,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
 
-                    logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}", extra={'job_id': job_id})
+                    logger_adapter.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
                     if sentinel_hub_client_alias == 'default':
                         sentinel_hub_client_id = self._default_sentinel_hub_client_id
@@ -2556,12 +2553,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                             batch_request_cache[batch_request_cache_key] = (batch_request_ids, subfolder)
 
-                            logger.info("saved newly scheduled CARD4L batch processes {b} for near future use"
-                                        " (key {k!r})".format(b=batch_request_ids, k=batch_request_cache_key),
-                                        extra={'job_id': job_id})
+                            logger_adapter.info("saved newly scheduled CARD4L batch processes {b} for near future use"
+                                        " (key {k!r})".format(b=batch_request_ids, k=batch_request_cache_key))
                         else:
-                            logger.debug("recycling saved CARD4L batch processes {b} (key {k!r})".format(
-                                b=batch_request_ids, k=batch_request_cache_key), extra={'job_id': job_id})
+                            logger_adapter.debug("recycling saved CARD4L batch processes {b} (key {k!r})".format(
+                                b=batch_request_ids, k=batch_request_cache_key))
                     else:
                         shub_caching_flag = deep_get(job_options, 'sentinel-hub', 'cache-results', default=None)
                         try_cache = (ConfigParams().cache_shub_batch_results if shub_caching_flag is None  # auto
@@ -2615,12 +2611,11 @@ class GpsBatchJobs(backend.BatchJobs):
                                 batch_request_cache[batch_request_cache_key] = (batch_request_id, subfolder,
                                                                                 collecting_folder)
 
-                                logger.info("saved newly scheduled cached batch process {b} for near future use"
-                                            " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key),
-                                            extra={'job_id': job_id})
+                                logger_adapter.info("saved newly scheduled cached batch process {b} for near future use"
+                                            " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key))
                             else:
-                                logger.debug("recycling saved cached batch process {b} (key {k!r})".format(
-                                    b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
+                                logger_adapter.debug("recycling saved cached batch process {b} (key {k!r})".format(
+                                    b=batch_request_id, k=batch_request_cache_key))
 
                             batch_request_ids = [batch_request_id]
                         else:
@@ -2643,12 +2638,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
                                     batch_request_cache[batch_request_cache_key] = batch_request_id
 
-                                    logger.info("saved newly scheduled batch process {b} for near future use"
-                                                " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key),
-                                                extra={'job_id': job_id})
+                                    logger_adapter.info("saved newly scheduled batch process {b} for near future use"
+                                                " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key))
                                 else:
-                                    logger.debug("recycling saved batch process {b} (key {k!r})".format(
-                                        b=batch_request_id, k=batch_request_cache_key), extra={'job_id': job_id})
+                                    logger_adapter.debug("recycling saved batch process {b} (key {k!r})".format(
+                                        b=batch_request_id, k=batch_request_cache_key))
 
                                 subfolder = batch_request_id
                                 batch_request_ids = [batch_request_id]
@@ -2673,14 +2667,13 @@ class GpsBatchJobs(backend.BatchJobs):
             elif process == 'load_stac':
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
-                logger.debug(f'load_stac({url}): attempting to extract "openeo:status"...', extra={'job_id': job_id})
-
-                with self._requests_session.get(url, timeout=600) as stac_resp:  #  TODO: log warning if takes too long
-                    stac_json = stac_resp.json()
+                with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
+                    with self._requests_session.get(url, timeout=600) as stac_resp:
+                        stac_json = stac_resp.json()
 
                 openeo_status = stac_json.get('openeo:status')
 
-                logger.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"', extra={'job_id': job_id})
+                logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
 
                 if openeo_status == 'running':
                     job_dependencies.append({
@@ -2692,7 +2685,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     pass
 
         if job_dependencies:
-            logger.debug(f"job_dependencies: {job_dependencies}", extra={'job_id': job_id})
+            logger_adapter.debug(f"job_dependencies: {job_dependencies}")
 
             dbl_registry.set_dependencies(
                 job_id=job_id, user_id=user_id, dependencies=job_dependencies
