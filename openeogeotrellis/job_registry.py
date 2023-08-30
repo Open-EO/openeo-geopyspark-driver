@@ -11,6 +11,7 @@ import kazoo
 import kazoo.exceptions
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
+from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.protocol.states import ZnodeStat
 
 from openeo.util import rfc3339, dict_no_none, TimingLogger
@@ -652,7 +653,11 @@ class DoubleJobRegistry:
         self.zk_job_registry = self._zk_job_registry_factory()
         self._log.debug(f"Context enter {self!r}")
         if self.zk_job_registry:
-            self.zk_job_registry.__enter__()
+            try:
+                self.zk_job_registry.__enter__()
+            except KazooTimeoutError as e:
+                _log.warning(f"Failed to enter {type(self.zk_job_registry).__name__}: {e!r}")
+                self.zk_job_registry = None
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

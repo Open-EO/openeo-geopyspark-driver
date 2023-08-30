@@ -3,6 +3,8 @@ import datetime
 import pytest
 from unittest import mock
 
+from kazoo.handlers.threading import KazooTimeoutError
+
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
@@ -439,5 +441,18 @@ class TestDoubleJobRegistry:
                 title="John's job",
             )
         ]
-
         assert caplog.messages == [f"DoubleJobRegistry.get_user_jobs(user_id='john') {expected_log}"]
+
+    def test_get_user_jobs_zk_timeout(self, zk_client, double_jr, caplog):
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+
+        with mock.patch.object(zk_client, "start", side_effect=KazooTimeoutError("Connection time-out")), double_jr:
+            jobs = double_jr.get_user_jobs(user_id="john")
+
+        assert len(jobs) == 1
+        assert jobs[0].id == "j-123"
+        assert caplog.messages == [
+            "Failed to enter ZkJobRegistry: KazooTimeoutError('Connection time-out')",
+            "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=1",
+        ]
