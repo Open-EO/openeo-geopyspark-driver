@@ -302,7 +302,9 @@ class TestDoubleJobRegistry:
             job = double_jr.get_job("j-123", user_id="john")
         assert job == DictSubSet({"job_id": "j-123", "status": "created"})
         assert caplog.messages == [
-            "DoubleJobRegistry.get_job mismatch (job_id='j-123' f='status') Zk:'created' EJR:'c0rRupt'",
+            "DoubleJobRegistry mismatch"
+            " zk_job_info={'job_id': 'j-123', 'status': 'created', 'created': '2023-02-15T17:17:17Z'}"
+            " ejr_job_info={'job_id': 'j-123', 'status': 'c0rRupt', 'created': '2023-02-15T17:17:17Z'}"
         ]
 
     def test_set_status(self, double_jr, zk_client, memory_jr, time_machine):
