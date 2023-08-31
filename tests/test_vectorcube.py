@@ -91,3 +91,15 @@ def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
     assert len(results_numpy) == 1
     tile = results_numpy[0][1][0]
     npt.assert_array_equal(np.unique(tile), np.array([1234.0, 5678.0, float('nan')]))
+
+
+def test_vector_to_raster_no_numeric_bands(imagecollection_with_two_bands_and_one_date):
+    with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
+        geojson = json.load(f)
+    target_raster_cube = imagecollection_with_two_bands_and_one_date
+    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = ['id'])
+    with pytest.raises(OpenEOApiException):
+        GeoPySparkBackendImplementation().vector_to_raster(
+            input_vector_cube = input_vector_cube,
+            target_raster_cube = target_raster_cube
+        )
