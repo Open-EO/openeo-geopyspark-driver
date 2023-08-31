@@ -417,18 +417,21 @@ class ZkJobRegistry:
                             )
 
 
-def get_dependency_sources(job_info: dict) -> List[str]:
-    """Returns dependency source locations as URIs."""
+def get_deletable_dependency_sources(job_info: dict) -> List[str]:
+    """Returns source locations (as URIs) of dependencies that we created ourselves and are therefore able to delete."""
 
     def sources(dependency: dict) -> Iterator[str]:
+        if "partial_job_results_url" in dependency:
+            return
+
         if "results_location" in dependency:
-            yield dependency.get("results_location")
+            yield dependency["results_location"]
         else:
             subfolder = dependency.get("subfolder") or dependency["batch_request_id"]
             yield f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}/{subfolder}"
 
         if "assembled_location" in dependency:
-            yield dependency.get("assembled_location")
+            yield dependency["assembled_location"]
 
     return [source for dependency in (job_info.get("dependencies") or []) for source in sources(dependency)]
 

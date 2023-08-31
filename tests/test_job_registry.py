@@ -9,7 +9,7 @@ from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
-from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry, DoubleJobRegistry, get_dependency_sources
+from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry, DoubleJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.testing import KazooClientMock
 
 
@@ -64,6 +64,9 @@ def test_basic(zk_client):
                     {
                         "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
                         "assembled_location": "s3://foo/bar",
+                    },
+                    {
+                        "partial_job_results_url": "https://oeo.org/jobs/j-abc123/results"
                     }
                 ]
             },
@@ -75,7 +78,7 @@ def test_basic(zk_client):
     ],
 )
 def test_get_dependency_sources(job_info, expected):
-    assert get_dependency_sources(job_info) == expected
+    assert get_deletable_dependency_sources(job_info) == expected
 
 
 @pytest.mark.parametrize(

@@ -43,7 +43,7 @@ from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_tok
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCostsCalculator, YarnJobCostsCalculator,
                                                    K8sJobCostsCalculator, CostsDetails)
-from openeogeotrellis.job_registry import ZkJobRegistry, get_dependency_sources
+from openeogeotrellis.job_registry import ZkJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 from openeogeotrellis.vault import Vault
 
@@ -457,7 +457,7 @@ class JobTracker:
             zk_job_registry.remove_dependencies(job_id, user_id)
 
             # there can be duplicates if batch processes are recycled
-            dependency_sources = list(set(get_dependency_sources(job_info)))
+            dependency_sources = list(set(get_deletable_dependency_sources(job_info)))
 
             if dependency_sources:
                 async_task.schedule_delete_batch_process_dependency_sources(
