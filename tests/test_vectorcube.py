@@ -1,6 +1,7 @@
+import geopyspark.geotrellis
 import json
-from geopyspark import TiledRasterLayer, LayerType
-from openeo.metadata import SpatialDimension, CollectionMetadata
+from geopyspark import TiledRasterLayer, LayerType, Bounds
+from openeo_driver.errors import OpenEOApiException
 
 from unittest.mock import MagicMock
 import pytest
@@ -56,22 +57,32 @@ def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
     with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
         geojson = json.load(f)
     target_raster_cube = imagecollection_with_two_bands_and_one_date
-    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = ['id', 'pop'])
+
+    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
+    input_vector_cube = input_vector_cube.filter_bands(bands=["pop"])
     input_cube = input_vector_cube.get_cube()
-    assert(input_cube.shape == (2,2))
+    assert(input_cube.shape == (2,1))
     assert(input_cube.dims == ('geometry', 'properties'))
-    assert(input_cube.properties.values.tolist() == ['id', 'pop'])
+    assert(input_cube.properties.values.tolist() == ['pop'])
     output_cube: GeopysparkDataCube = GeoPySparkBackendImplementation().vector_to_raster(
         input_vector_cube = input_vector_cube,
         target_raster_cube = target_raster_cube
     )
-    metadata = output_cube.metadata
-    assert metadata.band_dimension.name == "bands"
-    assert len(metadata.band_dimension.bands) == 1
-    assert metadata.band_dimension.bands[0].name == 'pop'
-    assert metadata.spatial_extent == {'west': 1.0, 'east': 5.0, 'north': 4.0, 'south': 1.0}
-    assert metadata.temporal_extent is None
+
+    metadata: geopyspark.geotrellis.Metadata = output_cube.pyramid.levels[0].layer_metadata
+    target_metadata: geopyspark.geotrellis.Metadata = target_raster_cube.pyramid.levels[0].layer_metadata
+    target_bounds: Bounds = target_metadata.bounds
+    min_spatial_key = geopyspark.SpatialKey(col = target_bounds.minKey.col, row = target_bounds.minKey.row)
+    max_spatial_key = geopyspark.SpatialKey(col = target_bounds.maxKey.col, row = target_bounds.maxKey.row)
+    expected_bounds = geopyspark.geotrellis.Bounds(minKey = min_spatial_key, maxKey = max_spatial_key)
+
     assert output_cube is not None
+    assert metadata.crs == target_metadata.crs
+    assert metadata.cell_type == "float64"
+    assert metadata.extent == target_metadata.extent
+    assert metadata.layout_definition == target_metadata.layout_definition
+    assert metadata.bounds == expected_bounds
+    assert metadata.tile_layout == target_metadata.tile_layout
 
     # output_cube.save_result(filename='test_vector_to_raster.tif', format='GTiff')
     result_layer: TiledRasterLayer = output_cube.pyramid.levels[0]
