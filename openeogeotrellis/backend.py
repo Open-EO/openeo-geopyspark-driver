@@ -1223,10 +1223,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         selected_bands = []
         contains_int = False
         for band in cube[band_dim].values:
-            coord_data = cube.sel({band_dim: band}).values[0]
-            if isinstance(coord_data, (int, float)):
-                contains_int = contains_int or isinstance(coord_data, int)
+            coord_data: list = cube.sel({band_dim: band}).values.tolist()
+            if len(coord_data) == 0:
+                continue
+            if isinstance(coord_data[0], (int, float)):
+                contains_int = contains_int or isinstance(coord_data[0], int)
                 selected_bands.append(band)
+        if len(selected_bands) == 0:
+            raise OpenEOApiException(
+                message=f"vector_to_raster: Input vector cube {input_vector_cube} does not contain any numeric bands.",
+                status_code=400)
+        if len(selected_bands) != 1:
+            raise OpenEOApiException(
+                message = f"vector_to_raster: Input vector cube {input_vector_cube} contains multiple numeric bands. Currently only one band is supported. Please use filter_bands first.",
+                status_code = 400)
         float_cube = cube.sel({band_dim: selected_bands})
         if contains_int:
             float_cube = float_cube.astype(float)
@@ -1235,7 +1245,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
         file_name = "input_vector_cube.geojson"
-        # tmp_dir = tempfile.TemporaryDirectory()
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_path = Path(tmp_dir) / file_name
             with open(str(file_path), 'w') as f:
