@@ -1891,10 +1891,10 @@ class GpsBatchJobs(backend.BatchJobs):
                     DEPENDENCY_STATUS.AWAITING_RETRY,
                     DEPENDENCY_STATUS.AVAILABLE,
                 ]
-                and self._has_dependencies(
+            ):
+                job_dependencies = self._schedule_and_get_dependencies(
                     process_graph=spec["process_graph"],
                     api_version=api_version,
-                    dbl_registry=dbl_registry,
                     user_id=user_id,
                     job_id=job_id,
                     job_options=job_options,
@@ -1902,21 +1902,28 @@ class GpsBatchJobs(backend.BatchJobs):
                     get_vault_token=get_vault_token,
                     logger_adapter=log,
                 )
-            ):
-                async_task.schedule_await_job_dependencies(
-                    batch_job_id=job_id,
-                    user_id=user_id,
-                    sentinel_hub_client_alias=sentinel_hub_client_alias,
-                    vault_token=None
-                    if sentinel_hub_client_alias == "default"
-                    else get_vault_token(sentinel_hub_client_alias),
-                )
-                dbl_registry.set_dependency_status(
-                    job_id, user_id, DEPENDENCY_STATUS.AWAITING
-                )
-                dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
-                return
+                log.debug(f"job_dependencies: {job_dependencies}")
+
+                if job_dependencies:
+                    dbl_registry.set_dependencies(
+                        job_id=job_id, user_id=user_id, dependencies=job_dependencies
+                    )
+
+                    async_task.schedule_await_job_dependencies(
+                        batch_job_id=job_id,
+                        user_id=user_id,
+                        sentinel_hub_client_alias=sentinel_hub_client_alias,
+                        vault_token=None
+                        if sentinel_hub_client_alias == "default"
+                        else get_vault_token(sentinel_hub_client_alias),
+                    )
+                    dbl_registry.set_dependency_status(
+                        job_id, user_id, DEPENDENCY_STATUS.AWAITING
+                    )
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+
+                    return
 
             def as_boolean_arg(job_option_key: str, default_value: str) -> str:
                 value = job_options.get(job_option_key)
@@ -2285,18 +2292,17 @@ class GpsBatchJobs(backend.BatchJobs):
             raise _BatchJobError(stream)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
-    def _has_dependencies(
+    def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
         process_graph: dict,
         api_version: Union[str, None],
-        dbl_registry: DoubleJobRegistry,
         user_id: str,
         job_id: str,
         job_options: dict,
         sentinel_hub_client_alias: str,
         get_vault_token: Callable[[str], str],
         logger_adapter: logging.LoggerAdapter,
-    ) -> bool:
+    ) -> List[dict]:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
@@ -2694,15 +2700,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     #  another option is to abort this job if status is "error" or "canceled".
                     pass
 
-        if job_dependencies:
-            logger_adapter.debug(f"job_dependencies: {job_dependencies}")
-
-            dbl_registry.set_dependencies(
-                job_id=job_id, user_id=user_id, dependencies=job_dependencies
-            )
-            return True
-
-        return False
+        return job_dependencies
 
     def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
