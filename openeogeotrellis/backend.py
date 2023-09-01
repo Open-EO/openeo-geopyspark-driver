@@ -1873,39 +1873,40 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_application_id(job_id, user_id, None)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
 
-            spec = json.loads(job_info['specification'])
-            job_title = job_info.get('title', '')
-            job_options = spec.get('job_options', {})
-            sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
+        spec = json.loads(job_info['specification'])
+        job_title = job_info.get('title', '')
+        job_options = spec.get('job_options', {})
+        sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-            log.debug("job_options: {o!r}".format(o=job_options))
+        log.debug("job_options: {o!r}".format(o=job_options))
 
-            async_tasks_supported = not ConfigParams().is_kube_deploy
+        async_tasks_supported = not ConfigParams().is_kube_deploy
 
-            if (
-                async_tasks_supported
-                and dependencies is None
-                and job_info.get("dependency_status")
-                not in [
-                    DEPENDENCY_STATUS.AWAITING,
-                    DEPENDENCY_STATUS.AWAITING_RETRY,
-                    DEPENDENCY_STATUS.AVAILABLE,
-                ]
-            ):
-                job_dependencies = self._schedule_and_get_dependencies(
-                    process_graph=spec["process_graph"],
-                    api_version=api_version,
-                    user_id=user_id,
-                    job_id=job_id,
-                    job_options=job_options,
-                    sentinel_hub_client_alias=sentinel_hub_client_alias,
-                    get_vault_token=get_vault_token,
-                    logger_adapter=log,
-                )
+        if (
+            async_tasks_supported
+            and dependencies is None
+            and job_info.get("dependency_status")
+            not in [
+                DEPENDENCY_STATUS.AWAITING,
+                DEPENDENCY_STATUS.AWAITING_RETRY,
+                DEPENDENCY_STATUS.AVAILABLE,
+            ]
+        ):
+            job_dependencies = self._schedule_and_get_dependencies(
+                process_graph=spec["process_graph"],
+                api_version=api_version,
+                user_id=user_id,
+                job_id=job_id,
+                job_options=job_options,
+                sentinel_hub_client_alias=sentinel_hub_client_alias,
+                get_vault_token=get_vault_token,
+                logger_adapter=log,
+            )
 
-                log.debug(f"job_dependencies: {job_dependencies}")
+            log.debug(f"job_dependencies: {job_dependencies}")
 
-                if job_dependencies:
+            if job_dependencies:
+                with self._double_job_registry as dbl_registry:
                     dbl_registry.set_dependencies(
                         job_id=job_id, user_id=user_id, dependencies=job_dependencies
                     )
@@ -2127,30 +2128,31 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 dict_ = yaml.safe_load(rendered)
 
-                try:
-                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
-                    log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
-                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
-                    status_response = {}
-                    retry=0
-                    while('status' not in status_response and retry<10):
-                        retry+=1
-                        time.sleep(10)
-                        try:
-                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                                                                                        spark_app_id)
-                        except ApiException as e:
-                            log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                with self._double_job_registry as dbl_registry:
+                    try:
+                        submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
+                        log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
+                        dbl_registry.set_application_id(job_id, user_id, spark_app_id)
+                        status_response = {}
+                        retry=0
+                        while('status' not in status_response and retry<10):
+                            retry+=1
+                            time.sleep(10)
+                            try:
+                                status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                                                                                            spark_app_id)
+                            except ApiException as e:
+                                log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
 
-                    if('status' not in status_response):
-                        log.warning(f"invalid status response: {status_response}, assuming it is queued.")
-                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                        if('status' not in status_response):
+                            log.warning(f"invalid status response: {status_response}, assuming it is queued.")
+                            dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
-                except ApiException as e:
-                    log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
-                    if "AlreadyExists" in e.body:
-                        raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                    except ApiException as e:
+                        log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                        if "AlreadyExists" in e.body:
+                            raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
+                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             else:
                 # TODO: remove old submit scripts?
@@ -2267,8 +2269,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     application_id = self._extract_application_id(output_string)
                     log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
-                    dbl_registry.set_application_id(job_id, user_id, application_id)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    with self._double_job_registry as dbl_registry:
+                        dbl_registry.set_application_id(job_id, user_id, application_id)
+                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
                 except _BatchJobError as e:
                     traceback.print_exc(file=sys.stderr)
