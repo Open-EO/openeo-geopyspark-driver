@@ -1926,357 +1926,357 @@ class GpsBatchJobs(backend.BatchJobs):
 
                     return
 
-            def as_boolean_arg(job_option_key: str, default_value: str) -> str:
-                value = job_options.get(job_option_key)
+        def as_boolean_arg(job_option_key: str, default_value: str) -> str:
+            value = job_options.get(job_option_key)
 
-                if value is None:
-                    return default_value
-                elif isinstance(value, str):
-                    return value
-                elif isinstance(value, bool):
-                    return str(value).lower()
+            if value is None:
+                return default_value
+            elif isinstance(value, str):
+                return value
+            elif isinstance(value, bool):
+                return str(value).lower()
 
-                raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
+            raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
-            def as_max_soft_errors_ratio_arg() -> str:
-                value = job_options.get("soft-errors")
+        def as_max_soft_errors_ratio_arg() -> str:
+            value = job_options.get("soft-errors")
 
-                if value in [None, "false"]:
-                    return "0.0"
-                elif value == "true":
-                    return "1.0"
-                elif isinstance(value, bool):
-                    return "1.0" if value else "0.0"
-                elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
-                    return str(value)
+            if value in [None, "false"]:
+                return "0.0"
+            elif value == "true":
+                return "1.0"
+            elif isinstance(value, bool):
+                return "1.0" if value else "0.0"
+            elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
+                return str(value)
 
-                raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
-                                                 f"supported values include false/true and values in the "
-                                                 f"interval [0.0, 1.0]",
-                                         status_code=400)
+            raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
+                                             f"supported values include false/true and values in the "
+                                             f"interval [0.0, 1.0]",
+                                     status_code=400)
 
-            def as_logging_threshold_arg() -> str:
-                value = job_options.get("logging-threshold", "info").upper()
+        def as_logging_threshold_arg() -> str:
+            value = job_options.get("logging-threshold", "info").upper()
 
-                if value == "WARNING":
-                    value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
+            if value == "WARNING":
+                value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
 
-                if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
-                    return value
+            if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
+                return value
 
-                raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
-                                                 f'supported values include "debug", "info", "warning" and "error"',
-                                         status_code=400)
+            raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
+                                             f'supported values include "debug", "info", "warning" and "error"',
+                                     status_code=400)
 
-            isKube = ConfigParams().is_kube_deploy
-            driver_memory = job_options.get("driver-memory", "2G" if isKube else "8G" )
-            driver_memory_overhead = job_options.get("driver-memoryOverhead", "1G" if isKube else "2G")
-            executor_memory = job_options.get("executor-memory", "2G")
-            executor_memory_overhead = job_options.get("executor-memoryOverhead", "1800m" if isKube else "3G")
-            driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
-            executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
-            executor_corerequest = job_options.get("executor-request-cores", "NONE")
-            if executor_corerequest == "NONE":
-                executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-            max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
-            executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
-            queue = job_options.get("queue", "default")
-            profile = as_boolean_arg("profile", default_value="false")
-            max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
-            task_cpus = str(job_options.get("task-cpus", 1))
-            archives = ",".join(job_options.get("udf-dependency-archives", []))
-            py_files = job_options.get("udf-dependency-files", [])
-            use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
-            mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
-            use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
-            logging_threshold = as_logging_threshold_arg()
+        isKube = ConfigParams().is_kube_deploy
+        driver_memory = job_options.get("driver-memory", "2G" if isKube else "8G" )
+        driver_memory_overhead = job_options.get("driver-memoryOverhead", "1G" if isKube else "2G")
+        executor_memory = job_options.get("executor-memory", "2G")
+        executor_memory_overhead = job_options.get("executor-memoryOverhead", "1800m" if isKube else "3G")
+        driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
+        executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
+        executor_corerequest = job_options.get("executor-request-cores", "NONE")
+        if executor_corerequest == "NONE":
+            executor_corerequest = str(int(executor_cores)/2*1000)+"m"
+        max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
+        executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
+        queue = job_options.get("queue", "default")
+        profile = as_boolean_arg("profile", default_value="false")
+        max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
+        task_cpus = str(job_options.get("task-cpus", 1))
+        archives = ",".join(job_options.get("udf-dependency-archives", []))
+        py_files = job_options.get("udf-dependency-files", [])
+        use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
+        mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
+        use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
+        logging_threshold = as_logging_threshold_arg()
 
-            def serialize_dependencies() -> str:
-                batch_process_dependencies = [dependency for dependency in
-                                              (dependencies or job_info.get('dependencies') or [])
-                                              if 'collection_id' in dependency]
+        def serialize_dependencies() -> str:
+            batch_process_dependencies = [dependency for dependency in
+                                          (dependencies or job_info.get('dependencies') or [])
+                                          if 'collection_id' in dependency]
 
-                def as_arg_element(dependency: dict) -> dict:
-                    source_location = (dependency.get('assembled_location')  # cached
-                                       or dependency.get('results_location')  # not cached
-                                       or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
-                                          f"/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
+            def as_arg_element(dependency: dict) -> dict:
+                source_location = (dependency.get('assembled_location')  # cached
+                                   or dependency.get('results_location')  # not cached
+                                   or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
+                                      f"/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
 
-                    return {
-                        'source_location': source_location,
-                        'card4l': dependency.get('card4l', False)
-                    }
+                return {
+                    'source_location': source_location,
+                    'card4l': dependency.get('card4l', False)
+                }
 
-                return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
+            return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
 
-            if get_backend_config().setup_kerberos_auth:
-                setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
+        if get_backend_config().setup_kerberos_auth:
+            setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
-            if isKube:
-                import yaml
-                import time
-                import io
+        if isKube:
+            import yaml
+            import time
+            import io
 
-                from jinja2 import Environment, FileSystemLoader
-                from kubernetes.client.rest import ApiException
+            from jinja2 import Environment, FileSystemLoader
+            from kubernetes.client.rest import ApiException
 
-                api_instance = kube_client()
-                pod_namespace = ConfigParams().pod_namespace
-                concurrent_pod_limit = ConfigParams().concurrent_pod_limit
-                if concurrent_pod_limit != 0:
-                    label_selector = f"user={user_id}"
-                    try:
-                        result = api_instance.list_namespaced_custom_object(
-                            "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                            label_selector = label_selector
-                        )
-                    except ApiException as e:
-                        log.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e)
-                        result = {'items': []}
-
-                    running_count = 0
-                    for app in result['items']:
-                        if app['status']['applicationState']['state'] == 'RUNNING':
-                            running_count += 1
-                    log.debug(
-                        f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
-                        f"pods running for user {user_id}."
-                    )
-                    if running_count >= concurrent_pod_limit:
-                        raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
-                            status_code = 400)
-
-                bucket = ConfigParams().s3_bucket_name
-                s3_instance = s3_client()
-
-                s3_instance.create_bucket(Bucket=bucket)
-
-                output_dir = str(self.get_job_output_dir(job_id))
-
-                job_specification_file = output_dir + '/job_specification.json'
-
-                jobspec_bytes = str.encode(job_info['specification'])
-                file = io.BytesIO(jobspec_bytes)
-                s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
-
-                if api_version:
-                    api_version = api_version
-                else:
-                    api_version = '0.4.0'
-
-                memOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes(executor_memory_overhead)
-                jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("128m")
-                python_max = memOverheadBytes - jvmOverheadBytes
-
-                eodata_mount = "/eodata2" if use_goofys else "/eodata"
-
-                jinja_path = pkg_resources.resource_filename(
-                    "openeogeotrellis.deploy", "sparkapplication.yaml.j2"
-                )
-                jinja_dir = os.path.dirname(jinja_path)
-                jinja_template = Environment(
-                    loader=FileSystemLoader(jinja_dir)
-                ).from_string(open(jinja_path).read())
-
-                spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
-
-                rendered = jinja_template.render(
-                    job_name=spark_app_id,
-                    job_namespace=pod_namespace,
-                    job_specification=job_specification_file,
-                    output_dir=output_dir,
-                    output_file="out",
-                    log_file="stdout",
-                    metadata_file=JOB_METADATA_FILENAME,
-                    job_id_short=truncate_job_id_k8s(job_id),
-                    job_id_full=job_id,
-                    driver_cores=driver_cores,
-                    driver_memory=driver_memory,
-                    executor_cores=executor_cores,
-                    executor_corerequest=executor_corerequest,
-                    executor_memory=executor_memory,
-                    executor_memory_overhead=executor_memory_overhead,
-                    executor_threads_jvm=executor_threads_jvm,
-                    python_max_memory = python_max,
-                    max_executors=max_executors,
-                    api_version=api_version,
-                    dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
-                    user_id=user_id,
-                    max_soft_errors_ratio=max_soft_errors_ratio,
-                    task_cpus=task_cpus,
-                    current_time=int(time.time()),
-                    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
-                    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-                    aws_https=os.environ.get("AWS_HTTPS","FALSE"),
-                    swift_access_key_id=os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID")),
-                    swift_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY")),
-                    aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
-                    aws_region=os.environ.get("AWS_REGION","RegionOne"),
-                    swift_url=os.environ.get("SWIFT_URL"),
-                    image_name=os.environ.get("IMAGE_NAME"),
-                    openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
-                    swift_bucket=bucket,
-                    zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
-                    eodata_mount=eodata_mount,
-                    archives=archives,
-                    py_files = py_files,
-                    logging_threshold=logging_threshold,
-                    mount_tmp=mount_tmp,
-                    use_pvc=use_pvc,
-                    access_token=user.internal_auth_data["access_token"],
-                )
-
-                dict_ = yaml.safe_load(rendered)
-
-                with self._double_job_registry as dbl_registry:
-                    try:
-                        submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
-                        log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
-                        dbl_registry.set_application_id(job_id, user_id, spark_app_id)
-                        status_response = {}
-                        retry=0
-                        while('status' not in status_response and retry<10):
-                            retry+=1
-                            time.sleep(10)
-                            try:
-                                status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                                                                                            spark_app_id)
-                            except ApiException as e:
-                                log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
-
-                        if('status' not in status_response):
-                            log.warning(f"invalid status response: {status_response}, assuming it is queued.")
-                            dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-
-                    except ApiException as e:
-                        log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
-                        if "AlreadyExists" in e.body:
-                            raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
-                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-
-            else:
-                # TODO: remove old submit scripts?
-                submit_script = 'submit_batch_job.sh'
-                if( pysparkversion.startswith('2.4')):
-                    submit_script = 'submit_batch_job_spark24.sh'
-                elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
-                    submit_script = 'submit_batch_job_spark3.sh'
-                script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
-
-                extra_py_files=""
-                if len(py_files)>0:
-                    extra_py_files = "," + py_files.join(",")
-
-
-
-                # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
-                with tempfile.NamedTemporaryFile(
-                    mode="wt",
-                    encoding="utf-8",
-                    dir=self._output_root_dir,
-                    prefix=f"{job_id}_",
-                    suffix=".in",
-                ) as temp_input_file, tempfile.NamedTemporaryFile(
-                    mode="wt",
-                    encoding="utf-8",
-                    dir=self._output_root_dir,
-                    prefix=f"{job_id}_",
-                    suffix=".properties",
-                ) as temp_properties_file:
-                    temp_input_file.write(job_info["specification"])
-                    temp_input_file.flush()
-
-                    self._write_sensitive_values(temp_properties_file,
-                                                 vault_token=None if sentinel_hub_client_alias == 'default'
-                                                 else get_vault_token(sentinel_hub_client_alias))
-                    temp_properties_file.flush()
-
-                    job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
-                    args = [script_location,
-                            job_name,
-                            temp_input_file.name,
-                            str(self.get_job_output_dir(job_id)),
-                            "out",  # TODO: how support multiple output files?
-                            "log",
-                            JOB_METADATA_FILENAME,
-                            ]
-
-                    if self._principal is not None and self._key_tab is not None:
-                        args.append(self._principal)
-                        args.append(self._key_tab)
-                    else:
-                        args.append("no_principal")
-                        args.append("no_keytab")
-
-                    args.append(job_info.get('proxy_user') or user_id)
-
-                    if api_version:
-                        args.append(api_version)
-                    else:
-                        args.append("0.4.0")
-
-                    args.append(driver_memory)
-                    args.append(executor_memory)
-                    args.append(executor_memory_overhead)
-                    args.append(driver_cores)
-                    args.append(executor_cores)
-                    args.append(driver_memory_overhead)
-                    args.append(queue)
-                    args.append(profile)
-                    args.append(serialize_dependencies())
-                    args.append(self.get_submit_py_files()+extra_py_files)
-                    args.append(max_executors)
-                    args.append(user_id)
-                    args.append(job_id)
-                    args.append(max_soft_errors_ratio)
-                    args.append(task_cpus)
-                    args.append(sentinel_hub_client_alias)
-                    args.append(temp_properties_file.name)
-                    args.append(archives)
-                    args.append(logging_threshold)
-                    args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
-                    # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
-
-                    persistent_worker_count = ConfigParams().persistent_worker_count
-                    if persistent_worker_count != 0:
-                        # Write args to persistent_worker_dir as job_<job_id>.json
-                        # Also write process graph to pg_<job_id>.json
-                        persistent_worker_dir = ConfigParams().persistent_worker_dir
-                        if not os.path.exists(persistent_worker_dir):
-                            os.makedirs(persistent_worker_dir)
-                        pg_file_path = persistent_worker_dir / f"pg_{job_id}.json"
-                        persistent_args = [
-                            str(pg_file_path), str(self.get_job_output_dir(job_id)), "out", "log", JOB_METADATA_FILENAME,
-                            args[10], serialize_dependencies(), user_id, max_soft_errors_ratio, sentinel_hub_client_alias
-                        ]
-                        with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
-                            f.write(json.dumps(persistent_args))
-                        with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
-                            f.write(job_info["specification"])
-                        # Generate our own random application id.
-                        application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
-                        output_string = f"Application report for application_{application_id} (state: running)"
-                    else:
-                        try:
-                            log.info(f"Submitting job with command {args!r}")
-                            output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                            log.info(f"Submitted job, output was: {output_string}")
-                        except CalledProcessError as e:
-                            log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
-                            raise e
-
+            api_instance = kube_client()
+            pod_namespace = ConfigParams().pod_namespace
+            concurrent_pod_limit = ConfigParams().concurrent_pod_limit
+            if concurrent_pod_limit != 0:
+                label_selector = f"user={user_id}"
                 try:
-                    application_id = self._extract_application_id(output_string)
-                    log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
+                    result = api_instance.list_namespaced_custom_object(
+                        "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                        label_selector = label_selector
+                    )
+                except ApiException as e:
+                    log.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e)
+                    result = {'items': []}
 
-                    with self._double_job_registry as dbl_registry:
-                        dbl_registry.set_application_id(job_id, user_id, application_id)
+                running_count = 0
+                for app in result['items']:
+                    if app['status']['applicationState']['state'] == 'RUNNING':
+                        running_count += 1
+                log.debug(
+                    f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
+                    f"pods running for user {user_id}."
+                )
+                if running_count >= concurrent_pod_limit:
+                    raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
+                        status_code = 400)
+
+            bucket = ConfigParams().s3_bucket_name
+            s3_instance = s3_client()
+
+            s3_instance.create_bucket(Bucket=bucket)
+
+            output_dir = str(self.get_job_output_dir(job_id))
+
+            job_specification_file = output_dir + '/job_specification.json'
+
+            jobspec_bytes = str.encode(job_info['specification'])
+            file = io.BytesIO(jobspec_bytes)
+            s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
+
+            if api_version:
+                api_version = api_version
+            else:
+                api_version = '0.4.0'
+
+            memOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes(executor_memory_overhead)
+            jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("128m")
+            python_max = memOverheadBytes - jvmOverheadBytes
+
+            eodata_mount = "/eodata2" if use_goofys else "/eodata"
+
+            jinja_path = pkg_resources.resource_filename(
+                "openeogeotrellis.deploy", "sparkapplication.yaml.j2"
+            )
+            jinja_dir = os.path.dirname(jinja_path)
+            jinja_template = Environment(
+                loader=FileSystemLoader(jinja_dir)
+            ).from_string(open(jinja_path).read())
+
+            spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+
+            rendered = jinja_template.render(
+                job_name=spark_app_id,
+                job_namespace=pod_namespace,
+                job_specification=job_specification_file,
+                output_dir=output_dir,
+                output_file="out",
+                log_file="stdout",
+                metadata_file=JOB_METADATA_FILENAME,
+                job_id_short=truncate_job_id_k8s(job_id),
+                job_id_full=job_id,
+                driver_cores=driver_cores,
+                driver_memory=driver_memory,
+                executor_cores=executor_cores,
+                executor_corerequest=executor_corerequest,
+                executor_memory=executor_memory,
+                executor_memory_overhead=executor_memory_overhead,
+                executor_threads_jvm=executor_threads_jvm,
+                python_max_memory = python_max,
+                max_executors=max_executors,
+                api_version=api_version,
+                dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
+                user_id=user_id,
+                max_soft_errors_ratio=max_soft_errors_ratio,
+                task_cpus=task_cpus,
+                current_time=int(time.time()),
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                aws_https=os.environ.get("AWS_HTTPS","FALSE"),
+                swift_access_key_id=os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID")),
+                swift_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY")),
+                aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
+                aws_region=os.environ.get("AWS_REGION","RegionOne"),
+                swift_url=os.environ.get("SWIFT_URL"),
+                image_name=os.environ.get("IMAGE_NAME"),
+                openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
+                swift_bucket=bucket,
+                zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
+                eodata_mount=eodata_mount,
+                archives=archives,
+                py_files = py_files,
+                logging_threshold=logging_threshold,
+                mount_tmp=mount_tmp,
+                use_pvc=use_pvc,
+                access_token=user.internal_auth_data["access_token"],
+            )
+
+            dict_ = yaml.safe_load(rendered)
+
+            with self._double_job_registry as dbl_registry:
+                try:
+                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
+                    log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
+                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
+                    status_response = {}
+                    retry=0
+                    while('status' not in status_response and retry<10):
+                        retry+=1
+                        time.sleep(10)
+                        try:
+                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                                                                                        spark_app_id)
+                        except ApiException as e:
+                            log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+
+                    if('status' not in status_response):
+                        log.warning(f"invalid status response: {status_response}, assuming it is queued.")
                         dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
-                except _BatchJobError as e:
-                    traceback.print_exc(file=sys.stderr)
-                    # TODO: why reraise as CalledProcessError?
-                    raise CalledProcessError(1, str(args), output=output_string)
+                except ApiException as e:
+                    log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                    if "AlreadyExists" in e.body:
+                        raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+
+        else:
+            # TODO: remove old submit scripts?
+            submit_script = 'submit_batch_job.sh'
+            if( pysparkversion.startswith('2.4')):
+                submit_script = 'submit_batch_job_spark24.sh'
+            elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
+                submit_script = 'submit_batch_job_spark3.sh'
+            script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
+
+            extra_py_files=""
+            if len(py_files)>0:
+                extra_py_files = "," + py_files.join(",")
+
+
+
+            # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
+            with tempfile.NamedTemporaryFile(
+                mode="wt",
+                encoding="utf-8",
+                dir=self._output_root_dir,
+                prefix=f"{job_id}_",
+                suffix=".in",
+            ) as temp_input_file, tempfile.NamedTemporaryFile(
+                mode="wt",
+                encoding="utf-8",
+                dir=self._output_root_dir,
+                prefix=f"{job_id}_",
+                suffix=".properties",
+            ) as temp_properties_file:
+                temp_input_file.write(job_info["specification"])
+                temp_input_file.flush()
+
+                self._write_sensitive_values(temp_properties_file,
+                                             vault_token=None if sentinel_hub_client_alias == 'default'
+                                             else get_vault_token(sentinel_hub_client_alias))
+                temp_properties_file.flush()
+
+                job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
+                args = [script_location,
+                        job_name,
+                        temp_input_file.name,
+                        str(self.get_job_output_dir(job_id)),
+                        "out",  # TODO: how support multiple output files?
+                        "log",
+                        JOB_METADATA_FILENAME,
+                        ]
+
+                if self._principal is not None and self._key_tab is not None:
+                    args.append(self._principal)
+                    args.append(self._key_tab)
+                else:
+                    args.append("no_principal")
+                    args.append("no_keytab")
+
+                args.append(job_info.get('proxy_user') or user_id)
+
+                if api_version:
+                    args.append(api_version)
+                else:
+                    args.append("0.4.0")
+
+                args.append(driver_memory)
+                args.append(executor_memory)
+                args.append(executor_memory_overhead)
+                args.append(driver_cores)
+                args.append(executor_cores)
+                args.append(driver_memory_overhead)
+                args.append(queue)
+                args.append(profile)
+                args.append(serialize_dependencies())
+                args.append(self.get_submit_py_files()+extra_py_files)
+                args.append(max_executors)
+                args.append(user_id)
+                args.append(job_id)
+                args.append(max_soft_errors_ratio)
+                args.append(task_cpus)
+                args.append(sentinel_hub_client_alias)
+                args.append(temp_properties_file.name)
+                args.append(archives)
+                args.append(logging_threshold)
+                args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
+                # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
+
+                persistent_worker_count = ConfigParams().persistent_worker_count
+                if persistent_worker_count != 0:
+                    # Write args to persistent_worker_dir as job_<job_id>.json
+                    # Also write process graph to pg_<job_id>.json
+                    persistent_worker_dir = ConfigParams().persistent_worker_dir
+                    if not os.path.exists(persistent_worker_dir):
+                        os.makedirs(persistent_worker_dir)
+                    pg_file_path = persistent_worker_dir / f"pg_{job_id}.json"
+                    persistent_args = [
+                        str(pg_file_path), str(self.get_job_output_dir(job_id)), "out", "log", JOB_METADATA_FILENAME,
+                        args[10], serialize_dependencies(), user_id, max_soft_errors_ratio, sentinel_hub_client_alias
+                    ]
+                    with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
+                        f.write(json.dumps(persistent_args))
+                    with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
+                        f.write(job_info["specification"])
+                    # Generate our own random application id.
+                    application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
+                    output_string = f"Application report for application_{application_id} (state: running)"
+                else:
+                    try:
+                        log.info(f"Submitting job with command {args!r}")
+                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                        log.info(f"Submitted job, output was: {output_string}")
+                    except CalledProcessError as e:
+                        log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
+                        raise e
+
+            try:
+                application_id = self._extract_application_id(output_string)
+                log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
+
+                with self._double_job_registry as dbl_registry:
+                    dbl_registry.set_application_id(job_id, user_id, application_id)
+                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+
+            except _BatchJobError as e:
+                traceback.print_exc(file=sys.stderr)
+                # TODO: why reraise as CalledProcessError?
+                raise CalledProcessError(1, str(args), output=output_string)
 
     def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
