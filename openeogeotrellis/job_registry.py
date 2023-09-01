@@ -737,11 +737,11 @@ class DoubleJobRegistry:
         # TODO: eliminate get_job/get_job_metadata duplication?
         zk_job_info = ejr_job_info = None
         if self.zk_job_registry:
-            with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", _log):
+            with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
                 zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             with self._just_log_errors("get_job_metadata", job_id=job_id):
-                with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", _log):
+                with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
                     ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
