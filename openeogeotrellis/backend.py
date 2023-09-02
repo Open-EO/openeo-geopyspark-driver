@@ -1138,7 +1138,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         if model_id.startswith('http'):
             # Load the model using its STAC metadata file.
-            metadata = requests.get(model_id).json()
+            with requests.get(model_id) as resp:
+                resp.raise_for_status()
+                metadata = resp.json()
             if deep_get(metadata, "properties", "ml-model:architecture", default=None) is None:
                 raise OpenEOApiException(
                     message=f"{model_id} does not specify a model architecture under properties.ml-model:architecture.",
