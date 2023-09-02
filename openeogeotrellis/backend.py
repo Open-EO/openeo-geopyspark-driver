@@ -1642,10 +1642,11 @@ class GpsBatchJobs(backend.BatchJobs):
             """returns URL and (possibly empty) status for this job results dependency"""
             url = job_results_dependency['partial_job_results_url']
 
-            with requests_session.get(url) as stac_resp:
-                stac_json = stac_resp.json()
+            with requests_session.get(url) as resp:
+                resp.raise_for_status()
+                stac_object = resp.json()
 
-            return url, stac_json.get('openeo:status')
+            return url, stac_object.get('openeo:status')
 
         def fail_job():
             with self._double_job_registry as registry:
@@ -2689,10 +2690,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
                 with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                    with self._requests_session.get(url, timeout=600) as stac_resp:
-                        stac_json = stac_resp.json()
+                    with self._requests_session.get(url, timeout=600) as resp:
+                        resp.raise_for_status()
+                        stac_object = resp.json()
 
-                openeo_status = stac_json.get('openeo:status')
+                openeo_status = stac_object.get('openeo:status')
 
                 logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
 
