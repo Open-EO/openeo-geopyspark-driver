@@ -82,13 +82,13 @@ from openeo_driver.jobregistry import (
 )
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
-from openeo_driver.util.geometry import BoundingBox
+from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
 )
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry
+from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry, utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
@@ -877,7 +877,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         def is_band_asset(asset: pystac.Asset) -> bool:
             return "eo:bands" in asset.extra_fields or (asset.roles is not None and "data" in asset.roles)
 
-        def get_band_names(itm: pystac.Item, asset: pystac.Asset) -> List[str]:
+        def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
             def get_band_name(eo_band) -> str:
                 if isinstance(eo_band, dict):
                     return eo_band["name"]
@@ -890,7 +890,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                      else itm.get_collection().summaries.to_dict())
                 return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
-            return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+            return [get_band_name(eo_band) for eo_band in asst.extra_fields["eo:bands"]]
+
+        def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
+                                                                        Optional[Tuple[float, float, float, float]],
+                                                                        Optional[Tuple[int, int]]):
+            """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
+            epsg = asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
+            bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
+            shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
+            return (epsg,
+                    tuple(map(float, bbox)) if bbox else None,
+                    tuple(shape) if shape else None)
 
         def matches_metadata_properties(itm: pystac.Item) -> bool:
             literal_matches = {property_name: filter_properties.extract_literal_match(condition)
@@ -1013,6 +1024,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         stac_bbox = None
         items_found = False
+        proj_epsg = None
+        proj_bbox = None
+        proj_shape = None
 
         for itm in intersecting_items:
             band_assets = {asset_id: asset for asset_id, asset
@@ -1025,6 +1039,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     if asset_band_name not in band_names:
                         band_names.append(asset_band_name)
 
+                proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
                 links.append([asset.href, asset_id] + asset_band_names)
 
             opensearch_client.add_feature(
@@ -1046,17 +1061,35 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if not items_found:
             raise no_data_available_exception
 
+        target_bbox = requested_bbox or stac_bbox
+
+        if proj_epsg and proj_bbox and proj_shape:  # exact resolution
+            target_epsg = proj_epsg
+            xmin, ymin, xmax, ymax = proj_bbox
+            rows, cols = proj_shape
+            cell_width = (xmax - xmin) / cols
+            cell_height = (ymax - ymin) / rows
+        elif proj_epsg:  # about 10m in given CRS
+            target_epsg = proj_epsg
+            try:
+                utm_zone_from_epsg(proj_epsg)
+                cell_width = cell_height = 10.0
+            except ValueError:
+                cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
+                    10.0, f"EPSG:{proj_epsg}", loi=((target_bbox.east - target_bbox.west) / 2,
+                                                    (target_bbox.north - target_bbox.south / 2)))
+        else:  # 10m UTM
+            target_epsg = target_bbox.best_utm()
+            cell_width = cell_height = 10.0
+
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
             band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(10.0, 10.0),  # TODO, maxSpatialResolution
+            jvm.geotrellis.raster.CellSize(cell_width, cell_height),
             False  # experimental
         )
-
-        target_bbox = requested_bbox or stac_bbox
-        target_epsg = target_bbox.best_utm()  # is the default in GeoPySparkLayerCatalog as well
 
         extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
         extent_crs = target_bbox.crs
