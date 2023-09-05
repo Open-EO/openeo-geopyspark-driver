@@ -983,7 +983,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                 logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
 
-                # TODO: use server-side filtering instead (which STAC API extension?)
+                # TODO: use server-side filtering as well (at least STAC API Filter Extension)
                 intersecting_items = filter(lambda itm: matches_metadata_properties(itm), search_request.items())
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
