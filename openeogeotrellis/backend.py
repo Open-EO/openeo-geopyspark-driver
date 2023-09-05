@@ -1073,10 +1073,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
         extent_crs = target_bbox.crs
 
-        # TODO: support sparse polygons
-        projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
-            extent, extent_crs
-        )
+        geometries = load_params.aggregate_spatial_geometries
+
+        if not geometries:
+            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, extent_crs)
+        else:
+            projected_polygons = to_projected_polygons(
+                jvm, geometries, crs=extent_crs, buffer_points=True
+            )
+
         projected_polygons = getattr(
             getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
         ).reproject(projected_polygons, target_epsg)
