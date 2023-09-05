@@ -970,7 +970,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 root_catalog = collection.get_root()
 
                 band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
-                from pystac_client import Modifiable
 
                 client = pystac_client.Client.open(root_catalog.get_self_href())
                 search_request = client.search(
@@ -995,7 +994,55 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 band_names = (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
                               else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])
 
-                intersecting_items = [itm for itm in catalog.get_items(recursive=True) if intersects_spatiotemporally(itm)]
+                def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
+                    def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
+                        def intersects_spatially(bbox) -> bool:
+                            if not requested_bbox:
+                                return True
+
+                            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
+                            return requested_bbox_lonlat.as_polygon().intersects(
+                                Polygon.from_bounds(*bbox)
+                            )
+
+                        def intersects_temporally(interval) -> bool:
+                            start, end = interval
+
+                            if start is not None and end is not None:
+                                return (dt.datetime.fromisoformat(to_date) >= start and
+                                        dt.datetime.fromisoformat(from_date) <= end)
+                            if start is not None:
+                                return dt.datetime.fromisoformat(to_date) >= start
+                            if end is not None:
+                                return dt.datetime.fromisoformat(from_date) <= end
+                            return True
+
+                        bboxes = coll.extent.spatial.bboxes
+                        intervals = coll.extent.temporal.intervals
+
+                        if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
+                            return False
+                        if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
+                            return False
+
+                        if len(intervals) > 1 and not any(intersects_temporally(interval)
+                                                          for interval in intervals[1:]):
+                            return False
+                        if len(intervals) == 1 and not intersects_temporally(intervals[0]):
+                            return False
+
+                        return True
+
+                    if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
+                        return []
+
+                    yield root
+                    for child in root.get_children():
+                        yield from intersecting_catalogs(child)
+
+                intersecting_items = (itm
+                                      for intersecting_catalog in intersecting_catalogs(root=catalog)
+                                      for itm in intersecting_catalog.get_items() if intersects_spatiotemporally(itm))
 
         jvm = get_jvm()
 
