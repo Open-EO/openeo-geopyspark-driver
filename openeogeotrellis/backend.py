@@ -1073,6 +1073,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
         extent_crs = target_bbox.crs
 
+        # TODO: support sparse polygons
         projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(
             extent, extent_crs
         )
@@ -1086,9 +1087,23 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
-        # FIXME: support pyramid as well
-        pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
-                                               correlation_id, data_cube_parameters)
+        single_level = env.get('pyramid_levels', 'all') != 'all'
+
+        if single_level:
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
+                                                   correlation_id, data_cube_parameters)
+        else:
+            if requested_bbox:
+                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
+                extent_crs = requested_bbox.crs
+            else:
+                extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
+                extent_crs = "EPSG:4326"
+
+            pyramid = pyramid_factory.pyramid_seq(
+                extent, extent_crs, from_date, to_date,
+                metadata_properties, correlation_id
+            )
 
         metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
             # TODO: detect actual dimensions instead of this simple default?
