@@ -502,6 +502,12 @@ class JobTracker:
             usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
             zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs, usage=usage))
 
+            with ElasticJobRegistry.just_log_errors(
+                    f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
+            ):
+                if self._elastic_job_registry:
+                    self._elastic_job_registry.set_usage(job_id, job_costs, dict(usage))
+
         datetime_formatter = Rfc3339(propagate_none=True)
 
         zk_job_registry.patch(
@@ -520,7 +526,6 @@ class JobTracker:
                     status=job_metadata.status,
                     started=datetime_formatter.datetime(job_metadata.start_time),
                     finished=datetime_formatter.datetime(job_metadata.finish_time),
-                    # TODO: also record usage data
                 )
 
 

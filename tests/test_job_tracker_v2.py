@@ -568,6 +568,12 @@ class TestYarnJobTracker:
                 "updated": "2022-12-14T12:04:40Z",
                 "started": "2022-12-14T12:03:30Z",
                 "finished": "2022-12-14T12:04:40Z",
+                "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "cpu": {"unit": "cpu-seconds", "value": 32},
+                    "memory": {"unit": "mb-seconds", "value": 1234},
+                },
+                "costs": 129.95
             }
         )
 
@@ -1172,7 +1178,14 @@ class TestK8sJobTracker:
                 "updated": "2022-12-14T12:03:30Z",
                 "started": "2022-12-14T12:01:10Z",
                 "finished": "2022-12-14T12:03:30Z",
-                # TODO: usage tracking (cpu, memory)
+                "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
+                    "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
+                    "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
+                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                },
+                "costs": 129.95
             }
         )
 
