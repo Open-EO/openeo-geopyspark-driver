@@ -947,7 +947,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             band_names = []
         else:
-            stac_object = pystac.STACObject.from_file(href=url)
+            stac_object = pystac.read_file(href=url)
 
             if isinstance(stac_object, pystac.Item):
                 if load_params.properties:
@@ -975,7 +975,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 search_request = client.search(
                     method="GET",
                     collections=collection_id,
-                    bbox=requested_bbox.as_wsen_tuple(),
+                    bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple(),
                     limit=20,
                     datetime=f"{from_date}/{to_date}",
                 )

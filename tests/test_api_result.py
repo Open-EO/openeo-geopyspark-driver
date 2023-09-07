@@ -3371,3 +3371,45 @@ class TestLoadResult:
         assert result["coords"]["y"]["data"] == ListSubSet(expected["ys"])
         data = np.array(result["data"])
         assert data.shape == expected["shape"]
+
+
+class TestLoadStac:
+    def test_stac_api_item_search_bbox_is_epsg_4326(self, api110):
+        from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://somestacapi/collections/BVLPROBA_v1",
+                    "spatial_extent": {"west": 4300000.0, "south": 3000000.0,
+                                       "east": 4320000.0, "north": 3020000.0,
+                                       "crs": "EPSG:3035"}
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            }
+        }
+
+        collection = Collection(
+            id="BVLPROBA_v1",
+            description="BVLPROBA_v1",
+            extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
+        )
+
+        root_catalog = Catalog(id="somestacapi", description="somestacapi")
+        root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
+        collection.set_root(root_catalog)
+
+        mock_client = MagicMock()
+
+        with mock.patch("pystac.read_file", return_value=collection), mock.patch("pystac_client.Client.open",
+                                                                                 return_value=mock_client):
+            api110.result(process_graph)
+
+        requested_bbox = mock_client.search.call_args.kwargs["bbox"]
+        assert requested_bbox == pytest.approx((9.705330802294334, 50.11191889246122,
+                                                9.986020977561875, 50.292114602091736))
