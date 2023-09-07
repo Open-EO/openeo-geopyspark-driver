@@ -606,6 +606,9 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_application_id(self, job_id: str, application_id: str) -> JobDict:
         return self._update(job_id=job_id, application_id=application_id)
 
+    def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
+        return self._update(job_id=job_id, costs=costs, usage=usage)
+
     def list_user_jobs(
         self, user_id: str, fields: Optional[List[str]] = None
     ) -> List[JobDict]:
