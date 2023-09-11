@@ -144,6 +144,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.yarn.appMasterEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
+ --conf spark.yarn.appMasterEnv.GDAL_HTTP_MAX_RETRY=10 \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
