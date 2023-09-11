@@ -60,18 +60,23 @@ def assure_polarization_from_sentinel_bands(metadata: GeopysparkCubeMetadata, me
         bn = set(metadata.band_names)
         # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
         # Only run when relevant bands are present
-        polarization = None
-        if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
-            polarization = "DH"
-        elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
-            polarization = "DV"
-        elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
-            polarization = "HV"
-        elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
-            polarization = "VH"
+        polarizations = []
 
-        if polarization:
-            log.info(f"No polarization was specified, using one based on band selection: {polarization}")
-            metadata_properties["polarization"] = {'eq': polarization}
+        if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
+            polarizations = ["DH"]
+        elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
+            polarizations = ["DV"]
+        elif "HH" in bn and "HV" not in bn and "VV" not in bn and "VH" not in bn:
+            polarizations = ["HH", "DH", "SH"]
+        elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
+            polarizations = ["HV", "DH"]
+        elif "VV" in bn and "VH" not in bn and "HH" not in bn and "HV" not in bn:
+            polarizations = ["VV", "DV", "SV"]
+        elif "VH" in bn and "VV" not in bn and "HH" not in bn and "HV" not in bn:
+            polarizations = ["VH", "DV"]
+
+        if polarizations:
+            log.info(f"No polarization was specified, using one based on band selection: {polarizations}")
+            metadata_properties["polarization"] = {'in': polarizations}
         else:
             log.warning("No polarization was specified. This might give errors from Sentinelhub.")
