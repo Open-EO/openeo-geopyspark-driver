@@ -2132,7 +2132,10 @@ class GpsBatchJobs(backend.BatchJobs):
             bucket = ConfigParams().s3_bucket_name
             s3_instance = s3_client()
 
-            s3_instance.create_bucket(Bucket=bucket)
+            all_buckets = s3_instance.list_buckets()
+
+            if not any('Name' in item and item['Name'] == bucket for item in all_buckets['Buckets']):
+                s3_instance.create_bucket(Bucket=bucket)
 
             output_dir = str(self.get_job_output_dir(job_id))
 
