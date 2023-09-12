@@ -818,10 +818,10 @@ def _get_layer_catalog(
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
                     sh_collections_session = requests_with_retry()
-                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint)
+                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint, timeout=60)
                     sh_collections_resp.raise_for_status()
                     sh_collection_metadatas = {
-                        c["id"]: requests.get(c["link"]).json()
+                        c["id"]: sh_collections_session.get(c["link"], timeout=60).json()
                         for c in sh_collections_resp.json()
                     }
 
