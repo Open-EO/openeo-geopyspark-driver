@@ -360,7 +360,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         key_tab = conf.get("spark.yarn.keytab", conf.get("spark.kerberos.keytab"))
 
         if use_job_registry and not elastic_job_registry:
-            # TODO #236 avoid this fallback and just make sure it is always set when necessary
+            # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
             elastic_job_registry = get_elastic_job_registry()
 

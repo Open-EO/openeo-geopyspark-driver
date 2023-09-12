@@ -752,7 +752,7 @@ class DoubleJobRegistry:
         return job_metadata
 
     def _check_zk_ejr_job_info(self, job_id: str, zk_job_info: Union[dict, None], ejr_job_info: Union[dict, None]):
-        # TODO #236 For now: compare job metadata between Zk and EJR
+        # TODO #236/#498 For now: compare job metadata between Zk and EJR
         fields = ["job_id", "status", "created"]
         if zk_job_info is not None and ejr_job_info is not None:
             zk_job_info = {k: v for (k, v) in zk_job_info.items() if k in fields}
@@ -862,7 +862,7 @@ class DoubleJobRegistry:
             level=logging.WARNING if (zk_jobs is None or ejr_jobs is None) else logging.INFO,
             msg=f"DoubleJobRegistry.get_user_jobs({user_id=}) zk_jobs={zk_jobs and len(zk_jobs)} ejr_jobs={ejr_jobs and len(ejr_jobs)}",
         )
-        # TODO #236: eror if both sources failed?
+        # TODO #236/#498: error if both sources failed?
 
         return zk_jobs or ejr_jobs or []
 

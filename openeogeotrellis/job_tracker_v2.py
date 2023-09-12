@@ -341,7 +341,7 @@ class JobTracker:
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
             with TimingLogger(title="Fetching jobs to track", logger=_log.info):
-                # TODO: #236 also/instead get jobs_to_track from EJR?
+                # TODO: #236/#498 also/instead get jobs_to_track from EJR?
                 jobs_to_track = zk_job_registry.get_running_jobs()
             _log.info(f"Collected {len(jobs_to_track)} jobs to track")
             stats["collected jobs"] = len(jobs_to_track)
