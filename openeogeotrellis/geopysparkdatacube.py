@@ -259,7 +259,8 @@ class GeopysparkDataCube(DriverDataCube):
             return  self._apply_bands_dimension(process)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
-            return self.apply_tiles(udf_code=udf, context=udf_context)
+            runtime = process.udf_args.get("runtime", "Python")
+            return self.apply_tiles(udf_code=udf, context=udf_context, runtime=runtime)
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
@@ -316,7 +317,8 @@ class GeopysparkDataCube(DriverDataCube):
                 raise FeatureUnsupportedException(f"apply_dimension along dimension {dimension} is not supported. These dimensions are available: " + str(self.metadata.dimension_names()))
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
-            return self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension)
+            runtime = process.udf_args.get("runtime", "Python")
+            return self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension, runtime=runtime)
 
         raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
 
@@ -662,7 +664,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
-            result_collection = self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension)
+            runtime = reducer.udf_args.get("runtime", "Python")
+            result_collection = self._run_udf_dimension(udf=udf, udf_context=udf_context, dimension=dimension, runtime=runtime)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             result_collection = self._apply_bands_dimension(reducer, context)
         elif self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
@@ -681,14 +684,14 @@ class GeopysparkDataCube(DriverDataCube):
                 result_collection = result_collection.apply_to_levels(lambda rdd:  rdd.to_spatial_layer() if rdd.layer_type != gps.LayerType.SPATIAL else rdd)
         return result_collection
 
-    def _run_udf_dimension(self, udf: str, udf_context: dict, dimension: str):
+    def _run_udf_dimension(self, udf: str, udf_context: dict, dimension: str, runtime: str = "Python"):
         if not isinstance(udf, str):
             raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
         if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
             # EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
             return self.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
-            return self.apply_tiles(udf_code=udf, context=udf_context)
+            return self.apply_tiles(udf_code=udf, context=udf_context, runtime=runtime)
         else:
             raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
@@ -1109,6 +1112,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
+            runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
             if sizeX < 32 or sizeY < 32:
@@ -1122,7 +1126,7 @@ class GeopysparkDataCube(DriverDataCube):
                         message="apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context)
             elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
-                result_collection = retiled_collection.apply_tiles(udf_code=udf, context=udf_context)
+                result_collection = retiled_collection.apply_tiles(udf_code=udf, context=udf_context, runtime=runtime)
             else:
                 raise OpenEOApiException(
                     message="apply_neighborhood: for temporal dimension,"
