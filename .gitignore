@@ -116,7 +116,7 @@ jars/
 # pytest basetemp root (e.g. for tmp_path fixture).
 pytest-tmp
 
-# requirements-docker.txt is generated when we build develoment docker containers.
+# requirements-docker.txt is generated when we build development docker containers.
 # For now we don't want that to go into git accidentally and preventing is
 # better than having to clean it up.
 # Maybe later we do want to track this, but not for now.
