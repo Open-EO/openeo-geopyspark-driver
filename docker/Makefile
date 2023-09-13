@@ -12,7 +12,7 @@
 # ==============================================================================
 # Configuration variables
 # ==============================================================================
-# Override these by creating the file "makenv.env", in dotenv format, i.e.
+# Override these by creating the file "make-env.env", in dotenv format, i.e.
 # key=value
 # as described in docker\README.md
 # ==============================================================================
@@ -47,7 +47,7 @@ buildkit_supported := 1
 my_docker_dir := $(dir $(realpath $(MAKEFILE_LIST)))
 
 # Now load variables from .env file if it exists
-_makenv_file := $(realpath $(my_docker_dir)/makenv.env)
+_makenv_file := $(realpath $(my_docker_dir)/make-env.env)
 ifneq (,$(_makenv_file))
 	include $(_makenv_file)
 	export
@@ -144,7 +144,7 @@ show-vars:
 	@echo my_docker_dir=$(my_docker_dir)
 	@echo my_workspace_dir=$(my_workspace_dir)
 	@echo docker_file_minimal=$(docker_file_minimal)
-	@echo path to makenv.env (if it exists)=$(_makenv_file)
+	@echo path to make environment file, make-env.env (if it exists)=$(_makenv_file)
 
 	@echo ""
 	@echo "=== Variable from make ==="

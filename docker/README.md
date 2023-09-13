@@ -113,7 +113,7 @@ make all
 
 Or specifying the path to this makefile if you run make in the root of your git repo:
 
-```shell
+```bash
 make -f docker/Makefile all
 ```
 
@@ -132,7 +132,7 @@ Therefor, if you have already done a "full build" once, and none of the
 Python dependencies have changed in setup.py, then it should be enough
 to build just the main image, like so:
 
-```shell
+```bash
 make -f docker/Makefile build-main
 ```
 
@@ -142,8 +142,8 @@ Make has a `--dry-run` option, or use the short option `-n`.
 Then make will only print what commands it would run.
 
 For example
-```shell
-make -f .\docker\Makefile --dry-run build
+```bash
+make -f  docker/Makefile --dry-run build
 ```
 
 Would give output similar to this:
@@ -191,13 +191,13 @@ Do keep in mind that this example makefile is part of the git repo so it is
 shared by everyone.
 
 Because we want to allow local overrides without hindering other developers,
-the makefile has the option to import a file called `makenv.env`, and in
-`makenv.env` you can override the variables there if you need to.
+the makefile has the option to import a file called `make-env.env`, and in
+`make-env.env` you can override the variables there if you need to.
 
-The syntax of the makeenv.env file is "dotenv" or ".env" and its basic use is very simple:  `varname=value`
+The syntax of the `make-env.env` file is "dotenv" or ".env" and its basic use is very simple:  `varname=value`
 
 ```env
-# example makeenv.env contents:
+# example make-env.env contents:
 docker_image_basename=my-own-container-name
 docker_tag=py3.8
 ```
