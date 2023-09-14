@@ -1070,7 +1070,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             opensearch_client.add_feature(
                 itm.id,
-                jvm.geotrellis.vector.Extent(*itm.bbox),
+                jvm.geotrellis.vector.Extent(*map(float, itm.bbox)),
                 itm.properties.get("datetime") or itm.properties["start_datetime"],
                 links
             )
@@ -1118,7 +1118,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             False  # experimental
         )
 
-        extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+        extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
         extent_crs = target_bbox.crs
 
         geometries = load_params.aggregate_spatial_geometries
@@ -1147,7 +1147,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                                    correlation_id, data_cube_parameters)
         else:
             if requested_bbox:
-                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
+                extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
                 extent_crs = requested_bbox.crs
             else:
                 extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
