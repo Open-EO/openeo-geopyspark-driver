@@ -129,6 +129,29 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
 
+        west = spatial_extent.get("west", None)
+        east = spatial_extent.get("east", None)
+        north = spatial_extent.get("north", None)
+        south = spatial_extent.get("south", None)
+        srs = spatial_extent.get("crs", 'EPSG:4326')
+        if isinstance(srs, int):
+            srs = 'EPSG:%s' % str(srs)
+
+        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
+        if not spatial_bounds_present:
+            if env.get(REQUIRE_BOUNDS, False):
+                raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
+                                         message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
+                                             c=collection_id))
+            else:
+                #whole world processing, for instance in viewing services
+                srs = "EPSG:4326"
+                west = -180.0
+                south = -90
+                east = 180
+                north = 90
+                spatial_bounds_present=True
+
         metadata = GeopysparkCubeMetadata(self.get_collection_metadata(collection_id))
         layer_source_info = metadata.get("_vito", "data_source", default={})
 
@@ -182,13 +205,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        srs = spatial_extent.get("crs", 'EPSG:4326')
-        if isinstance(srs, int):
-            srs = 'EPSG:%s' % str(srs)
 
         correlation_id = env.get(CORRELATION_ID, '')
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
@@ -203,21 +219,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         jvm = get_jvm()
 
         extent = None
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
 
-        if not spatial_bounds_present:
-            if env.get(REQUIRE_BOUNDS, False):
-                raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
-                                         message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
-                                             c=collection_id))
-            else:
-                #whole world processing, for instance in viewing services
-                srs = "EPSG:4326"
-                west = -180.0
-                south = -90
-                east = 180
-                north = 90
-                spatial_bounds_present=True
 
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
