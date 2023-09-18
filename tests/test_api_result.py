@@ -3375,15 +3375,16 @@ class TestLoadResult:
 
 class TestLoadStac:
     def test_stac_api_item_search_bbox_is_epsg_4326(self, api110):
-        from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent
+        from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
+        import datetime as dt
 
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://somestacapi/collections/BVLPROBA_v1",
-                    "spatial_extent": {"west": 4300000.0, "south": 3000000.0,
-                                       "east": 4320000.0, "north": 3020000.0,
+                    "url": "https://somestacapi/collections/BVL_v1",
+                    "spatial_extent": {"west": 4309100, "south": 3014100,
+                                       "east": 4309900, "north": 3014900,
                                        "crs": "EPSG:3035"}
                 }
             },
@@ -3395,8 +3396,8 @@ class TestLoadStac:
         }
 
         collection = Collection(
-            id="BVLPROBA_v1",
-            description="BVLPROBA_v1",
+            id="BVL_v1",
+            description="BVL_v1",
             extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
         )
 
@@ -3404,12 +3405,28 @@ class TestLoadStac:
         root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
         collection.set_root(root_catalog)
 
-        mock_client = MagicMock()
+        mock_stac_client = MagicMock()
+        mock_item_search = mock_stac_client.search.return_value
+        mock_item_search.items.return_value = [
+            Item(
+                id="item",
+                geometry={"type": "Polygon", "coordinates": [
+                    [[9.831776345947729, 50.23804708435827], [9.831776345947729, 50.24705765771707],
+                     [9.845824108087408, 50.24705765771707], [9.845824108087408, 50.23804708435827],
+                     [9.831776345947729, 50.23804708435827]]]},
+                bbox=[9.831776345947729, 50.23804708435827, 9.845824108087408, 50.24705765771707],
+                datetime=dt.datetime(2021, 1, 1, 0, 0, 0, 0, tzinfo=dt.timezone.utc),
+                properties={"datetime": "2021-01-01T00:00:00Z",
+                            "proj:epsg": 3035,
+                            "proj:bbox": [4309000, 3014000, 4310000, 3015000],
+                            "proj:shape": [100, 100]},
+                assets={"result": Asset(href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
+                                        extra_fields={"eo:bands": [{"name": "class"}]})})]
 
         with mock.patch("pystac.read_file", return_value=collection), mock.patch("pystac_client.Client.open",
-                                                                                 return_value=mock_client):
-            api110.result(process_graph)
+                                                                                 return_value=mock_stac_client):
+            api110.result(process_graph).assert_status_code(200)
 
-        requested_bbox = mock_client.search.call_args.kwargs["bbox"]
-        assert requested_bbox == pytest.approx((9.705330802294334, 50.11191889246122,
-                                                9.986020977561875, 50.292114602091736))
+        requested_bbox = mock_stac_client.search.call_args.kwargs["bbox"]
+        assert requested_bbox == pytest.approx((9.83318136095339, 50.23894821967924,
+                                                9.844419570631366, 50.246156678379016))
