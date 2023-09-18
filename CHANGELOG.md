@@ -12,6 +12,35 @@ without compromising stable operations.
 
 ## [Unreleased]
 
+## 2023-09-18 (0.9.5a1)
+
+Important change: time intervals are now left closed. Workflows that are sensitive to exact time intervals may need
+to be updated.
+
+### Feature
+
+- load_stac support, allowing to load STAC collections that conform to the mainstream approach 
+  for organizing metadata in STAC. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/402)
+- First support for UDF's that change resolution, in Python-Jep runtime. (https://github.com/Open-EO/openeo-geotrellis-extensions/pull/197)
+- Improved support for running UDF's on vector cubes.
+- Support load_geojson and load_url processes to create vector cubes. (https://github.com/Open-EO/openeo-python-driver/issues/211)
+- The 'partial' query parameter is now supported when requesting job results, load_stac supports loading unfinished results. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/489)
+- Support new (experimental) vector_to_raster process, allowing to combine data from a vector source with EO data. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/423)
+- 
+
+### Bugfix
+- Fixed numerical rounding errors in datacubes that use epsg:4326, which could lead to pixel shift or missing lines of data.
+- Fixed a deadlock, causing the backend to 'hang' on requests.  (https://github.com/Open-EO/openeo-python-driver/issues/209)
+- Time interfals are now left-closed (https://github.com/Open-EO/openeo-geopyspark-driver/issues/34)
+- Fixed automatic selection of polarization for SENTINEL1_CARD4L.  (https://github.com/Open-EO/openeo-geopyspark-driver/issues/473)
+- Reduced memory usage in specific case of apply_neighborhood on a smaller chunk size. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/191)
+- Fixed error with apply_neighborhood on Sentinelhub backed layers. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/434)
+- Fix in evaluation of 'mask' process, improving performance. (https://github.com/Open-EO/openeo-python-driver/issues/161)
+
+### Changed
+- Improved performance for small (synchronous) requests. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/186)
+
+
 ## 2023-07-30 (0.9.5a1)
 
 ### Feature
