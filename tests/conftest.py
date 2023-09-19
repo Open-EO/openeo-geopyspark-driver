@@ -183,6 +183,12 @@ def udf_noop():
 
 
 @pytest.fixture
+def udf_noop_jep(udf_noop):
+    udf_noop["udf_process"]["arguments"]["runtime"] = "Python-Jep"
+    return udf_noop
+
+
+@pytest.fixture
 def batch_job_output_root(tmp_path) -> Path:
     # TODO: can we avoid using/initializing tmp_path when we won't need it (or is it low overhead anyway?)
     batch_job_output_root = tmp_path / "jobs"
