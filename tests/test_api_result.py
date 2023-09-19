@@ -3398,16 +3398,6 @@ class TestLoadStac:
             }
         }
 
-        collection = Collection(
-            id="BVL_v1",
-            description="BVL_v1",
-            extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
-        )
-
-        root_catalog = Catalog(id="somestacapi", description="somestacapi")
-        root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
-        collection.set_root(root_catalog)
-
         mock_stac_client = MagicMock()
         mock_item_search = mock_stac_client.search.return_value
         mock_item_search.items.return_value = [
@@ -3426,8 +3416,8 @@ class TestLoadStac:
                 assets={"result": Asset(href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
                                         extra_fields={"eo:bands": [{"name": "class"}]})})]
 
-        with mock.patch("pystac.read_file", return_value=collection), mock.patch("pystac_client.Client.open",
-                                                                                 return_value=mock_stac_client):
+        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
+                "pystac_client.Client.open", return_value=mock_stac_client):
             api110.result(process_graph).assert_status_code(200)
 
         requested_bbox = mock_stac_client.search.call_args.kwargs["bbox"]
@@ -3473,3 +3463,39 @@ class TestLoadStac:
         }
 
         api110.result(process_graph).assert_status_code(200)
+
+    def test_stac_api_no_spatial_extent_specified(self, api110):
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://somestacapi/collections/BVL_v1",
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            }
+        }
+
+        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
+                "pystac_client.Client.open") as mock_pystac_client_open:
+            api110.result(process_graph).assert_error(400, error_code="NoDataAvailable")
+
+        mock_stac_client = mock_pystac_client_open.return_value
+        mock_stac_client.search.assert_called_once()
+
+    @staticmethod
+    def _mock_stac_api_collection() -> Collection:
+        collection = Collection(
+            id="BVL_v1",
+            description="BVL_v1",
+            extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
+        )
+
+        root_catalog = Catalog(id="somestacapi", description="somestacapi")
+        root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
+        collection.set_root(root_catalog)
+
+        return collection
