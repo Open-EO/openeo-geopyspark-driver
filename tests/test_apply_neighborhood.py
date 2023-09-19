@@ -1,6 +1,7 @@
 import datetime
 
 import numpy as np
+import pytest
 from numpy.testing import assert_array_almost_equal
 
 from openeo_driver.utils import EvalEnv
@@ -36,11 +37,13 @@ def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_
     assert_array_almost_equal(expected_result, result_array)
 
 
-def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three_dates, udf_noop):
+@pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
+def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three_dates, udf, request):
+    udf = request.getfixturevalue(udf)
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(
-        process=udf_noop,
+        process=udf,
         size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32}],
         overlap=[{'dimension': 'x', 'unit': 'px', 'value': 8}, {'dimension': 'y', 'unit': 'px', 'value': 8}],
         context={},
