@@ -521,7 +521,7 @@ class GeopysparkDataCube(DriverDataCube):
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
-    def apply_tiles_spatiotemporal(self, udf_code: str, udf_context: Optional[dict] = None) -> "GeopysparkDataCube":
+    def apply_tiles_spatiotemporal(self, udf_code: str, udf_context: Optional[dict] = None, runtime: str = "Python") -> "GeopysparkDataCube":
         """
         Group tiles by SpatialKey, then apply a Python function to every group of tiles.
         :param udf_code: A string containing a Python function that handles groups of tiles, each labeled by date.
@@ -531,6 +531,18 @@ class GeopysparkDataCube(DriverDataCube):
         # Early compile to detect syntax errors
         _log.info(f"[apply_tiles_spatiotemporal] Setting up for running UDF {str_truncate(udf_code, width=1000)!r}")
         _ = compile(source=udf_code, filename='UDF.py', mode='exec')
+
+        if runtime == "Python-Jep":
+            band_names = []
+            if self.metadata.has_band_dimension():
+                band_names = self.metadata.band_dimension.band_names
+            def rdd_function(rdd, _zoom):
+                jvm = gps.get_spark_context()._jvm
+                udf = jvm.org.openeo.geotrellis.udf.Udf
+                return udf.runUserCode(udf_code, rdd, band_names, udf_context)
+
+            float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
+            return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
 
         @ensure_executor_logging
         def tile_function(metadata:Metadata,
@@ -689,7 +701,7 @@ class GeopysparkDataCube(DriverDataCube):
             raise ValueError("The 'run_udf' process requires at least a 'udf' string argument, but got: '%s'." % udf)
         if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
             # EP-2760 a special case of reduce where only a single udf based callback is provided. The more generic case is not yet supported.
-            return self.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context)
+            return self.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context, runtime=runtime)
         elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
             return self.apply_tiles(udf_code=udf, context=udf_context, runtime=runtime)
         else:
@@ -1124,7 +1136,7 @@ class GeopysparkDataCube(DriverDataCube):
                 if not self.metadata.has_temporal_dimension():
                     raise OpenEOApiException(
                         message="apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
-                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context)
+                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context, runtime=runtime)
             elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
                 result_collection = retiled_collection.apply_tiles(udf_code=udf, context=udf_context, runtime=runtime)
             else:
