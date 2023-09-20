@@ -31,7 +31,7 @@ to be updated.
 ### Bugfix
 - Fixed numerical rounding errors in datacubes that use epsg:4326, which could lead to pixel shift or missing lines of data.
 - Fixed a deadlock, causing the backend to 'hang' on requests.  (https://github.com/Open-EO/openeo-python-driver/issues/209)
-- Time interfals are now left-closed (https://github.com/Open-EO/openeo-geopyspark-driver/issues/34)
+- Time intervals are now left-closed (https://github.com/Open-EO/openeo-geopyspark-driver/issues/34)
 - Fixed automatic selection of polarization for SENTINEL1_CARD4L.  (https://github.com/Open-EO/openeo-geopyspark-driver/issues/473)
 - Reduced memory usage in specific case of apply_neighborhood on a smaller chunk size. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/191)
 - Fixed error with apply_neighborhood on Sentinelhub backed layers. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/434)
