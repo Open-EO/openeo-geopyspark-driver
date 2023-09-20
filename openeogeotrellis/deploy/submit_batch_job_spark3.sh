@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
-if [ "$#" -lt 7 ]; then
-    >&2 echo "Usage: $0 <job name> <process graph input file> <results output file> <user log file> <principal> <key tab file> <OpenEO user> [api version] [driver memory] [executor memory]"
+if [ "$#" -lt 9 ]; then
+    >&2 echo "Usage: $0 <job name> <process graph input file> <output directory> <results output file> <principal> <key tab file> <OpenEO user> <api version> [driver memory] [executor memory]"
     exit 1
 fi
 
@@ -26,32 +26,31 @@ jobName=$1
 processGraphFile=$2
 outputDir=$3
 outputFileName=$4
-userLogFileName=$5
-metadataFileName=$6
-principal=$7
-keyTab=$8
-proxyUser=$9
-apiVersion=${10}
-drivermemory=${11-22G}
-executormemory=${12-4G}
-executormemoryoverhead=${13-3G}
-drivercores=${14-14}
-executorcores=${15-2}
-drivermemoryoverhead=${16-8G}
-queue=${17-default}
-profile=${18-false}
-dependencies=${19-"[]"}
-pyfiles=${20}
-maxexecutors=${21-500}
-userId=${22}
-batchJobId=${23}
-maxSoftErrorsRatio=${24-"0.0"}
-taskCpus=${25}
-sentinelHubClientAlias=${26}
-propertiesFile=${27}
-archives=${28}
-logging_threshold=${29}
-openeo_backend_config=${30}
+metadataFileName=$5
+principal=$6
+keyTab=$7
+proxyUser=$8
+apiVersion=${9}
+drivermemory=${10-22G}
+executormemory=${11-4G}
+executormemoryoverhead=${12-3G}
+drivercores=${13-14}
+executorcores=${14-2}
+drivermemoryoverhead=${15-8G}
+queue=${16-default}
+profile=${17-false}
+dependencies=${18-"[]"}
+pyfiles=${19}
+maxexecutors=${20-500}
+userId=${21}
+batchJobId=${22}
+maxSoftErrorsRatio=${23-"0.0"}
+taskCpus=${24}
+sentinelHubClientAlias=${25}
+propertiesFile=${26}
+archives=${27}
+logging_threshold=${28}
+openeo_backend_config=${29}
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -184,4 +183,4 @@ spark-submit \
  --conf spark.yarn.tags=openeo \
  --jars "${extensions}","${backend_assembly}" \
  --name "${jobName}" \
- "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${userLogFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}" "${sentinelHubClientAlias}"
+ "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}" "${sentinelHubClientAlias}"
