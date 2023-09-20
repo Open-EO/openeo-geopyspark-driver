@@ -542,22 +542,20 @@ class TestBatchJobs:
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
             job_output = job_dir / "out"
-            job_log = job_dir / "log"
             job_metadata = job_dir / JOB_METADATA_FILENAME
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
-            assert batch_job_args[5] == job_log.name
-            assert batch_job_args[6] == job_metadata.name
-            assert batch_job_args[9] == TEST_USER
-            assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:17] == ['8G', '2G', '3G', '5', '2', '2G']
-            assert batch_job_args[17:22] == [
+            assert batch_job_args[5] == job_metadata.name
+            assert batch_job_args[8] == TEST_USER
+            assert batch_job_args[9] == api.api_version
+            assert batch_job_args[10:16] == ['8G', '2G', '3G', '5', '2', '2G']
+            assert batch_job_args[16:21] == [
                 'default', 'false', '[]',
                 "__pyfiles__/custom_processes.py,foolib.whl", '100'
             ]
-            assert batch_job_args[22:24] == [TEST_USER, job_id]
-            assert batch_job_args[24] == '0.0'
+            assert batch_job_args[21:23] == [TEST_USER, job_id]
+            assert batch_job_args[23] == '0.0'
 
             # Check metadata in zookeeper
             meta_data = zk.get_json_decoded(
@@ -604,8 +602,6 @@ class TestBatchJobs:
             # Set up fake output and finish
             with job_output.open("wb") as f:
                 f.write(TIFF_DUMMY_DATA)
-            with job_log.open("w") as f:
-                f.write("[INFO] Hello world")
             with job_metadata.open("w") as f:
                 metadata = api.load_json(JOB_METADATA_FILENAME)
                 json.dump(metadata, f)
@@ -676,7 +672,6 @@ class TestBatchJobs:
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
             job_output = job_dir / "out"
-            job_log = job_dir / "log"
             job_metadata = job_dir / JOB_METADATA_FILENAME
 
             from openeogeotrellis._version import __version__
@@ -719,8 +714,6 @@ class TestBatchJobs:
 
             with job_output.open("wb") as f:
                 f.write(TIFF_DUMMY_DATA)
-            with job_log.open("w") as f:
-                f.write("[INFO] Hello world")
             with job_metadata.open("w") as f:
                 # metadata = api.load_json(JOB_METADATA_FILENAME)
                 json.dump(job_metadata_contents, f)
@@ -968,22 +961,20 @@ class TestBatchJobs:
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
             job_output = job_dir / "out"
-            job_log = job_dir / "log"
             job_metadata = job_dir / JOB_METADATA_FILENAME
             assert batch_job_args[2].endswith(".in")
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
-            assert batch_job_args[5] == job_log.name
-            assert batch_job_args[6] == job_metadata.name
-            assert batch_job_args[9] == TEST_USER
-            assert batch_job_args[10] == api.api_version
-            assert batch_job_args[11:17] == ['3g', '11g', '3G', '5', '4', '10000G']
-            assert batch_job_args[17:22] == [
+            assert batch_job_args[5] == job_metadata.name
+            assert batch_job_args[8] == TEST_USER
+            assert batch_job_args[9] == api.api_version
+            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10000G']
+            assert batch_job_args[16:21] == [
                 'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '100'
             ]
-            assert batch_job_args[22:24] == [TEST_USER, job_id]
-            assert batch_job_args[24] == '0.0'
+            assert batch_job_args[21:23] == [TEST_USER, job_id]
+            assert batch_job_args[23] == '0.0'
 
     def test_cancel_job(self, api, job_registry):
         with self._mock_kazoo_client() as zk:
@@ -1537,17 +1528,15 @@ class TestSentinelHubBatchJobs:
 
         job_dir = batch_job_output_root / job_id
         job_output = job_dir / "out"
-        job_log = job_dir / "log"
         job_metadata = job_dir / JOB_METADATA_FILENAME
         assert args[2].endswith(".in")
         assert args[3] == str(job_dir)
         assert args[4] == job_output.name
-        assert args[5] == job_log.name
-        assert args[6] == job_metadata.name
-        assert args[9] == TEST_USER
-        assert args[17] == "default"
-        assert args[19] == expected_dependencies
-        assert args[22:24] == [TEST_USER, job_id]
+        assert args[5] == job_metadata.name
+        assert args[8] == TEST_USER
+        assert args[16] == "default"
+        assert args[18] == expected_dependencies
+        assert args[21:23] == [TEST_USER, job_id]
         return args
 
     @pytest.mark.parametrize(["spatial_size"], [(0.1,), (1,)])
