@@ -259,7 +259,7 @@ class GeopysparkDataCube(DriverDataCube):
             return  self._apply_bands_dimension(process,context = context)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
-            return self.apply_tiles(udf_code=udf, context=udf_context)
+            return self.apply_tiles(udf_code=udf, context=udf_context,runtime=process.udf_args.get("runtime", "Python"))
         else:
             raise FeatureUnsupportedException(f"Unsupported: apply with {process}")
 
