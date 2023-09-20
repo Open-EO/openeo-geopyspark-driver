@@ -2172,7 +2172,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_specification=job_specification_file,
                 output_dir=output_dir,
                 output_file="out",
-                log_file="stdout",
                 metadata_file=JOB_METADATA_FILENAME,
                 job_id_short=truncate_job_id_k8s(job_id),
                 job_id_full=job_id,
@@ -2283,7 +2282,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         temp_input_file.name,
                         str(self.get_job_output_dir(job_id)),
                         "out",  # TODO: how support multiple output files?
-                        "log",
                         JOB_METADATA_FILENAME,
                         ]
 

@@ -62,26 +62,12 @@ from openeogeotrellis.utils import (
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
-user_facing_logger = logging.getLogger('openeo-user-log')
 
 
 OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
 OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID", "unknown-job")
 # TODO: also trim batch_job id a bit before logging?
 BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
-
-
-def _setup_user_logging(log_file: Path) -> None:
-    file_handler = None
-    if str(log_file.name) == "stdout":
-        file_handler = logging.StreamHandler(sys.stdout)
-    else:
-        file_handler = logging.FileHandler(log_file, mode='w')
-    file_handler.setLevel(logging.ERROR)
-
-    user_facing_logger.addHandler(file_handler)
-
-    add_permissions(log_file, stat.S_IWGRP)
 
 
 def _create_job_dir(job_dir: Path):
@@ -262,7 +248,7 @@ def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, outp
                 )
             except Exception as e:
                 error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-                user_facing_logger.exception("Error while creating asset metadata: " + error_summary.summary)
+                logger.exception("Error while creating asset metadata: " + error_summary.summary)
 
 
     # _extract_asset_metadata may already fill in metadata["epsg"], but only
@@ -937,10 +923,10 @@ def main(argv: List[str]) -> None:
     logger.debug(f"batch_job.py {os.getpid()=} {os.getppid()=} {os.getcwd()=}")
     logger.debug(f"batch_job.py version info {get_backend_config().capabilities_deploy_metadata}")
 
-    if len(argv) < 10:
+    if len(argv) < 9:
         raise Exception(
             f"usage: {argv[0]} "
-            "<job specification input file> <job directory> <results output file name> <user log file name> "
+            "<job specification input file> <job directory> <results output file name> "
             "<metadata file name> <api version> <dependencies> <user id> <max soft errors ratio> "
             "[Sentinel Hub client alias]"
         )
@@ -948,18 +934,15 @@ def main(argv: List[str]) -> None:
     job_specification_file = argv[1]
     job_dir = Path(argv[2])
     output_file = job_dir / argv[3]
-    log_file = job_dir / argv[4]
-    metadata_file = job_dir / argv[5]
-    api_version = argv[6]
-    dependencies = _deserialize_dependencies(argv[7])
-    user_id = argv[8]
+    metadata_file = job_dir / argv[4]
+    api_version = argv[5]
+    dependencies = _deserialize_dependencies(argv[6])
+    user_id = argv[7]
     BatchJobLoggingFilter.set("user_id", user_id)
-    max_soft_errors_ratio = float(argv[9])
-    sentinel_hub_client_alias = argv[10] if len(argv) >= 11 else None
+    max_soft_errors_ratio = float(argv[8])
+    sentinel_hub_client_alias = argv[9] if len(argv) >= 10 else None
 
     _create_job_dir(job_dir)
-
-    _setup_user_logging(log_file)
 
     # Override default temp dir (under CWD). Original default temp dir `/tmp` might be cleaned up unexpectedly.
     temp_dir = Path(os.getcwd()) / "tmp"
@@ -1291,5 +1274,5 @@ if __name__ == '__main__':
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        user_facing_logger.exception("OpenEO batch job failed: " + error_summary.summary)
+        logger.exception("OpenEO batch job failed: " + error_summary.summary)
         raise
