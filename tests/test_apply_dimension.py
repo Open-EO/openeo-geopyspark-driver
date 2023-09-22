@@ -29,13 +29,14 @@ def test_apply_dimension_array_interpolate_linear(imagecollection_with_two_bands
     assert np.all(np.isclose(result_array, 1))
 
 
-
-def test_apply_dimension_temporal_udf(imagecollection_with_two_bands_and_three_dates,udf_noop):
+@pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
+def test_apply_dimension_temporal_udf(imagecollection_with_two_bands_and_three_dates, udf, request):
+    udf = request.getfixturevalue(udf)
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
 
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
-        process=udf_noop, dimension="t", target_dimension="some_other_dim", context={}, env=EvalEnv()
+        process=udf, dimension="t", target_dimension="some_other_dim", context={}, env=EvalEnv()
     )
     result_xarray = result._to_xarray()
     first_band = result_xarray.sel(bands='red', t=the_date)
@@ -47,13 +48,14 @@ def test_apply_dimension_temporal_udf(imagecollection_with_two_bands_and_three_d
     assert_array_almost_equal(input, subresult)
 
 
-
-def test_apply_dimension_bands_udf(imagecollection_with_two_bands_and_three_dates,udf_noop):
+@pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
+def test_apply_dimension_bands_udf(imagecollection_with_two_bands_and_three_dates, udf, request):
+    udf = request.getfixturevalue(udf)
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
 
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
-        process=udf_noop, dimension="bands", target_dimension=None, context={}, env=EvalEnv()
+        process=udf, dimension="bands", target_dimension=None, context={}, env=EvalEnv()
     )
     result_xarray = result._to_xarray()
     first_band = result_xarray.sel(bands='red', t=the_date)
