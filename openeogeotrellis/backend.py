@@ -975,7 +975,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 search_request = client.search(
                     method="GET",
                     collections=collection_id,
-                    bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple(),
+                    bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                     limit=20,
                     datetime=f"{from_date}/{to_date}",
                 )
@@ -1070,7 +1070,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             opensearch_client.add_feature(
                 itm.id,
-                jvm.geotrellis.vector.Extent(*itm.bbox),
+                jvm.geotrellis.vector.Extent(*map(float, itm.bbox)),
                 itm.properties.get("datetime") or itm.properties["start_datetime"],
                 links
             )
@@ -1118,7 +1118,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             False  # experimental
         )
 
-        extent = jvm.geotrellis.vector.Extent(*target_bbox.as_wsen_tuple())
+        extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
         extent_crs = target_bbox.crs
 
         geometries = load_params.aggregate_spatial_geometries
@@ -1147,7 +1147,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                                    correlation_id, data_cube_parameters)
         else:
             if requested_bbox:
-                extent = jvm.geotrellis.vector.Extent(*requested_bbox.as_wsen_tuple())
+                extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
                 extent_crs = requested_bbox.crs
             else:
                 extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
@@ -2172,7 +2172,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_specification=job_specification_file,
                 output_dir=output_dir,
                 output_file="out",
-                log_file="stdout",
                 metadata_file=JOB_METADATA_FILENAME,
                 job_id_short=truncate_job_id_k8s(job_id),
                 job_id_full=job_id,
@@ -2283,7 +2282,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         temp_input_file.name,
                         str(self.get_job_output_dir(job_id)),
                         "out",  # TODO: how support multiple output files?
-                        "log",
                         JOB_METADATA_FILENAME,
                         ]
 

@@ -256,7 +256,7 @@ class GeopysparkDataCube(DriverDataCube):
             #apply should leave metadata intact, so can do a simple call?
             # Note: It's not obvious from its name, but `reduce_bands` not only supports reduce operations,
             # also `apply` style local unary mapping operations.
-            return  self._apply_bands_dimension(process)
+            return  self._apply_bands_dimension(process,context = context)
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
             runtime = process.udf_args.get("runtime", "Python")

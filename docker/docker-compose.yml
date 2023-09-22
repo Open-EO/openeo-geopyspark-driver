@@ -1,0 +1,71 @@
+# TODO: Also add zookeeper service when we add service for web app (REST API)
+
+# Here we set `name` because by default docker-compose uses the folder name as
+# the docker image name. (or does it use the working directory?)
+# But we want this example to work well for a new developer, with the least
+# amount of set up, and the least amount of surprises.
+#
+# You can also set the env var COMPOSE_PROJECT_NAME.
+name: dkrcmps-openeo-geopyspark-driver
+
+services:
+  pytest:
+    build:
+      context: ..
+      dockerfile: docker/minimal.dockerfile
+      target: final
+    volumes:
+      - type: bind
+        source: ..
+        target: /src
+    command: ["pytest", "-ra", "-vv"]
+    depends_on:
+      #
+      # TODO: depends_on won't solve generating requirements-docker.txt with the pipcompile service.
+      #   because we need requirements-docker.txt during the docker build of the docker image service.
+      #
+      # With depends_on we can only solve the problem of getting the jar files.
+      # It won't help for generating requirements-docker.txt because we need that
+      # file during the docker build for the pytest service.
+      # So, by the time we can launch the pipcompile service it is already too late.
+      # In fact, it won't even build if you haven't alread generated requirements-docker.txt before.
+      #
+      # pipcompile:
+      #   condition: service_completed_successfully
+
+      getjars:
+        # Before starting pytest, run the get jars command once and wait until it finishes.
+        condition: service_completed_successfully
+
+  # TODO: decide: is it worth having a seperate service to get the jars
+  #   which should run only once and then exit?
+  #   Maybe better to let the dockerfile handle it.
+  getjars:
+    build:
+      context: ..
+      dockerfile: docker/minimal.dockerfile
+      target: final
+    volumes:
+      - type: bind
+        source: ..
+        target: /src
+    command: ["python3", "scripts/get-jars.py"]
+
+
+  # TODO: decide: same issue for pip-compiling the requirements file: docker image or a compose service?
+  pipcompile:
+    build:
+      context: ..
+      dockerfile: docker/minimal.dockerfile
+      target: base
+    volumes:
+      - type: bind
+        source: ..
+        target: /src
+    command: [
+      "pip-compile", "-o", "./requirements-docker.txt",
+      "--verbose",
+      "-P", "rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib",
+      "--extra-index-url", "https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple",
+      "setup.py"
+    ]

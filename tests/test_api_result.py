@@ -1,9 +1,11 @@
 import contextlib
+import datetime as dt
 import json
 import logging
 import os
 import shutil
 import textwrap
+import urllib.request
 from pathlib import Path
 from typing import List, Union, Sequence
 
@@ -14,6 +16,7 @@ from mock import MagicMock
 import rasterio
 import xarray
 from numpy.testing import assert_equal
+from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 
 import openeo
@@ -1942,6 +1945,26 @@ def jvm_mock():
         yield jvm_mock
 
 
+@pytest.fixture
+def urllib_mock() -> UrllibMocker:
+    with UrllibMocker().patch() as mocker:
+        yield mocker
+
+
+@pytest.fixture
+def zk_client() -> KazooClientMock:
+    zk_client = KazooClientMock()
+    with mock.patch(
+        "openeogeotrellis.job_registry.KazooClient", return_value=zk_client
+    ):
+        yield zk_client
+
+
+@pytest.fixture
+def zk_job_registry(zk_client) -> ZkJobRegistry:
+    return ZkJobRegistry(zk_client=zk_client)
+
+
 def test_extra_validation_terrascope(jvm_mock, api100):
     pg = {"lc": {
         "process_id": "load_collection",
@@ -2906,77 +2929,85 @@ class TestVectorCubeRunUdf:
     # TODO: test that creates new series/dataframe with band stats
 
 
+def _setup_existing_job(
+    *,
+    job_id: str,
+    api: ApiTester,
+    batch_job_output_root: Path,
+    zk_job_registry: ZkJobRegistry,
+    user_id=TEST_USER,
+) -> Path:
+    """
+    Set up an exiting job, with a geopyspark-driver-style job result folder,
+    (based on result files from a given job id from the test data folder),
+    and metadata in job registry.
+    """
+    source_result_dir = api.data_path(f"binary/jobs/{job_id}")
+    result_dir = batch_job_output_root / job_id
+    _log.info(f"Copy {source_result_dir=} to {result_dir=}")
+    shutil.copytree(src=source_result_dir, dst=result_dir)
+
+    # Rewrite paths in job_metadata.json
+    job_metadata_file = result_dir / JOB_METADATA_FILENAME
+    _log.info(f"Rewriting asset paths in {job_metadata_file=}")
+    job_metadata_file.write_text(
+        job_metadata_file.read_text(encoding="utf-8").replace(
+            "/data/projects/OpenEO", str(batch_job_output_root)
+        )
+    )
+
+    # Register metadata in job registry too
+    zk_job_registry.register(
+        job_id=job_id,
+        user_id=user_id,
+        api_version="1.1.0",
+        specification=load_json(result_dir / "process_graph.json"),
+    )
+    job_metadata = load_json(job_metadata_file)
+    zk_job_registry.patch(
+        job_id=job_id,
+        user_id=user_id,
+        **{k: job_metadata[k] for k in ["bbox", "epsg"]},
+    )
+    zk_job_registry.set_status(
+        job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
+    )
+
+    return result_dir
+
+
+def _setup_metadata_request_mocking(
+    job_id: str,
+    api: ApiTester,
+    results_dir: Path,
+    results_url: str,
+    urllib_mock: UrllibMocker,
+):
+    # Use ApiTester to easily build responses for the metadata request we have to mock
+    api.set_auth_bearer_token()
+    results_metadata = (
+        api.get(f"jobs/{job_id}/results").assert_status_code(200).json
+    )
+    urllib_mock.get(results_url, data=json.dumps(results_metadata))
+    # Mock each collection item metadata request too
+    for link in results_metadata["links"]:
+        if link["rel"] == "item":
+            path = link["href"].partition(api.url_root)[-1]
+            item_metadata = api.get(path).assert_status_code(200).json
+            # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
+            # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
+            for k in item_metadata["assets"]:
+                item_metadata["assets"][k]["href"] = str(results_dir / k)
+            urllib_mock.get(link["href"], json.dumps(item_metadata))
+
+
 class TestLoadResult:
-    @pytest.fixture
-    def zk_client(self) -> KazooClientMock:
-        zk_client = KazooClientMock()
-        with mock.patch(
-            "openeogeotrellis.job_registry.KazooClient", return_value=zk_client
-        ):
-            yield zk_client
-
-    @pytest.fixture
-    def zk_job_registry(self, zk_client) -> ZkJobRegistry:
-        return ZkJobRegistry(zk_client=zk_client)
-
-    @pytest.fixture
-    def urllib_mock(self) -> UrllibMocker:
-        with UrllibMocker().patch() as mocker:
-            yield mocker
-
-    def _setup_existing_job(
-        self,
-        *,
-        job_id: str,
-        api: ApiTester,
-        batch_job_output_root: Path,
-        zk_job_registry: ZkJobRegistry,
-        user_id=TEST_USER,
-    ) -> Path:
-        """
-        Set up an exiting job, with a geopyspark-driver-style job result folder,
-        (based on result files from a given job id from the test data folder),
-        and metadata in job registry.
-        """
-        source_result_dir = api.data_path(f"binary/jobs/{job_id}")
-        result_dir = batch_job_output_root / job_id
-        _log.info(f"Copy {source_result_dir=} to {result_dir=}")
-        shutil.copytree(src=source_result_dir, dst=result_dir)
-
-        # Rewrite paths in job_metadata.json
-        job_metadata_file = result_dir / JOB_METADATA_FILENAME
-        _log.info(f"Rewriting asset paths in {job_metadata_file=}")
-        job_metadata_file.write_text(
-            job_metadata_file.read_text(encoding="utf-8").replace(
-                "/data/projects/OpenEO", str(batch_job_output_root)
-            )
-        )
-
-        # Register metadata in job registry too
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.1.0",
-            specification=load_json(result_dir / "process_graph.json"),
-        )
-        job_metadata = load_json(job_metadata_file)
-        zk_job_registry.patch(
-            job_id=job_id,
-            user_id=user_id,
-            **{k: job_metadata[k] for k in ["bbox", "epsg"]},
-        )
-        zk_job_registry.set_status(
-            job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
-        )
-
-        return result_dir
-
     def test_load_result_job_id_basic(
         self, api110, zk_client, zk_job_registry, batch_job_output_root
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
 
-        self._setup_existing_job(
+        _setup_existing_job(
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
@@ -3118,7 +3149,7 @@ class TestLoadResult:
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
 
-        self._setup_existing_job(
+        _setup_existing_job(
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
@@ -3148,31 +3179,6 @@ class TestLoadResult:
         data = np.array(result["data"])
         assert data.shape == expected["shape"]
 
-    def _setup_metadata_request_mocking(
-        self,
-        job_id: str,
-        api: ApiTester,
-        results_dir: Path,
-        results_url: str,
-        urllib_mock: UrllibMocker,
-    ):
-        # Use ApiTester to easily build responses for the metadata request we have to mock
-        api.set_auth_bearer_token()
-        results_metadata = (
-            api.get(f"jobs/{job_id}/results").assert_status_code(200).json
-        )
-        urllib_mock.get(results_url, data=json.dumps(results_metadata))
-        # Mock each collection item metadata request too
-        for link in results_metadata["links"]:
-            if link["rel"] == "item":
-                path = link["href"].partition(api.url_root)[-1]
-                item_metadata = api.get(path).assert_status_code(200).json
-                # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
-                # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
-                for k in item_metadata["assets"]:
-                    item_metadata["assets"][k]["href"] = str(results_dir / k)
-                urllib_mock.get(link["href"], json.dumps(item_metadata))
-
     def test_load_result_url_basic(
         self,
         api110,
@@ -3184,13 +3190,13 @@ class TestLoadResult:
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
 
-        results_dir = self._setup_existing_job(
+        results_dir = _setup_existing_job(
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
             zk_job_registry=zk_job_registry,
         )
-        self._setup_metadata_request_mocking(
+        _setup_metadata_request_mocking(
             job_id=job_id,
             api=api110,
             results_dir=results_dir,
@@ -3335,13 +3341,13 @@ class TestLoadResult:
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
 
-        results_dir = self._setup_existing_job(
+        results_dir = _setup_existing_job(
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
             zk_job_registry=zk_job_registry,
         )
-        self._setup_metadata_request_mocking(
+        _setup_metadata_request_mocking(
             job_id=job_id,
             api=api110,
             results_dir=results_dir,
@@ -3375,15 +3381,13 @@ class TestLoadResult:
 
 class TestLoadStac:
     def test_stac_api_item_search_bbox_is_epsg_4326(self, api110):
-        from pystac import Catalog, Collection, Extent, SpatialExtent, TemporalExtent
-
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://somestacapi/collections/BVLPROBA_v1",
-                    "spatial_extent": {"west": 4300000.0, "south": 3000000.0,
-                                       "east": 4320000.0, "north": 3020000.0,
+                    "url": "https://somestacapi/collections/BVL_v1",
+                    "spatial_extent": {"west": 4309100, "south": 3014100,
+                                       "east": 4309900, "north": 3014900,
                                        "crs": "EPSG:3035"}
                 }
             },
@@ -3394,9 +3398,99 @@ class TestLoadStac:
             }
         }
 
+        mock_stac_client = MagicMock()
+        mock_item_search = mock_stac_client.search.return_value
+        mock_item_search.items.return_value = [
+            Item(
+                id="item",
+                geometry={"type": "Polygon", "coordinates": [
+                    [[9.831776345947729, 50.23804708435827], [9.831776345947729, 50.24705765771707],
+                     [9.845824108087408, 50.24705765771707], [9.845824108087408, 50.23804708435827],
+                     [9.831776345947729, 50.23804708435827]]]},
+                bbox=[9.831776345947729, 50.23804708435827, 9.845824108087408, 50.24705765771707],
+                datetime=dt.datetime(2021, 1, 1, 0, 0, 0, 0, tzinfo=dt.timezone.utc),
+                properties={"datetime": "2021-01-01T00:00:00Z",
+                            "proj:epsg": 3035,
+                            "proj:bbox": [4309000, 3014000, 4310000, 3015000],
+                            "proj:shape": [100, 100]},
+                assets={"result": Asset(href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
+                                        extra_fields={"eo:bands": [{"name": "class"}]})})]
+
+        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
+                "pystac_client.Client.open", return_value=mock_stac_client):
+            api110.result(process_graph).assert_status_code(200)
+
+        requested_bbox = mock_stac_client.search.call_args.kwargs["bbox"]
+        assert requested_bbox == pytest.approx((9.83318136095339, 50.23894821967924,
+                                                9.844419570631366, 50.246156678379016))
+
+    def test_stac_collection_multiple_items_no_spatial_extent_specified(self, api110, zk_job_registry,
+                                                                        batch_job_output_root, urllib_mock):
+        job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
+        results_url = f"https://foobar.test/job/{job_id}/results"
+
+        results_dir = _setup_existing_job(
+            job_id=job_id,
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry,
+        )
+        _setup_metadata_request_mocking(
+            job_id=job_id,
+            api=api110,
+            results_dir=results_dir,
+            results_url=results_url,
+            urllib_mock=urllib_mock,
+        )
+
+        # sanity check: multiple items
+        results = json.loads(urllib.request.urlopen(results_url).read())
+        item_links = [link for link in results["links"] if link["rel"] == "item"]
+        assert len(item_links) > 1
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": results_url,
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "netCDF"},
+                "result": True
+            }
+        }
+
+        api110.result(process_graph).assert_status_code(200)
+
+    def test_stac_api_no_spatial_extent_specified(self, api110):
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://somestacapi/collections/BVL_v1",
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            }
+        }
+
+        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
+                "pystac_client.Client.open") as mock_pystac_client_open:
+            api110.result(process_graph).assert_error(400, error_code="NoDataAvailable")
+
+        mock_stac_client = mock_pystac_client_open.return_value
+        mock_stac_client.search.assert_called_once()
+
+    @staticmethod
+    def _mock_stac_api_collection() -> Collection:
         collection = Collection(
-            id="BVLPROBA_v1",
-            description="BVLPROBA_v1",
+            id="BVL_v1",
+            description="BVL_v1",
             extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
         )
 
@@ -3404,12 +3498,4 @@ class TestLoadStac:
         root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
         collection.set_root(root_catalog)
 
-        mock_client = MagicMock()
-
-        with mock.patch("pystac.read_file", return_value=collection), mock.patch("pystac_client.Client.open",
-                                                                                 return_value=mock_client):
-            api110.result(process_graph)
-
-        requested_bbox = mock_client.search.call_args.kwargs["bbox"]
-        assert requested_bbox == pytest.approx((9.705330802294334, 50.11191889246122,
-                                                9.986020977561875, 50.292114602091736))
+        return collection
