@@ -65,10 +65,6 @@ def assure_polarization_from_sentinel_bands(metadata: GeopysparkCubeMetadata, me
             polarization = "DH"
         elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
             polarization = "DV"
-        elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
-            polarization = "HV"
-        elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
-            polarization = "VH"
 
         if polarization:
             log.info(f"No polarization was specified, using one based on band selection: {polarization}")
