@@ -1392,8 +1392,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in java_exception_message)
             sentinel1_band_not_present = (java_exception_class_name ==
-                                          'org.openeo.geotrellissentinelhub.SentinelHubException' and
-                                          "not present in Sentinel 1 tile" in java_exception.responseBody())
+                                          'org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException')
 
             is_client_error = (java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
                                sentinel1_band_not_present)
@@ -1407,12 +1406,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if udf_stacktrace:
                     summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
                 elif sentinel1_band_not_present:
-                    error_message = json.loads(java_exception.responseBody())['error']['message']
-                    band_name_regex = re.compile(r"Requested band '(.+)' is not present in Sentinel 1 tile .+")
-                    missing_band_name = band_name_regex.search(error_message).group(1)
-                    summary = (f"Requested band '{missing_band_name}' is not present in Sentinel 1 tile; "
-                               f'try specifying a "polarization" property filter according to the table at '
-                               f'https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
+                    summary = (f"Requested band '{java_exception.missingBandName()}' is not present in Sentinel 1 tile;"
+                               f' try specifying a "polarization" property filter according to the table at'
+                               f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
                 else:
                     summary = f"Exception during Spark execution: {java_exception_message}"
             else:
