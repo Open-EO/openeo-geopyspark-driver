@@ -1,9 +1,11 @@
 from geopyspark import TiledRasterLayer, Extent
 from openeo_driver.utils import EvalEnv
+from py4j.protocol import Py4JJavaError
 from shapely.geometry import MultiPolygon
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.utils import get_jvm
 
 
 # Note: Ensure that the python environment has all the required modules installed.
@@ -54,3 +56,22 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
         assert "This error message should be visible to user" in error_summary.summary
     else:
         raise Exception("There should have been an exception raised in the try clause.")
+
+
+def test_summarize_sentinel1_band_not_present_exception():
+    jvm = get_jvm()
+
+    http_request = jvm.scalaj.http.Http.apply("https://sentinel-hub.example.org/process")
+    response_headers = getattr(getattr(jvm.scala.collection.immutable, "Map$"), "MODULE$").empty()
+    sentinel1_band_not_present_exception = jvm.org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException(
+        http_request, None, 400, response_headers, """{"error":{"status":400,"reason":"Bad Request","message":"Requested band 'HH' is not present in Sentinel 1 tile 'S1A_IW_GRDH_1SDV_20170301T050935_20170301T051000_015494_019728_3A01' returned by criteria specified in `dataFilter` parameter.","code":"RENDERER_S1_MISSING_POLARIZATION"}}""")
+    spark_exception = jvm.org.apache.spark.SparkException("", sentinel1_band_not_present_exception)
+    py4j_error: Exception = Py4JJavaError(msg="", java_exception=spark_exception)
+
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
+
+    assert error_summary.is_client_error
+    assert (error_summary.summary ==
+            f"Requested band 'HH' is not present in Sentinel 1 tile;"
+            f' try specifying a "polarization" property filter according to the table at'
+            f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')

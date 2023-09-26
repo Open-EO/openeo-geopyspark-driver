@@ -1391,8 +1391,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in java_exception_message)
+            sentinel1_band_not_present = (java_exception_class_name ==
+                                          'org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException')
 
-            is_client_error = java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found
+            is_client_error = (java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
+                               sentinel1_band_not_present)
+
             if no_data_found:
                 summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
             elif "outofmemoryerror" in java_exception_class_name.lower():
@@ -1401,6 +1405,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
                 if udf_stacktrace:
                     summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                elif sentinel1_band_not_present:
+                    summary = (f"Requested band '{java_exception.missingBandName()}' is not present in Sentinel 1 tile;"
+                               f' try specifying a "polarization" property filter according to the table at'
+                               f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
                 else:
                     summary = f"Exception during Spark execution: {java_exception_message}"
             else:

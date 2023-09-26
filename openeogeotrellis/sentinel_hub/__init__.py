@@ -47,34 +47,27 @@ def processing_options(collection_id: str, sar_backscatter_arguments: SarBacksca
     )
 
 
-def assure_polarization_from_sentinel_bands(metadata:GeopysparkCubeMetadata, metadata_properties: Dict[str, object],
+def assure_polarization_from_sentinel_bands(metadata: GeopysparkCubeMetadata, metadata_properties: Dict[str, object],
                                             job_id: str = None):
     """
     @param metadata:
     @param metadata_properties: Gets modified to have polarization filter when necessary
     @param job_id: (optional) job ID to log
     """
+    log = logging.LoggerAdapter(logger, extra=dict_no_none(job_id=job_id))
+
     if metadata.auto_polarization() and "polarization" not in metadata_properties:
         bn = set(metadata.band_names)
         # https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
         # Only run when relevant bands are present
-        if "HH" in bn or "HV" in bn or "VV" in bn or "VH" in bn:
-            polarization = None
-            if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
-                polarization = "DH"
-            elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
-                polarization = "DV"
-            elif "HV" in bn and "HH" not in bn and "VV" not in bn and "VH" not in bn:
-                polarization = "HV"
-            elif "VH" in bn and "HH" not in bn and "VV" not in bn and "HV" not in bn:
-                polarization = "VH"
+        polarization = None
+        if "HH" in bn and "HV" in bn and "VV" not in bn and "VH" not in bn:
+            polarization = "DH"
+        elif "VV" in bn and "VH" in bn and "HH" not in bn and "HV" not in bn:
+            polarization = "DV"
 
-            logging_extra = {'job_id': job_id} if job_id else {}
-
-            if polarization:
-                logger.info(f"No polarization was specified, using one based on band selection: {polarization}",
-                            extra=logging_extra)
-                metadata_properties["polarization"] = {'eq': polarization}
-            else:
-                logger.warning("No polarization was specified. This might give errors from Sentinelhub.",
-                               extra=logging_extra)
+        if polarization:
+            log.info(f"No polarization was specified, using one based on band selection: {polarization}")
+            metadata_properties["polarization"] = {'eq': polarization}
+        else:
+            log.warning("No polarization was specified. This might give errors from Sentinelhub.")
