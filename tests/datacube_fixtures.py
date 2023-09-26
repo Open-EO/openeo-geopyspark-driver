@@ -18,7 +18,7 @@ matrix_of_nodata.fill(-1)
 
 extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
 extent_webmerc = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 445277.96317309426, 'ymax': 445640.1096560266}
-layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
+layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 4, 'tileRows': 4}
 
 
 
