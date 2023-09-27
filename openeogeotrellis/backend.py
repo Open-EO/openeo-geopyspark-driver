@@ -1379,40 +1379,44 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
 
         elif isinstance(error, Py4JJavaError):
-            java_exception = error.java_exception
+            def assemble_exception_chain(java_exception) -> list:
+                if java_exception is None:
+                    return []
 
-            java_exception_class_name = java_exception.getClass().getName()
-            is_spark_exception = "SparkException" in java_exception_class_name
-            while java_exception.getCause() is not None and java_exception != java_exception.getCause():
-                java_exception = java_exception.getCause()
+                return [java_exception] + assemble_exception_chain(java_exception.getCause())
 
-            java_exception_class_name = java_exception.getClass().getName()
-            java_exception_message = java_exception.getMessage()
+            exception_chain = assemble_exception_chain(error.java_exception)
+            root_cause = exception_chain[-1]
+            root_cause_class_name = root_cause.getClass().getName()
+            root_cause_message = root_cause.getMessage()
 
-            no_data_found = (java_exception_class_name == 'java.lang.AssertionError'
-                             and "Cannot stitch empty collection" in java_exception_message)
-            sentinel1_band_not_present = (java_exception_class_name ==
+            logger.debug(f"exception chain classes: "
+                         f"{' caused by '.join(exception.getClass().getName() for exception in exception_chain)}")
+
+            no_data_found = (root_cause_class_name == 'java.lang.AssertionError'
+                             and "Cannot stitch empty collection" in root_cause_message)
+            sentinel1_band_not_present = (root_cause_class_name ==
                                           'org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException')
 
-            is_client_error = (java_exception_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
+            is_client_error = (root_cause_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
                                sentinel1_band_not_present)
 
             if no_data_found:
                 summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
-            elif "outofmemoryerror" in java_exception_class_name.lower():
+            elif "outofmemoryerror" in root_cause_class_name.lower():
                 summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
-            elif is_spark_exception:
-                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(java_exception_message)
+            elif "SparkException" in error.java_exception.getClass().getName():
+                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                 if udf_stacktrace:
                     summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
                 elif sentinel1_band_not_present:
-                    summary = (f"Requested band '{java_exception.missingBandName()}' is not present in Sentinel 1 tile;"
+                    summary = (f"Requested band '{root_cause.missingBandName()}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
                 else:
-                    summary = f"Exception during Spark execution: {java_exception_message}"
+                    summary = f"Exception during Spark execution: {root_cause_message}"
             else:
-                summary = java_exception_class_name + ": " + str(java_exception_message)
+                summary = root_cause_class_name + ": " + str(root_cause_message)
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
