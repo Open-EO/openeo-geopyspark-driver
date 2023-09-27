@@ -6,7 +6,7 @@ import logging
 import os
 
 from openeo_driver.server import run_gunicorn
-from openeo_driver.util.logging import get_logging_config, setup_logging
+from openeo_driver.util.logging import get_logging_config, setup_logging, LOG_HANDLER_STDERR_JSON
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.configparams import ConfigParams
@@ -17,18 +17,20 @@ log = logging.getLogger(__name__)
 
 
 def main():
-    setup_logging(get_logging_config(
-        root_handlers=["stderr_json"],
-        loggers={
-            "openeo": {"level": "DEBUG"},
-            "openeo_driver": {"level": "DEBUG"},
-            'openeogeotrellis': {'level': 'DEBUG'},
-            "flask": {"level": "DEBUG"},
-            "werkzeug": {"level": "DEBUG"},
-            "gunicorn": {"level": "INFO"},
-            'kazoo': {'level': 'WARN'},
-        },
-    ))
+    setup_logging(
+        get_logging_config(
+            root_handlers=[LOG_HANDLER_STDERR_JSON],
+            loggers={
+                "openeo": {"level": "DEBUG"},
+                "openeo_driver": {"level": "DEBUG"},
+                "openeogeotrellis": {"level": "DEBUG"},
+                "flask": {"level": "DEBUG"},
+                "werkzeug": {"level": "DEBUG"},
+                "gunicorn": {"level": "INFO"},
+                "kazoo": {"level": "WARN"},
+            },
+        )
+    )
 
     from pyspark import SparkContext
     log.info("starting spark context")

@@ -5,7 +5,13 @@ import threading
 import json
 from pathlib import Path
 
-from openeo_driver.util.logging import (get_logging_config, setup_logging, LOGGING_CONTEXT_BATCH_JOB, )
+from openeo_driver.util.logging import (
+    get_logging_config,
+    setup_logging,
+    LOGGING_CONTEXT_BATCH_JOB,
+    LOG_HANDLER_STDERR_JSON,
+    LOG_HANDLER_FILE_JSON,
+)
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy.batch_job import main, logger
@@ -13,9 +19,14 @@ from openeogeotrellis.deploy.batch_job import main, logger
 OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
 
 
-if __name__ == '__main__':
-    setup_logging(get_logging_config(root_handlers = ["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
-        context = LOGGING_CONTEXT_BATCH_JOB, root_level = OPENEO_LOGGING_THRESHOLD), capture_unhandled_exceptions = False,
+if __name__ == "__main__":
+    setup_logging(
+        get_logging_config(
+            root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],
+            context=LOGGING_CONTEXT_BATCH_JOB,
+            root_level=OPENEO_LOGGING_THRESHOLD,
+        ),
+        capture_unhandled_exceptions=False,
     )
 
     config_params = ConfigParams()

@@ -38,6 +38,8 @@ from openeo_driver.util.logging import (
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
     LOGGING_CONTEXT_BATCH_JOB,
+    LOG_HANDLER_STDERR_JSON,
+    LOG_HANDLER_FILE_JSON,
 )
 from openeogeotrellis.configparams import ConfigParams
 
@@ -448,8 +450,8 @@ def ensure_executor_logging(f) -> Callable:
             BatchJobLoggingFilter.set("user_id", user_id)
             BatchJobLoggingFilter.set("req_id", request_id)
 
-        setup_logging(get_logging_config(
-            root_handlers=["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
+        logging_config = get_logging_config(
+            root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],
             loggers={
                 "openeo": {"level": "DEBUG"},
                 "openeo_driver": {"level": "DEBUG"},
@@ -458,7 +460,9 @@ def ensure_executor_logging(f) -> Callable:
                 "cropsar": {"level": "DEBUG"},
             },
             context=LOGGING_CONTEXT_BATCH_JOB,
-            root_level=os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")))
+            root_level=os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO"),
+        )
+        setup_logging(logging_config)
 
     decorator = on_first_time(partial(setup_context_aware_logging,
                                       user_id=FlaskUserIdLogging.get_user_id(),

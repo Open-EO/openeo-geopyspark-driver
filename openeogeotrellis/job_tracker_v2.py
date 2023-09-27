@@ -28,7 +28,12 @@ except ImportError:
 from openeo.util import TimingLogger, repr_truncate, Rfc3339, rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.util.logging import get_logging_config, setup_logging
+from openeo_driver.util.logging import (
+    get_logging_config,
+    setup_logging,
+    LOG_HANDLER_STDERR_BASIC,
+    LOG_HANDLER_STDERR_JSON,
+)
 import openeo_driver.utils
 
 from openeogeotrellis import async_task
@@ -653,8 +658,7 @@ class CliApp:
         rotating_file: Optional[Union[str, Path]] = None,
     ):
         logging_config = get_logging_config(
-            # TODO: better handler than "wsgi"?
-            root_handlers=["wsgi"] if basic_logging else ["stderr_json"],
+            root_handlers=[LOG_HANDLER_STDERR_BASIC] if basic_logging else [LOG_HANDLER_STDERR_JSON],
             loggers={
                 "openeo": {"level": "DEBUG"},
                 "openeo_driver": {"level": "DEBUG"},

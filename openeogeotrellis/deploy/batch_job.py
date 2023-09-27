@@ -41,6 +41,8 @@ from openeo_driver.util.logging import (
     get_logging_config,
     setup_logging,
     LOGGING_CONTEXT_BATCH_JOB,
+    LOG_HANDLER_STDERR_JSON,
+    LOG_HANDLER_FILE_JSON,
 )
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, temporal_extent_union
@@ -1261,11 +1263,13 @@ def _transform_stac_metadata(job_dir: Path):
             json.dump(transformed, f, indent=2)
 
 
-if __name__ == '__main__':
-    setup_logging(get_logging_config(
-        root_handlers=["stderr_json" if ConfigParams().is_kube_deploy else "file_json"],
-        context=LOGGING_CONTEXT_BATCH_JOB,
-        root_level=OPENEO_LOGGING_THRESHOLD),
+if __name__ == "__main__":
+    setup_logging(
+        get_logging_config(
+            root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],
+            context=LOGGING_CONTEXT_BATCH_JOB,
+            root_level=OPENEO_LOGGING_THRESHOLD,
+        ),
         capture_unhandled_exceptions=False,  # not needed anymore, as we have a try catch around everything
     )
 

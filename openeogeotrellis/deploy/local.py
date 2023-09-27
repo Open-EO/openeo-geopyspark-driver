@@ -10,7 +10,7 @@ from pathlib import Path
 
 import openeo_driver.config.load
 from openeo_driver.server import run_gunicorn
-from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level
+from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level, LOG_HANDLER_STDERR_JSON
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
@@ -59,7 +59,7 @@ def on_started() -> None:
 
 
 if __name__ == '__main__':
-    root_handlers = ["stderr_json"]
+    root_handlers = [LOG_HANDLER_STDERR_JSON]
     if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
         root_handlers = None
 
