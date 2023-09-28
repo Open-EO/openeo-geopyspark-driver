@@ -58,7 +58,9 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
         raise Exception("There should have been an exception raised in the try clause.")
 
 
-def test_summarize_sentinel1_band_not_present_exception():
+def test_summarize_sentinel1_band_not_present_exception(caplog):
+    caplog.set_level("DEBUG")
+
     jvm = get_jvm()
 
     http_request = jvm.scalaj.http.Http.apply("https://sentinel-hub.example.org/process")
@@ -75,3 +77,6 @@ def test_summarize_sentinel1_band_not_present_exception():
             f"Requested band 'HH' is not present in Sentinel 1 tile;"
             f' try specifying a "polarization" property filter according to the table at'
             f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
+
+    assert ("exception chain classes: org.apache.spark.SparkException "
+            "caused by org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException" in caplog.messages)
