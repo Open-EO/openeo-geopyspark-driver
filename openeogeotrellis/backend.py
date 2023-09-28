@@ -1379,13 +1379,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
 
         elif isinstance(error, Py4JJavaError):
-            def assemble_exception_chain(java_exception) -> list:
-                if java_exception is None:
+            def get_exception_chain(from_java_exception) -> list:
+                if from_java_exception is None:
                     return []
 
-                return [java_exception] + assemble_exception_chain(java_exception.getCause())
+                return [from_java_exception] + get_exception_chain(from_java_exception.getCause())
 
-            exception_chain = assemble_exception_chain(error.java_exception)
+            exception_chain = get_exception_chain(error.java_exception)
             root_cause = exception_chain[-1]
             root_cause_class_name = root_cause.getClass().getName()
             root_cause_message = root_cause.getMessage()
@@ -1395,26 +1395,41 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             no_data_found = (root_cause_class_name == 'java.lang.AssertionError'
                              and "Cannot stitch empty collection" in root_cause_message)
-            sentinel1_band_not_present = (root_cause_class_name ==
-                                          'org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException')
+            is_spark_exception = "SparkException" in error.java_exception.getClass().getName()
+
+            def get_missing_sentinel1_band() -> Optional[str]:
+                if root_cause_class_name == 'org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException':
+                    return root_cause.missingBandName()
+
+                if is_spark_exception:
+                    band_name_regex = re.compile(r".*Requested band '(.+)' is not present in Sentinel 1 tile .+")
+                    match = band_name_regex.search(error.java_exception.getMessage())
+                    if match:
+                        missing_band_name = match.group(1)
+                        return missing_band_name
+
+                return None
+
+            missing_sentinel1_band = get_missing_sentinel1_band()
 
             is_client_error = (root_cause_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
-                               sentinel1_band_not_present)
+                               missing_sentinel1_band)
 
             if no_data_found:
                 summary = "Cannot construct an image because the given boundaries resulted in an empty image collection"
             elif "outofmemoryerror" in root_cause_class_name.lower():
                 summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
-            elif "SparkException" in error.java_exception.getClass().getName():
-                udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
-                if udf_stacktrace:
-                    summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
-                elif sentinel1_band_not_present:
-                    summary = (f"Requested band '{root_cause.missingBandName()}' is not present in Sentinel 1 tile;"
+            elif is_spark_exception:
+                if missing_sentinel1_band:
+                    summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
                 else:
-                    summary = f"Exception during Spark execution: {root_cause_message}"
+                    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
+                    if udf_stacktrace:
+                        summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                    else:
+                        summary = f"Exception during Spark execution: {root_cause_message}"
             else:
                 summary = root_cause_class_name + ": " + str(root_cause_message)
             summary = str_truncate(summary, width=width)

@@ -67,8 +67,11 @@ def test_summarize_sentinel1_band_not_present_exception(caplog):
     response_headers = getattr(getattr(jvm.scala.collection.immutable, "Map$"), "MODULE$").empty()
     sentinel1_band_not_present_exception = jvm.org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException(
         http_request, None, 400, response_headers, """{"error":{"status":400,"reason":"Bad Request","message":"Requested band 'HH' is not present in Sentinel 1 tile 'S1A_IW_GRDH_1SDV_20170301T050935_20170301T051000_015494_019728_3A01' returned by criteria specified in `dataFilter` parameter.","code":"RENDERER_S1_MISSING_POLARIZATION"}}""")
-    spark_exception = jvm.org.apache.spark.SparkException("", sentinel1_band_not_present_exception)
-    py4j_error: Exception = Py4JJavaError(msg="", java_exception=spark_exception)
+    spark_exception = jvm.org.apache.spark.SparkException(
+        "Job aborted due to stage failure ...", sentinel1_band_not_present_exception)
+    py4j_error: Exception = Py4JJavaError(
+        msg="An error occurred while calling z:org.openeo.geotrellis.geotiff.package.saveRDD.",
+        java_exception=spark_exception)
 
     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
 
@@ -80,3 +83,25 @@ def test_summarize_sentinel1_band_not_present_exception(caplog):
 
     assert ("exception chain classes: org.apache.spark.SparkException "
             "caused by org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException" in caplog.messages)
+
+
+def test_summarize_sentinel1_band_not_present_exception_workaround_for_root_cause_missing(caplog):
+    caplog.set_level("DEBUG")
+
+    jvm = get_jvm()
+
+    # does not have a root cause attached
+    spark_exception = jvm.org.apache.spark.SparkException('Job aborted due to stage failure: \nAborting TaskSet 16.0 because task 2 (partition 2)\ncannot run anywhere due to node and executor excludeOnFailure.\nMost recent failure:\nLost task 0.2 in stage 16.0 (TID 2580) (epod049.vgt.vito.be executor 57): org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException: Sentinel Hub returned an error\nresponse: HTTP/1.1 400 Bad Request with body: {"error":{"status":400,"reason":"Bad Request","message":"Requested band \'HH\' is not present in Sentinel 1 tile \'S1B_IW_GRDH_1SDV_20170302T050053_20170302T050118_004525_007E0D_CBC9\' returned by criteria specified in `dataFilter` parameter.","code":"RENDERER_S1_MISSING_POLARIZATION"}}\nrequest: POST https://services.sentinel-hub.com/api/v1/process with (possibly abbreviated) body: { ...')
+    py4j_error: Exception = Py4JJavaError(
+        msg="An error occurred while calling z:org.openeo.geotrellis.geotiff.package.saveRDD.",
+        java_exception=spark_exception)
+
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
+
+    assert error_summary.is_client_error
+    assert (error_summary.summary ==
+            f"Requested band 'HH' is not present in Sentinel 1 tile;"
+            f' try specifying a "polarization" property filter according to the table at'
+            f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
+
+    assert ("exception chain classes: org.apache.spark.SparkException" in caplog.messages)
