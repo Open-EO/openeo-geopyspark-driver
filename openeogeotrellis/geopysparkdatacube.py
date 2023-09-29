@@ -539,7 +539,7 @@ class GeopysparkDataCube(DriverDataCube):
             def rdd_function(rdd, _zoom):
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
-                return udf.runUserCode(udf_code, rdd, band_names, udf_context)
+                return udf.runUserCodeSpatioTemporal(udf_code, rdd, band_names, udf_context)
 
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
