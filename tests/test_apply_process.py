@@ -6,12 +6,14 @@ import math
 import numpy as np
 import pytest
 import pytz
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, Metadata, Extent, LayoutDefinition,
+                                   TileLayout, Bounds)
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext
 from shapely.geometry import Point
 
+from .data import get_test_data_file
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
@@ -617,3 +619,69 @@ def test_merge_cubes_error():
         cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
         cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
         cube1.merge_cubes(cube2)
+
+
+def test_apply_increase_resultion(imagecollection_with_two_bands_and_three_dates_large):
+    input_cube = imagecollection_with_two_bands_and_three_dates_large
+
+    file_name = get_test_data_file("udf_increase_resolution.py")
+    with open(file_name, "r") as f:
+        udf_code = f.read()
+    udf = {
+        "udf_process": {
+            "process_id": "run_udf",
+            "arguments": {
+                "data": {
+                    "from_parameter": "data"
+                },
+                "udf": udf_code,
+                "runtime": "Python-Jep"
+            },
+            "result": True
+        },
+    }
+
+    result = input_cube.apply(process = udf, context = {}, env = EvalEnv())
+
+    input_metadata = imagecollection_with_two_bands_and_three_dates_large.get_max_level().layer_metadata
+    result_level = result.get_max_level()
+    result_metadata = result_level.layer_metadata
+
+    # Check extents.
+    input_extent: Extent = input_metadata.extent
+    input_layout_definition: LayoutDefinition = input_metadata.layout_definition
+    assert input_extent == result_metadata.extent
+    assert input_layout_definition.extent == result_metadata.layout_definition.extent
+
+    # Check tile_layout.
+    input_tile_layout: TileLayout = input_metadata.tile_layout
+    assert input_tile_layout.layoutCols * 2 == result_metadata.tile_layout.layoutCols
+    assert input_tile_layout.layoutRows * 2 == result_metadata.tile_layout.layoutRows
+    assert input_tile_layout.tileCols == result_metadata.tile_layout.tileCols
+    assert input_tile_layout.tileRows == result_metadata.tile_layout.tileRows
+    assert result_metadata.layout_definition.tileLayout == result_metadata.tile_layout
+
+    # Check bounds.
+    # They should change from (0,0)->(1,1) to (0,0)->(3,3) (4 to 16 multiband tiles per date)
+    input_bounds: Bounds = input_metadata.bounds
+    assert input_bounds.minKey.col == result_metadata.bounds.minKey.col
+    assert input_bounds.minKey.row == result_metadata.bounds.minKey.row
+    assert input_bounds.maxKey.col * 4 - 1 == result_metadata.bounds.maxKey.col  # (1,1) => (3,3)
+    assert input_bounds.maxKey.row * 4 - 1 == result_metadata.bounds.maxKey.row
+    assert input_bounds.minKey.instant == result_metadata.bounds.minKey.instant
+    assert input_bounds.maxKey.instant == result_metadata.bounds.maxKey.instant
+
+    result_numpy: List = result_level.to_numpy_rdd().collect()
+    space_time_keys: List[SpaceTimeKey] = [x[0] for x in result_numpy]
+    nr_dates = 3
+    # Every tile transforms into 4 tiles because the resolution doubled. (128x128 => 256x256)
+    assert len(space_time_keys) == 4 * nr_dates * input_tile_layout.layoutRows * input_tile_layout.layoutCols
+    tiles: List[Tile] = [x[1] for x in result_numpy]
+    # The tile sizes should not change when the resolution changes. Only the number of tiles changes.
+    # This is important because we'll never receive an error when tile sizes are too large,
+    # netCDFWriter just crops them.
+    shapes = [x.cells.shape for x in tiles]
+    for shape in shapes:
+        assert shape == (2, input_tile_layout.tileRows, input_tile_layout.tileCols)
+
+# TODO: test_apply_increase_resultion_and_change_extent(imagecollection_with_two_bands_and_three_dates_large)
