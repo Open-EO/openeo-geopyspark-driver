@@ -263,3 +263,76 @@ def imagecollection_with_two_bands_spatial_only(request):
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube
+
+
+@pytest.fixture
+def imagecollection_with_two_bands_and_three_dates_large(request):
+    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis.constants import LayerType
+    from geopyspark.geotrellis.layer import TiledRasterLayer
+    import geopyspark as gps
+    from pyspark import SparkContext
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+
+    tileColRows = 128
+    matrix_of_one_large = np.ones((1, tileColRows, tileColRows))
+    matrix_of_increasing_tiles = np.zeros((1, tileColRows, tileColRows))
+    block_size = 32
+    block_col_rows = round(tileColRows / block_size)
+    block_value = 0
+    for col in range(block_col_rows):
+        for row in range(block_col_rows):
+            matrix_of_increasing_tiles[0, col * block_size:(col + 1) * block_size, row * block_size:(row + 1) * block_size] = block_value
+            block_value += 1
+
+    matrix_of_nodata_large = np.zeros((1, tileColRows, tileColRows))
+    matrix_of_nodata_large.fill(-1)
+
+    bands_large = np.array([matrix_of_one_large, matrix_of_increasing_tiles], dtype='int')
+    first_tile = Tile.from_numpy_array(bands_large, no_data_value=-1)
+    second_tile = Tile.from_numpy_array(np.array([matrix_of_increasing_tiles, matrix_of_one_large], dtype='int'), -1)
+    nodata_tile = Tile.from_numpy_array(np.array([matrix_of_nodata_large, matrix_of_nodata_large], dtype='int'), -1)
+    date1 = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+    date2 = datetime.datetime.strptime("2017-09-30T00:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+    date3 = datetime.datetime.strptime("2017-10-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo = pytz.UTC)
+    layer = [(SpaceTimeKey(0, 0, date1), first_tile), (SpaceTimeKey(1, 0, date1), first_tile),
+             (SpaceTimeKey(0, 1, date1), first_tile), (SpaceTimeKey(1, 1, date1), first_tile),
+             (SpaceTimeKey(0, 0, date2), nodata_tile), (SpaceTimeKey(1, 0, date2), nodata_tile),
+             (SpaceTimeKey(0, 1, date2), nodata_tile), (SpaceTimeKey(1, 1, date2), nodata_tile),
+             (SpaceTimeKey(0, 0, date3), second_tile), (SpaceTimeKey(1, 0, date3), second_tile),
+             (SpaceTimeKey(0, 1, date3), second_tile), (SpaceTimeKey(1, 1, date3), second_tile)]
+    rdd = SparkContext.getOrCreate().parallelize(layer)
+
+    large_layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': tileColRows, 'tileRows': tileColRows}
+    metadata = {
+        'cellType': 'int32ud-1',
+        'extent': extent,
+        'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+        'bounds': {
+            'minKey': {
+                'col': 0,
+                'row': 0,
+                'instant': _convert_to_unix_time(date1)
+            },
+            'maxKey': {
+                'col': 1,
+                'row': 1,
+                'instant': _convert_to_unix_time(date3)
+            }
+        },
+        'layoutDefinition': {
+            'extent': extent,
+            'tileLayout': large_layout
+        }
+    }
+
+    geopyspark_layer = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata).convert_data_type('int32',no_data_value=-1)
+
+    import copy
+    openeo_metadata_copy = copy.deepcopy(openeo_metadata)
+    openeo_metadata_copy["cube:dimensions"]["t"]["extent"] = [date1,date3]
+
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata_copy))
+    if request.instance:
+        request.instance.imagecollection_with_two_bands_and_three_dates_large = datacube
+    return datacube
