@@ -120,9 +120,13 @@ class KazooClientMock:
 
     def delete(self, path: Union[str, Path], version: int = -1):
         path = Path(path)
-        self._get(path).assert_version(version)
-        parent = self._get(path.parent)
-        del parent.children[path.name]
+        znode = self._get(path).assert_version(version)
+        if znode is self.root:
+            # Special case: wipe everything, start over.
+            self.root = _ZNode()
+        else:
+            parent = self._get(path.parent)
+            del parent.children[path.name]
 
     def dump(self) -> Dict[str, bytes]:
         """Dump ZooKeeper data for inspection"""

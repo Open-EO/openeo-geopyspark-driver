@@ -301,6 +301,14 @@ class TestDoubleJobRegistry:
 
         assert caplog.messages == []
 
+    def test_get_job_not_found(self, double_jr, caplog):
+        with double_jr:
+            with pytest.raises(JobNotFoundException):
+                _ = double_jr.get_job("j-nope", user_id="john")
+            with pytest.raises(JobNotFoundException):
+                _ = double_jr.get_job_metadata("j-nope", user_id="john")
+        assert caplog.messages == []
+
     def test_get_job_mismatch(self, double_jr, memory_jr, caplog):
         with double_jr:
             double_jr.create_job(
@@ -373,6 +381,51 @@ class TestDoubleJobRegistry:
             ),
             job_options={"prio": "low"},
             title="John's job",
+            description=None,
+            updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            started=None,
+            finished=None,
+        )
+
+        assert caplog.messages == []
+
+    def test_get_job_deleted_from_zk(self, double_jr, caplog, zk_client, memory_jr):
+        """
+        Make sure to fall back on EJR if no data found in ZK
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/523
+        """
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            # Wipe Zookeeper db
+            zk_client.delete("/")
+
+            job = double_jr.get_job("j-123", user_id="john")
+            job_metadata = double_jr.get_job_metadata("j-123", user_id="john")
+
+        expected_job = {
+            "job_id": "j-123",
+            "user_id": "john",
+            "created": "2023-02-15T17:17:17Z",
+            "status": "created",
+            "updated": "2023-02-15T17:17:17Z",
+            "api_version": None,
+            "application_id": None,
+            "title": "John's job",
+            "description": None,
+        }
+        assert job == DictSubSet(
+            {"job_id": "j-123", "user_id": "john", "created": "2023-02-15T17:17:17Z", "status": "created"}
+        )
+        assert job_metadata == BatchJobMetadata(
+            id="j-123",
+            status="created",
+            created=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            process=dict(
+                process_graph={"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+                title="dummy",
+            ),
+            job_options=None,
+            title=None,
             description=None,
             updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
             started=None,
