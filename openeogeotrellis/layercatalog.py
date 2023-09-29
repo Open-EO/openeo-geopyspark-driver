@@ -1059,10 +1059,13 @@ def check_missing_products(
             opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
 
             url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
+            # Terrascope has a different calculation for cloudCover
+            query_kwargs_no_cldPrcnt = query_kwargs.copy()
+            del query_kwargs_no_cldPrcnt["cldPrcnt"]
             terrascope_tiles = query_jvm_opensearch_client(
                 open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
                 collection_id=opensearch_collection_id,
-                _query_kwargs=query_kwargs,
+                _query_kwargs=query_kwargs_no_cldPrcnt,
             )
 
             logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
