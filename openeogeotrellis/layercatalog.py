@@ -1061,7 +1061,8 @@ def check_missing_products(
             url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
             # Terrascope has a different calculation for cloudCover
             query_kwargs_no_cldPrcnt = query_kwargs.copy()
-            del query_kwargs_no_cldPrcnt["cldPrcnt"]
+            if "cldPrcnt" in query_kwargs_no_cldPrcnt:
+                del query_kwargs_no_cldPrcnt["cldPrcnt"]
             terrascope_tiles = query_jvm_opensearch_client(
                 open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
                 collection_id=opensearch_collection_id,
