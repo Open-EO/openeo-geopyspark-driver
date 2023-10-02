@@ -2,7 +2,7 @@ import logging
 import datetime
 import pytest
 from unittest import mock
-
+import kazoo.exceptions
 from kazoo.handlers.threading import KazooTimeoutError
 
 from openeo_driver.backend import BatchJobMetadata
@@ -450,6 +450,27 @@ class TestDoubleJobRegistry:
         )
         assert zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123") == expected
         assert memory_jr.db["j-123"] == expected
+
+    def test_delete_job(self, double_jr, caplog, zk_client, memory_jr):
+        with double_jr:
+            double_jr.create_job(
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+
+            assert zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123") == DictSubSet(job_id="j-123")
+            assert "j-123" in memory_jr.db
+
+            double_jr.delete_job(job_id="j-123", user_id="john")
+
+            with pytest.raises(kazoo.exceptions.NoNodeError):
+                zk_client.get("/openeo.test/jobs/ongoing/john/j-123")
+            assert "j-123" not in memory_jr.db
+
+        assert caplog.messages == []
 
     def test_set_status_no_zk(self, double_jr_no_zk, zk_client, memory_jr, time_machine):
         with double_jr_no_zk:

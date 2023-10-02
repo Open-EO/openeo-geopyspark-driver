@@ -562,6 +562,12 @@ class InMemoryJobRegistry(JobRegistryInterface):
             raise JobNotFoundException(job_id=job_id)
         return self.db[job_id]
 
+    def delete_job(self, job_id: str) -> None:
+        if job_id in self.db:
+            del self.db[job_id]
+        else:
+            raise JobNotFoundException(job_id=job_id)
+
     def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
         self.db[job_id].update(**kwargs)
@@ -774,12 +780,15 @@ class DoubleJobRegistry:
             with self._just_log_errors("set_status", job_id=job_id):
                 self.elastic_job_registry.set_status(job_id=job_id, status=status)
 
-    def delete(self, job_id: str, user_id: str) -> None:
+    def delete_job(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            # TODO support for deletion in EJR (https://github.com/Open-EO/openeo-python-driver/issues/163)
-            self._log.warning(f"EJR TODO: support job deletion ({job_id=})")
+            with self._just_log_errors("delete", job_id=job_id):
+                self.elastic_job_registry.delete_job(job_id=job_id)
+
+    # Legacy alias
+    delete = delete_job
 
     def set_dependencies(
         self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]

@@ -3057,7 +3057,7 @@ class GpsBatchJobs(backend.BatchJobs):
             )
 
         with self._double_job_registry as registry:
-            registry.delete(job_id, user_id)
+            registry.delete_job(job_id=job_id, user_id=user_id)
 
         logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
 
