@@ -68,19 +68,22 @@ my_workspace_dir := $(realpath  $(my_docker_dir)/..)
 # Normally we want the version that use buildkit and RUN --mount"
 # But if your Docker installation does not allow it we have a nearly identical
 # dockerfile that leaves out the --mount option in the RUN commands.
+docker_file_minimal_nobuildkit := $(realpath $(my_docker_dir)/minimal-no-buildkit.dockerfile)
+docker_file_minimal_with_buildkit := $(realpath $(my_docker_dir)/minimal.dockerfile)
 ifeq ($(buildkit_supported),1)
-docker_file_minimal := $(realpath $(my_docker_dir)/minimal.dockerfile)
+docker_file_minimal := $(docker_file_minimal_with_buildkit)
 else
-docker_file_minimal := $(realpath $(my_docker_dir)/minimal-no-buildkit.dockerfile)
+docker_file_minimal := $(docker_file_minimal_nobuildkit)
 endif
+
 
 # Path to the requirements file for docker container, to be exported.
 docker_requirements_file := $(realpath $(my_docker_dir)/requirements-docker.txt)
 
 
-# ==============================================================================
-# Make targets
-# ==============================================================================
+## ==============================================================================
+## Make targets
+## ==============================================================================
 
 # In this case we want the defautl target to be a safe target that doesn't build or overwrite anything.
 .PHONY: default
@@ -92,15 +95,20 @@ all: build test
 ## Build and run the unit tests
 
 
-# ------------------------------------------------------------------------------
-# Targets for showing help and displaying setup information
-# ------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------
+## Targets for showing help and displaying setup information
+## ------------------------------------------------------------------------------
 
 .PHONY: help
 help:
-## Show this help. This command looks for comments on the first line after a target
-## and these comments should start with a double hash ##  to distinguish them
-## from regular comments. Much like "docstrings" as we call it in Python.
+## Show this help.
+##  This command display any comment lines that start with a double hash: ##
+##  That distiguishes them from regular comments, which we do not want to show.
+##  The main goal is to show the first lines (double-hashed) after a target,
+## 	before the target's commands are listed, a bit like a docstrings in Python.
+##  But you can also show the other double-hashed comments which show your the
+##  grouping/organisation of the make targets.
+
 
 ifeq ($(OS),Windows_NT)
 help: help-rg
@@ -112,14 +120,17 @@ endif
 .PHONY: help-grep
 help-grep:
 ## Show this help (for Linux and git-bash, requires grep and sed)
-	@grep -A1 -e '^[a-z][a-zA-Z0-9\\\-]*:' $(MAKEFILE_LIST) | sed -s 's/^##/  /g' | sed -e 's/\-\-//g'
+# This command shows the doubles hashed lines and 1 line above it, where the target should be defined.
+	@grep -B1 -h -e '^\#\#' $(MAKEFILE_LIST) | sed -E -s 's/^## ([=\-])/\1/g' | sed -s 's/^##/  /g' | sed -e 's/^\-\-$$//g'
 
 
 .PHONY: help-rg
 help-rg:
 ## Show this help, using ripgrep (Alternative if you don't have or don't want grep and sed)
-	@rg -A1 -N -e'^[a-z][a-zA-Z0-9\\\-]*:' $(MAKEFILE_LIST)
+# This command show the doubles hashed lines and 1 line above it, where the target should be defined.
+	@rg -B1 -N -e'^\#\#' $(MAKEFILE_LIST) --context-separator="" -r '  '
 
+#@rg -B1 -N -e'^\#\#' $(MAKEFILE_LIST) --context-separator="" | sd '## -' ''  | sd '##' '  ' | sd 'docker/Makefile[:\-]' ''
 
 .PHONY: show-vars
 show-vars:
@@ -144,6 +155,10 @@ show-vars:
 	@echo my_docker_dir=$(my_docker_dir)
 	@echo my_workspace_dir=$(my_workspace_dir)
 	@echo docker_file_minimal=$(docker_file_minimal)
+	@echo docker_file_minimal_nobuildkit=$(docker_file_minimal_nobuildkit)
+	@echo docker_file_minimal_with_buildkit=$(docker_file_minimal_with_buildkit)
+	@echo buildkit_supported=$(buildkit_supported)
+	@echo docker_requirements_file=$(docker_requirements_file)
 	@echo path to make environment file, make-env.env (if it exists)=$(_makenv_file)
 
 	@echo ""
@@ -167,9 +182,31 @@ help-pip-compile:
 	docker run  --rm -ti --entrypoint pip-compile $(docker_image_base_stage) --help
 
 
-# ------------------------------------------------------------------------------
-# Targets for building
-# ------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------
+## Targets for generating derived files
+## ------------------------------------------------------------------------------
+
+
+.PHONY: no-buildkit-dockerfile
+no-buildkit-dockerfile:
+## Create the dockerfile for systems that don't have BuildKit support.
+## TODO: This target requires sd instead of sed. Get this working with regular sed, or commit to using the replacements consitently.
+## 	You can Install sd via `scoop install` or `cargo install sd`.
+#
+# TODO: This version of the command, using sd.exe, does not work in PowerShell. Find out why.
+	sd -p '^RUN \-\-mount.*' 'RUN \\' $(docker_file_minimal_with_buildkit) > $(docker_file_minimal_nobuildkit)
+
+
+.PHONY: no-buildkit-dockerfile-sed
+no-buildkit-dockerfile-sed:
+# version with sed
+# Not sure why GNU make messes up the regex syntax here. sed doesn't receive the command I expect.
+	sed -E -e 's/^RUN --mount.*/RUN \\/g' $(docker_file_minimal_with_buildkit) > $(docker_file_minimal_nobuildkit)
+
+
+## ------------------------------------------------------------------------------
+## Targets for building
+## ------------------------------------------------------------------------------
 
 .PHONY: build
 build: build-base pip-compile build-main get-jars
@@ -207,9 +244,9 @@ get-jars:
 	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) python3 scripts/get-jars.py
 
 
-# ------------------------------------------------------------------------------
-# Targets for testing
-# ------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------
+## Targets for testing
+## ------------------------------------------------------------------------------
 
 # We don't want to rebuild every time we run pytest.
 # That's what mapping the source directory to a docker volume serves for, to avoid that long rebuild.
@@ -225,10 +262,22 @@ brief-test:
 	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) pytest -ra -vv tests/test_utils.py
 
 
-# ------------------------------------------------------------------------------
-# Helpful but less important targets:
-# to make it easy to run bash in containers for troubleshooting and debugging.
-# ------------------------------------------------------------------------------
+.PHONY: run-webapp
+run-webapp:
+## Run the web application (the REST API Backend).
+	docker run --rm -ti -v $(my_workspace_dir):/src -p 4040:4040 -p 8080:8080 $(docker_image) python openeogeotrellis/deploy/local.py
+
+
+run-webapp-override-catalog:
+## Run the web application (the REST API Backend) but provide the OPENEO_CATALOG_FILES env var to override the default catalog.
+## This only works if you set OPENEO_CATALOG_FILES in your make-env.env file.
+	docker run -e OPENEO_CATALOG_FILES=$(OPENEO_CATALOG_FILES) --rm -ti -v $(my_workspace_dir):/src -p 4040:4040 -p 8080:8080 $(docker_image) python openeogeotrellis/deploy/local.py
+
+
+## ------------------------------------------------------------------------------
+## Helpful but less important targets:
+## to make it easy to run bash in containers for troubleshooting and debugging.
+## ------------------------------------------------------------------------------
 
 .PHONY: bash
 bash:
@@ -236,9 +285,9 @@ bash:
 	docker run --rm -ti -v $(my_workspace_dir):/src  $(docker_image) bash
 
 
-# ------------------------------------------------------------------------------
-# Targets for cleaning up
-# ------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------
+## Targets for cleaning up
+## ------------------------------------------------------------------------------
 
 .PHONY: clean
 clean:

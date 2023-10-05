@@ -95,10 +95,6 @@ if __name__ == '__main__':
     show_log_level(logging.getLogger('openeogeotrellis'))
     show_log_level(app.logger)
 
-    run_gunicorn(
-        app,
-        threads=4,
-        host="127.0.0.1",
-        port=8080,
-        on_started=on_started
-    )
+    host = os.environ.get("OPENEO_DEV_GUNICORN_HOST", "127.0.0.1")
+
+    run_gunicorn(app, threads=4, host=host, port=8080, on_started=on_started)

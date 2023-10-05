@@ -30,7 +30,15 @@ VOLUME $SRC_DIR
 
 COPY docker/apt-install-dependencies.sh .
 
-RUN --mount=type=cache,target=/var/cache/apt/ ./apt-install-dependencies.sh
+#
+# For all RUN statements that use --mount:
+#   Keep --mount options on the first line, and put all bash commands
+#   on the lines below.
+#   This is necessary to be able to autogenerate minimal-no-buildkit.dockerfile
+#   from minimal.dockerfile with an automated find-replace of the RUN statement.
+#
+RUN --mount=type=cache,target=/var/cache/apt/ \
+    ./apt-install-dependencies.sh
 
 RUN --mount=type=cache,target=~/.cache/pip \
     python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
@@ -80,6 +88,9 @@ RUN --mount=type=cache,target=~/.cache/pip \
 
 # TODO: decide: do we integrate getting jars inside the docker file or leave it up to the Makefile?
 
+
+ENV OPENEO_DEV_GUNICORN_HOST="0.0.0.0"
+ENV OPENEO_CATALOG_FILES=${SRC_DIR}/docker/example_layercatalog.json
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD ["python", "openeogeotrellis/deploy/local.py"]

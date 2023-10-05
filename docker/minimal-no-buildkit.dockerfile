@@ -30,16 +30,25 @@ VOLUME $SRC_DIR
 
 COPY docker/apt-install-dependencies.sh .
 
-RUN ./apt-install-dependencies.sh
+#
+# For all RUN statements that use --mount:
+#   Keep --mount options on the first line, and put all bash commands
+#   on the lines below.
+#   This is necessary to be able to autogenerate minimal-no-buildkit.dockerfile
+#   from minimal.dockerfile with an automated find-replace of the RUN statement.
+#
+RUN \
+    ./apt-install-dependencies.sh
 
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
+RUN \
+    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
 
 # GDAL is always a difficult one to install properly so we do this early on.
-RUN python3 -m pip install --no-cache-dir pygdal=="$(gdal-config --version).*"
+RUN \
+    python3 -m pip install --no-cache-dir pygdal=="$(gdal-config --version).*"
 
 
 ENV REQUIREMENTS_FILE_DOCKER=./requirements-docker.txt
-
 
 # ==============================================================================
 # Final build stage: the application to test
@@ -62,7 +71,8 @@ RUN mkdir /eodata
 
 COPY ${REQUIREMENTS_FILE_DOCKER} ${REQUIREMENTS_FILE_DOCKER}
 
-RUN python3 -m pip --no-cache-dir install -r  "${REQUIREMENTS_FILE_DOCKER}"
+RUN \
+    python3 -m pip --no-cache-dir install -r  "${REQUIREMENTS_FILE_DOCKER}"
 
 
 #
@@ -71,11 +81,15 @@ RUN python3 -m pip --no-cache-dir install -r  "${REQUIREMENTS_FILE_DOCKER}"
 
 COPY . $SRC_DIR
 
-RUN python3 -m  pip install --no-cache-dir -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+RUN \
+    python3 -m  pip install --no-cache-dir -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
 
 
 # TODO: decide: do we integrate getting jars inside the docker file or leave it up to the Makefile?
 
+
+ENV OPENEO_DEV_GUNICORN_HOST="0.0.0.0"
+ENV OPENEO_CATALOG_FILES=${SRC_DIR}/docker/example_layercatalog.json
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD ["python", "openeogeotrellis/deploy/local.py"]
