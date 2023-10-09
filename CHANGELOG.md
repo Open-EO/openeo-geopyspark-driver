@@ -12,6 +12,12 @@ without compromising stable operations.
 
 ## [Unreleased]
 
+### Feature
+
+- date_difference, date_replace_component: support for these two experimental processes https://github.com/Open-EO/openeo-geopyspark-driver/issues/515
+- array_apply: provide access to the 'label' and 'index' parameter  https://github.com/Open-EO/openeo-geotrellis-extensions/issues/205
+
+
 ## 2023-09-18 (0.9.5a1)
 
 Important change: time intervals are now left closed. Workflows that are sensitive to exact time intervals may need
@@ -36,6 +42,7 @@ to be updated.
 - Reduced memory usage in specific case of apply_neighborhood on a smaller chunk size. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/191)
 - Fixed error with apply_neighborhood on Sentinelhub backed layers. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/434)
 - Fix in evaluation of 'mask' process, improving performance. (https://github.com/Open-EO/openeo-python-driver/issues/161)
+- Fix wrong datacube organanization for sparse cubes in aggregate_temporal(_period) (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/209) 
 
 ### Changed
 - Improved performance for small (synchronous) requests. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/186)
