@@ -10,12 +10,18 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## [Unreleased]
+## 0.17.0a1
+
 
 ### Feature
 
 - date_difference, date_replace_component: support for these two experimental processes https://github.com/Open-EO/openeo-geopyspark-driver/issues/515
 - array_apply: provide access to the 'label' and 'index' parameter  https://github.com/Open-EO/openeo-geotrellis-extensions/issues/205
+
+### Bugfix
+
+- Fix batch job deletion in EJR code path (https://github.com/Open-EO/openeo-python-driver/issues/163,
+  https://github.com/Open-EO/openeo-geopyspark-driver/issues/523, https://github.com/Open-EO/openeo-geopyspark-driver/issues/498)
 
 
 ## 2023-09-18 (0.9.5a1)
@@ -25,14 +31,14 @@ to be updated.
 
 ### Feature
 
-- load_stac support, allowing to load STAC collections that conform to the mainstream approach 
+- load_stac support, allowing to load STAC collections that conform to the mainstream approach
   for organizing metadata in STAC. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/402)
 - First support for UDF's that change resolution, in Python-Jep runtime. (https://github.com/Open-EO/openeo-geotrellis-extensions/pull/197)
 - Improved support for running UDF's on vector cubes.
 - Support load_geojson and load_url processes to create vector cubes. (https://github.com/Open-EO/openeo-python-driver/issues/211)
 - The 'partial' query parameter is now supported when requesting job results, load_stac supports loading unfinished results. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/489)
 - Support new (experimental) vector_to_raster process, allowing to combine data from a vector source with EO data. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/423)
-- 
+-
 
 ### Bugfix
 - Fixed numerical rounding errors in datacubes that use epsg:4326, which could lead to pixel shift or missing lines of data.
@@ -42,7 +48,7 @@ to be updated.
 - Reduced memory usage in specific case of apply_neighborhood on a smaller chunk size. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/191)
 - Fixed error with apply_neighborhood on Sentinelhub backed layers. (https://github.com/Open-EO/openeo-geopyspark-driver/issues/434)
 - Fix in evaluation of 'mask' process, improving performance. (https://github.com/Open-EO/openeo-python-driver/issues/161)
-- Fix wrong datacube organanization for sparse cubes in aggregate_temporal(_period) (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/209) 
+- Fix wrong datacube organanization for sparse cubes in aggregate_temporal(_period) (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/209)
 
 ### Changed
 - Improved performance for small (synchronous) requests. (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/186)
