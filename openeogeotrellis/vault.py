@@ -37,6 +37,7 @@ class Vault:
         return client_credentials
 
     def get_etl_api_credentials(self, vault_token: str) -> OAuthCredentials:
+        # TODO: eliminate this hardcoded vault path? Use config instead?
         return self._get_kv_credentials(f"TAP/big_data_services/openeo/etl-api-oauth", vault_token)
 
     def _get_kv_credentials(self, vault_secret_path, vault_token: str) -> OAuthCredentials:

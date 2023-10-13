@@ -329,12 +329,12 @@ class GpsSecondaryServices(backend.SecondaryServices):
 
 class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def __init__(
-            self,
-            use_zookeeper=True,
-            batch_job_output_root: Optional[Path] = None,
-            use_job_registry: bool = True,
-            elastic_job_registry: Optional[ElasticJobRegistry] = None,
-            use_etl_api: bool = False,
+        self,
+        use_zookeeper: bool = True,
+        batch_job_output_root: Optional[Path] = None,
+        use_job_registry: bool = True,
+        elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        use_etl_api: bool = False,  # TODO: eliminate this parameter, use config instead
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -403,57 +403,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         self._principal = principal
         self._key_tab = key_tab
 
-        self._get_request_costs: Callable[[str, str, bool], Optional[float]] = lambda user_id, request_id, success: None
+        self._use_etl_api_on_sync_processing = use_etl_api
 
-        if use_etl_api:
-            def get_request_costs_from_etl_api(user_id: str, request_id: str, success: bool) -> Optional[float]:
-                sc = SparkContext.getOrCreate()
 
-                # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
-                request_metadata_tracker = jvm.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(request_id,
-                                                                                                       sc._jsc.sc())
-                sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
 
-                if sentinel_hub_processing_units > 0:
-                    if config_params.is_kube_deploy:
-                        # TODO: replace with strategy pattern?
-                        etl_api_client_id = os.environ["OPENEO_ETL_OIDC_CLIENT_ID"]
-                        etl_api_client_secret = os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
-                    else:
-                        vault_token = vault.login_kerberos(self._principal, self._key_tab)
-                        etl_api_credentials = vault.get_etl_api_credentials(vault_token)
-                        etl_api_client_id = etl_api_credentials.client_id
-                        etl_api_client_secret = etl_api_credentials.client_secret
-
-                    source_id = get_backend_config().etl_source_id
-                    etl_api = EtlApi(ConfigParams().etl_api, source_id, requests_session)
-
-                    access_token = get_etl_api_access_token(client_id=etl_api_client_id,
-                                                            client_secret=etl_api_client_secret,
-                                                            requests_session=requests_session)
-
-                    costs = etl_api.log_resource_usage(batch_job_id=request_id,
-                                                       title=None,
-                                                       execution_id=request_id,
-                                                       user_id=user_id,
-                                                       started_ms=None,
-                                                       finished_ms=None,
-                                                       state="FINISHED" if success else "FAILED",
-                                                       status="SUCCEEDED" if success else "FAILED",
-                                                       cpu_seconds=None,
-                                                       mb_seconds=None,
-                                                       duration_ms=None,
-                                                       sentinel_hub_processing_units=sentinel_hub_processing_units,
-                                                       access_token=access_token)
-
-                    logger.info(f"{'successful' if success else 'failed'} request required "
-                                f"{sentinel_hub_processing_units} PU(s) and cost {costs} credit(s)")
-
-                    return costs
-
-                return None
-
-            self._get_request_costs = get_request_costs_from_etl_api
 
     def capabilities_billing(self) -> dict:
         return {
@@ -1506,7 +1459,61 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
     def request_costs(self, user_id: str, request_id: str, success: bool) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
-        return self._get_request_costs(user_id, request_id, success)
+
+        if self._use_etl_api_on_sync_processing:
+            sc = SparkContext.getOrCreate()
+
+            # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
+            request_metadata_tracker = get_jvm().org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(
+                request_id, sc._jsc.sc()
+            )
+            sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
+            requests_session = requests_with_retry(total=3, backoff_factor=2)
+
+            if sentinel_hub_processing_units > 0:
+                # TODO: replace with strategy pattern?
+                if ConfigParams().is_kube_deploy:
+                    etl_api_client_id = os.environ["OPENEO_ETL_OIDC_CLIENT_ID"]
+                    etl_api_client_secret = os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
+                else:
+                    vault = Vault(ConfigParams().vault_addr, requests_session)
+
+                    vault_token = vault.login_kerberos(self._principal, self._key_tab)
+                    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+                    etl_api_client_id = etl_api_credentials.client_id
+                    etl_api_client_secret = etl_api_credentials.client_secret
+
+                source_id = get_backend_config().etl_source_id
+                etl_api = EtlApi(ConfigParams().etl_api, source_id, requests_session)
+
+                etl_access_token = get_etl_api_access_token(
+                    client_id=etl_api_client_id, client_secret=etl_api_client_secret, requests_session=requests_session
+                )
+
+                costs = etl_api.log_resource_usage(
+                    batch_job_id=request_id,
+                    title=None,
+                    execution_id=request_id,
+                    user_id=user_id,
+                    started_ms=None,
+                    finished_ms=None,
+                    state="FINISHED" if success else "FAILED",
+                    status="SUCCEEDED" if success else "FAILED",
+                    cpu_seconds=None,
+                    mb_seconds=None,
+                    duration_ms=None,
+                    sentinel_hub_processing_units=sentinel_hub_processing_units,
+                    access_token=etl_access_token,
+                )
+
+                logger.info(
+                    f"{'successful' if success else 'failed'} request required "
+                    f"{sentinel_hub_processing_units} PU(s) and cost {costs} credit(s)"
+                )
+
+                return costs
+
+
 
 
 class GpsProcessing(ConcreteProcessing):

@@ -583,6 +583,7 @@ class CliApp:
                     )
                     vault = Vault(ConfigParams().vault_addr, requests_session=requests_session)
                     vault_token = vault.login_kerberos(args.principal, args.keytab)
+                    # TODO use config system iso `app_cluster` to get ETL details
                     etl_api_credentials = vault.get_etl_api_credentials(vault_token)
                     etl_api_access_token = get_etl_api_access_token(etl_api_credentials.client_id,
                                                                     etl_api_credentials.client_secret, requests_session)
