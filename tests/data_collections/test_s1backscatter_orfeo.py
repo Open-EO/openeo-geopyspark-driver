@@ -489,8 +489,13 @@ class TestOrfeoPipeline:
         band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
         tile_size = 256
         noise_removal = True
-        key_epsg = 32635
-        key_ext = {"xmin": 440320.0, "ymin": 6203400.0, "xmax": 442880.0, "ymax": 6205960.0}
+        key_epsg = 3035
+        key_ext = {
+            "xmin": 5000000,
+            "xmax": 5020000,
+            "ymax": 4240000,
+            "ymin": 4220000,
+        }
 
         for b, band in enumerate(bands):
             data, nodata = S1BackscatterOrfeo._orfeo_pipeline(

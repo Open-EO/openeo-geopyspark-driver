@@ -237,6 +237,7 @@ class S1BackscatterOrfeo:
         :return: dictionary mapping band name (vv, vh, ...) to tiff path
         """
         with TimingLogger(title=f"{log_prefix} Scan {creo_path}", logger=logger):
+            assert os.path.exists(creo_path)
             # We expect the desired geotiff files under `creo_path` at location like
             #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
             # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
