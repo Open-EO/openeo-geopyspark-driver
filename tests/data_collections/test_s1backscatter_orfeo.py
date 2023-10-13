@@ -509,6 +509,44 @@ class TestOrfeoPipeline:
             print(data)
             print("data[3,3]: " + str(data[3,3]))
 
+    def test_noise_problem(self):
+        """
+        From https://jira.vito.be/browse/HRLVLCC-276
+        """
+        from openeogeotrellis.collections.s1backscatter_orfeo import (
+            S1BackscatterOrfeo,
+            _instant_ms_to_day,
+            S1BackscatterOrfeoV2,
+        )
+        import sys
+        from pathlib import Path
+
+        sys.path.append("/usr/lib64/python3.8/site-packages/")
+
+        X = 4500000.0
+        Y = 2880000.0
+        EXTENT = dict(zip(["xmin", "ymin", "xmax", "ymax"], [
+            X, Y, X + 10 * 15, Y + 10 * 15]))
+        EXTENT["crs"] = 3035
+        EXTENT["srs"] = 3035
+
+        data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
+            input_tiff=Path(
+                "/eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2021/03/20/S1B_IW_GRDH_1SDV_20210320T052533_20210320T052553_026094_031D15_309A_COG.SAFE/measurement/s1b-iw-grd-vh-20210320t052533-20210320t052553-026094-031d15-002-cog.tiff"
+            ),
+            extent=EXTENT,
+            extent_epsg=3035,
+            dem_dir=None,
+            extent_width_px=100,
+            extent_height_px=120,
+            sar_calibration_lut="gamma",
+            noise_removal=False,
+            elev_geoid=None,
+            elev_default=0,
+            log_prefix="test",
+            orfeo_memory=512
+        )
+
 #
 # if __name__ == '__main__':
 #     t = TestOrfeoPipeline()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ctypes
 import functools
 import json
@@ -303,7 +305,7 @@ class S1BackscatterOrfeo:
             extent_height_px: int,
             sar_calibration_lut: str,
             noise_removal: bool,
-            elev_geoid: str,
+            elev_geoid: str | None,
             elev_default: float = None,
             log_prefix: str = "",
             orfeo_memory:int = 512,
