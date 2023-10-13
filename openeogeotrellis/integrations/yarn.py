@@ -6,7 +6,11 @@ _log = logging.getLogger(__name__)
 
 
 class YARN_STATE:
-    # From https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/YarnApplicationState.html
+    """
+    Enumeration of various states of a YARN ApplicationMaster
+
+    Also see https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/YarnApplicationState.html
+    """
     ACCEPTED = "ACCEPTED"
     FAILED = "FAILED"
     FINISHED = "FINISHED"
@@ -18,7 +22,11 @@ class YARN_STATE:
 
 
 class YARN_FINAL_STATUS:
-    # From https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/FinalApplicationStatus.html
+    """
+    Enumeration of various final states of a YARN Application
+
+    Also see https://hadoop.apache.org/docs/r3.1.1/api/org/apache/hadoop/yarn/api/records/FinalApplicationStatus.html
+    """
     ENDED = "ENDED"
     FAILED = "FAILED"
     KILLED = "KILLED"

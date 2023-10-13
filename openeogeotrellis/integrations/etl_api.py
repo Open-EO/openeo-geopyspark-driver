@@ -12,8 +12,11 @@ _log = logging.getLogger(__name__)
 
 
 class ETL_API_STATE:
-    # https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource
-
+    """
+    Possible values for the "state" field in the ETL API
+    (e.g. `POST /resources` endpoint https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource).
+    Note that this roughly corresponds to YARN app state (for legacy reasons), also see `YARN_STATE`.
+    """
     ACCEPTED = "ACCEPTED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
@@ -22,7 +25,24 @@ class ETL_API_STATE:
     UNDEFINED = "UNDEFINED"
 
 
+class ETL_API_STATUS:
+    """
+    Possible values for the "status" field in the ETL API
+    (e.g. `POST /resources` endpoint https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource).
+    Note that this roughly corresponds to YARN final status (for legacy reasons), also see `YARN_FINAL_STATUS`.
+    """
+
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    KILLED = "KILLED"
+    UNDEFINED = "UNDEFINED"
+
+
 class EtlApi:
+    """
+    API for reporting resource usage and added value to the ETL (EOPlaza marketplace) API
+    and deriving a cost estimate.
+    """
     def __init__(self, endpoint: str, source_id: str, requests_session: Optional[requests.Session] = None):
         self._endpoint = endpoint
         self._source_id = source_id

@@ -3,14 +3,17 @@ import datetime as dt
 import logging
 from typing import NamedTuple, Optional, List
 
-from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATE
+from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE
-
+from openeogeotrellis.integrations.yarn import YARN_STATE
 
 _log = logging.getLogger(__name__)
 
 
 class CostsDetails(NamedTuple):  # for lack of a better name
+    """
+    Container for batch job details that are relevant for reporting resource usage and calculating costs.
+    """
     job_id: str
     user_id: str
     execution_id: str
@@ -40,12 +43,16 @@ noJobCostsCalculator = NoJobCostsCalculator()
 
 
 class EtlApiJobCostsCalculator(JobCostsCalculator):
+    """
+    Base class for cost calculators based on resource reporting with ETL API.
+    """
     def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
         self._etl_api = etl_api
         self._etl_api_access_token = etl_api_access_token
 
     @abc.abstractmethod
     def etl_api_state(self, app_state: str) -> str:
+        """Map implementation specific Spark/Kubernetes app state to standardized ETL_API_STATE value."""
         raise NotImplementedError
 
     def calculate_costs(self, details: CostsDetails) -> float:
@@ -61,7 +68,7 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             started_ms=started_ms,
             finished_ms=finished_ms,
             state=self.etl_api_state(details.app_state),
-            status='UNDEFINED',  # TODO: map as well? it's just for reporting
+            status=ETL_API_STATUS.UNDEFINED,  # TODO: map as well? it's just for reporting
             cpu_seconds=details.cpu_seconds,
             mb_seconds=details.mb_seconds,
             duration_ms=duration_ms,
@@ -88,26 +95,33 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
 
 
 class YarnJobCostsCalculator(EtlApiJobCostsCalculator):
-    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
-        super().__init__(etl_api, etl_api_access_token)
+    _yarn_state_to_etl_api_state = {
+        YARN_STATE.ACCEPTED: ETL_API_STATE.ACCEPTED,
+        YARN_STATE.RUNNING: ETL_API_STATE.RUNNING,
+        YARN_STATE.FINISHED: ETL_API_STATE.FINISHED,
+        YARN_STATE.KILLED: ETL_API_STATE.KILLED,
+        YARN_STATE.FAILED: ETL_API_STATE.FAILED,
+    }
 
     def etl_api_state(self, app_state: str) -> str:
-        return app_state
+        if app_state not in self._yarn_state_to_etl_api_state:
+            _log.warning(f"Unhandled YARN app state mapping: {app_state}")
+        return self._yarn_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
 
 
 class K8sJobCostsCalculator(EtlApiJobCostsCalculator):
-    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
-        super().__init__(etl_api, etl_api_access_token)
+    _k8s_state_to_etl_api_state = {
+        K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
+        K8S_SPARK_APP_STATE.SUBMITTED: ETL_API_STATE.ACCEPTED,
+        K8S_SPARK_APP_STATE.RUNNING: ETL_API_STATE.RUNNING,
+        K8S_SPARK_APP_STATE.SUCCEEDING: ETL_API_STATE.RUNNING,
+        K8S_SPARK_APP_STATE.COMPLETED: ETL_API_STATE.FINISHED,
+        K8S_SPARK_APP_STATE.FAILED: ETL_API_STATE.FAILED,
+        K8S_SPARK_APP_STATE.SUBMISSION_FAILED: ETL_API_STATE.FAILED,
+        K8S_SPARK_APP_STATE.FAILING: ETL_API_STATE.FAILED,
+    }
 
     def etl_api_state(self, app_state: str) -> str:
-        if app_state in {K8S_SPARK_APP_STATE.NEW, K8S_SPARK_APP_STATE.SUBMITTED}:
-            return ETL_API_STATE.ACCEPTED
-        if app_state in {K8S_SPARK_APP_STATE.RUNNING, K8S_SPARK_APP_STATE.SUCCEEDING}:
-            return ETL_API_STATE.RUNNING
-        if app_state == K8S_SPARK_APP_STATE.COMPLETED:
-            return ETL_API_STATE.FINISHED
-        if app_state in {K8S_SPARK_APP_STATE.FAILED, K8S_SPARK_APP_STATE.SUBMISSION_FAILED,
-                         K8S_SPARK_APP_STATE.FAILING}:
-            return ETL_API_STATE.FAILED
-
-        return ETL_API_STATE.ACCEPTED
+        if app_state not in self._k8s_state_to_etl_api_state:
+            _log.warning(f"Unhandled K8s app state mapping {app_state}")
+        return self._k8s_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
