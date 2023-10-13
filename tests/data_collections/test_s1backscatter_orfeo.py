@@ -478,3 +478,38 @@ class TestOrfeoPipeline:
                 log_prefix=f"{log_prefix}-{band}",
             )
             print(data)
+
+
+    def test_run_orfeo_on_single_eodata(self):
+        # import faulthandler
+        # faulthandler.enable()
+        creo_path = Path("/eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2021/03/06/S1A_IW_GRDH_1SDV_20210306T045029_20210306T045058_036873_04561B_58DE_COG.SAFE/")
+        log_prefix = "bla"
+        bands = ["VV"]
+        band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
+        tile_size = 256
+        noise_removal = True
+        key_epsg = 32635
+        key_ext = {"xmin": 440320.0, "ymin": 6203400.0, "xmax": 442880.0, "ymax": 6205960.0}
+
+        for b, band in enumerate(bands):
+            data, nodata = S1BackscatterOrfeo._orfeo_pipeline(
+                input_tiff=band_tiffs[band.lower()],
+                extent=key_ext,
+                extent_epsg=key_epsg,
+                dem_dir=None,
+                extent_width_px=tile_size,
+                extent_height_px=tile_size,
+                sar_calibration_lut="sigma",
+                noise_removal=noise_removal,
+                elev_geoid="/opt/openeo-vito-aux-data/egm96.grd",
+                elev_default=10,
+                log_prefix=f"{log_prefix}-{band}",
+            )
+            print(data)
+            print("data[3,3]: " + str(data[3,3]))
+
+#
+# if __name__ == '__main__':
+#     t = TestOrfeoPipeline()
+#     t.test_run_orfeo_on_single_eodata()

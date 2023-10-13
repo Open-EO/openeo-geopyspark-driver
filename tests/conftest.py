@@ -23,7 +23,8 @@ from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_spatial_only
 from .data import get_test_data_file, TEST_DATA_ROOT
 
-os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
+if "OPENEO_CATALOG_FILES" not in os.environ:
+    os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
 
 
 pytest_plugins = "pytester"

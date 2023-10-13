@@ -317,7 +317,9 @@ class S1BackscatterOrfeo:
             set_max_memory(int(max_total_memory_in_bytes))
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
-            arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
+            # Initialize array with nodata. Otherwise, the default is zeroos.
+            nan_array = np.full((extent_height_px, extent_width_px), np.nan, dtype=np.float32)
+            arr = multiprocessing.Array(ctypes.c_float, nan_array.flatten(), lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -335,7 +337,7 @@ class S1BackscatterOrfeo:
                     np.copyto(np.frombuffer(arr,dtype=np.float32).reshape((extent_height_px, extent_width_px)), localdata,casting="same_kind")
                 except RuntimeError as e:
                     error_counter.value += 1
-                    logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
+                    logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}. error: {e!r}",exc_info=True)
 
             p = Process(target=run, args=())
             p.start()
@@ -383,7 +385,7 @@ class S1BackscatterOrfeo:
         logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
 
         # OrthoRectification
-        ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
+        ortho_rect: otb.Application = otb.Registry.CreateApplication('OrthoRectification')
         ortho_rect.ConnectImage("io.in", sar_calibration, "out")
 
         if dem_dir:
@@ -395,10 +397,17 @@ class S1BackscatterOrfeo:
         ortho_rect.SetParameterString("map", "epsg")
         ortho_rect.SetParameterInt("map.epsg.code", epsg)
 
-        ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
-        ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+        try:
+            ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
+            ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+            ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
+        except RuntimeError:
+            # TODO: Cleanly avoid Float/Double error
+            ortho_rect.SetParameterDouble("outputs.spacingx", 10.0)
+            ortho_rect.SetParameterDouble("outputs.spacingy", -10.0)
+            ortho_rect.SetParameterDouble("opt.gridspacing", 40.0)
+
         ortho_rect.SetParameterString("interpolator", "linear")
-        ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
 
         #ortho_rect.SetParameterString("outputs.mode", "autosize")
         #TODO autosize may not align perfectly with Sentinel-2 grid, need to realign
