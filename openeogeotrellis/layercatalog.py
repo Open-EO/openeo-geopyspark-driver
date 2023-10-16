@@ -570,11 +570,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 False,
             )
             return create_pyramid(factory)
-        def file_cgls_pyramid():
-            if len(metadata.band_names) != 1:
-                raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
-                    cid=collection_id, bs=metadata.band_names))
 
+        def file_cgls_pyramid():
             data_glob = layer_source_info['data_glob']
             date_regex = layer_source_info['date_regex']
             band_names = metadata.band_names
