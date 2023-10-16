@@ -1,10 +1,14 @@
 import logging
-from typing import Optional
+import os
+from typing import Optional, NamedTuple
 
 import requests
 from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCredentialsAuthenticator
+from openeo_driver.config import get_backend_config
+from openeo_driver.datastructs import secretive_repr
 
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.vault import Vault
 
 ORCHESTRATOR = "openeo"
 
@@ -43,9 +47,16 @@ class EtlApi:
     API for reporting resource usage and added value to the ETL (EOPlaza marketplace) API
     and deriving a cost estimate.
     """
-    def __init__(self, endpoint: str, source_id: str, requests_session: Optional[requests.Session] = None):
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        source_id: Optional[str] = None,
+        requests_session: Optional[requests.Session] = None,
+    ):
         self._endpoint = endpoint
-        self._source_id = source_id
+        self._source_id = source_id or get_backend_config().etl_source_id
         self._session = requests_session or requests.Session()
 
     def assert_access_token_valid(self, access_token: str):
@@ -149,6 +160,47 @@ class EtlApi:
 
             total_credits = sum(resource['cost'] for resource in resp.json())
             return total_credits
+
+
+class EtlCredentials(NamedTuple):
+    """Container of ETL API related (OAuth) credentials."""
+
+    oidc_issuer: str
+    client_id: str
+    client_secret: str
+    __repr__ = __str__ = secretive_repr()
+
+
+def get_etl_api_credentials(
+    kerberos_principal: str,
+    key_tab: str,
+    requests_session: Optional[requests.Session] = None,
+) -> EtlCredentials:
+    # TODO: unify this with get_etl_api_access_token
+    if all(
+        v in os.environ
+        for v in [
+            # "OPENEO_ETL_API_OIDC_ISSUER",
+            "OPENEO_ETL_OIDC_CLIENT_ID",
+            "OPENEO_ETL_OIDC_CLIENT_SECRET",
+        ]
+    ):
+        return EtlCredentials(
+            oidc_issuer=os.environ.get("OPENEO_ETL_API_OIDC_ISSUER") or ConfigParams().etl_api_oidc_issuer,
+            client_id=os.environ["OPENEO_ETL_OIDC_CLIENT_ID"],
+            client_secret=os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"],
+        )
+    else:
+        # Get credentials directly from vault
+        # TODO: eliminate this code path?
+        vault = Vault(ConfigParams().vault_addr, requests_session)
+        vault_token = vault.login_kerberos(kerberos_principal, key_tab)
+        etl_api_credentials = vault.get_etl_api_credentials(vault_token)
+        return EtlCredentials(
+            oidc_issuer=ConfigParams().etl_api_oidc_issuer,
+            client_id=etl_api_credentials.client_id,
+            client_secret=etl_api_credentials.client_secret,
+        )
 
 
 def get_etl_api_access_token(client_id: str, client_secret: str, requests_session: requests.Session) -> str:

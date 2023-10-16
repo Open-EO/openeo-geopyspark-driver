@@ -99,7 +99,7 @@ from openeogeotrellis.geopysparkdatacube import (
 )
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token, get_etl_api_credentials
 from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_job_name,
@@ -1471,23 +1471,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             requests_session = requests_with_retry(total=3, backoff_factor=2)
 
             if sentinel_hub_processing_units > 0:
-                # TODO: replace with strategy pattern?
-                if ConfigParams().is_kube_deploy:
-                    etl_api_client_id = os.environ["OPENEO_ETL_OIDC_CLIENT_ID"]
-                    etl_api_client_secret = os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"]
-                else:
-                    vault = Vault(ConfigParams().vault_addr, requests_session)
-
-                    vault_token = vault.login_kerberos(self._principal, self._key_tab)
-                    etl_api_credentials = vault.get_etl_api_credentials(vault_token)
-                    etl_api_client_id = etl_api_credentials.client_id
-                    etl_api_client_secret = etl_api_credentials.client_secret
-
-                source_id = get_backend_config().etl_source_id
-                etl_api = EtlApi(ConfigParams().etl_api, source_id, requests_session)
-
+                etl_api = EtlApi(endpoint=ConfigParams().etl_api, requests_session=requests_session)
+                etl_credentials = get_etl_api_credentials(
+                    kerberos_principal=self._principal, key_tab=self._key_tab, requests_session=requests_session
+                )
                 etl_access_token = get_etl_api_access_token(
-                    client_id=etl_api_client_id, client_secret=etl_api_client_secret, requests_session=requests_session
+                    client_id=etl_credentials.client_id,
+                    client_secret=etl_credentials.client_id,
+                    requests_session=requests_session,
                 )
 
                 costs = etl_api.log_resource_usage(

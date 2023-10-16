@@ -61,6 +61,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     ejr_backend_id: str = "unknown"
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
 
-    etl_source_id: str = "TerraScope/MEP"
+    etl_source_id: str = "TerraScope/MEP"  # TODO: eliminate hardcoded VITO reference
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
