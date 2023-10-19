@@ -40,15 +40,19 @@ COPY docker/apt-install-dependencies.sh .
 RUN \
     ./apt-install-dependencies.sh
 
+# TODO: DECIDE: pip package versions for reproducibility or prefer to have the latest, at least for pip?
+#   normally it is best to pin package versions for reproducibility but maybe not for pip.
 RUN \
-    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel pip-tools
+    python3 -m pip install --no-cache-dir --upgrade pip==23.3 wheel==0.41 pip-tools==7.3
+
 
 # GDAL is always a difficult one to install properly so we do this early on.
 RUN \
     python3 -m pip install --no-cache-dir pygdal=="$(gdal-config --version).*"
 
 
-ENV REQUIREMENTS_FILE_DOCKER=./requirements-docker.txt
+ENV REQUIREMENTS_FILE_DOCKER=requirements-docker.txt
+
 
 # ==============================================================================
 # Final build stage: the application to test
@@ -69,7 +73,7 @@ RUN mkdir /eodata
 # Install app's Python dependencies
 #
 
-COPY ${REQUIREMENTS_FILE_DOCKER} ${REQUIREMENTS_FILE_DOCKER}
+COPY docker/${REQUIREMENTS_FILE_DOCKER} ${REQUIREMENTS_FILE_DOCKER}
 
 RUN \
     python3 -m pip --no-cache-dir install -r  "${REQUIREMENTS_FILE_DOCKER}"
@@ -88,8 +92,34 @@ RUN \
 # TODO: decide: do we integrate getting jars inside the docker file or leave it up to the Makefile?
 
 
+# The Flask app should allow to connect from outside the Docker container,
+# otherwise the connections from the host machine won't be able to reach the app.
+# Remember that "localhost" *inside* a Docker container refers to the
+# container itself, and not to the host machine.
 ENV OPENEO_DEV_GUNICORN_HOST="0.0.0.0"
+
+
+# If you want to use a different layer catalog, override the value of OPENEO_CATALOG_FILES.
 ENV OPENEO_CATALOG_FILES=${SRC_DIR}/docker/example_layercatalog.json
+
+
+# The web app listens on TCP port 8080, and PySpark listens on TCP port 4040
+EXPOSE 8080
+EXPOSE 4040
+
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD ["python", "openeogeotrellis/deploy/local.py"]
+
+
+# TODO: what is the best way to keep the debugpy dependency for VSCode optional?
+#   Would like debugpy for debugging in vscode, but should keep it optional because PyCharm users don't need it.
+# TODO: rename stage "final" to something more correct and neutral
+FROM final as debugwithvscode
+
+RUN \
+    python3 -m  pip install --no-cache-dir debugpy==1.8.0
+
+EXPOSE 5678
+
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "openeogeotrellis/deploy/local.py"]
