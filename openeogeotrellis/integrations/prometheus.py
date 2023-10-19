@@ -33,7 +33,7 @@ class Prometheus:
     def get_cpu_usage(self, application_id: str, at: str = None) -> Optional[float]:
         """Returns CPU usage in cpu-seconds."""
 
-        query = f'sum(last_over_time(container_cpu_usage_seconds_total{{pod=~"{application_id}.+"}}[5d]))'
+        query = f'sum(last_over_time(container_cpu_usage_seconds_total{{pod=~"{application_id}.+",image=""}}[5d]))'
         return self._query_for_float(query, at)
 
     def get_network_received_usage(self, application_id: str, at: str = None) -> Optional[float]:
@@ -46,7 +46,7 @@ class Prometheus:
         """Returns memory usage in byte-seconds."""
 
         # Prometheus doesn't expose this as a counter: do integration over time ourselves
-        query = f'sum(avg_over_time(container_memory_usage_bytes{{pod=~"{application_id}-.+"}}[5d])) ' \
+        query = f'sum(avg_over_time(container_memory_usage_bytes{{pod=~"{application_id}-.+",image=""}}[5d])) ' \
                 f'* {application_duration_s}'
         return self._query_for_float(query, at)
 
