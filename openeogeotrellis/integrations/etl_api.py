@@ -6,7 +6,7 @@ import requests
 
 from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCredentialsAuthenticator
 from openeo_driver.config import get_backend_config
-from openeo_driver.util.auth import ClientCredentials
+from openeo_driver.util.auth import ClientCredentials, ClientCredentialsAccessTokenHelper
 from openeogeotrellis.vault import Vault
 
 ORCHESTRATOR = "openeo"
@@ -53,10 +53,12 @@ class EtlApi:
         *,
         source_id: Optional[str] = None,
         requests_session: Optional[requests.Session] = None,
+        credentials: Optional[ClientCredentials] = None,
     ):
         self._endpoint = endpoint
         self._source_id = source_id or get_backend_config().etl_source_id
         self._session = requests_session or requests.Session()
+        self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
 
     def assert_access_token_valid(self, access_token: str):
         # will work regardless of ability to log resources
@@ -75,7 +77,7 @@ class EtlApi:
     def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
                            cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
-                           sentinel_hub_processing_units: Optional[float], access_token: str) -> float:
+                           sentinel_hub_processing_units: Optional[float]) -> float:
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
         metrics = {}
@@ -108,6 +110,7 @@ class EtlApi:
 
         log.debug(f"logging resource usage {data} at {self._endpoint}")
 
+        access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:
@@ -121,7 +124,7 @@ class EtlApi:
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
-                        square_meters: float, access_token: str) -> float:
+                        square_meters: float) -> float:
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
         billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
@@ -149,6 +152,7 @@ class EtlApi:
 
         log.debug(f"logging added value {data} at {self._endpoint}")
 
+        access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data) as resp:
             if not resp.ok:

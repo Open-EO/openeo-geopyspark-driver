@@ -98,7 +98,7 @@ from openeogeotrellis.geopysparkdatacube import (
 )
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_access_token, get_etl_api_credentials
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials
 from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_job_name,
@@ -1474,14 +1474,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             requests_session = requests_with_retry(total=3, backoff_factor=2)
 
             if sentinel_hub_processing_units > 0:
-                etl_api = EtlApi(endpoint=get_backend_config().etl_api, requests_session=requests_session)
                 etl_credentials = get_etl_api_credentials(
                     kerberos_principal=self._principal, key_tab=self._key_tab, requests_session=requests_session
                 )
-                etl_access_token = get_etl_api_access_token(
-                    client_id=etl_credentials.client_id,
-                    client_secret=etl_credentials.client_secret,
+                etl_api = EtlApi(
+                    endpoint=get_backend_config().etl_api,
                     requests_session=requests_session,
+                    credentials=etl_credentials,
                 )
 
                 costs = etl_api.log_resource_usage(
@@ -1497,7 +1496,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     mb_seconds=None,
                     duration_ms=None,
                     sentinel_hub_processing_units=sentinel_hub_processing_units,
-                    access_token=etl_access_token,
                 )
 
                 logger.info(

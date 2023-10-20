@@ -46,9 +46,8 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
     """
     Base class for cost calculators based on resource reporting with ETL API.
     """
-    def __init__(self, etl_api: EtlApi, etl_api_access_token: str):
+    def __init__(self, etl_api: EtlApi):
         self._etl_api = etl_api
-        self._etl_api_access_token = etl_api_access_token
 
     @abc.abstractmethod
     def etl_api_state(self, app_state: str) -> str:
@@ -73,7 +72,6 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             mb_seconds=details.mb_seconds,
             duration_ms=duration_ms,
             sentinel_hub_processing_units=details.sentinelhub_processing_units,
-            access_token=self._etl_api_access_token
         )
 
         if details.area_square_meters is None:
@@ -89,7 +87,7 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
                 finished_ms=finished_ms,
                 process_id=process_id,
                 square_meters=details.area_square_meters,
-                access_token=self._etl_api_access_token) for process_id in details.unique_process_ids)
+                ) for process_id in details.unique_process_ids)
 
         return resource_costs_in_credits + added_value_costs_in_credits
 

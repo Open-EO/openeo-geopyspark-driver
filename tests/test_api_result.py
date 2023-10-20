@@ -3547,8 +3547,12 @@ class TestEtlApiReporting:
 
         def post_token(request, context):
             params = urllib.parse.parse_qs(request.text)
-            assert params["client_id"] == [etl_client_credentials.client_id]
-            assert params["client_secret"] == [etl_client_credentials.client_secret]
+            assert params == {
+                "client_id": [etl_client_credentials.client_id],
+                "client_secret": [etl_client_credentials.client_secret],
+                "grant_type": ["client_credentials"],
+                "scope": ["openid"],
+            }
             return {"access_token": self._ETL_API_ACCESS_TOKEN}
 
         requests_mock.post("https://oidc.test/token", json=post_token)
