@@ -60,15 +60,17 @@ class EtlApi:
         self._session = requests_session or requests.Session()
         self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
 
-    def assert_access_token_valid(self, access_token: str):
+    def assert_access_token_valid(self, access_token: Optional[str] = None):
         # will work regardless of ability to log resources
+        access_token = access_token or self._access_token_helper.get_access_token()
         with self._session.get(f"{self._endpoint}/user/permissions",
                                headers={'Authorization': f"Bearer {access_token}"}) as resp:
             _log.debug(resp.text)
             resp.raise_for_status()  # value of "execution" is unrelated
 
-    def assert_can_log_resources(self, access_token: str):
+    def assert_can_log_resources(self, access_token: Optional[str] = None):
         # will also work if able to log resources
+        access_token = access_token or self._access_token_helper.get_access_token()
         with self._session.get(f"{self._endpoint}/validate/auth",
                                headers={'Authorization': f"Bearer {access_token}"}) as resp:
             _log.debug(resp.text)
@@ -198,46 +200,23 @@ def get_etl_api_credentials(
         return vault.get_etl_api_credentials(vault_token)
 
 
-def get_etl_api_access_token(client_id: str, client_secret: str, requests_session: requests.Session) -> str:
-    # TODO: migrate usage to ClientCredentialsAccessTokenHelper
-    # TODO: just use a single `ClientCredentials` argument instead of `client_id` and `client_secret`?
-    oidc_provider = OidcProviderInfo(
-        # TODO: get issuer from the secret as well? (~ openeo-job-registry-elastic-api)
-        issuer=get_backend_config().etl_api_oidc_issuer,
-        requests_session=requests_session,
-    )
-    client_info = OidcClientInfo(
-        provider=oidc_provider,
-        client_id=client_id,
-        client_secret=client_secret,
-    )
-
-    authenticator = OidcClientCredentialsAuthenticator(
-        client_info=client_info,
-        requests_session=requests_session,
-    )
-    return authenticator.get_tokens().access_token
-
-
 def assert_resource_logging_possible():
-    import os
+    # TODO: still necessary to keep this function around, or was this just a temp debugging thing?
 
     logging.basicConfig(level="DEBUG")
 
-    os.environ['OPENEO_ETL_API_OIDC_ISSUER'] = "https://cdasid.cloudferro.com/auth/realms/CDAS"
-    client_id = 'openeo-job-tracker'
-    client_secret = ...
+    credentials = ClientCredentials(
+        oidc_issuer=os.environ.get("OPENEO_ETL_API_OIDC_ISSUER", "https://cdasid.cloudferro.com/auth/realms/CDAS"),
+        client_id=os.environ.get("OPENEO_ETL_OIDC_CLIENT_ID", "openeo-job-tracker"),
+        client_secret=os.environ.get("OPENEO_ETL_OIDC_CLIENT_SECRET", "..."),
+    )
+    etl_url = os.environ.get("OPENEO_ETL_API", "https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu")
+    source_id = "cdse"
 
-    requests_session = requests.Session()
+    etl_api = EtlApi(etl_url, source_id=source_id, credentials=credentials)
 
-    access_token = get_etl_api_access_token(client_id, client_secret, requests_session)
-    print(access_token)
-
-    etl_api = EtlApi("https://marketplace-cost-api-stag-warsaw.dataspace.copernicus.eu", source_id="cdse",
-                     requests_session=requests_session)
-
-    etl_api.assert_access_token_valid(access_token)
-    etl_api.assert_can_log_resources(access_token)
+    etl_api.assert_access_token_valid()
+    etl_api.assert_can_log_resources()
 
 
 if __name__ == '__main__':
