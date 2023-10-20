@@ -1457,8 +1457,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self.batch_jobs.set_terrascope_access_token_getter(get_terrascope_access_token)
 
-    def request_costs(self, user_id: str, request_id: str, success: bool) -> Optional[float]:
+    def request_costs(
+        self, *, user: Optional[User] = None, user_id: Optional[str] = None, request_id: str, success: bool
+    ) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
+
+        user_id = user.user_id if user else user_id
 
         if self._use_etl_api_on_sync_processing:
             sc = SparkContext.getOrCreate()
