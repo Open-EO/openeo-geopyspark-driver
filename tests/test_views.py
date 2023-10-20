@@ -1160,7 +1160,7 @@ class TestBatchJobs:
         )
         expected_log_entries = [
             {
-                "id": "-1",
+                "id": "",
                 "code": "Internal",
                 "level": "error",
                 "message": expected_message,
