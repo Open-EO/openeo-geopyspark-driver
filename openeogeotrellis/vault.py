@@ -13,6 +13,7 @@ _log = logging.getLogger(__name__)
 
 
 class OAuthCredentials(NamedTuple):
+    # TODO: migrate this to openeo_driver.util.auth.ClientCredentials?
     client_id: str
     client_secret: str
 
@@ -35,9 +36,14 @@ class Vault:
 
         return client_credentials
 
-    def get_etl_api_credentials(self, vault_token: str) -> OAuthCredentials:
+    def get_etl_api_credentials(self, vault_token: str) -> ClientCredentials:
         # TODO: eliminate this hardcoded vault path? Use config instead?
-        return self._get_kv_credentials(f"TAP/big_data_services/openeo/etl-api-oauth", vault_token)
+        creds = self._get_kv_credentials(f"TAP/big_data_services/openeo/etl-api-oauth", vault_token)
+        return ClientCredentials(
+            oidc_issuer=get_backend_config().etl_api_oidc_issuer,  # TODO: this ideally comes from the secret as well instead of config
+            client_id=creds.client_id,
+            client_secret=creds.client_secret,
+        )
 
     def _get_kv_credentials(self, vault_secret_path, vault_token: str) -> OAuthCredentials:
         client = self._client()

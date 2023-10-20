@@ -35,13 +35,12 @@ from openeo_driver.testing import (
     ListSubSet,
     UrllibMocker,
 )
+from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.geometry import (
     as_geojson_feature,
     as_geojson_feature_collection,
 )
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
-from openeogeotrellis.config import GpsBackendConfig, get_backend_config
-from openeogeotrellis.integrations.etl_api import EtlCredentials
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import random_name, KazooClientMock, config_overrides
 from openeogeotrellis.utils import (
@@ -3526,8 +3525,8 @@ class TestEtlApiReporting:
             yield tracker
 
     @pytest.fixture
-    def etl_client_credentials(self) -> EtlCredentials:
-        return EtlCredentials(
+    def etl_client_credentials(self) -> ClientCredentials:
+        return ClientCredentials(
             oidc_issuer="https://oidc.test",
             client_id="etl-client-123",
             client_secret="etl-secret-abc",

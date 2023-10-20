@@ -1,14 +1,12 @@
 import logging
 import os
-from typing import Optional, NamedTuple
+from typing import Optional
 
 import requests
+
 from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCredentialsAuthenticator
 from openeo_driver.config import get_backend_config
-from openeo_driver.datastructs import secretive_repr
 from openeo_driver.util.auth import ClientCredentials
-
-from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.vault import Vault
 
 ORCHESTRATOR = "openeo"
@@ -163,31 +161,15 @@ class EtlApi:
             return total_credits
 
 
-class EtlCredentials(NamedTuple):
-    """Container of ETL API related (OAuth) credentials."""
-
-    # TODO: replace this with generic ClientCredentials
-
-    oidc_issuer: str
-    client_id: str
-    client_secret: str
-    __repr__ = __str__ = secretive_repr()
-
-
 def get_etl_api_credentials(
     kerberos_principal: str,
     key_tab: str,
     requests_session: Optional[requests.Session] = None,
-) -> EtlCredentials:
+) -> ClientCredentials:
     # TODO: unify this with get_etl_api_access_token
     if os.environ.get("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"):
         _log.debug("Getting ETL credentials from env var (compact style)")
-        creds = ClientCredentials.from_credentials_string(os.environ["OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"], strict=True)
-        return EtlCredentials(
-            oidc_issuer=creds.oidc_issuer,
-            client_id=creds.client_id,
-            client_secret=creds.client_secret,
-        )
+        return ClientCredentials.from_credentials_string(os.environ["OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"], strict=True)
     elif all(
         v in os.environ
         for v in [
@@ -198,7 +180,7 @@ def get_etl_api_credentials(
     ):
         # TODO: deprecate this code path and just go for compact `ClientCredentials.from_credentials_string`
         _log.debug("Getting ETL credentials from env vars (triplet style)")
-        return EtlCredentials(
+        return ClientCredentials(
             oidc_issuer=os.environ.get("OPENEO_ETL_API_OIDC_ISSUER") or get_backend_config().etl_api_oidc_issuer,
             client_id=os.environ["OPENEO_ETL_OIDC_CLIENT_ID"],
             client_secret=os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"],
@@ -209,15 +191,12 @@ def get_etl_api_credentials(
         # TODO: eliminate this code path? https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
         vault = Vault(get_backend_config().vault_addr, requests_session)
         vault_token = vault.login_kerberos(kerberos_principal, key_tab)
-        etl_api_credentials = vault.get_etl_api_credentials(vault_token)
-        return EtlCredentials(
-            oidc_issuer=get_backend_config().etl_api_oidc_issuer,
-            client_id=etl_api_credentials.client_id,
-            client_secret=etl_api_credentials.client_secret,
-        )
+        return vault.get_etl_api_credentials(vault_token)
 
 
 def get_etl_api_access_token(client_id: str, client_secret: str, requests_session: requests.Session) -> str:
+    # TODO: migrate usage to ClientCredentialsAccessTokenHelper
+    # TODO: just use a single `ClientCredentials` argument instead of `client_id` and `client_secret`?
     oidc_provider = OidcProviderInfo(
         # TODO: get issuer from the secret as well? (~ openeo-job-registry-elastic-api)
         issuer=get_backend_config().etl_api_oidc_issuer,

@@ -15,7 +15,6 @@ from openeogeotrellis.layercatalog import get_layer_catalog
 import geopandas as gpd
 import geopyspark as gps
 
-from .test_api_result import CreoApiMocker, TerrascopeApiMocker
 
 @pytest.fixture
 def jvm_mock():
