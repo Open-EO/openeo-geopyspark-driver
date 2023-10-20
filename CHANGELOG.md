@@ -10,8 +10,13 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## 0.17.0a1
+## 0.18.0a1
 
+### Removed
+
+- Remove old "v1" `job_tracker` script ([#545](https://github.com/Open-EO/openeo-geopyspark-driver/issues/545))
+
+## 0.17.0a1
 
 ### Feature
 
