@@ -509,7 +509,8 @@ class TestBatchJobs:
                 "links": []
             }
 
-    def test_create_and_start_and_download(self, api, tmp_path, monkeypatch, batch_job_output_root):
+    @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
+    def test_create_and_start_and_download(self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root):
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
@@ -634,14 +635,34 @@ class TestBatchJobs:
             assert res.status_code == 200
             assert res.data == TIFF_DUMMY_DATA
 
+            search_hits = [
+                {
+                    "_source": {
+                        "levelname": "ERROR",
+                        "message": "A message with the loglevel filled in",
+                    },
+                    "sort": 1,
+                }
+            ]
+            expected_log_entries = [
+                {
+                    "id": "1",
+                    "level": "error",
+                    "message": "A message with the loglevel filled in",
+                }
+            ]
+
+            mock_search.return_value = {
+                "hits": {"hits": search_hits},
+            }
             # Get logs
             res = (
                 api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
                 .assert_status_code(200)
                 .json
             )
-            # TODO: mock retrieval of logs from ES
-            assert res["logs"] == []
+
+            assert res["logs"] == expected_log_entries
 
     def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un, mock.patch.dict(
