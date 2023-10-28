@@ -552,9 +552,13 @@ class S1BackscatterOrfeo:
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
 
+        prefix = ""
+        if pathlib.Path("/vsis3").exists() and extra_properties.get("vsis3", "TRUE") != "FALSE":
+            prefix = "/vsis3"
+
         # Group multiple tiles by product id
         def process_feature(feature: dict) -> Tuple[str, dict]:
-            creo_path = feature["feature"]["id"]
+            creo_path = prefix + feature["feature"]["id"]
             return creo_path, {
                 "key": feature["key"],
                 "key_extent": feature["key_extent"],
