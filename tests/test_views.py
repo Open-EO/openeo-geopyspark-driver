@@ -1153,9 +1153,12 @@ class TestBatchJobs:
         job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
 
         expected_message = (
-            "Log collection failed: OpenEOApiException(status_code=504, "
-            + "code='Internal', message='Temporary failure while retrieving logs: ConnectionTimeout. "
-            + "Please try again and report this error if it persists. (ref: no-request)', "
+            'Log collection for job 6d11e901-bb5d-4589-b600-8dfb50524740 '
+            + 'failed. (req_id: r-1234-5678-91011) '
+            + "OpenEOApiException(status_code=504, code='Internal', "
+            + "message='Temporary failure while retrieving logs: "
+            + 'ConnectionTimeout. Please try again and report this error if it '
+            + "persists. (ref: no-request)', "
             + "id='no-request')"
         )
         expected_log_entries = [
@@ -1188,12 +1191,15 @@ class TestBatchJobs:
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
                 )
 
-            # Get logs
-            res = (
-                api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
-                .assert_status_code(200)
-                .json
-            )
+            from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
+            with mock.patch.object(FlaskRequestCorrelationIdLogging, "_build_request_id",
+                                   return_value="r-1234-5678-91011"):
+                # Get logs
+                res = (
+                    api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
+                    .assert_status_code(200)
+                    .json
+                )
 
             #
             # Also explicitly verify that the security sensitive info from the old message is no longer present.
