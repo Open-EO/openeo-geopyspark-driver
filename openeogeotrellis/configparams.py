@@ -58,8 +58,10 @@ class ConfigParams:
 
         self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
-        self.etl_api = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
-        self.etl_api_oidc_issuer = os.environ.get("OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope")
+        self.etl_api = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")  # TODO deprecated/unsed?
+        self.etl_api_oidc_issuer = os.environ.get(
+            "OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope"
+        )  # TODO deprecated/unsed?
 
         # TODO: this param is now also available in GpsBackendConfig
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")

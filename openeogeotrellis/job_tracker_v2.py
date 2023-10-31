@@ -563,8 +563,11 @@ class CliApp:
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
-                etl_api = EtlApi(ConfigParams().etl_api, source_id=get_backend_config().etl_source_id,
-                                 requests_session=requests_session)
+                etl_api = EtlApi(
+                    get_backend_config().etl_api,
+                    source_id=get_backend_config().etl_source_id,
+                    requests_session=requests_session,
+                )
 
                 # Elastic Job Registry (EJR)
                 elastic_job_registry = get_elastic_job_registry(requests_session)

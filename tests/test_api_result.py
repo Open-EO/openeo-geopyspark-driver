@@ -6,15 +6,16 @@ import os
 import shutil
 import textwrap
 import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import List, Union, Sequence
 
 import mock
 import numpy as np
 import pytest
-from mock import MagicMock
 import rasterio
 import xarray
+from mock import MagicMock
 from numpy.testing import assert_equal
 from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
@@ -39,14 +40,17 @@ from openeo_driver.util.geometry import (
     as_geojson_feature_collection,
 )
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.config import GpsBackendConfig, get_backend_config
+from openeogeotrellis.integrations.etl_api import EtlCredentials
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import random_name, KazooClientMock
+from openeogeotrellis.testing import random_name, KazooClientMock, config_overrides
 from openeogeotrellis.utils import (
     UtcNowClock,
     drop_empty_from_aggregate_polygon_result,
     get_jvm,
     is_package_available,
 )
+from openeogeotrellis.vault import OAuthCredentials
 from .data import get_test_data_file
 
 _log = logging.getLogger(__name__)
@@ -3501,3 +3505,102 @@ class TestLoadStac:
         collection.set_root(root_catalog)
 
         return collection
+
+
+class TestEtlApiReporting:
+    @pytest.fixture(autouse=True)
+    def _config_overrides(self):
+        with config_overrides(
+            use_etl_api_on_sync_processing=True,
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def mock_metadata_tracker(self):
+        """
+        Fixture to set up mock of metadata tracker in geotrellis extension
+        """
+        with mock.patch("openeogeotrellis.backend.get_jvm") as get_jvm:
+            tracker = get_jvm.return_value.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply.return_value
+            tracker.sentinelHubProcessingUnits.return_value = 123
+            yield tracker
+
+    @pytest.fixture
+    def etl_client_credentials(self) -> EtlCredentials:
+        return EtlCredentials(
+            oidc_issuer="https://oidc.test",
+            client_id="etl-client-123",
+            client_secret="etl-secret-abc",
+        )
+
+    _ETL_API_ACCESS_TOKEN = "access-token-123"
+
+    @pytest.fixture(autouse=True)
+    def etl_api_oidc_issuer(self, requests_mock, etl_client_credentials):
+        """Fixture to set up OIDC auth to get access token for ETL API"""
+        requests_mock.get(
+            "https://oidc.test/.well-known/openid-configuration",
+            json={
+                "issuer": "https://oidc.test",
+                "token_endpoint": "https://oidc.test/token",
+            },
+        )
+
+        def post_token(request, context):
+            params = urllib.parse.parse_qs(request.text)
+            assert params["client_id"] == [etl_client_credentials.client_id]
+            assert params["client_secret"] == [etl_client_credentials.client_secret]
+            return {"access_token": self._ETL_API_ACCESS_TOKEN}
+
+        requests_mock.post("https://oidc.test/token", json=post_token)
+
+    @pytest.fixture
+    def etl_creds_from_vault(self, etl_client_credentials):
+        """Fixture to set up getting ETL API creds from vault."""
+        # TODO vault path is deprecated https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
+        with mock.patch("openeogeotrellis.integrations.etl_api.Vault") as Vault:
+            vault = Vault.return_value
+            vault.get_etl_api_credentials.return_value = OAuthCredentials(
+                client_id=etl_client_credentials.client_id, client_secret=etl_client_credentials.client_secret
+            )
+            yield vault
+
+    @pytest.fixture
+    def etl_creds_from_env(self, etl_client_credentials, monkeypatch):
+        """Fixture to set up getting ETL API creds from env vars."""
+        monkeypatch.setenv("OPENEO_ETL_API_OIDC_ISSUER", etl_client_credentials.oidc_issuer)
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_ID", etl_client_credentials.client_id)
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_SECRET", etl_client_credentials.client_secret)
+        yield
+
+    @pytest.fixture(autouse=True)
+    def mock_etl_api_resources(self, requests_mock):
+        """Setup up request mock for ETL API `/resources` endpoint"""
+        def post_resources(request, context):
+            assert request.headers["Authorization"] == f"Bearer {self._ETL_API_ACCESS_TOKEN}"
+            assert request.json() == DictSubSet(
+                {
+                    "userId": TEST_USER,
+                    "metrics": {"processing": {"unit": "shpu", "value": 123}},
+                }
+            )
+            return [{"cost": 33}, {"cost": 55}]
+
+        requests_mock.post("https://etl-api.test/resources", json=post_resources)
+
+    def test_sync_processing_etl_reporting_credentials_from_vault(self, api100, requests_mock, etl_creds_from_vault):
+        """
+        Do sync processing with ETL reporting, using Vault code path to get ETL API creds
+        """
+        # TODO vault path is deprecated https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
+        res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
+        assert res.json == 8
+        assert res.headers["OpenEO-Costs-experimental"] == "88"
+
+    def test_sync_processing_etl_reporting_credentials_env(self, api100, requests_mock, etl_creds_from_env):
+        """
+        Do sync processing with ETL reporting, using env vars code path to get ETL API creds
+        """
+        res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
+        assert res.json == 8
+        assert res.headers["OpenEO-Costs-experimental"] == "88"

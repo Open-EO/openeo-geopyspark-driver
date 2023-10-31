@@ -334,7 +334,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
-        use_etl_api: bool = False,  # TODO: eliminate this parameter, use config instead
+        # TODO: eliminate usage of this parameter (openeo-deploy), just use `use_etl_api_on_sync_processing` config instead
+        use_etl_api: Optional[bool] = None,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -403,10 +404,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         self._principal = principal
         self._key_tab = key_tab
 
-        self._use_etl_api_on_sync_processing = use_etl_api
-
-
-
+        self._use_etl_api_on_sync_processing = (
+            use_etl_api if use_etl_api is not None else get_backend_config().use_etl_api_on_sync_processing
+        )
 
     def capabilities_billing(self) -> dict:
         return {
@@ -1475,7 +1475,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             requests_session = requests_with_retry(total=3, backoff_factor=2)
 
             if sentinel_hub_processing_units > 0:
-                etl_api = EtlApi(endpoint=ConfigParams().etl_api, requests_session=requests_session)
+                etl_api = EtlApi(endpoint=get_backend_config().etl_api, requests_session=requests_session)
                 etl_credentials = get_etl_api_credentials(
                     kerberos_principal=self._principal, key_tab=self._key_tab, requests_session=requests_session
                 )

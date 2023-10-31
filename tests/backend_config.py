@@ -29,4 +29,7 @@ config = GpsBackendConfig(
     # TODO: avoid hardcoded reference to VITO/Terrascope resource
     default_opensearch_endpoint="https://services.terrascope.be/catalogue/",
     oidc_providers=oidc_providers,
+    etl_api="https://etl-api.test",
+    vault_addr="https://vault.test",
+    etl_api_oidc_issuer="https://oidc.test",
 )

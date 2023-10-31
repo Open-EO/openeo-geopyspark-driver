@@ -55,12 +55,19 @@ class GpsBackendConfig(OpenEoBackendConfig):
     logging_es_hosts: List[str] = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
     logging_es_index_pattern: str = os.environ.get("LOGGING_ES_INDEX_PATTERN", "openeo-*-index-1m*")
 
-    vault_addr: Optional[str] = os.environ.get("VAULT_ADDR")
+    # TODO eliminate hardcoded VITO reference
+    vault_addr: Optional[str] = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
 
-    etl_source_id: str = "TerraScope/MEP"  # TODO: eliminate hardcoded VITO reference
+    # TODO: eliminate hardcoded Terrascope references
+    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
+    etl_api_oidc_issuer: Optional[str] = os.environ.get(
+        "OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope"
+    )
+    etl_source_id: str = "TerraScope/MEP"
+    use_etl_api_on_sync_processing: bool = False
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
