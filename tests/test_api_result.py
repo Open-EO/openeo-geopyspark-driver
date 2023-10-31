@@ -66,8 +66,10 @@ def set_jvm_system_properties(properties: dict):
                 jvm_system.clearProperty(k)
 
     set_all(properties)
-    yield
-    set_all(orig_properties)
+    try:
+        yield
+    finally:
+        set_all(orig_properties)
 
 
 def test_execute_math_basic(api100):
