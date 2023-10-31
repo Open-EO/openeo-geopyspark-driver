@@ -1481,7 +1481,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 )
                 etl_access_token = get_etl_api_access_token(
                     client_id=etl_credentials.client_id,
-                    client_secret=etl_credentials.client_id,
+                    client_secret=etl_credentials.client_secret,
                     requests_session=requests_session,
                 )
 

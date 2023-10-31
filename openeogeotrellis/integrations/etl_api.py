@@ -185,12 +185,14 @@ def get_etl_api_credentials(
             "OPENEO_ETL_OIDC_CLIENT_SECRET",
         ]
     ):
+        _log.debug("Getting ETL credentials from env vars")
         return EtlCredentials(
             oidc_issuer=os.environ.get("OPENEO_ETL_API_OIDC_ISSUER") or ConfigParams().etl_api_oidc_issuer,
             client_id=os.environ["OPENEO_ETL_OIDC_CLIENT_ID"],
             client_secret=os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"],
         )
     else:
+        _log.debug("Getting ETL credentials from vault")
         # Get credentials directly from vault
         # TODO: eliminate this code path?
         vault = Vault(ConfigParams().vault_addr, requests_session)
