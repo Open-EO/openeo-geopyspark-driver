@@ -1069,6 +1069,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             target_epsg = target_bbox.best_utm()
             cell_width = cell_height = 10.0
 
+        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
+            # TODO: detect actual dimensions instead of this simple default?
+            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
+            TemporalDimension(name='t', extent=[]),
+            BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
+        ])
+
+        if load_params.bands:
+            metadata = metadata.filter_bands(load_params.bands)
+
+        band_names = metadata.band_names
+
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
@@ -1118,13 +1130,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 metadata_properties, correlation_id
             )
 
-        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
-            # TODO: detect actual dimensions instead of this simple default?
-            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[]),
-            BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
-        ])
-
         metadata = metadata.filter_temporal(from_date, to_date)
 
         metadata = metadata.filter_bbox(
@@ -1143,12 +1148,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
                   range(0, pyramid.size())}
 
-        cube = GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
-
-        if load_params.bands:
-            cube = cube.filter_bands(load_params.bands)
-
-        return cube
+        return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
