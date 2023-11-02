@@ -835,7 +835,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
         def is_band_asset(asset: pystac.Asset) -> bool:
-            return "eo:bands" in asset.extra_fields or (asset.roles is not None and "data" in asset.roles)
+            return "eo:bands" in asset.extra_fields
 
         def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
             def get_band_name(eo_band) -> str:
