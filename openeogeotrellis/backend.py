@@ -1474,13 +1474,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             requests_session = requests_with_retry(total=3, backoff_factor=2)
 
             if sentinel_hub_processing_units > 0:
-                etl_credentials = get_etl_api_credentials(
-                    kerberos_principal=self._principal, key_tab=self._key_tab, requests_session=requests_session
-                )
                 etl_api = EtlApi(
                     endpoint=get_backend_config().etl_api,
                     requests_session=requests_session,
-                    credentials=etl_credentials,
+                    credentials=get_etl_api_credentials(),
                 )
 
                 costs = etl_api.log_resource_usage(

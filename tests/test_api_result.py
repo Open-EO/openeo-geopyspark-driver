@@ -3558,15 +3558,6 @@ class TestEtlApiReporting:
         requests_mock.post("https://oidc.test/token", json=post_token)
 
     @pytest.fixture
-    def etl_creds_from_vault(self, etl_client_credentials: ClientCredentials):
-        """Fixture to set up getting ETL API creds from vault."""
-        # TODO vault path is deprecated https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
-        with mock.patch("openeogeotrellis.integrations.etl_api.Vault") as Vault:
-            vault = Vault.return_value
-            vault.get_etl_api_credentials.return_value = etl_client_credentials
-            yield vault
-
-    @pytest.fixture
     def etl_creds_from_env_triplet(self, etl_client_credentials, monkeypatch):
         """Fixture to set up getting ETL API creds from env vars (triplet style)."""
         monkeypatch.setenv("OPENEO_ETL_API_OIDC_ISSUER", etl_client_credentials.oidc_issuer)
@@ -3597,15 +3588,6 @@ class TestEtlApiReporting:
             return [{"cost": 33}, {"cost": 55}]
 
         requests_mock.post("https://etl-api.test/resources", json=post_resources)
-
-    def test_sync_processing_etl_reporting_credentials_from_vault(self, api100, etl_creds_from_vault):
-        """
-        Do sync processing with ETL reporting, using Vault code path to get ETL API creds
-        """
-        # TODO vault path is deprecated https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
-        res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
-        assert res.json == 8
-        assert res.headers["OpenEO-Costs-experimental"] == "88"
 
     def test_sync_processing_etl_reporting_credentials_env_triplet(self, api100, etl_creds_from_env_triplet):
         """

@@ -5,7 +5,6 @@ V2 implementation of JobTracker
 
 import abc
 import argparse
-
 import collections
 import datetime as dt
 import logging
@@ -562,11 +561,10 @@ class CliApp:
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
-                etl_api_credentials = get_etl_api_credentials(
-                    kerberos_principal=args.principal, key_tab=args.keytab, requests_session=requests_session
-                )
                 etl_api = EtlApi(
-                    get_backend_config().etl_api, requests_session=requests_session, credentials=etl_api_credentials
+                    get_backend_config().etl_api,
+                    requests_session=requests_session,
+                    credentials=get_etl_api_credentials(),
                 )
 
                 # Elastic Job Registry (EJR)

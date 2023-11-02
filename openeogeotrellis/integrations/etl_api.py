@@ -4,10 +4,8 @@ from typing import Optional
 
 import requests
 
-from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCredentialsAuthenticator
 from openeo_driver.config import get_backend_config
 from openeo_driver.util.auth import ClientCredentials, ClientCredentialsAccessTokenHelper
-from openeogeotrellis.vault import Vault
 
 ORCHESTRATOR = "openeo"
 
@@ -58,6 +56,7 @@ class EtlApi:
         self._endpoint = endpoint
         self._source_id = source_id or get_backend_config().etl_source_id
         self._session = requests_session or requests.Session()
+        # TODO: don't allow `None` credentials?
         self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
 
     def assert_access_token_valid(self, access_token: Optional[str] = None):
@@ -168,11 +167,8 @@ class EtlApi:
 
 
 def get_etl_api_credentials(
-    kerberos_principal: str,
-    key_tab: str,
-    requests_session: Optional[requests.Session] = None,
 ) -> ClientCredentials:
-    # TODO: unify this with get_etl_api_access_token
+    # TODO: move this to EtlAPi (e.g. as static helper method)? Or even do this automatically in EtlApi constructor?
     if os.environ.get("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"):
         _log.debug("Getting ETL credentials from env var (compact style)")
         return ClientCredentials.from_credentials_string(os.environ["OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"], strict=True)
@@ -192,12 +188,7 @@ def get_etl_api_credentials(
             client_secret=os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"],
         )
     else:
-        _log.debug("Getting ETL credentials from vault")
-        # Get credentials directly from vault
-        # TODO: eliminate this code path? https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
-        vault = Vault(get_backend_config().vault_addr, requests_session)
-        vault_token = vault.login_kerberos(kerberos_principal, key_tab)
-        return vault.get_etl_api_credentials(vault_token)
+        raise RuntimeError("No ETL API credentials configured")
 
 
 def assert_resource_logging_possible():
