@@ -3554,14 +3554,12 @@ class TestEtlApiReporting:
         requests_mock.post("https://oidc.test/token", json=post_token)
 
     @pytest.fixture
-    def etl_creds_from_vault(self, etl_client_credentials):
+    def etl_creds_from_vault(self, etl_client_credentials: ClientCredentials):
         """Fixture to set up getting ETL API creds from vault."""
         # TODO vault path is deprecated https://github.com/Open-EO/openeo-geopyspark-driver/issues/564
         with mock.patch("openeogeotrellis.integrations.etl_api.Vault") as Vault:
             vault = Vault.return_value
-            vault.get_etl_api_credentials.return_value = OAuthCredentials(
-                client_id=etl_client_credentials.client_id, client_secret=etl_client_credentials.client_secret
-            )
+            vault.get_etl_api_credentials.return_value = etl_client_credentials
             yield vault
 
     @pytest.fixture
