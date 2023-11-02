@@ -6,6 +6,7 @@ import requests
 from openeo.rest.auth.oidc import OidcProviderInfo, OidcClientInfo, OidcClientCredentialsAuthenticator
 from openeo_driver.config import get_backend_config
 from openeo_driver.datastructs import secretive_repr
+from openeo_driver.util.auth import ClientCredentials
 
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.vault import Vault
@@ -165,6 +166,8 @@ class EtlApi:
 class EtlCredentials(NamedTuple):
     """Container of ETL API related (OAuth) credentials."""
 
+    # TODO: replace this with generic ClientCredentials
+
     oidc_issuer: str
     client_id: str
     client_secret: str
@@ -177,7 +180,15 @@ def get_etl_api_credentials(
     requests_session: Optional[requests.Session] = None,
 ) -> EtlCredentials:
     # TODO: unify this with get_etl_api_access_token
-    if all(
+    if os.environ.get("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"):
+        _log.debug("Getting ETL credentials from env var (compact style)")
+        creds = ClientCredentials.from_credentials_string(os.environ["OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"], strict=True)
+        return EtlCredentials(
+            oidc_issuer=creds.oidc_issuer,
+            client_id=creds.client_id,
+            client_secret=creds.client_secret,
+        )
+    elif all(
         v in os.environ
         for v in [
             # "OPENEO_ETL_API_OIDC_ISSUER",
@@ -185,7 +196,8 @@ def get_etl_api_credentials(
             "OPENEO_ETL_OIDC_CLIENT_SECRET",
         ]
     ):
-        _log.debug("Getting ETL credentials from env vars")
+        # TODO: deprecate this code path and just go for compact `ClientCredentials.from_credentials_string`
+        _log.debug("Getting ETL credentials from env vars (triplet style)")
         return EtlCredentials(
             oidc_issuer=os.environ.get("OPENEO_ETL_API_OIDC_ISSUER") or get_backend_config().etl_api_oidc_issuer,
             client_id=os.environ["OPENEO_ETL_OIDC_CLIENT_ID"],

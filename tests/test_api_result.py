@@ -3566,11 +3566,20 @@ class TestEtlApiReporting:
             yield vault
 
     @pytest.fixture
-    def etl_creds_from_env(self, etl_client_credentials, monkeypatch):
-        """Fixture to set up getting ETL API creds from env vars."""
+    def etl_creds_from_env_triplet(self, etl_client_credentials, monkeypatch):
+        """Fixture to set up getting ETL API creds from env vars (triplet style)."""
         monkeypatch.setenv("OPENEO_ETL_API_OIDC_ISSUER", etl_client_credentials.oidc_issuer)
         monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_ID", etl_client_credentials.client_id)
         monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_SECRET", etl_client_credentials.client_secret)
+        yield
+
+    @pytest.fixture
+    def etl_creds_from_env_compact(self, etl_client_credentials, monkeypatch):
+        """Fixture to set up getting ETL API creds from env var (simple style)."""
+        monkeypatch.setenv(
+            "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS",
+            f"{etl_client_credentials.client_id}:{etl_client_credentials.client_secret}@{etl_client_credentials.oidc_issuer}",
+        )
         yield
 
     @pytest.fixture(autouse=True)
@@ -3588,7 +3597,7 @@ class TestEtlApiReporting:
 
         requests_mock.post("https://etl-api.test/resources", json=post_resources)
 
-    def test_sync_processing_etl_reporting_credentials_from_vault(self, api100, requests_mock, etl_creds_from_vault):
+    def test_sync_processing_etl_reporting_credentials_from_vault(self, api100, etl_creds_from_vault):
         """
         Do sync processing with ETL reporting, using Vault code path to get ETL API creds
         """
@@ -3597,9 +3606,17 @@ class TestEtlApiReporting:
         assert res.json == 8
         assert res.headers["OpenEO-Costs-experimental"] == "88"
 
-    def test_sync_processing_etl_reporting_credentials_env(self, api100, requests_mock, etl_creds_from_env):
+    def test_sync_processing_etl_reporting_credentials_env_triplet(self, api100, etl_creds_from_env_triplet):
         """
-        Do sync processing with ETL reporting, using env vars code path to get ETL API creds
+        Do sync processing with ETL reporting, using env vars code path to get ETL API creds (triplet style)
+        """
+        res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
+        assert res.json == 8
+        assert res.headers["OpenEO-Costs-experimental"] == "88"
+
+    def test_sync_processing_etl_reporting_credentials_env_compact(self, api100, etl_creds_from_env_compact):
+        """
+        Do sync processing with ETL reporting, using env vars code path to get ETL API cred (compact style)
         """
         res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
         assert res.json == 8
