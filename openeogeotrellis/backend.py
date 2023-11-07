@@ -1557,27 +1557,28 @@ class GpsProcessing(ConcreteProcessing):
                                                                   f"collection {collection_id!r}"}
                     continue
 
-                bands = constraints.get("bands", [])
-                geometries = constraints.get("aggregate_spatial", {}).get("geometries")
-                if geometries is None:
-                    geometries = constraints.get("filter_spatial", {}).get("geometries")
-                too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
-                    spatial_extent=spatial_extent,
-                    geometries=geometries,
-                    temporal_extent=temporal_extent,
-                    nr_bands=len(bands),
-                    cell_width=cell_width,
-                    cell_height=cell_height,
-                    native_crs=native_crs,
-                    resample_params=constraints.get("resample", {}),
-                )
-                if too_large:
-                    yield {
-                        "code": "ExtentTooLarge",
-                        "message": f"Requested extent for collection {collection_id!r} is too large to process. "
-                                   f"Estimated number of pixels: {estimated_pixels:.2e}, "
-                                   f"threshold: {threshold_pixels:.2e}."
-                    }
+                if spatial_extent and temporal_extent:
+                    bands = constraints.get("bands", [])
+                    geometries = constraints.get("aggregate_spatial", {}).get("geometries")
+                    if geometries is None:
+                        geometries = constraints.get("filter_spatial", {}).get("geometries")
+                    too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
+                        spatial_extent=spatial_extent,
+                        geometries=geometries,
+                        temporal_extent=temporal_extent,
+                        nr_bands=len(bands),
+                        cell_width=cell_width,
+                        cell_height=cell_height,
+                        native_crs=native_crs,
+                        resample_params=constraints.get("resample", {}),
+                    )
+                    if too_large:
+                        yield {
+                            "code": "ExtentTooLarge",
+                            "message": f"Requested extent for collection {collection_id!r} is too large to process. "
+                            f"Estimated number of pixels: {estimated_pixels:.2e}, "
+                            f"threshold: {threshold_pixels:.2e}.",
+                        }
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
