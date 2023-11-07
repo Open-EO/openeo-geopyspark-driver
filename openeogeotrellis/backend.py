@@ -785,10 +785,28 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         temporal_extent = load_params.temporal_extent
         from_date, to_date = normalize_temporal_extent(temporal_extent)
 
+        def from_isoformat(datetime_str: str) -> dt.datetime:
+            """Fix for Python <3.11:
+            dt.datetime.fromisoformat does not support the format with "Z" at
+            the end to denote the time zone is UTC (Zulu time).
+            e.g.: "2020-03-17T12:34:56Z"
+            This helper function can be removed when we upgrade to python 3.11,
+            but in 3.8 we need to handle this format ourselves.
+            """
+            try:
+                return dt.datetime.fromisoformat(datetime_str)
+            except:
+                # Fall back to our own datetime format handler.
+                # However, this one does not like the other common format: "+00:00"
+                # otherwise we could just use rfc3339.
+                # TODO: [openeo-python-client] support "+00:00" in Rfc3339.
+                #   In fact, there is already a TODO for supporting other time zones.
+                return rfc3339.parse_datetime(datetime_str, with_timezone=True)
+
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
             def intersects_temporally() -> bool:
-                nominal_date = itm.datetime or dt.datetime.fromisoformat(itm.properties["start_datetime"])
-                return dt.datetime.fromisoformat(from_date) <= nominal_date <= dt.datetime.fromisoformat(to_date)
+                nominal_date = itm.datetime or from_isoformat(itm.properties["start_datetime"])
+                return from_isoformat(from_date) <= nominal_date <= from_isoformat(to_date)
 
             def intersects_spatially() -> bool:
                 if not requested_bbox or itm.bbox is None:
