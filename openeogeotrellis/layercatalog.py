@@ -1042,6 +1042,7 @@ def check_missing_products(
         if method == "creo":
             creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
             missing = [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
+            logger.warning("Got here! Emile Sonneveld")
         elif method == "terrascope":
             jvm = get_jvm()
 
