@@ -10,6 +10,13 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+
+## 0.19.2
+
+- (Temporarily) disable extensive `/validation` checks on production
+  (related to [#566](https://github.com/Open-EO/openeo-geopyspark-driver/issues/566), [#575](https://github.com/Open-EO/openeo-geopyspark-driver/issues/575))
+
+
 ## 0.18.0a1
 
 ### Removed

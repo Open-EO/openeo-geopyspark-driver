@@ -1506,12 +1506,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 return costs
 
 
-
-
 class GpsProcessing(ConcreteProcessing):
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
+        if "prod" in get_backend_config().deploy_env:
+            # TODO Temporarily disable buggy validation checks on production
+            #   e.g. see https://github.com/Open-EO/openeo-geopyspark-driver/issues/566,
+            #   https://github.com/Open-EO/openeo-geopyspark-driver/issues/575
+            return
 
         catalog = env.backend_implementation.catalog
 
