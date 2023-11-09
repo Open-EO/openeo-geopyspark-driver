@@ -2385,7 +2385,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         log.info(f"Submitted job, output was: {output_string}")
                     except CalledProcessError as e:
                         log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
-                        raise e
+                        raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
 
             try:
                 application_id = self._extract_application_id(output_string)
