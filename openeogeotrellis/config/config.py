@@ -64,9 +64,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # TODO: eliminate hardcoded Terrascope references
     etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
-    etl_api_oidc_issuer: Optional[str] = os.environ.get(
-        "OPENEO_ETL_API_OIDC_ISSUER", "https://sso.terrascope.be/auth/realms/terrascope"
-    )
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
 

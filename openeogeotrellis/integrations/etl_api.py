@@ -174,16 +174,12 @@ def get_etl_api_credentials(
         return ClientCredentials.from_credentials_string(os.environ["OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"], strict=True)
     elif all(
         v in os.environ
-        for v in [
-            # "OPENEO_ETL_API_OIDC_ISSUER",
-            "OPENEO_ETL_OIDC_CLIENT_ID",
-            "OPENEO_ETL_OIDC_CLIENT_SECRET",
-        ]
+        for v in ["OPENEO_ETL_API_OIDC_ISSUER", "OPENEO_ETL_OIDC_CLIENT_ID", "OPENEO_ETL_OIDC_CLIENT_SECRET"]
     ):
         # TODO: deprecate this code path and just go for compact `ClientCredentials.from_credentials_string`
         _log.debug("Getting ETL credentials from env vars (triplet style)")
         return ClientCredentials(
-            oidc_issuer=os.environ.get("OPENEO_ETL_API_OIDC_ISSUER") or get_backend_config().etl_api_oidc_issuer,
+            oidc_issuer=os.environ["OPENEO_ETL_API_OIDC_ISSUER"],
             client_id=os.environ["OPENEO_ETL_OIDC_CLIENT_ID"],
             client_secret=os.environ["OPENEO_ETL_OIDC_CLIENT_SECRET"],
         )

@@ -31,7 +31,6 @@ config = GpsBackendConfig(
     oidc_providers=oidc_providers,
     etl_api="https://etl-api.test",
     vault_addr="https://vault.test",
-    etl_api_oidc_issuer="https://oidc.test",
     enable_basic_auth=True,
     valid_basic_auth=lambda u, p: p == f"{u}123",
 )
