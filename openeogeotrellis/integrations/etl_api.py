@@ -49,14 +49,13 @@ class EtlApi:
         self,
         endpoint: str,
         *,
+        credentials: ClientCredentials,
         source_id: Optional[str] = None,
         requests_session: Optional[requests.Session] = None,
-        credentials: Optional[ClientCredentials] = None,
     ):
         self._endpoint = endpoint
         self._source_id = source_id or get_backend_config().etl_source_id
         self._session = requests_session or requests.Session()
-        # TODO: don't allow `None` credentials?
         self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
 
     def assert_access_token_valid(self, access_token: Optional[str] = None):
@@ -166,9 +165,8 @@ class EtlApi:
             return total_credits
 
 
-def get_etl_api_credentials(
-) -> ClientCredentials:
-    # TODO: move this to EtlAPi (e.g. as static helper method)? Or even do this automatically in EtlApi constructor?
+def get_etl_api_credentials_from_env() -> ClientCredentials:
+    """Get ETL API OIDC client credentials from environment."""
     if os.environ.get("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"):
         _log.debug("Getting ETL credentials from env var (compact style)")
         return ClientCredentials.from_credentials_string(os.environ["OPENEO_ETL_OIDC_CLIENT_CREDENTIALS"], strict=True)

@@ -98,7 +98,7 @@ from openeogeotrellis.geopysparkdatacube import (
 )
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env
 from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_job_name,
@@ -1476,8 +1476,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if sentinel_hub_processing_units > 0:
                 etl_api = EtlApi(
                     endpoint=get_backend_config().etl_api,
+                    credentials=get_etl_api_credentials_from_env(),
                     requests_session=requests_session,
-                    credentials=get_etl_api_credentials(),
                 )
 
                 costs = etl_api.log_resource_usage(

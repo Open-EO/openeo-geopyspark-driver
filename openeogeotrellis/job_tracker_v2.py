@@ -42,7 +42,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
 from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCostsCalculator, YarnJobCostsCalculator,
                                                    K8sJobCostsCalculator, CostsDetails)
@@ -563,8 +563,8 @@ class CliApp:
 
                 etl_api = EtlApi(
                     get_backend_config().etl_api,
+                    credentials=get_etl_api_credentials_from_env(),
                     requests_session=requests_session,
-                    credentials=get_etl_api_credentials(),
                 )
 
                 # Elastic Job Registry (EJR)
