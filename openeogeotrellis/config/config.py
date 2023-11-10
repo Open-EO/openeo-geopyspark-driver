@@ -69,4 +69,4 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
 
-    max_executor_memory: int = 64
+    max_executor_memory: str = "64G"
