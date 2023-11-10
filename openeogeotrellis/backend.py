@@ -2109,6 +2109,19 @@ class GpsBatchJobs(backend.BatchJobs):
         use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
         logging_threshold = as_logging_threshold_arg()
 
+        as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
+
+        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(get_backend_config().max_executor_memory):
+            raise OpenEOApiException(
+                message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_memory}",
+                status_code=400)
+
+        if isKube and int(executor_cores)>4:
+            raise OpenEOApiException(
+                message=f"Requested too many executor cores: {executor_cores} , the max for this instance is: 4",
+                status_code=400)
+
+
         def serialize_dependencies() -> str:
             batch_process_dependencies = [dependency for dependency in
                                           (dependencies or job_info.get('dependencies') or [])
@@ -2185,8 +2198,8 @@ class GpsBatchJobs(backend.BatchJobs):
             else:
                 api_version = '0.4.0'
 
-            memOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes(executor_memory_overhead)
-            jvmOverheadBytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes("128m")
+            memOverheadBytes = as_bytes(executor_memory_overhead)
+            jvmOverheadBytes = as_bytes("128m")
             python_max = memOverheadBytes - jvmOverheadBytes
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"

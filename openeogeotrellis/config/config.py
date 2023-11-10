@@ -68,3 +68,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     use_etl_api_on_sync_processing: bool = False
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
+
+    max_executor_memory: int = 64
