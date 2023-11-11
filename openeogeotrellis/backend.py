@@ -2167,7 +2167,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 running_count = 0
                 for app in result['items']:
-                    if app['status']['applicationState']['state'] == 'RUNNING':
+                    if 'status' not in app or app['status']['applicationState']['state'] == 'RUNNING':
                         running_count += 1
                 log.debug(
                     f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
