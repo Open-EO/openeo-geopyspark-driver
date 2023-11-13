@@ -10,9 +10,15 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 0.21.0
+
+- Initial support for dynamic ETL API configuration ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
+
 ## 0.20.1
 
 - finetune `zookeeper_set.py` script and `concurrent_pod_limit` logic
+
 
 ## 0.20.0
 

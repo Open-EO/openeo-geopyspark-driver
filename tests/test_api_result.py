@@ -8,17 +8,20 @@ import textwrap
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import List, Sequence, Union
+from typing import List, Optional, Sequence, Union
 
 import mock
 import numpy as np
-import openeo
-import openeo.processes
 import pytest
 import rasterio
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
+from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
+from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
+
+import openeo
+import openeo.processes
 from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
@@ -31,17 +34,16 @@ from openeo_driver.testing import (
     RegexMatcher,
     UrllibMocker,
     load_json,
+    DummyUser,
 )
+from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
-from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
-from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
-
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.integrations.etl_api import DynamicEtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
 from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
-
 from .data import get_test_data_file
 
 _log = logging.getLogger(__name__)
@@ -3492,8 +3494,8 @@ class TestEtlApiReporting:
     def etl_client_credentials(self) -> ClientCredentials:
         return ClientCredentials(
             oidc_issuer="https://oidc.test",
-            client_id="etl-client-123",
-            client_secret="etl-secret-abc",
+            client_id="client-123",
+            client_secret="secret-123",
         )
 
     _ETL_API_ACCESS_TOKEN = "access-token-123"
@@ -3539,36 +3541,145 @@ class TestEtlApiReporting:
         yield
 
     @pytest.fixture(autouse=True)
-    def mock_etl_api_resources(self, requests_mock):
-        """Setup up request mock for ETL API `/resources` endpoint"""
-        def post_resources(request, context):
-            assert request.headers["Authorization"] == f"Bearer {self._ETL_API_ACCESS_TOKEN}"
-            assert request.json() == DictSubSet(
-                {
+    def etl_api_requests(self, requests_mock) -> dict:
+        """Setup up request mock for ETL API `/resources`, ..."""
+
+        def get_post_resources_handler(data: dict):
+            """Build request handler for `POST /resources`"""
+
+            def post_resources(request, context):
+                assert request.headers["Authorization"] == data["expected_auth"]
+
+                assert request.json() == DictSubSet(data["expected_data"])
+                return data["response"]
+
+            return post_resources
+
+        mock_data = {}
+        for domain in [
+            "https://etl-api.test",
+            "https://etl-alt.test",
+            "https://etl.planb.test",
+        ]:
+            # TODO: also mock other endpoints ("addedvalue", "/user/permissions", ...)
+            url = f"{domain}/resources"
+            # Overridable expected/response data to be consumed in the request handler
+            mock_data[url] = {
+                "expected_auth": f"Bearer {self._ETL_API_ACCESS_TOKEN}",
+                "expected_data": {
                     "userId": TEST_USER,
                     "metrics": {
                         "processing": {"unit": "shpu", "value": 123},
                         "cpu": {"unit": "cpu-seconds", "value": 3600},
                         "memory": {"unit": "mb-seconds", "value": 7372800.0},
                     },
-                }
+                    "orchestrator": "openeo",
+                    "sourceId": "openeo-gps-tests",
+                    "state": "FINISHED",
+                    "status": "SUCCEEDED",
+                },
+                "response": [{"cost": 33}, {"cost": 55}],
+            }
+            # Add request mock too
+            mock_data[url]["request_mock"] = requests_mock.post(
+                url, json=get_post_resources_handler(data=mock_data[url])
             )
-            return [{"cost": 33}, {"cost": 55}]
 
-        requests_mock.post("https://etl-api.test/resources", json=post_resources)
+        yield mock_data
 
-    def test_sync_processing_etl_reporting_credentials_env_triplet(self, api100, etl_creds_from_env_triplet):
+    def test_sync_processing_etl_reporting_credentials_env_triplet(
+        self, api100, etl_creds_from_env_triplet, etl_api_requests
+    ):
         """
         Do sync processing with ETL reporting, using env vars code path to get ETL API creds (triplet style)
         """
         res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
         assert res.json == 8
         assert res.headers["OpenEO-Costs-experimental"] == "88"
+        assert etl_api_requests["https://etl-api.test/resources"]["request_mock"].call_count == 1
 
-    def test_sync_processing_etl_reporting_credentials_env_compact(self, api100, etl_creds_from_env_compact):
+    def test_sync_processing_etl_reporting_credentials_env_compact(
+        self, api100, etl_creds_from_env_compact, etl_api_requests
+    ):
         """
         Do sync processing with ETL reporting, using env vars code path to get ETL API cred (compact style)
         """
         res = api100.check_result({"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}})
         assert res.json == 8
         assert res.headers["OpenEO-Costs-experimental"] == "88"
+        assert etl_api_requests["https://etl-api.test/resources"]["request_mock"].call_count == 1
+
+    def test_sync_processing_etl_reporting_dynamic_api(
+        self, api100, etl_creds_from_env_compact, etl_api_requests, etl_client_credentials
+    ):
+        """
+        Do sync processing ETL reporting, with dynamic ETL API selection
+        """
+
+        # Setup up ETL mapping based on user name: one for Alice, another for Bob
+        class CustomEtlConfig(DynamicEtlApiConfig):
+            def get_root_url(self, *, user: Optional[User] = None) -> str:
+                return {
+                    "a": "https://etl-alt.test",
+                    "b": "https://etl.planb.test",
+                }[user.user_id[:1]]
+
+        etl_api_config = CustomEtlConfig(
+            urls_and_credentials={
+                "https://etl-alt.test": etl_client_credentials,
+                "https://etl.planb.test": etl_client_credentials,
+            }
+        )
+
+        alice = DummyUser(user_id="alice2000")
+        bob = DummyUser(user_id="bob7")
+        etl_dynamic_api_flag = "dynamic_etl"
+
+        def get_etl_api_requests_mock_call_counts() -> List[int]:
+            return [
+                etl_api_requests[u]["request_mock"].call_count
+                for u in [
+                    "https://etl-api.test/resources",
+                    "https://etl-alt.test/resources",
+                    "https://etl.planb.test/resources",
+                ]
+            ]
+
+        with gps_config_overrides(
+            use_etl_api_on_sync_processing=True,
+            etl_dynamic_api_flag=etl_dynamic_api_flag,
+            etl_api_config=etl_api_config,
+        ):
+            # First request by Alice
+            api100.set_auth_bearer_token(alice.bearer_token)
+            etl_api_requests["https://etl-alt.test/resources"]["expected_data"].update(userId=alice.user_id)
+
+            res = api100.check_result(
+                {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+                path=f"/result?{etl_dynamic_api_flag}=yes",
+            )
+            assert res.json == 8
+            assert res.headers["OpenEO-Costs-experimental"] == "88"
+
+            assert get_etl_api_requests_mock_call_counts() == [0, 1, 0]
+
+            # Another request by Bob
+            api100.set_auth_bearer_token(bob.bearer_token)
+            etl_api_requests["https://etl.planb.test/resources"]["expected_data"].update(userId=bob.user_id)
+            res = api100.check_result(
+                {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+                path=f"/result?{etl_dynamic_api_flag}=yes",
+            )
+            assert res.json == 8
+            assert res.headers["OpenEO-Costs-experimental"] == "88"
+            assert get_etl_api_requests_mock_call_counts() == [0, 1, 1]
+
+            # Another request, but without etl_dynamic_api_flag (which currently should use default ETL API)
+            api100.set_auth_bearer_token(alice.bearer_token)
+            etl_api_requests["https://etl-api.test/resources"]["expected_data"].update(userId=alice.user_id)
+            res = api100.check_result(
+                {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+            )
+            assert res.json == 8
+            assert res.headers["OpenEO-Costs-experimental"] == "88"
+            assert get_etl_api_requests_mock_call_counts() == [1, 1, 1]
