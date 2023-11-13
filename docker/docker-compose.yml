@@ -1,14 +1,73 @@
 # TODO: Also add zookeeper service when we add service for web app (REST API)
 
 # Here we set `name` because by default docker-compose uses the folder name as
-# the docker image name. (or does it use the working directory?)
+# the docker image name, which is the subfolder "docker" in our case.
 # But we want this example to work well for a new developer, with the least
 # amount of set up, and the least amount of surprises.
 #
 # You can also set the env var COMPOSE_PROJECT_NAME.
+# For now we keep the images names for the docker-compose workflow and makefile
+# workflow different until we are sure there are no conflicts between them.
+# Otherwise troubleshooting becomes a real hassle.
+# TODO: check: does docker-compose use the working directory or the parent folder name for the docker-compose file?
 name: dkrcmps-openeo-geopyspark-driver
-
 services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/minimal.dockerfile
+      target: final
+    environment:
+      - OPENEO_CATALOG_FILES=${OPENEO_CATALOG_FILES:-/src/docker/example_layercatalog.json}
+    volumes:
+      - type: bind
+        source: ..
+        target: /src
+      - type: bind
+        # The default data dir is in the project dir ./container-data
+        # Keep this a safe default: avoid writing in pre-existing dirs such as /data
+        # instead keep the default a local subfolder that your have to explicitly create
+        # because you can not know if different users/organisations use /data or alike
+        # for a different purpose.
+        source:  ${DATA_PATH_ON_HOST:-./container-data}
+        target: /data
+    ports:
+      - "4040:4040"
+      - "8080:8080"
+    command: ["python", "openeogeotrellis/deploy/local.py"]
+    profiles:
+      - webapp
+      - all
+
+  debugweb:
+    build:
+      context: ..
+      dockerfile: docker/minimal.dockerfile
+      target: debugwithvscode
+    environment:
+      - OPENEO_CATALOG_FILES=${OPENEO_CATALOG_FILES:-/src/docker/example_layercatalog.json}
+    volumes:
+      - type: bind
+        source: ..
+        target: /src
+      - type: bind
+        # default data dir is in the project dir ./container-data, see service: `web`
+        source:  ${DATA_PATH_ON_HOST:-./container-data}
+        target: /data
+    ports:
+      # The external port is one higher than those of webapp to avoid conflicts.
+      # Nonetheless we don't recommend running both webapp and debugweb at the same time.
+      - "4041:4040"
+      - "8081:8080"
+      - "5678:5678"
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "openeogeotrellis/deploy/local.py"]
+    profiles:
+      # Calling the main profile for this "debugpy" rather than "debug" because
+      # it will only run using debugpy. It is not (yet) a general debugging solution
+      # that runs with both PyCharm and VSCode.
+      - debugpy
+      - all
+
   pytest:
     build:
       context: ..
@@ -36,10 +95,13 @@ services:
       getjars:
         # Before starting pytest, run the get jars command once and wait until it finishes.
         condition: service_completed_successfully
+    profiles:
+      - all
+      - unittests
 
   # TODO: decide: is it worth having a seperate service to get the jars
   #   which should run only once and then exit?
-  #   Maybe better to let the dockerfile handle it.
+  #   Maybe better to let the dockerfile handle it?, Or leave it to the makefile?
   getjars:
     build:
       context: ..
@@ -50,10 +112,19 @@ services:
         source: ..
         target: /src
     command: ["python3", "scripts/get-jars.py"]
+    profiles:
+      - debugpy
+      - all
+      - unittests
+      - webapp
 
-
-  # TODO: decide: same issue for pip-compiling the requirements file: docker image or a compose service?
+  # TODO: decide: same issue for pip-compiling the requirements file:
+  #  use docker image build stage, use Makefile or a compose service?
   pipcompile:
+    # You need to run this service ones before to generate requirements-docker.txt
+    # So this is an action you need to run "pre-build" for lack of a better term.
+    # You can used --profile option of docker-compose:
+    # docker-compose up --profile pre-build
     build:
       context: ..
       dockerfile: docker/minimal.dockerfile
@@ -62,10 +133,17 @@ services:
       - type: bind
         source: ..
         target: /src
+
+    # Note that the path to /src/requirements-docker.txt" refers to a path *inside*
+    # the container, because pip runs inside the container.
+    # TODO: make /src/docker/requirements-docker.txt an (environment) variable?
     command: [
-      "pip-compile", "-o", "./requirements-docker.txt",
+      "pip-compile", "-o", "/src/docker/requirements-docker.txt",
       "--verbose",
       "-P", "rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib",
       "--extra-index-url", "https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple",
       "setup.py"
     ]
+    profiles:
+      - all
+      - pre-build

@@ -172,6 +172,9 @@ def main(argv=None):
     elif isinstance(result, dict):
         # TODO: support storing JSON result to file
         print(result)
+    elif isinstance(result, (int, float, bool, str)):
+        # TODO: support storing JSON result to file
+        print(json.dumps(result))
     else:
         # TODO: support more result types
         raise ValueError(result)

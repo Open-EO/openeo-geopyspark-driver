@@ -18,7 +18,7 @@ Sub goals toward a full example setup:
 
 - [x] Be able to run test suite (pytest) in Docker.
 - [ ] Be able to run a batch job for testing.
-- [ ] Running backend as local docker container, namely be able to use the REST API.
+- [x] Running backend as local docker container, namely be able to use the REST API.
 
 
 That said, what this is specifically ***not*** a goal for this setup:
@@ -56,7 +56,7 @@ If you are on Windows, here are some of the easiest ways to get GNU make:
 
 1) Download and run the GNUWin32 installer for GNU make:
 
-[Download page dor GNUWin32 Make](https://gnuwin32.sourceforge.net/packages/make.htm)
+[Download page for GNUWin32 Make](https://gnuwin32.sourceforge.net/packages/make.htm)
 
 2) Install via winget
 
@@ -128,7 +128,7 @@ For an example see the target `test` in docker\Makefile
 
 2. The main point of this makefile was to be able to extract a pip requirements file from setup.py and install the python dependencies only when they change.
 
-Therefor, if you have already done a "full build" once, and none of the
+Therefor, if you have already done a *full* build once, and none of the
 Python dependencies have changed in setup.py, then it should be enough
 to build just the main image, like so:
 
@@ -169,10 +169,6 @@ docker run --rm -ti -v C:/development/projects/VITO/codebases/openeo-geopyspark-
 The Makefile allows to set a few configuration parameters, should you wish to.
 Namely, the docker image name and the image tag and whether your development environment supports BuildKit or not.
 
-
-There is a separate dockerfile for systems that don't have BuildKit: `minimal-no-buildkit.dockerfile`
-The only way `minimal-no-buildkit.dockerfile` differs from` `minimal.dockerfile` is that the RUN commands don't use mounts for the cache of apt install and pip install commands because this requires buildkit.
-
 See this part near the top of the makefile:
 
 ```makefile
@@ -200,6 +196,17 @@ The syntax of the `make-env.env` file is "dotenv" or ".env" and its basic use is
 # example make-env.env contents:
 docker_image_basename=my-own-container-name
 docker_tag=py3.8
+```
+
+## Dockerfile for Environment Without BuildKit Support
+
+There is a separate dockerfile for systems that don't have BuildKit: `minimal-no-buildkit.dockerfile`
+The only way `minimal-no-buildkit.dockerfile` differs from `minimal.dockerfile` is that the RUN commands don't use mounts for the cache of apt install and pip install commands because this requires buildkit.
+
+The file `minimal-no-buildkit.dockerfile` can be generated automatically from `minimal.dockerfile` with this command:
+
+```
+make -f docker/Makefile no-buildkit-dockerfile
 ```
 
 ## Rationale for Some of the Choices
