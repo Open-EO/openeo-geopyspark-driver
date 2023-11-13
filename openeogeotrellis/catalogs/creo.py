@@ -201,8 +201,7 @@ class CreoCatalogClient(CatalogClientBase):
 
     def query_offline(self, start_date, end_date, ulx=-180, uly=90, brx=180, bry=-90,cldPrcnt=100.) -> List[CreoCatalogEntry]:
         return [
-            p for p in
-            self.query(start_date=start_date, end_date=end_date, ulx=ulx, uly=uly, brx=brx, bry=bry, cldPrcnt=cldPrcnt)
+            p for p in self.query(start_date=start_date, end_date=end_date, ulx=ulx, uly=uly, brx=brx, bry=bry,cldPrcnt=cldPrcnt)
             if p.getStatus() == CatalogStatus.ORDERABLE
         ]
 

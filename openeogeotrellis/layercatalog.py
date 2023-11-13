@@ -4,6 +4,7 @@ import functools
 import json
 import logging
 import sys
+import traceback
 from copy import deepcopy
 from datetime import datetime
 from functools import lru_cache
@@ -1041,8 +1042,8 @@ def check_missing_products(
         method = check_data.get("method")
         if method == "creo":
             jvm = get_jvm()
-            processing_level = ""
             open_search_client = jvm.org.openeo.opensearch.backends.CreodiasClient.apply()
+            processing_level = ""
             if "level" in check_data["creo_catalog"]:
                 processing_level = check_data["creo_catalog"]["level"]
             offline_tiles = query_jvm_opensearch_client(
