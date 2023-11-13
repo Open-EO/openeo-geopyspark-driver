@@ -4,7 +4,6 @@ import functools
 import json
 import logging
 import sys
-import traceback
 from copy import deepcopy
 from datetime import datetime
 from functools import lru_cache
@@ -971,7 +970,7 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
     return metadata
 
 
-def query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
+def query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level="", attribute_values_dict=None):
     jvm = get_jvm()
     fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
     toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
@@ -980,7 +979,8 @@ def query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs
                                           float(_query_kwargs["brx"]), float(_query_kwargs["uly"]))
     crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
     bbox = jvm.geotrellis.vector.ProjectedExtent(extent, crs)
-    attribute_values_dict = {}
+
+    attribute_values_dict = deepcopy(attribute_values_dict or {})
     if "cldPrcnt" in _query_kwargs:
         attribute_values_dict["eo:cloud_cover"] = _query_kwargs["cldPrcnt"]
     attributeV_values = jvm.PythonUtils.toScalaMap(attribute_values_dict)
@@ -1040,9 +1040,28 @@ def check_missing_products(
 
         method = check_data.get("method")
         if method == "creo":
-            creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
-            missing = [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
-            logger.warning("Got here! Emile Sonneveld")
+            jvm = get_jvm()
+            processing_level = ""
+            open_search_client = jvm.org.openeo.opensearch.backends.CreodiasClient.apply()
+            if "level" in check_data["creo_catalog"]:
+                processing_level = check_data["creo_catalog"]["level"]
+            offline_tiles = query_jvm_opensearch_client(
+                open_search_client=open_search_client,
+                collection_id=check_data["creo_catalog"]["mission"],
+                _query_kwargs=query_kwargs,
+                processing_level=processing_level,
+
+                # Offline products (in the long-term preservation archive or in the remote repository)
+                attribute_values_dict={"status": "OFFLINE"}
+            )
+            online_tiles = query_jvm_opensearch_client(
+                open_search_client=open_search_client,
+                collection_id=check_data["creo_catalog"]["mission"],
+                _query_kwargs=query_kwargs,
+                processing_level=processing_level,
+                attribute_values_dict={"status": "ONLINE"}
+            )
+            missing = list(offline_tiles.difference(online_tiles))
         elif method == "terrascope":
             jvm = get_jvm()
 

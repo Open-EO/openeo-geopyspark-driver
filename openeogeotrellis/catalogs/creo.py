@@ -203,7 +203,7 @@ class CreoCatalogClient(CatalogClientBase):
         return [
             p for p in
             self.query(start_date=start_date, end_date=end_date, ulx=ulx, uly=uly, brx=brx, bry=bry, cldPrcnt=cldPrcnt)
-            if (p.getStatus() != CatalogStatus.ORDERABLE and p.getStatus() == CatalogStatus.AVAILABLE)
+            if p.getStatus() == CatalogStatus.ORDERABLE
         ]
 
     def query_product_paths(self, start_date, end_date, ulx, uly, brx, bry):
