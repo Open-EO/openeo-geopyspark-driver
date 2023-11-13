@@ -115,6 +115,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             datacubeParams.setPixelBuffer(load_params.pixel_buffer[0],load_params.pixel_buffer[1])
 
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
+
+        if load_params.filter_temporal_labels is not None:
+            from openeogeotrellis.backend import GeoPySparkBackendImplementation
+            labels_filter = GeoPySparkBackendImplementation.accept_process_graph(load_params.filter_temporal_labels["process_graph"])
+            datacubeParams.setTimeDimensionFilter(labels_filter)
         return datacubeParams, single_level
 
 
