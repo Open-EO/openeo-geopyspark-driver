@@ -5,8 +5,8 @@ import logging
 import os
 import shutil
 import textwrap
-import urllib.request
 import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import List, Union, Sequence
 
@@ -42,6 +42,7 @@ from openeo_driver.util.geometry import (
 )
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.testing import random_name, KazooClientMock, config_overrides
 from openeogeotrellis.utils import (
     UtcNowClock,
@@ -49,8 +50,7 @@ from openeogeotrellis.utils import (
     get_jvm,
     is_package_available,
 )
-from openeogeotrellis.vault import OAuthCredentials
-from .data import get_test_data_file
+from tests.data import get_test_data_file
 
 _log = logging.getLogger(__name__)
 
@@ -73,6 +73,13 @@ def set_jvm_system_properties(properties: dict):
         yield
     finally:
         set_all(orig_properties)
+
+
+@pytest.fixture
+def catalog(vault):
+    catalog = get_layer_catalog(vault)
+    catalog.set_default_sentinel_hub_credentials(client_id="???", client_secret="!!!")
+    return catalog
 
 
 def test_execute_math_basic(api100):
@@ -1903,7 +1910,7 @@ class TerrascopeApiMocker:
         }
 
 
-def test_extra_validation_creo(api100, requests_mock):
+def test_extra_validation_creo(api100):
     pg = {"lc": {
         "process_id": "load_collection",
         "arguments": {
@@ -1915,20 +1922,20 @@ def test_extra_validation_creo(api100, requests_mock):
         "result": True
     }}
 
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEV"}, {"tile_id": "16WDA", "status": 31}]),
-    )
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json=CreoApiMocker.feature_collection(features=[]),
-    )
+    # noinspection PyUnusedLocal
+    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs,
+                                         processing_level="", attribute_values_dict=None):
+        if attribute_values_dict["status"] == "OFFLINE":
+            return {"16WEA", "17WEA"}
+        elif attribute_values_dict["status"] == "ONLINE":
+            return {"17WEA", "18WEA"}
+        else:
+            raise Exception("Unknown open_search_client: " + str(open_search_client))
 
-    response = api100.validation(pg)
-    assert response.json == {'errors': [
-        {'code': 'MissingProduct',
-         'message': "Tile 'S2A_MSIL2A_20200301T173231_N0209_R055_T16WDA_20200301T210331' in collection 'SENTINEL2_L2A_CREO' is not available."}
-    ]}
+    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
+        response = api100.validation(pg)
+        assert response.json == {'errors': [
+            {'code': 'MissingProduct', 'message': "Tile '16WEA' in collection 'SENTINEL2_L2A_CREO' is not available."}]}
 
 
 @pytest.fixture
