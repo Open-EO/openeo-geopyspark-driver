@@ -1045,8 +1045,9 @@ def check_missing_products(
 
         method = check_data.get("method")
         if method == "creo":
-            creo_catalog = CreoCatalogClient(**check_data["creo_catalog"])
-            missing = [p.getProductId() for p in creo_catalog.query_offline(**query_kwargs)]
+            logger.warning("At the moment it is not supported to check missing products on creo.")
+            # We could query with status="all" and see if some offline products survive the deduplication and log those.
+            missing = []
         elif method == "terrascope":
             jvm = get_jvm()
 
