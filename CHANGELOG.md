@@ -10,12 +10,17 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 0.19.4
+
+- eliminate `use_etl_api` arg from `GeoPySparkBackendImplementation` in favor of `use_etl_api_on_sync_processing` config field
+
+
 ## 0.19.3
 
 - Experimental support for filter_labels: only works with catalog based collections, and when used close to the load_collection call [#559](https://github.com/Open-EO/openeo-geopyspark-driver/issues/559)
 - Avoid 'out-of-memory' errors when writing large netCDF files. Allows files of >600MB without custom memory settings. [#199](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/199)
 - netCDF output will generate a more useful warning in case of a mismatch with cube band metadata
-- 
+
 
 ## 0.19.2
 

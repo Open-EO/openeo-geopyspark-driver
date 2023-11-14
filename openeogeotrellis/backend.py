@@ -333,8 +333,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
-        # TODO: eliminate usage of this parameter (openeo-deploy), just use `use_etl_api_on_sync_processing` config instead
-        use_etl_api: Optional[bool] = None,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -402,10 +400,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         self._principal = principal
         self._key_tab = key_tab
-
-        self._use_etl_api_on_sync_processing = (
-            use_etl_api if use_etl_api is not None else get_backend_config().use_etl_api_on_sync_processing
-        )
 
     def capabilities_billing(self) -> dict:
         return {
@@ -1463,7 +1457,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         user_id = user.user_id if user else user_id
 
-        if self._use_etl_api_on_sync_processing:
+        backend_config = get_backend_config()
+
+        if backend_config.use_etl_api_on_sync_processing:
             sc = SparkContext.getOrCreate()
 
             # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
@@ -1475,7 +1471,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             if sentinel_hub_processing_units > 0:
                 etl_api = EtlApi(
-                    endpoint=get_backend_config().etl_api,
+                    endpoint=backend_config.etl_api,
                     credentials=get_etl_api_credentials_from_env(),
                     requests_session=requests_session,
                 )
