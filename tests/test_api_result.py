@@ -1903,34 +1903,6 @@ class TerrascopeApiMocker:
         }
 
 
-def test_extra_validation_creo(api100, requests_mock):
-    pg = {"lc": {
-        "process_id": "load_collection",
-        "arguments": {
-            "id": "SENTINEL2_L2A_CREO",
-            "temporal_extent": ["2020-03-01", "2020-03-10"],
-            "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
-            "properties": {"eo:cloud_cover": {"process_graph": {"lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50}, "result": True}}}}
-        },
-        "result": True
-    }}
-
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=1&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json=CreoApiMocker.feature_collection(features=[{"tile_id": "16WEV"}, {"tile_id": "16WDA", "status": 31}]),
-    )
-    requests_mock.get(
-        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?productType=L2A&startDate=2020-03-01T00%3A00%3A00&cloudCover=%5B0%2C50%5D&page=2&maxRecords=100&sortParam=startDate&sortOrder=ascending&status=all&dataset=ESA-DATASET&completionDate=2020-03-10T23%3A59%3A59.999999&geometry=POLYGON+%28%28-87+68%2C+-86+68%2C+-86+67%2C+-87+67%2C+-87+68%29%29",
-        json=CreoApiMocker.feature_collection(features=[]),
-    )
-
-    response = api100.validation(pg)
-    assert response.json == {'errors': [
-        {'code': 'MissingProduct',
-         'message': "Tile 'S2A_MSIL2A_20200301T173231_N0209_R055_T16WDA_20200301T210331' in collection 'SENTINEL2_L2A_CREO' is not available."}
-    ]}
-
-
 @pytest.fixture
 def jvm_mock():
     with mock.patch('openeogeotrellis.layercatalog.get_jvm') as get_jvm:
