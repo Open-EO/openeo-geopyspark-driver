@@ -1509,7 +1509,6 @@ class GpsProcessing(ConcreteProcessing):
     ) -> Iterable[dict]:
         if "prod" in get_backend_config().deploy_env:
             # TODO Temporarily disable buggy validation checks on production
-            #   e.g. see https://github.com/Open-EO/openeo-geopyspark-driver/issues/566,
             #   https://github.com/Open-EO/openeo-geopyspark-driver/issues/575
             return
 

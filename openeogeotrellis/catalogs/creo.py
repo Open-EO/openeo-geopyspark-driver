@@ -91,6 +91,8 @@ class CreoCatalogClient(CatalogClientBase):
             # 34 means that product is downloaded in cache,
             # 37 means that product is processed by our platform,
             # 0 means that already processed product is waiting in our platform
+
+            # TODO: status is now "ONLINE" or "OFFLINE". Prefer using the Scala OpenSearchClient.
             if hit['properties']['status'] in {0, 34, 37}:
                 result.append(
                     CreoCatalogEntry(hit['properties']['productIdentifier'].replace('.SAFE', ''), CatalogStatus.AVAILABLE))
