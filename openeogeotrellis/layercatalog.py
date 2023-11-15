@@ -119,7 +119,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if load_params.filter_temporal_labels is not None:
             from openeogeotrellis.backend import GeoPySparkBackendImplementation
             labels_filter = GeoPySparkBackendImplementation.accept_process_graph(load_params.filter_temporal_labels["process_graph"])
-            datacubeParams.setTimeDimensionFilter(labels_filter)
+            datacubeParams.setTimeDimensionFilter(labels_filter.builder)
         return datacubeParams, single_level
 
 
