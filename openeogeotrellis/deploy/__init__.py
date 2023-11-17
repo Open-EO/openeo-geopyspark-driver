@@ -79,7 +79,6 @@ def find_geotrellis_jars(
 
     jars = []
     for search_location in search_locations:
-        jars.extend(search_location.glob("geotrellis-backend-assembly-*.jar"))
         jars.extend(search_location.glob("geotrellis-extensions-*.jar"))
         if jars:
             break
