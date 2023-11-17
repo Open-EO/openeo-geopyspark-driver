@@ -2813,22 +2813,25 @@ class GpsBatchJobs(backend.BatchJobs):
             elif process == 'load_stac':
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
-                with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                    with self._requests_session.get(url, timeout=600) as resp:
-                        resp.raise_for_status()
-                        stac_object = resp.json()
+                if url.startswith("http://") or url.startswith("https://"):
+                    with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
+                        with self._requests_session.get(url, timeout=600) as resp:
+                            resp.raise_for_status()
+                            stac_object = resp.json()
 
-                openeo_status = stac_object.get('openeo:status')
+                    openeo_status = stac_object.get('openeo:status')
 
-                logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
+                    logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
 
-                if openeo_status == 'running':
-                    job_dependencies.append({
-                        'partial_job_results_url': url,
-                    })
-                else:  # just proceed
-                    # TODO: this design choice allows the user to load partial results (their responsibility);
-                    #  another option is to abort this job if status is "error" or "canceled".
+                    if openeo_status == 'running':
+                        job_dependencies.append({
+                            'partial_job_results_url': url,
+                        })
+                    else:  # just proceed
+                        # TODO: this design choice allows the user to load partial results (their responsibility);
+                        #  another option is to abort this job if status is "error" or "canceled".
+                        pass
+                else:  # assume it points to a file (convenience, non-public API)
                     pass
 
         return job_dependencies
