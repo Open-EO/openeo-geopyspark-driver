@@ -116,7 +116,6 @@ def test_find_geotrellis_jars_cwd(tmp_path, monkeypatch):
     (tmp_path / "jars" / "geotrellis-extensions-4.5.6.jar").touch()
     monkeypatch.chdir(tmp_path)
     assert find_geotrellis_jars() == [
-        Path("jars/geotrellis-backend-assembly-1.2.3.jar"),
         Path("jars/geotrellis-extensions-4.5.6.jar"),
     ]
 
@@ -125,6 +124,5 @@ def test_find_geotrellis_jars_extra(tmp_path):
     (tmp_path / "geotrellis-backend-assembly-1.2.3.jar").touch()
     (tmp_path / "geotrellis-extensions-4.5.6.jar").touch()
     assert find_geotrellis_jars(extra_search_locations=[tmp_path]) == [
-        tmp_path / "geotrellis-backend-assembly-1.2.3.jar",
         tmp_path / "geotrellis-extensions-4.5.6.jar",
     ]

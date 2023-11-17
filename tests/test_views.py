@@ -95,7 +95,6 @@ def test_deploy_metadata(api100):
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
             "geopyspark": semver_alike,
-            "geotrellis-backend-assembly": semver_alike,
             "geotrellis-extensions": semver_alike,
         },
     }
@@ -104,7 +103,6 @@ def test_deploy_metadata(api100):
         "openeo_driver": semver_alike,
         "openeo-geopyspark": semver_alike,
         "geopyspark": semver_alike,
-        "geotrellis-backend-assembly": semver_alike,
         "geotrellis-extensions": semver_alike,
     }
 
