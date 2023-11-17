@@ -236,8 +236,8 @@ class K8sException(Exception):
 class K8sStatusGetter(JobMetadataGetterInterface):
     """Kubernetes app status getter"""
 
-    def __init__(self, prometheus_api_endpoint: str):
-        self._kubernetes_api = kube_client()
+    def __init__(self, kubernetes_api, prometheus_api_endpoint: str):
+        self._kubernetes_api = kubernetes_api
         # TODO: get this url from config?
         self._prometheus_api_endpoint = prometheus_api_endpoint
 
@@ -584,7 +584,8 @@ class CliApp:
                     )
                     job_costs_calculator = YarnJobCostsCalculator(etl_api)
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(prometheus_api_endpoint=get_backend_config().prometheus_api)
+                    app_state_getter = K8sStatusGetter(kube_client(),
+                                                       prometheus_api_endpoint=get_backend_config().prometheus_api)
                     job_costs_calculator = K8sJobCostsCalculator(etl_api)
                 else:
                     raise ValueError(app_cluster)

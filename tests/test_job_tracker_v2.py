@@ -284,29 +284,29 @@ class KubernetesMock:
         self.prometheus_api_endpoint = prometheus_api_endpoint
         self.corrupt_app_ids = set()
 
+    def get_namespaced_custom_object(self, name: str, **kwargs) -> dict:
+        if name in self.corrupt_app_ids:
+            raise kubernetes.client.exceptions.ApiException(
+                status=500, reason="Internal Server Error"
+            )
+        if name not in self.apps:
+            raise kubernetes.client.exceptions.ApiException(
+                status=404, reason="Not Found"
+            )
+        app = self.apps[name]
+        if app.state == K8S_SPARK_APP_STATE.NEW:
+            # TODO: is this the actual behavior for "new" apps: no "status" in response?
+            return {}
+        return {
+            "status": {
+                "applicationState": {"state": app.state},
+                "lastSubmissionAttemptTime": app.start_time,
+                "terminationTime": app.finish_time,
+            }
+        }
+
     @contextlib.contextmanager
     def patch(self):
-        def get_namespaced_custom_object(name: str, **kwargs) -> dict:
-            if name in self.corrupt_app_ids:
-                raise kubernetes.client.exceptions.ApiException(
-                    status=500, reason="Internal Server Error"
-                )
-            if name not in self.apps:
-                raise kubernetes.client.exceptions.ApiException(
-                    status=404, reason="Not Found"
-                )
-            app = self.apps[name]
-            if app.state == K8S_SPARK_APP_STATE.NEW:
-                # TODO: is this the actual behavior for "new" apps: no "status" in response?
-                return {}
-            return {
-                "status": {
-                    "applicationState": {"state": app.state},
-                    "lastSubmissionAttemptTime": app.start_time,
-                    "terminationTime": app.finish_time,
-                }
-            }
-
         def get_prometheus_response(
             request: requests_mock.request._RequestObjectProxy, context
         ) -> dict:
@@ -330,13 +330,7 @@ class KubernetesMock:
             else:
                 return single_numeric_result(370841160371254.75)
 
-        with mock.patch(
-            "openeogeotrellis.job_tracker_v2.kube_client"
-        ) as kube_client, requests_mock.Mocker() as requests_mocker:
-            # Mock Kubernetes interaction
-            api_instance = kube_client.return_value
-            api_instance.get_namespaced_custom_object = get_namespaced_custom_object
-
+        with requests_mock.Mocker() as requests_mocker:
             # Mock kubernetes usage API
             requests_mocker.get(
                 self.prometheus_api_endpoint + "/query",
@@ -1036,7 +1030,7 @@ class TestK8sJobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
-            app_state_getter=K8sStatusGetter(prometheus_api_endpoint=prometheus_api_endpoint),
+            app_state_getter=K8sStatusGetter(k8s_mock, prometheus_api_endpoint=prometheus_api_endpoint),
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
