@@ -7,7 +7,7 @@ from pathlib import Path
 import boto3
 import flask
 import pytest
-from moto import mock_s3
+#from moto import mock_s3
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
@@ -92,10 +92,6 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set("spark.sql.session.timeZone", "UTC")
 
     conf.set("spark.kryoserializer.buffer.max", value="1G")
-    conf.set(
-        key="spark.kryo.registrator",
-        value="geopyspark.geotools.kryo.ExpandedKryoRegistrator",
-    )
     conf.set(
         key="spark.kryo.classesToRegister",
         value="org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
