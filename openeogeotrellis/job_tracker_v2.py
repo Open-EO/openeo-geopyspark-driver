@@ -281,6 +281,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             prometheus = Prometheus(self._prometheus_api_endpoint)
 
             if start_time is None or finish_time is None:
+                application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
@@ -289,15 +290,24 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cpu_seconds = prometheus.get_cpu_usage(application_id)
             network_receive_bytes = prometheus.get_network_received_usage(application_id)
 
-            usage = _Usage(cpu_seconds=cpu_seconds,
-                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                           network_receive_bytes=network_receive_bytes,
-                           )
-
-            _log.info(f"Successfully retrieved usage stats {usage} from {self._prometheus_api_endpoint}",
+            _log.info(f"Successfully retrieved usage stats from {self._prometheus_api_endpoint}: "
+                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}",
                       extra={"job_id": job_id, "user_id": user_id})
 
-            return usage
+            if application_duration_s:
+                if not cpu_seconds and not byte_seconds:
+                    _log.warning(f"App {application_id} took {application_duration_s}s "
+                                 f"but no CPU or memory usage was recorded: {cpu_seconds=} and {byte_seconds=}",
+                                 extra={"job_id": job_id, "user_id": user_id})
+                if not cpu_seconds:
+                    cpu_seconds = get_backend_config().default_usage_cpu_seconds
+                if not byte_seconds:
+                    byte_seconds = get_backend_config().default_usage_byte_seconds
+
+            return _Usage(cpu_seconds=cpu_seconds,
+                          mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
+                          network_receive_bytes=network_receive_bytes,
+                          )
         except Exception as e:
             _log.exception(
                 f"Failed to retrieve usage stats from {self._prometheus_api_endpoint}: {type(e).__name__}: {e}",
