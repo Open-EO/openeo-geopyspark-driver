@@ -281,6 +281,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             prometheus = Prometheus(self._prometheus_api_endpoint)
 
             if start_time is None or finish_time is None:
+                application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
@@ -296,6 +297,11 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             _log.info(f"Successfully retrieved usage stats {usage} from {self._prometheus_api_endpoint}",
                       extra={"job_id": job_id, "user_id": user_id})
+
+            if application_duration_s and not cpu_seconds and not byte_seconds:
+                _log.warning(f"App {application_id} took {application_duration_s}s "
+                             f"but no CPU or memory usage was recorded: {cpu_seconds=} and {byte_seconds=}",
+                             extra={"job_id": job_id, "user_id": user_id})
 
             return usage
         except Exception as e:
