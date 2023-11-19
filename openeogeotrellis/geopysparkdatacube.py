@@ -246,7 +246,7 @@ class GeopysparkDataCube(DriverDataCube):
     def filter_labels(self, condition: dict, dimension: str, context: Optional[dict] = None,
                       env: EvalEnv = None) -> 'DriverDataCube':
         #TODO this is provided by FileLayerProvider, but also need this here
-        pass
+        return self
 
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
