@@ -3,7 +3,6 @@ import os
 from typing import Optional
 
 import requests
-
 from openeo_driver.config import get_backend_config
 from openeo_driver.util.auth import ClientCredentials, ClientCredentialsAccessTokenHelper
 

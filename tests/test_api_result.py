@@ -5,51 +5,43 @@ import logging
 import os
 import shutil
 import textwrap
-import urllib.request
 import urllib.parse
+import urllib.request
 from pathlib import Path
-from typing import List, Union, Sequence
+from typing import List, Sequence, Union
 
 import mock
 import numpy as np
+import openeo
+import openeo.processes
 import pytest
 import rasterio
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
-from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
-from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
-
-import openeo
-import openeo.processes
 from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
     TEST_USER,
     ApiResponse,
+    ApiTester,
     DictSubSet,
     IgnoreOrder,
-    load_json,
-    ApiTester,
-    RegexMatcher,
     ListSubSet,
+    RegexMatcher,
     UrllibMocker,
+    load_json,
 )
 from openeo_driver.util.auth import ClientCredentials
-from openeo_driver.util.geometry import (
-    as_geojson_feature,
-    as_geojson_feature_collection,
-)
+from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
+from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
+from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
+
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import random_name, KazooClientMock, config_overrides
-from openeogeotrellis.utils import (
-    UtcNowClock,
-    drop_empty_from_aggregate_polygon_result,
-    get_jvm,
-    is_package_available,
-)
-from openeogeotrellis.vault import OAuthCredentials
+from openeogeotrellis.testing import KazooClientMock, config_overrides, random_name
+from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
+
 from .data import get_test_data_file
 
 _log = logging.getLogger(__name__)

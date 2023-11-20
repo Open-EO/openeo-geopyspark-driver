@@ -1,146 +1,114 @@
-import random
-
 import datetime as dt
+import io
 import json
 import logging
 import os
-import stat
+import random
 import re
 import shutil
+import socket
+import stat
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 import uuid
 from decimal import Decimal
 from functools import lru_cache, partial, reduce
-
-from pandas import Timedelta
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Tuple, Optional, List, Union, Iterable, Mapping
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import flask
 import geopyspark as gps
+import openeo.udf
 import pkg_resources
+import pystac
+import pystac_client
 import requests
 import shapely.geometry.base
 from deprecated import deprecated
-from geopyspark import TiledRasterLayer, LayerType, Pyramid
-from py4j.java_gateway import JVMView, JavaObject
-from py4j.protocol import Py4JJavaError
-from pyspark import SparkContext
-from pyspark.mllib.tree import RandomForestModel
-from pyspark.version import __version__ as pysparkversion
-import pystac
-import pystac_client
-from shapely.geometry import box, Polygon
-
+from geopyspark import LayerType, Pyramid, TiledRasterLayer
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import TemporalDimension, SpatialDimension, Band, BandDimension, Dimension
-import openeo.udf
-from openeo.util import (
-    dict_no_none,
-    rfc3339,
-    deep_get,
-    repr_truncate,
-    str_truncate,
-    TimingLogger,
-)
-from xarray import DataArray
-
+from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
 from openeo_driver import backend, filter_properties
-from openeo_driver.ProcessGraphDeserializer import ConcreteProcessing, ENV_SAVE_RESULT
-from openeo_driver.backend import (
-    ServiceMetadata,
-    BatchJobMetadata,
-    BatchJobResultMetadata,
-    OidcProvider,
-    ErrorSummary,
-    LoadParameters,
-)
+from openeo_driver.backend import BatchJobMetadata, ErrorSummary, LoadParameters, OidcProvider, ServiceMetadata
 from openeo_driver.config.load import ConfigGetter
-from openeo_driver.datacube import DriverVectorCube, DriverDataCube
+from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (
-    JobNotFoundException,
-    JobNotFinishedException,
-    OpenEOApiException,
     InternalException,
-    ServiceUnsupportedException,
+    JobNotFinishedException,
+    JobNotFoundException,
+    OpenEOApiException,
     ProcessParameterUnsupportedException,
+    ServiceUnsupportedException,
 )
-from openeo_driver.jobregistry import (
-    ElasticJobRegistry,
-    JOB_STATUS,
-    DEPENDENCY_STATUS,
-    get_ejr_credentials_from_env,
-)
+from openeo_driver.jobregistry import DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, get_ejr_credentials_from_env
+from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
-from openeo_driver.util.logging import (
-    FlaskRequestCorrelationIdLogging,
-    FlaskUserIdLogging,
-)
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.util.utm import area_in_square_meters, auto_utm_epsg_for_geometry, utm_zone_from_epsg
-from openeo_driver.utils import EvalEnv, to_hashable, generate_unique_id
+from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable
+from pandas import Timedelta
+from py4j.java_gateway import JavaObject, JVMView
+from py4j.protocol import Py4JJavaError
+from pyspark import SparkContext
+from pyspark.mllib.tree import RandomForestModel
+from pyspark.version import __version__ as pysparkversion
+from shapely.geometry import Polygon
+from xarray import DataArray
+
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.geopysparkdatacube import (
-    GeopysparkDataCube,
-    GeopysparkCubeMetadata,
-)
-from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
+from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env
-from openeogeotrellis.integrations.kubernetes import (
-    truncate_job_id_k8s,
-    k8s_job_name,
-    kube_client,
+from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s
+from openeogeotrellis.integrations.traefik import Traefik
+from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.layercatalog import (
+    GeoPySparkLayerCatalog,
+    check_missing_products,
+    get_layer_catalog,
+    is_layer_too_large,
 )
-from openeogeotrellis.job_registry import (
-    ZkJobRegistry,
-    DoubleJobRegistry,
-    get_deletable_dependency_sources,
-)
-from openeogeotrellis.layercatalog import (get_layer_catalog, check_missing_products, GeoPySparkLayerCatalog,
-                                           is_layer_too_large)
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
-from openeogeotrellis.sentinel_hub.batchprocessing import (
-    SentinelHubBatchProcessing,
-)
+from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
+from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
-    InMemoryServiceRegistry,
-    ZooKeeperServiceRegistry,
     AbstractServiceRegistry,
+    InMemoryServiceRegistry,
     SecondaryService,
     ServiceEntity,
+    ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis.user_defined_process_repository import (
-    ZooKeeperUserDefinedProcessRepository,
     InMemoryUserDefinedProcessRepository,
+    ZooKeeperUserDefinedProcessRepository,
 )
 from openeogeotrellis.utils import (
-    zk_client,
-    to_projected_polygons,
-    normalize_temporal_extent,
-    dict_merge_recursive,
-    single_value,
     add_permissions,
+    dict_merge_recursive,
     get_jvm,
+    get_s3_file_contents,
     mdc_include,
     mdc_remove,
-    get_s3_file_contents,
+    normalize_temporal_extent,
     s3_client,
+    single_value,
+    to_projected_polygons,
+    zk_client,
 )
 from openeogeotrellis.vault import Vault
 
@@ -297,7 +265,6 @@ class GpsSecondaryServices(backend.SecondaryServices):
             srdd_dict = {k: v.srdd.rdd() for k, v in image_collection.pyramid.levels.items()}
             wmts.addPyramidLayer("RDD", srdd_dict)
 
-        import socket
         # TODO what is this host logic about?
         host = [l for l in
                           ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1],
@@ -2135,10 +2102,8 @@ class GpsBatchJobs(backend.BatchJobs):
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
         if isKube:
+            # TODO: eliminate these local imports
             import yaml
-            import time
-            import io
-
             from jinja2 import Environment, FileSystemLoader
             from kubernetes.client.rest import ApiException
 
@@ -2431,7 +2396,7 @@ class GpsBatchJobs(backend.BatchJobs):
     ) -> List[dict]:
         # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
-        from openeo_driver.ProcessGraphDeserializer import convert_node, ENV_DRY_RUN_TRACER
+        from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, convert_node
 
         env = EvalEnv(
             {
