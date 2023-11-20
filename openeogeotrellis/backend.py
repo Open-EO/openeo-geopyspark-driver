@@ -2085,7 +2085,7 @@ class GpsBatchJobs(backend.BatchJobs):
         driver_memory = job_options.get("driver-memory", "2G" if isKube else "8G" )
         driver_memory_overhead = job_options.get("driver-memoryOverhead", "1G" if isKube else "2G")
         executor_memory = job_options.get("executor-memory", "2G")
-        executor_memory_overhead = job_options.get("executor-memoryOverhead", "1800m" if isKube else "3G")
+        executor_memory_overhead = job_options.get("executor-memoryOverhead", "2500m" if isKube else "3G")
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
         executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
         executor_corerequest = job_options.get("executor-request-cores", "NONE")
@@ -2813,22 +2813,25 @@ class GpsBatchJobs(backend.BatchJobs):
             elif process == 'load_stac':
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
-                with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                    with self._requests_session.get(url, timeout=600) as resp:
-                        resp.raise_for_status()
-                        stac_object = resp.json()
+                if url.startswith("http://") or url.startswith("https://"):
+                    with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
+                        with self._requests_session.get(url, timeout=600) as resp:
+                            resp.raise_for_status()
+                            stac_object = resp.json()
 
-                openeo_status = stac_object.get('openeo:status')
+                    openeo_status = stac_object.get('openeo:status')
 
-                logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
+                    logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
 
-                if openeo_status == 'running':
-                    job_dependencies.append({
-                        'partial_job_results_url': url,
-                    })
-                else:  # just proceed
-                    # TODO: this design choice allows the user to load partial results (their responsibility);
-                    #  another option is to abort this job if status is "error" or "canceled".
+                    if openeo_status == 'running':
+                        job_dependencies.append({
+                            'partial_job_results_url': url,
+                        })
+                    else:  # just proceed
+                        # TODO: this design choice allows the user to load partial results (their responsibility);
+                        #  another option is to abort this job if status is "error" or "canceled".
+                        pass
+                else:  # assume it points to a file (convenience, non-public API)
                     pass
 
         return job_dependencies

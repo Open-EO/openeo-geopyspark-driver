@@ -966,6 +966,7 @@ def main(argv: List[str]) -> None:
 
     conf = (SparkConf()
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
             .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
     with SparkContext(conf=conf) as sc:

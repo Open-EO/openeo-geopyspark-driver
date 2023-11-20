@@ -243,6 +243,11 @@ class GeopysparkDataCube(DriverDataCube):
         _log.info("filter_bands({b!r}) -> indices {i!r}".format(b=bands, i=band_indices))
         return self.apply_to_levels(lambda rdd: rdd.bands(band_indices), metadata=self.metadata.filter_bands(bands))
 
+    def filter_labels(self, condition: dict, dimension: str, context: Optional[dict] = None,
+                      env: EvalEnv = None) -> 'DriverDataCube':
+        #TODO this is provided by FileLayerProvider, but also need this here
+        return self
+
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 

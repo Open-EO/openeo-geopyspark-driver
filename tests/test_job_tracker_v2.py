@@ -1378,7 +1378,7 @@ class TestK8sJobTracker:
 
 
 class TestK8sStatusGetter:
-    def test_warning_on_missing_cpu_and_memory(self, caplog):
+    def test_cpu_and_memory_usage_not_in_prometheus(self, caplog):
         caplog.set_level(logging.WARNING)
 
         prometheus_mock = mock.Mock(Prometheus)
@@ -1400,13 +1400,17 @@ class TestK8sStatusGetter:
         user_id = "john"
         job_id = "job-123"
         app_id = k8s_job_name(job_id=job_id, user_id=user_id)
-        k8s_status_getter.get_job_metadata(job_id=job_id, user_id=user_id, app_id=app_id)
+        job_metadata = k8s_status_getter.get_job_metadata(job_id=job_id, user_id=user_id, app_id=app_id)
 
         assert (
                    "openeogeotrellis.job_tracker_v2",
                    logging.WARNING,
-                   f"App {app_id} took 0s but no CPU or memory usage was recorded: cpu_seconds=None and byte_seconds=0.0",
+                   f"App {app_id} took 0.0s but no CPU or memory usage was recorded: "
+                   f"cpu_seconds=None and byte_seconds=0.0",
                ) in caplog.record_tuples
+
+        assert job_metadata.usage.cpu_seconds == 1 * 3600
+        assert job_metadata.usage.mb_seconds == 2 * 3600 * 1024
 
 
 class TestCliApp:
