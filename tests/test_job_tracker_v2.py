@@ -316,20 +316,6 @@ class KubernetesMock:
         return app
 
 
-class PrometheusMock:
-    def __init__(self, endpoint: str = "https://prometheus.test/api/v1"):
-        self.endpoint = endpoint
-
-    def get_cpu_usage(self, application_id: str, at: str = None) -> Optional[float]:
-        return 2.34 * 3600
-
-    def get_network_received_usage(self, application_id: str, at: str = None) -> Optional[float]:
-        return 370841160371254.75
-
-    def get_memory_usage(self, application_id: str, application_duration_s: float, at: str = None) -> Optional[float]:
-        return 5.678 * 1024 * 1024 * 3600
-
-
 @pytest.fixture
 def zk_client() -> KazooClientMock:
     return KazooClientMock()
@@ -988,16 +974,18 @@ class TestYarnStatusGetter:
 
 class TestK8sJobTracker:
     @pytest.fixture
-    def prometheus_api_endpoint(self):
-        return "https://prometheus.test/api/v1"
-
-    @pytest.fixture
     def k8s_mock(self) -> KubernetesMock:
         return KubernetesMock()
 
     @pytest.fixture
-    def prometheus_mock(self, prometheus_api_endpoint):
-        return PrometheusMock(prometheus_api_endpoint)
+    def prometheus_mock(self):
+        prometheus_mock = mock.Mock()
+        prometheus_mock.endpoint = "https://prometheus.test/api/v1"
+        prometheus_mock.get_cpu_usage.return_value = 2.34 * 3600
+        prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
+        prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
+
+        return prometheus_mock
 
     @pytest.fixture
     def job_tracker(
