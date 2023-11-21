@@ -3546,7 +3546,11 @@ class TestEtlApiReporting:
             assert request.json() == DictSubSet(
                 {
                     "userId": TEST_USER,
-                    "metrics": {"processing": {"unit": "shpu", "value": 123}},
+                    "metrics": {
+                        "processing": {"unit": "shpu", "value": 123},
+                        "cpu": {"unit": "cpu-seconds", "value": 3600},
+                        "memory": {"unit": "mb-seconds", "value": 7372800.0},
+                    },
                 }
             )
             return [{"cost": 33}, {"cost": 55}]

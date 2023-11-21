@@ -1436,34 +1436,36 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
             requests_session = requests_with_retry(total=3, backoff_factor=2)
 
-            if sentinel_hub_processing_units > 0:
-                etl_api = EtlApi(
-                    endpoint=backend_config.etl_api,
-                    credentials=get_etl_api_credentials_from_env(),
-                    requests_session=requests_session,
-                )
+            cpu_seconds = backend_config.default_usage_cpu_seconds
+            mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-                costs = etl_api.log_resource_usage(
-                    batch_job_id=request_id,
-                    title=None,
-                    execution_id=request_id,
-                    user_id=user_id,
-                    started_ms=None,
-                    finished_ms=None,
-                    state="FINISHED" if success else "FAILED",
-                    status="SUCCEEDED" if success else "FAILED",
-                    cpu_seconds=None,
-                    mb_seconds=None,
-                    duration_ms=None,
-                    sentinel_hub_processing_units=sentinel_hub_processing_units,
-                )
+            etl_api = EtlApi(
+                endpoint=backend_config.etl_api,
+                credentials=get_etl_api_credentials_from_env(),
+                requests_session=requests_session,
+            )
 
-                logger.info(
-                    f"{'successful' if success else 'failed'} request required "
-                    f"{sentinel_hub_processing_units} PU(s) and cost {costs} credit(s)"
-                )
+            costs = etl_api.log_resource_usage(
+                batch_job_id=request_id,
+                title=None,
+                execution_id=request_id,
+                user_id=user_id,
+                started_ms=None,
+                finished_ms=None,
+                state="FINISHED" if success else "FAILED",
+                status="SUCCEEDED" if success else "FAILED",
+                cpu_seconds=cpu_seconds,
+                mb_seconds=mb_seconds,
+                duration_ms=None,
+                sentinel_hub_processing_units=sentinel_hub_processing_units,
+            )
 
-                return costs
+            logger.info(
+                f"{'successful' if success else 'failed'} request required {cpu_seconds} CPU-seconds, "
+                f"{mb_seconds} MB-seconds and {sentinel_hub_processing_units} PU(s); this cost {costs} credit(s)"
+            )
+
+            return costs
 
 
 class GpsProcessing(ConcreteProcessing):

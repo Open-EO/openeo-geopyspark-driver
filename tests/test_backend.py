@@ -1,3 +1,5 @@
+import mock
+import pytest
 import shapely
 
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
@@ -6,6 +8,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
+from openeogeotrellis.testing import config_overrides
 
 def test_extract_application_id():
     yarn_log = """
@@ -403,3 +406,41 @@ def test_extract_udf_stacktrace_no_udf():
 FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1/dem/N64E024.SRTMGL1.hgt.zip'
 """)
     assert summarized is None
+
+
+@pytest.mark.parametrize("success, shpu, state, status",
+                         [
+                             (True, 123.0, "FINISHED", "SUCCEEDED"),
+                             (False, 0.0, "FAILED", "FAILED"),
+                         ])
+@config_overrides(use_etl_api_on_sync_processing=True)
+@mock.patch("openeogeotrellis.backend.get_etl_api_credentials_from_env")
+def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation, success, shpu, state, status):
+    user_id = 'testuser'
+
+    with mock.patch("openeogeotrellis.backend.EtlApi") as MockEtlApi,\
+            mock.patch("openeogeotrellis.backend.get_jvm") as get_jvm:
+        mock_etl_api = MockEtlApi.return_value
+        mock_etl_api.log_resource_usage.return_value = 6
+
+        tracker = get_jvm.return_value.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply.return_value
+        tracker.sentinelHubProcessingUnits.return_value = shpu
+
+        credit_cost = backend_implementation.request_costs(user_id=user_id, request_id='r-abc123', success=success)
+
+        mock_etl_api.log_resource_usage.assert_called_once_with(
+            batch_job_id='r-abc123',
+            title=None,
+            execution_id='r-abc123',
+            user_id=user_id,
+            started_ms=None,
+            finished_ms=None,
+            state=state,
+            status=status,
+            cpu_seconds=3600,
+            mb_seconds=7372800,
+            duration_ms=None,
+            sentinel_hub_processing_units=shpu
+        )
+
+        assert credit_cost == 6
