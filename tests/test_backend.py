@@ -1,3 +1,4 @@
+import mock
 import shapely
 
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
@@ -6,6 +7,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
+from openeogeotrellis.integrations.etl_api import EtlApi
 
 def test_extract_application_id():
     yarn_log = """
@@ -403,3 +405,31 @@ def test_extract_udf_stacktrace_no_udf():
 FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1/dem/N64E024.SRTMGL1.hgt.zip'
 """)
     assert summarized is None
+
+
+@mock.patch("openeogeotrellis.backend.get_etl_api_credentials_from_env")
+def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation):
+    user_id = 'testuser'
+
+    with mock.patch("openeogeotrellis.backend.EtlApi") as MockEtlApi:
+        mock_etl_api = MockEtlApi.return_value
+        mock_etl_api.log_resource_usage.return_value = 4
+
+        credit_cost = backend_implementation.request_costs(user_id=user_id, request_id='r-abc123', success=True)
+
+        mock_etl_api.log_resource_usage.assert_called_once_with(
+            batch_job_id='r-abc123',
+            title=None,
+            execution_id='r-abc123',
+            user_id=user_id,
+            started_ms=None,
+            finished_ms=None,
+            state="FINISHED",
+            status="SUCCEEDED",
+            cpu_seconds=3600,
+            mb_seconds=7372800,
+            duration_ms=None,
+            sentinel_hub_processing_units=0.0
+        )
+
+        assert credit_cost == 4
