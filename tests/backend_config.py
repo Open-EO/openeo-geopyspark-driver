@@ -33,5 +33,4 @@ config = GpsBackendConfig(
     vault_addr="https://vault.test",
     enable_basic_auth=True,
     valid_basic_auth=lambda u, p: p == f"{u}123",
-    use_etl_api_on_sync_processing=True,
 )
