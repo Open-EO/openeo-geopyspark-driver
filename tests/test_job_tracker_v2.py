@@ -19,6 +19,7 @@ from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
+from openeogeotrellis.integrations.prometheus import Prometheus
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
 from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
@@ -279,71 +280,30 @@ class KubernetesAppInfo:
 class KubernetesMock:
     """Kubernetes cluster mock."""
 
-    def __init__(self, prometheus_api_endpoint: str = "https://prometheus.test/api/v1"):
+    def __init__(self):
         self.apps: Dict[str, KubernetesAppInfo] = {}
-        self.prometheus_api_endpoint = prometheus_api_endpoint
         self.corrupt_app_ids = set()
 
-    @contextlib.contextmanager
-    def patch(self):
-        def get_namespaced_custom_object(name: str, **kwargs) -> dict:
-            if name in self.corrupt_app_ids:
-                raise kubernetes.client.exceptions.ApiException(
-                    status=500, reason="Internal Server Error"
-                )
-            if name not in self.apps:
-                raise kubernetes.client.exceptions.ApiException(
-                    status=404, reason="Not Found"
-                )
-            app = self.apps[name]
-            if app.state == K8S_SPARK_APP_STATE.NEW:
-                # TODO: is this the actual behavior for "new" apps: no "status" in response?
-                return {}
-            return {
-                "status": {
-                    "applicationState": {"state": app.state},
-                    "lastSubmissionAttemptTime": app.start_time,
-                    "terminationTime": app.finish_time,
-                }
-            }
-
-        def get_prometheus_response(
-            request: requests_mock.request._RequestObjectProxy, context
-        ) -> dict:
-            query = request.qs["query"][0]
-
-            def single_numeric_result(value: float) -> dict:
-                return {
-                    "status": "success",
-                    "data": {
-                        "resultType": "vector",
-                        "result": [{
-                            "value": [1435781451.781, str(value)]
-                        }]
-                    }
-                }
-
-            if "container_cpu_usage_seconds_total" in query:
-                return single_numeric_result(2.34 * 3600)
-            elif "container_memory_usage_bytes" in query:
-                return single_numeric_result(5.678 * 1024 * 1024 * 3600)
-            else:
-                return single_numeric_result(370841160371254.75)
-
-        with mock.patch(
-            "openeogeotrellis.job_tracker_v2.kube_client"
-        ) as kube_client, requests_mock.Mocker() as requests_mocker:
-            # Mock Kubernetes interaction
-            api_instance = kube_client.return_value
-            api_instance.get_namespaced_custom_object = get_namespaced_custom_object
-
-            # Mock kubernetes usage API
-            requests_mocker.get(
-                self.prometheus_api_endpoint + "/query",
-                json=get_prometheus_response,
+    def get_namespaced_custom_object(self, name: str, **kwargs) -> dict:
+        if name in self.corrupt_app_ids:
+            raise kubernetes.client.exceptions.ApiException(
+                status=500, reason="Internal Server Error"
             )
-
-            yield
+        if name not in self.apps:
+            raise kubernetes.client.exceptions.ApiException(
+                status=404, reason="Not Found"
+            )
+        app = self.apps[name]
+        if app.state == K8S_SPARK_APP_STATE.NEW:
+            # TODO: is this the actual behavior for "new" apps: no "status" in response?
+            return {}
+        return {
+            "status": {
+                "applicationState": {"state": app.state},
+                "lastSubmissionAttemptTime": app.start_time,
+                "terminationTime": app.finish_time,
+            }
+        }
 
     def submit(
         self, app_id: str, state: str = K8S_SPARK_APP_STATE.SUBMITTED, **kwargs
@@ -1014,14 +974,18 @@ class TestYarnStatusGetter:
 
 class TestK8sJobTracker:
     @pytest.fixture
-    def prometheus_api_endpoint(self):
-        return "https://prometheus.test/api/v1"
+    def k8s_mock(self) -> KubernetesMock:
+        return KubernetesMock()
 
     @pytest.fixture
-    def k8s_mock(self, prometheus_api_endpoint) -> KubernetesMock:
-        kube = KubernetesMock(prometheus_api_endpoint=prometheus_api_endpoint)
-        with kube.patch():
-            yield kube
+    def prometheus_mock(self):
+        prometheus_mock = mock.Mock()
+        prometheus_mock.endpoint = "https://prometheus.test/api/v1"
+        prometheus_mock.get_cpu_usage.return_value = 2.34 * 3600
+        prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
+        prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
+
+        return prometheus_mock
 
     @pytest.fixture
     def job_tracker(
@@ -1030,13 +994,13 @@ class TestK8sJobTracker:
         elastic_job_registry,
         batch_job_output_root,
         k8s_mock,
-        prometheus_api_endpoint,
+        prometheus_mock,
         job_costs_calculator
     ) -> JobTracker:
         principal = "john@EXAMPLE.TEST"
         keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
-            app_state_getter=K8sStatusGetter(prometheus_api_endpoint=prometheus_api_endpoint),
+            app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
             zk_job_registry=zk_job_registry,
             principal=principal,
             keytab=keytab,
@@ -1399,6 +1363,42 @@ class TestK8sJobTracker:
                 "Failed status sync for job_id='job-2': unexpected ApiException: (500)\nReason: Internal Server Error\n",
             )
         ]
+
+
+class TestK8sStatusGetter:
+    def test_cpu_and_memory_usage_not_in_prometheus(self, caplog):
+        caplog.set_level(logging.WARNING)
+
+        prometheus_mock = mock.Mock(Prometheus)
+        prometheus_mock.get_cpu_usage.return_value = None
+        prometheus_mock.get_memory_usage.return_value = 0.0
+        prometheus_mock.endpoint = "https://prometheus.test/api/v1"
+
+        k8s_mock = mock.Mock()
+        k8s_mock.get_namespaced_custom_object.return_value = {
+            "status": {
+                "applicationState": {"state": K8S_SPARK_APP_STATE.COMPLETED},
+                "lastSubmissionAttemptTime": rfc3339.datetime(dt.datetime.utcnow()),
+                "terminationTime": rfc3339.datetime(dt.datetime.utcnow()),
+            }
+        }
+
+        k8s_status_getter = K8sStatusGetter(k8s_mock, prometheus_mock)
+
+        user_id = "john"
+        job_id = "job-123"
+        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+        job_metadata = k8s_status_getter.get_job_metadata(job_id=job_id, user_id=user_id, app_id=app_id)
+
+        assert (
+                   "openeogeotrellis.job_tracker_v2",
+                   logging.WARNING,
+                   f"App {app_id} took 0.0s but no CPU or memory usage was recorded: "
+                   f"cpu_seconds=None and byte_seconds=0.0",
+               ) in caplog.record_tuples
+
+        assert job_metadata.usage.cpu_seconds == 1 * 3600
+        assert job_metadata.usage.mb_seconds == 2 * 3600 * 1024
 
 
 class TestCliApp:

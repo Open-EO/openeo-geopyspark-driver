@@ -236,10 +236,9 @@ class K8sException(Exception):
 class K8sStatusGetter(JobMetadataGetterInterface):
     """Kubernetes app status getter"""
 
-    def __init__(self, prometheus_api_endpoint: str):
-        self._kubernetes_api = kube_client()
-        # TODO: get this url from config?
-        self._prometheus_api_endpoint = prometheus_api_endpoint
+    def __init__(self, kubernetes_api, prometheus_api):
+        self._kubernetes_api = kubernetes_api
+        self._prometheus_api = prometheus_api
 
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
         # Local import to avoid kubernetes dependency when not necessary
@@ -278,23 +277,21 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
         try:
-            prometheus = Prometheus(self._prometheus_api_endpoint)
-
             if start_time is None or finish_time is None:
                 application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
-                byte_seconds = prometheus.get_memory_usage(application_id, application_duration_s)
+                byte_seconds = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
 
-            cpu_seconds = prometheus.get_cpu_usage(application_id)
-            network_receive_bytes = prometheus.get_network_received_usage(application_id)
+            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
+            network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
-            _log.info(f"Successfully retrieved usage stats from {self._prometheus_api_endpoint}: "
+            _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
                       f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}",
                       extra={"job_id": job_id, "user_id": user_id})
 
-            if application_duration_s:
+            if application_duration_s is not None:
                 if not cpu_seconds and not byte_seconds:
                     _log.warning(f"App {application_id} took {application_duration_s}s "
                                  f"but no CPU or memory usage was recorded: {cpu_seconds=} and {byte_seconds=}",
@@ -310,7 +307,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                           )
         except Exception as e:
             _log.exception(
-                f"Failed to retrieve usage stats from {self._prometheus_api_endpoint}: {type(e).__name__}: {e}",
+                f"Failed to retrieve usage stats from {self._prometheus_api.endpoint}: {type(e).__name__}: {e}",
                 extra={"job_id": job_id, "user_id": user_id},
             )
 
@@ -594,7 +591,8 @@ class CliApp:
                     )
                     job_costs_calculator = YarnJobCostsCalculator(etl_api)
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(prometheus_api_endpoint=get_backend_config().prometheus_api)
+                    app_state_getter = K8sStatusGetter(kube_client(),
+                                                       Prometheus(get_backend_config().prometheus_api))
                     job_costs_calculator = K8sJobCostsCalculator(etl_api)
                 else:
                     raise ValueError(app_cluster)
