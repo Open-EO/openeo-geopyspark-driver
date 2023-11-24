@@ -92,6 +92,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set("spark.sql.session.timeZone", "UTC")
 
     conf.set("spark.kryoserializer.buffer.max", value="1G")
+    conf.set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set(
         key="spark.kryo.classesToRegister",
         value="org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
