@@ -6,9 +6,9 @@ import requests
 class Prometheus:
     # TODO: does filtering on pod namespace speed things up?
 
-    def __init__(self, api_endpoint: str):
+    def __init__(self, endpoint: str):
         """Point this to e.g. http://example.org:9090/api/v1."""
-        self._api_endpoint = api_endpoint
+        self.endpoint = endpoint
 
     def _query_for_float(self, query: str, time: str = None) -> Optional[float]:
         params = {
@@ -18,7 +18,7 @@ class Prometheus:
         if time is not None:
             params['time'] = time
 
-        with requests.get(self._api_endpoint + "/query", params=params) as resp:
+        with requests.get(self.endpoint + "/query", params=params) as resp:
             resp.raise_for_status()
             entity = resp.json()
 
@@ -52,7 +52,7 @@ class Prometheus:
 
 
 if __name__ == '__main__':
-    prometheus = Prometheus("https://prometheus.openeo-cdse-staging.vgt.vito.be/api/v1")
+    prometheus = Prometheus("https://prometheus.stag.warsaw.marketplace.dataspace.copernicus.eu/api/v1")
 
     application_id = 'job-90206ae556-df7ea45d'
     application_finish_time = "2023-06-22T11:30:46Z"
