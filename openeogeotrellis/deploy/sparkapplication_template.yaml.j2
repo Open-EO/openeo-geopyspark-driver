@@ -210,6 +210,8 @@ spec:
       version: 3.2.0
       name: {{ job_id_short }}-driver
       openeo-role: "batch-driver"
+      job_id: {{ job_id_full }}
+      user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:
 {%- block driver_volumeMounts %}
@@ -333,6 +335,8 @@ spec:
 {%- block executor_labels %}
       version: 3.2.0
       openeo-role: "executor"
+      job_id: {{ job_id_full }}
+      user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:
 {%- block executor_volumeMounts %}
