@@ -56,7 +56,7 @@ def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
             logger.info(f"Setting env var 'OTB_APPLICATION_PATH' to {otb_application_path}")
             os.environ["OTB_APPLICATION_PATH"] = otb_application_path
 
-        otb_python_wrapper = f"{otb_home}/lib/otb/python"
+        otb_python_wrapper = f"{otb_home}/lib/python"
         if otb_python_wrapper not in sys.path:
             # TODO: It would be cleaner to append to sys.path instead of prepending,
             #   but unfortunately on Jenkins test environment there is currently
@@ -395,10 +395,10 @@ class S1BackscatterOrfeo:
         ortho_rect.SetParameterString("map", "epsg")
         ortho_rect.SetParameterInt("map.epsg.code", epsg)
 
-        ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
-        ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
+        ortho_rect.SetParameterDouble("outputs.spacingx", 10.0)
+        ortho_rect.SetParameterDouble("outputs.spacingy", -10.0)
         ortho_rect.SetParameterString("interpolator", "linear")
-        ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
+        ortho_rect.SetParameterDouble("opt.gridspacing", 40.0)
 
         #ortho_rect.SetParameterString("outputs.mode", "autosize")
         #TODO autosize may not align perfectly with Sentinel-2 grid, need to realign
