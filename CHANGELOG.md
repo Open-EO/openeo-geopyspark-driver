@@ -17,10 +17,16 @@ without compromising stable operations.
 
 ## 0.19.3
 
+### Feature
+
 - Experimental support for filter_labels: only works with catalog based collections, and when used close to the load_collection call [#559](https://github.com/Open-EO/openeo-geopyspark-driver/issues/559)
+- Support for UDF signature that works directly on XArray DataArray, avoiding the need for openEO specific wrapper class.
+- Support filtering on tileId with a wildcard. https://github.com/Open-EO/openeo-opensearch-client/issues/25
+
+### Bugfix
+- Error fixed when doing aggregate_temporal + merge_cubes https://github.com/Open-EO/openeo-geotrellis-extensions/issues/201
 - Avoid 'out-of-memory' errors when writing large netCDF files. Allows files of >600MB without custom memory settings. [#199](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/199)
 - netCDF output will generate a more useful warning in case of a mismatch with cube band metadata
-
 
 ## 0.19.2
 
