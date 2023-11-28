@@ -2104,6 +2104,8 @@ class GpsBatchJobs(backend.BatchJobs):
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
         if isKube:
+            # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
+
             # TODO: eliminate these local imports
             import yaml
             from jinja2 import Environment, FileSystemLoader
@@ -2118,7 +2120,7 @@ class GpsBatchJobs(backend.BatchJobs):
             concurrent_pod_limit = ConfigParams().concurrent_pod_limit
             try:
                 with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
-                    concurrent_pod_limit, _ = int(zk.get(f"/openeo/config/users/{user_id}/concurrent_pod_limit"))
+                    concurrent_pod_limit = int(zk.get(f"/openeo/config/users/{user_id}/concurrent_pod_limit")[0])
                     log.info(f"concurrent_pod_limit for user {user_id} found: {concurrent_pod_limit}")
             except NoNodeError:
                 pass
