@@ -75,7 +75,6 @@ JAR_DIR = Path(__file__).parent.parent.parent / "jars"
 
 
 @pytest.mark.parametrize(["glob", "expected"], [
-    ("geotrellis-backend-assembly-*.jar", RegexMatcher(r"\d+\.\d+\.\d+-openeo")),
     ("geotrellis-extensions-*.jar", RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+")),
 ])
 def test_get_jar_version_info(glob, expected):
@@ -91,7 +90,6 @@ def test_get_jar_versions():
     paths = JAR_DIR.glob("geotrellis-*.jar")
     versions = get_jar_versions(paths)
     assert versions == DictSubSet({
-        "geotrellis-backend-assembly": RegexMatcher(r"\d+\.\d+\.\d+-openeo"),
         "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
     })
 
@@ -104,7 +102,6 @@ def test_build_gps_backend_deploy_metadata():
     assert metadata == DictSubSet({
         "versions": DictSubSet({
             "openeo": RegexMatcher("\d+.\d+.\d+"),
-            "geotrellis-backend-assembly": RegexMatcher(r"\d+\.\d+\.\d+-openeo"),
             "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
         })
     })
