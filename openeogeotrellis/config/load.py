@@ -10,8 +10,8 @@ class GpsConfigGetter(ConfigGetter):
     OPENEO_BACKEND_CONFIG = "OPENEO_BACKEND_CONFIG"
     expected_class = GpsBackendConfig
 
-    def __call__(self, force_reload: bool = False) -> GpsBackendConfig:
-        return self.get(force_reload=force_reload)
+    def __call__(self, force_reload: bool = False, *, show_stack: bool = True) -> GpsBackendConfig:
+        return self.get(force_reload=force_reload, show_stack=show_stack)
 
     def _default_config(self) -> ContextManager[Path]:
         return importlib_resources.as_file(importlib_resources.files("openeogeotrellis.config") / "default.py")

@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 0.20.1
+
+- finetune `zookeeper_set.py` script and `concurrent_pod_limit` logic
+
 ## 0.20.0
 
 - Introduce `GpsBackendConfig.zookeeper_hosts` and `GpsBackendConfig.zookeeper_root_path`

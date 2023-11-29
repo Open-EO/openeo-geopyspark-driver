@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 
 import flask
 import geopyspark as gps
+import kazoo.exceptions
 import openeo.udf
 import pkg_resources
 import pystac
@@ -2110,8 +2111,6 @@ class GpsBatchJobs(backend.BatchJobs):
             import yaml
             from jinja2 import Environment, FileSystemLoader
             from kubernetes.client.rest import ApiException
-            from openeogeotrellis.utils import zk_client
-            from kazoo.exceptions import NoNodeError
 
             api_instance = kube_client()
             pod_namespace = ConfigParams().pod_namespace
@@ -2120,12 +2119,13 @@ class GpsBatchJobs(backend.BatchJobs):
             concurrent_pod_limit = ConfigParams().concurrent_pod_limit
             try:
                 with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
-                    concurrent_pod_limit = int(zk.get(f"/openeo/config/users/{user_id}/concurrent_pod_limit")[0])
+                    zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
+                    concurrent_pod_limit = int(zk.get(zk_path)[0])
                     log.info(f"concurrent_pod_limit for user {user_id} found: {concurrent_pod_limit}")
-            except NoNodeError:
+            except kazoo.exceptions.NoNodeError:
                 pass
-            except Exception as e:
-                log.info("Exception when calling zk_client to check concurrent_pod_limit: %s\n" % e)
+            except Exception:
+                log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
             if concurrent_pod_limit != 0:
                 label_selector = f"user={user_id}"
                 try:
