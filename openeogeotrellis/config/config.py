@@ -2,7 +2,7 @@ import os
 from typing import List, Optional
 
 import attrs
-from openeo_driver.config import OpenEoBackendConfig
+from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
 from openeo_driver.users.oidc import OidcProvider
 
 from openeogeotrellis import get_backend_version
@@ -57,6 +57,17 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # TODO eliminate hardcoded VITO reference
     vault_addr: Optional[str] = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
+
+    zookeeper_hosts: List[str] = attrs.Factory(
+        from_env_as_list(
+            "ZOOKEEPERNODES",
+            # TODO: eliminate hardcoded default once config is set where necessary
+            default="epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
+        )
+    )
+    zookeeper_root_path: str = attrs.field(
+        default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
+    )
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"

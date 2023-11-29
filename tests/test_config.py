@@ -104,3 +104,20 @@ class TestGetGpsBackendConfig:
         monkeypatch.delenv("OPENEO_BACKEND_CONFIG")
         config = get_backend_config()
         assert config.id == "gps-default"
+
+
+class TestConfigValues:
+    def test_zookeeper_hosts_env_var_parsing(self, monkeypatch):
+        monkeypatch.setenv("ZOOKEEPERNODES", "z1.test,zk2.test")
+        assert GpsBackendConfig().zookeeper_hosts == ["z1.test", "zk2.test"]
+
+        monkeypatch.setenv("ZOOKEEPERNODES", "")
+        assert GpsBackendConfig().zookeeper_hosts == []
+
+    def test_zookeeper_root_path(self, monkeypatch):
+        """Test slash validation and trimming."""
+        config = GpsBackendConfig(zookeeper_root_path="/openeo.test/")
+        assert config.zookeeper_root_path == "/openeo.test"
+
+        with pytest.raises(ValueError, match="must match regex"):
+            _ = GpsBackendConfig(zookeeper_root_path="openeo/test")

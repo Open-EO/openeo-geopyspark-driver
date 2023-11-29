@@ -29,6 +29,8 @@ config = GpsBackendConfig(
     # TODO: avoid hardcoded reference to VITO/Terrascope resource
     default_opensearch_endpoint="https://services.terrascope.be/catalogue/",
     oidc_providers=oidc_providers,
+    zookeeper_hosts=["zk.test"],
+    zookeeper_root_path="/openeo-test",
     etl_api="https://etl-api.test",
     vault_addr="https://vault.test",
     enable_basic_auth=True,

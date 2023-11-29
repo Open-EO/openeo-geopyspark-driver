@@ -10,6 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 0.20.0
+
+- Introduce `GpsBackendConfig.zookeeper_hosts` and `GpsBackendConfig.zookeeper_root_path`
+
+
 ## 0.19.4
 
 - eliminate `use_etl_api` arg from `GeoPySparkBackendImplementation` in favor of `use_etl_api_on_sync_processing` config field
