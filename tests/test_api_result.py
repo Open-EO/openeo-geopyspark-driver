@@ -39,7 +39,7 @@ from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock, config_overrides, random_name
+from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
 from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
 
 from .data import get_test_data_file
@@ -3472,8 +3472,8 @@ class TestLoadStac:
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
-    def _config_overrides(self):
-        with config_overrides(
+    def _general_config_overrides(self):
+        with gps_config_overrides(
             use_etl_api_on_sync_processing=True,
         ):
             yield

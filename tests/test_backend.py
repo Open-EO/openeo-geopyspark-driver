@@ -8,7 +8,8 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
-from openeogeotrellis.testing import config_overrides
+from openeogeotrellis.testing import gps_config_overrides
+
 
 def test_extract_application_id():
     yarn_log = """
@@ -413,7 +414,7 @@ FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1
                              (True, 123.0, "FINISHED", "SUCCEEDED"),
                              (False, 0.0, "FAILED", "FAILED"),
                          ])
-@config_overrides(use_etl_api_on_sync_processing=True)
+@gps_config_overrides(use_etl_api_on_sync_processing=True)
 @mock.patch("openeogeotrellis.backend.get_etl_api_credentials_from_env")
 def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation, success, shpu, state, status):
     user_id = 'testuser'

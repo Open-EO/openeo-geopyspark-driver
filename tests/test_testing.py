@@ -2,7 +2,7 @@ from kazoo.exceptions import NoNodeError, BadVersionError
 import pytest
 
 from openeogeotrellis.config import get_backend_config, GpsBackendConfig
-from openeogeotrellis.testing import KazooClientMock, _ZNodeStat, config_overrides
+from openeogeotrellis.testing import KazooClientMock, _ZNodeStat, gps_config_overrides
 
 
 def test_kazoo_mock_basic():
@@ -70,24 +70,50 @@ def test_kazoo_mock_children():
     assert client.get_children('/bar/fii') == []
 
 
-class TestConfigOverrides:
-    def test_default(self):
+class TestGpsConfigOverrides:
+    def test_baseline(self):
         assert get_backend_config().id == "gps-test-dummy"
 
     def test_context(self):
         assert get_backend_config().id == "gps-test-dummy"
-        with config_overrides(id="hello-inline-context"):
+        with gps_config_overrides(id="hello-inline-context"):
+            assert get_backend_config().id == "hello-inline-context"
+        assert get_backend_config().id == "gps-test-dummy"
+
+    def test_context_nesting(self):
+        assert get_backend_config().id == "gps-test-dummy"
+        with gps_config_overrides(id="hello-inline-context"):
+            assert get_backend_config().id == "hello-inline-context"
+            with gps_config_overrides(id="hello-again"):
+                assert get_backend_config().id == "hello-again"
             assert get_backend_config().id == "hello-inline-context"
         assert get_backend_config().id == "gps-test-dummy"
 
     @pytest.fixture
     def special_stuff(self):
-        with config_overrides(id="hello-fixture"):
+        with gps_config_overrides(id="hello-fixture"):
             yield
 
     def test_fixture(self, special_stuff):
         assert get_backend_config().id == "hello-fixture"
 
-    @config_overrides(id="hello-decorator")
+    def test_fixture_and_context(self, special_stuff):
+        assert get_backend_config().id == "hello-fixture"
+        with gps_config_overrides(id="hello-inline-context"):
+            assert get_backend_config().id == "hello-inline-context"
+        assert get_backend_config().id == "hello-fixture"
+
+    @gps_config_overrides(id="hello-decorator")
     def test_decorator(self):
+        assert get_backend_config().id == "hello-decorator"
+
+    @gps_config_overrides(id="hello-decorator")
+    def test_decorator_and_context(self):
+        assert get_backend_config().id == "hello-decorator"
+        with gps_config_overrides(id="hello-inline-context"):
+            assert get_backend_config().id == "hello-inline-context"
+        assert get_backend_config().id == "hello-decorator"
+
+    @gps_config_overrides(id="hello-decorator")
+    def test_decorator_vs_fixture(self, special_stuff):
         assert get_backend_config().id == "hello-decorator"

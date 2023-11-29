@@ -4,12 +4,13 @@ Reusable helpers, functions, classes, fixtures for testing purposes
 import json
 import uuid
 from pathlib import Path
-from typing import List, Tuple, Union, Dict, Iterator, Optional
+from typing import Dict, Iterator, List, Tuple, Union
 from unittest import mock
 
 import attrs
 import kazoo
 import kazoo.exceptions
+import openeo_driver.testing
 
 from openeogeotrellis.config import GpsBackendConfig, gps_config_getter
 
@@ -141,36 +142,27 @@ class KazooClientMock:
         return json.loads(raw.decode("utf-8"))
 
 
-def config_overrides(**kwargs):
+def gps_config_overrides(**kwargs):
     """
-    `mock.patch` based mocker to override the config returned by `get_backend_config()`
+    *Only to be used in unit tests*
+
+    Override config fields in the config returned by `get_backend_config()` at run time
 
     Can be used as context manager
 
-        >>> with config_overrides(id="foobar"):
+        >>> with gps_config_overrides(id="foobar"):
         ...     ...
 
-    in a fixture (as context manager):
+    in a pytest fixture (as context manager):
 
         >>> @pytest.fixture
         ... def custom_setup()
-        ...     with config_overrides(id="foobar"):
+        ...     with gps_config_overrides(id="foobar"):
         ...         yield
 
     or as test function decorator
 
-        >>> @config_overrides(id="foobar")
+        >>> @gps_config_overrides(id="foobar")
         ... def test_stuff():
-        ...     ...
-
     """
-    overrides = kwargs
-    orig_get = gps_config_getter.get
-
-    def get_with_overrides(force_reload: bool = False):
-        orig_config = orig_get(force_reload=force_reload)
-        kwargs = attrs.asdict(orig_config, recurse=False)
-        kwargs.update(**overrides)
-        return GpsBackendConfig(**kwargs)
-
-    return mock.patch.object(gps_config_getter, "get", new=get_with_overrides)
+    return openeo_driver.testing.config_overrides(config_getter=gps_config_getter, **kwargs)

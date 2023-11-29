@@ -6,6 +6,7 @@ from openeogeotrellis.config.config import GpsBackendConfig
 
 
 class GpsConfigGetter(ConfigGetter):
+    # TODO: does this have to be a subclass, or can we just use an instance?
     OPENEO_BACKEND_CONFIG = "OPENEO_BACKEND_CONFIG"
     expected_class = GpsBackendConfig
 
