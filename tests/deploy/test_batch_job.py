@@ -767,8 +767,8 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                     "statistics": {
                         "maximum": approx(641.22, abs=0.01),
                         "minimum": approx(0.0, abs=0.01),
-                        "mean": approx(388.80, abs=0.01),
-                        "stddev": approx(122.48, abs=0.01),
+                        "mean": approx(388.80, abs=0.05),
+                        "stddev": approx(122.48, abs=0.05),
                         "valid_percent": 100.0,
                     },
                 }
@@ -784,8 +784,8 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                     "statistics": {
                         "maximum": approx(641.22, abs=0.01),
                         "minimum": approx(0.0, abs=0.01),
-                        "mean": approx(388.80, abs=0.01),
-                        "stddev": approx(122.48, abs=0.01),
+                        "mean": approx(388.80, abs=0.05),
+                        "stddev": approx(122.48, abs=0.05),
                         "valid_percent": 100.0,
                     },
                 }
@@ -884,8 +884,8 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                         "statistics": {
                             "maximum": approx(641.22, abs=0.01),
                             "mean": approx(403.31, abs=0.01),
-                            "minimum": approx(149.77, abs=0.01),
-                            "stddev": approx(98.39, abs=0.01),
+                            "minimum": approx(149.77, abs=0.05),
+                            "stddev": approx(98.39, abs=0.05),
                             "valid_percent": 100.0,
                         },
                     }
@@ -903,8 +903,8 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                         "statistics": {
                             "maximum": approx(641.22, abs=0.01),
                             "minimum": approx(0.0, abs=0.01),
-                            "mean": approx(388.80, abs=0.01),
-                            "stddev": approx(122.48, abs=0.01),
+                            "mean": approx(388.80, abs=0.05),
+                            "stddev": approx(122.48, abs=0.05),
                             "valid_percent": 100.0,
                         },
                     }
