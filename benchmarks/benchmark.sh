@@ -11,9 +11,9 @@ export SPARK_HOME=/usr/hdp/${HDP_VERSION}/spark2
 export LD_LIBRARY_PATH="venv/lib64"
 export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-packages"
 
-hdfsVenvZip=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
-extensions=https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.2.0-SNAPSHOT/geotrellis-extensions-2.2.0-SNAPSHOT.jar
-backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.7-openeo.jar
+hdfsVenvZip=https://artifactory.vgt.vito.be/artifactory/auxdata-public/openeo/venv36.zip
+extensions=https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.2.0-SNAPSHOT/geotrellis-extensions-2.2.0-SNAPSHOT.jar
+backend_assembly=https://artifactory.vgt.vito.be/artifactory/auxdata-public/openeo/geotrellis-backend-assembly-0.4.7-openeo.jar
 
 script_dir=$(dirname "$0")
 base_dir="${script_dir}/.."

@@ -15,9 +15,9 @@ source venv/bin/activate
 cd ../openeo-python-client
 pip install -e .
 cd ../openeo-python-driver
-pip install -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+pip install -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple
 cd ../openeo-geopyspark-driver
-pip install -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+pip install -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple
 ```
 ## Running locally
 You can run the service with:
