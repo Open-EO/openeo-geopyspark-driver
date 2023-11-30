@@ -27,7 +27,7 @@ https://openeo.vito.be/openeo/
 Set up your (virtual) environment with necessary dependencies:
 
     # Install Python package and its depdendencies
-    pip install . --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+    pip install . --extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple
 
     # Get necessary JAR dependency files for running Geopyspark driver
     python scripts/get-jars.py

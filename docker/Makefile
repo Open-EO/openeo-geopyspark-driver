@@ -302,7 +302,7 @@ $(docker_requirements_file): $(realpath $(my_docker_dir)/../setup.py)
 		-o $(docker_requirements_file) \
 		--verbose \
 		-P rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib \
-		--extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple \
+		--extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple \
 		--strip-extras \
 		setup.py
 

@@ -86,7 +86,7 @@ RUN \
 COPY . $SRC_DIR
 
 RUN \
-    python3 -m  pip install --no-cache-dir -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple
+    python3 -m  pip install --no-cache-dir -e .[dev] --extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple
 
 
 # TODO: decide: do we integrate getting jars inside the docker file or leave it up to the Makefile?

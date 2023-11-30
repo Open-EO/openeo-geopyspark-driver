@@ -157,7 +157,7 @@ docker run  --rm -ti \
         --verbose \
         --pip-args use-pep517 \
         -P rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib \
-        --extra-index-url https://artifactory.vgt.vito.be/api/pypi/python-openeo/simple \
+        --extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple \
         setup.py
 docker build -t openeo-geopyspark-driver:latest -f  C:/development/projects/VITO/codebases/openeo-geopyspark-driver
 docker run --rm -ti -v C:/development/projects/VITO/codebases/openeo-geopyspark-driver:/src  openeo-geopyspark-driver:latest python3 scripts/get-jars.py
