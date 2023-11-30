@@ -307,7 +307,7 @@ def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
         'readvector1': {
             'process_id': 'read_vector',
             'arguments': {
-                'filename': 'https://artifactory.vgt.vito.be/testdata-public/parcels/test_10.geojson'
+                'filename': 'https://artifactory.vgt.vito.be/artifactory/testdata-public/parcels/test_10.geojson'
             }
         },
         'aggregatespatial1': {

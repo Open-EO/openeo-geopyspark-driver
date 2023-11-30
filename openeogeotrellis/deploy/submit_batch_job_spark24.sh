@@ -2,7 +2,7 @@
 
 if [ -z "${OPENEO_VENV_ZIP}" ]; then
     >&2 echo "Environment variable OPENEO_VENV_ZIP is not set, falling back to default.\n"
-    OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/auxdata-public/openeo/venv36.zip
+    OPENEO_VENV_ZIP=https://artifactory.vgt.vito.be/artifactory/auxdata-public/openeo/venv36.zip
 fi
 
 if [ "$#" -lt 7 ]; then
@@ -61,7 +61,7 @@ export PYTHONPATH="venv/lib64/python3.6/site-packages:venv/lib/python3.6/site-pa
 extensions=$(ls geotrellis-extensions-*.jar)
 backend_assembly=$(ls geotrellis-backend-assembly-*.jar) || true
 if [ -z "${backend_assembly}" ]; then
-   backend_assembly=https://artifactory.vgt.vito.be/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
+   backend_assembly=https://artifactory.vgt.vito.be/artifactory/auxdata-public/openeo/geotrellis-backend-assembly-0.4.6-openeo_2.12.jar
 fi
 logging_jar=$(ls openeo-logging-*.jar) || true
 

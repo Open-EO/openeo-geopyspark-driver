@@ -62,8 +62,8 @@ def main():
 
     for url in [
         # TODO: list these URLs in a simple text/CSV file so it can be consumed by other tools too?
-        "https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/geotrellis-extensions/2.4.0_2.12-SNAPSHOT/geotrellis-extensions-2.4.0_2.12-SNAPSHOT.jar",
-        "https://artifactory.vgt.vito.be/libs-snapshot-public/org/openeo/openeo-logging/2.4.0_2.12-SNAPSHOT/openeo-logging-2.4.0_2.12-SNAPSHOT.jar",
+        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.4.0_2.12-SNAPSHOT/geotrellis-extensions-2.4.0_2.12-SNAPSHOT.jar",
+        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.4.0_2.12-SNAPSHOT/openeo-logging-2.4.0_2.12-SNAPSHOT.jar",
     ]:
         download_jar(jar_dir, url=url, force=force_download)
 

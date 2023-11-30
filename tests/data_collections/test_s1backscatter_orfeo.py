@@ -280,7 +280,7 @@ class TestOrfeoPipeline:
                 ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
                 (2, 1117, 1397),
                 "2",
-                "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge.tiff",
+                "https://artifactory.vgt.vito.be/artifactory/testdata-public/S1_backscatter_otb_zeebrugge.tiff",
                 "off",
             ),
             (
@@ -290,7 +290,7 @@ class TestOrfeoPipeline:
                 ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
                 (2, 1117, 1397),
                 "1",
-                "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge.tiff",
+                "https://artifactory.vgt.vito.be/artifactory/testdata-public/S1_backscatter_otb_zeebrugge.tiff",
                 "off",
             ),
             (
@@ -300,7 +300,7 @@ class TestOrfeoPipeline:
                 ("2020-07-29T00:00:00", "2020-07-29T23:59:59"),
                 (2, 1150, 1110),
                 "2",
-                "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_laroche.tiff",
+                "https://artifactory.vgt.vito.be/artifactory/testdata-public/S1_backscatter_otb_laroche.tiff",
                 "off",
             ),
             (
@@ -310,7 +310,7 @@ class TestOrfeoPipeline:
                 ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
                 (2, 1117, 1397),
                 "2",
-                "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge_elevation.tiff",
+                "https://artifactory.vgt.vito.be/artifactory/testdata-public/S1_backscatter_otb_zeebrugge_elevation.tiff",
                 "COPERNICUS_30",
             ),
             (
@@ -320,7 +320,7 @@ class TestOrfeoPipeline:
                 ("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
                 (2, 1117, 1397),
                 "1",
-                "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_zeebrugge_elevation.tiff",
+                "https://artifactory.vgt.vito.be/artifactory/testdata-public/S1_backscatter_otb_zeebrugge_elevation.tiff",
                 "COPERNICUS_30",
             ),
             (
@@ -330,7 +330,7 @@ class TestOrfeoPipeline:
                 ("2020-07-29T00:00:00", "2020-07-29T23:59:59"),
                 (2, 1150, 1110),
                 "2",
-                "https://artifactory.vgt.vito.be/testdata-public/S1_backscatter_otb_laroche_elevation.tiff",
+                "https://artifactory.vgt.vito.be/artifactory/testdata-public/S1_backscatter_otb_laroche_elevation.tiff",
                 "COPERNICUS_30",
             ),
         ],
