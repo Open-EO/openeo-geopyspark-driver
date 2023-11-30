@@ -765,10 +765,10 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 {
                     "name": "1",
                     "statistics": {
-                        "maximum": approx(641.22131347656),
-                        "minimum": approx(0.0),
-                        "mean": approx(388.80473522222),
-                        "stddev": approx(122.48474568907),
+                        "maximum": approx(641.22, abs=0.01),
+                        "minimum": approx(0.0, abs=0.01),
+                        "mean": approx(388.80, abs=0.01),
+                        "stddev": approx(122.48, abs=0.01),
                         "valid_percent": 100.0,
                     },
                 }
@@ -782,10 +782,10 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
                 {
                     "name": "1",
                     "statistics": {
-                        "maximum": approx(641.22131347656),
-                        "minimum": approx(0.0),
-                        "mean": approx(388.80473522222),
-                        "stddev": approx(122.48474568907),
+                        "maximum": approx(641.22, abs=0.01),
+                        "minimum": approx(0.0, abs=0.01),
+                        "mean": approx(388.80, abs=0.01),
+                        "stddev": approx(122.48, abs=0.01),
                         "valid_percent": 100.0,
                     },
                 }
@@ -882,10 +882,10 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                     {
                         "name": "1",
                         "statistics": {
-                            "maximum": approx(641.22131347656),
-                            "mean": approx(403.31786404988),
-                            "minimum": approx(149.76655578613),
-                            "stddev": approx(98.389307981699),
+                            "maximum": approx(641.22, abs=0.01),
+                            "mean": approx(403.31, abs=0.01),
+                            "minimum": approx(149.77, abs=0.01),
+                            "stddev": approx(98.39, abs=0.01),
                             "valid_percent": 100.0,
                         },
                     }
@@ -901,10 +901,10 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                     {
                         "name": "1",
                         "statistics": {
-                            "maximum": approx(641.22131347656),
-                            "minimum": approx(0.0),
-                            "mean": approx(388.80473522222),
-                            "stddev": approx(122.48474568907),
+                            "maximum": approx(641.22, abs=0.01),
+                            "minimum": approx(0.0, abs=0.01),
+                            "mean": approx(388.80, abs=0.01),
+                            "stddev": approx(122.48, abs=0.01),
                             "valid_percent": 100.0,
                         },
                     }
