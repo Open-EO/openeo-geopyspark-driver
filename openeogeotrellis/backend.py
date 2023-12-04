@@ -2072,15 +2072,25 @@ class GpsBatchJobs(backend.BatchJobs):
 
         as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
 
-        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(get_backend_config().max_executor_memory):
+        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
-                message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_memory}",
+                message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                status_code=400)
+        if as_bytes(driver_memory) + as_bytes(driver_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
+            raise OpenEOApiException(
+                message=f"Requested too much driver memory: {driver_memory} + {driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
 
-        if isKube and int(executor_cores)>4:
-            raise OpenEOApiException(
-                message=f"Requested too many executor cores: {executor_cores} , the max for this instance is: 4",
-                status_code=400)
+        if isKube:
+            max_cores = 4
+            if int(executor_cores) > max_cores:
+                raise OpenEOApiException(
+                    message=f"Requested too many executor cores: {executor_cores} , the max for this instance is: {max_cores}",
+                    status_code=400)
+            if int(driver_cores) > max_cores:
+                raise OpenEOApiException(
+                    message=f"Requested too many driver cores: {driver_cores} , the max for this instance is: {max_cores}",
+                    status_code=400)
 
 
         def serialize_dependencies() -> str:

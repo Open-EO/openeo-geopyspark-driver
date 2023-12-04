@@ -963,7 +963,7 @@ class TestBatchJobs:
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10000G"}
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G"}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -987,13 +987,60 @@ class TestBatchJobs:
             assert batch_job_args[5] == job_metadata.name
             assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
-            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10000G']
+            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10G']
             assert batch_job_args[16:21] == [
                 'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '100'
             ]
             assert batch_job_args[21:23] == [TEST_USER, job_id]
             assert batch_job_args[23] == '0.0'
+
+    @pytest.mark.parametrize(["boost"], [
+        [("driver-memory", "99999g")],
+        [("executor-memory", "99999g")],
+        [("driver-cores", "99")],
+        [("executor-cores", "99")],
+        [("driver-memoryOverhead", "99999G")],
+        [("executor-memoryOverhead", "99999G")],
+    ])
+    def test_create_and_start_job_options_too_large(self, api, boost, monkeypatch):
+        monkeypatch.setenv("KUBE", "TRUE")
+        nonsense_process_graph = {
+            "process_graph": {
+                "add1": {
+                    "process_id": "add",
+                    "arguments": {
+                        "x": 1,
+                        "y": 2
+                    },
+                    "result": True
+                }
+            },
+            "parameters": []
+        }
+        # Create job
+        data = api.get_process_graph_dict(nonsense_process_graph, title="nonsense_process_graph")
+        job_options = {
+            "driver-memory": "1g",
+            "executor-memory": "1g",
+
+            "driver-cores": "2",
+            "executor-cores": "2",
+
+            "driver-memoryOverhead": "1G",
+            "executor-memoryOverhead": "1G",
+            "queue": "somequeue",
+        }
+        print(boost)
+        job_options[boost[0]] = boost[1]
+
+        data["job_options"] = job_options
+        res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers['OpenEO-Identifier']
+        # Trigger job start
+        api.post(
+            f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
+        ).assert_status_code(400)
 
     def test_cancel_job(self, api, job_registry):
         with self._mock_kazoo_client() as zk:
