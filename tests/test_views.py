@@ -963,7 +963,7 @@ class TestBatchJobs:
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10000G"}
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G"}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -987,7 +987,7 @@ class TestBatchJobs:
             assert batch_job_args[5] == job_metadata.name
             assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
-            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10000G']
+            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10G']
             assert batch_job_args[16:21] == [
                 'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '100'
