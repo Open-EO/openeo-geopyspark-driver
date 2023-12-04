@@ -2151,13 +2151,13 @@ class GpsBatchJobs(backend.BatchJobs):
                 for app in result['items']:
                     if 'status' not in app or app['status']['applicationState']['state'] == 'RUNNING':
                         running_count += 1
-                log.debug(
-                    f"Configured concurrent pod limit is {concurrent_pod_limit} and there are {running_count} "
-                    f"pods running for user {user_id}."
-                )
+                log.debug(f"concurrent_pod_limit check: {concurrent_pod_limit=} {running_count=}")
                 if running_count >= concurrent_pod_limit:
-                    raise OpenEOApiException(message = f"Too many batch jobs running for user {user_id}",
-                        status_code = 400)
+                    raise OpenEOApiException(
+                        code="ConcurrentJobLimit",
+                        message=f"Job was not started because concurrent job limit ({concurrent_pod_limit}) is reached.",
+                        status_code=400,
+                    )
 
             bucket = ConfigParams().s3_bucket_name
             s3_instance = s3_client()
