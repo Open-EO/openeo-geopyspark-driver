@@ -8,9 +8,7 @@ from typing import Tuple
 
 import pyspark
 from pyspark import SparkContext, find_spark_home
-from shapely.geometry import Polygon
 
-from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.utils import get_jvm
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
@@ -45,8 +43,12 @@ def main(bbox, crs, from_date, to_date):
 
         extent = jvm.geotrellis.vector.Extent(*bbox)
         projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
-        # FIXME: do in EPSG:4326 instead (~ SENTINEL3_OLCI_L1B on Terrascope)
-        target_epsg_code = auto_utm_epsg_for_geometry(Polygon.from_bounds(*bbox))
+        # do in EPSG:4326 (~ SENTINEL3_OLCI_L1B on Terrascope)
+        #  ProjectedPolygons.crs() is "EPSG:4326"
+        #  ProjectedPolygons.polygons() is in "EPSG:4326"
+        #  maxSpatialResolution is CellSize(0.00297619047619,0.00297619047619)
+        #  result of DatacubeSupport.layerMetadata is: TileLayerMetadata(float32ud0.0,LayoutDefinition(Extent(5.027, 50.45939523809536, 5.78890476190464, 51.2213),CellSize(0.0029761904761900007,0.0029761904761899938),1x1 tiles,256x256 pixels),Extent(5.027, 51.1974, 5.0438, 51.2213),EPSG:4326,KeyBounds(SpaceTimeKey(0,0,1533513600000),SpaceTimeKey(0,0,1533599999999)))
+        target_epsg_code = 4326
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
 
@@ -129,7 +131,6 @@ def read_olci(product):
         f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
     )
 
-    # TODO: do the TOA-S3 thing on this envelope into an xarray
     create_s3_toa(creo_path,
                   [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'], layout_extent['ymax']])
 
@@ -139,7 +140,7 @@ def read_olci(product):
 
 
 def create_s3_toa(creo_path, bbox_tile):
-    # TODO: implement
+    # TODO: do the TOA-S3 thing on this envelope into an xarray
     return
 
 
