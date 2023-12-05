@@ -4,14 +4,22 @@ import os
 import pathlib
 import sys
 from glob import glob
-from typing import Tuple
+from typing import Tuple, Callable
 
+import numpy as np
+import numpy.ma as ma
 import pyspark
+from epsel import on_first_time
 from pyspark import SparkContext, find_spark_home
+from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
+import xarray as xr
 
 from openeogeotrellis.utils import get_jvm
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
+FINAL_GRID_RESOLUTION = 1 / 112 / 3
+
+logger = logging.getLogger(__name__)
 
 
 def main(bbox, crs, from_date, to_date):
@@ -77,6 +85,7 @@ def main(bbox, crs, from_date, to_date):
         # -----------------------------------
         prefix = ""
 
+        @ensure_executor_logging
         def process_feature(feature: dict) -> Tuple[str, dict]:
             creo_path = prefix + feature["feature"]["id"]
             return creo_path, {
@@ -90,7 +99,7 @@ def main(bbox, crs, from_date, to_date):
 
         olci_layer = per_product.flatMap(read_olci)
 
-        print(olci_layer.count())
+        logger.debug(olci_layer.count())
 
         # TODO: create a TileLayerRDD (GeoPySpark equivalent)
         # TODO: stitch it and write to file
@@ -116,7 +125,7 @@ def read_olci(product):
     instants = set(f["key"]["instant"] for f in features)
     assert len(instants) == 1, f"Not single instant: {instants}"
     instant = instants.pop()
-    print(
+    logger.info(
         f"{log_prefix} Layout key extent: col[{col_min}:{col_max}] row[{row_min}:{row_max}]"
         f" ({cols}x{rows}={cols * rows} tiles) instant[{instant}]."
     )
@@ -127,7 +136,7 @@ def read_olci(product):
     assert len(key_epsgs) == 1, f"Multiple key CRSs {key_epsgs}"
     layout_epsg = key_epsgs.pop()
 
-    print(
+    logger.info(
         f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
     )
 
@@ -141,7 +150,283 @@ def read_olci(product):
 
 def create_s3_toa(creo_path, bbox_tile):
     # TODO: do the TOA-S3 thing on this envelope into an xarray
-    return
+
+    tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=FINAL_GRID_RESOLUTION)
+    tile_coordinates.shape = tile_shape + (2,)  # target =((4352, 5114, 2)) before=22256128,2
+
+    latitude = tile_coordinates[:, 1, 1]  # get only the unique latitudes (1 column)
+    longitude = tile_coordinates[1, :, 0]  # get only the unique longitudes (1 row)
+
+    geofile = os.path.join(creo_path, 'geo_coordinates.nc')
+
+    bbox_original, source_coordinates = _read_latlonfile(geofile)
+    logger.info(f"{bbox_original=} {source_coordinates=}")
+
+    reprojected_data, is_empty = do_reproject(creo_path, source_coordinates, tile_coordinates)
+
+    raise NotImplementedError("create_s3_toa")
+
+
+def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
+    """this function will create a grid for a given boundingbox and resolution, optionnally,
+    a number of pixels can be given to create an extra rim on each side of the boundingbox
+
+    Parameters
+    ----------
+    final_bbox : float
+        a list containing the following info [final_xmin, final_ymin, final_xmax, final_ymax]
+    resolution : float
+        the resolution of the grid
+    rim_pixels : int
+        the number of pixels to create an extra rim in each side of the array, default=0
+
+    Returns
+    -------
+    target_coordinates: float
+        A 2D-array containing the final coordinates
+    target_shape : (int,int)
+        A tuple containing the number of rows/columns
+    """
+
+    final_xmin, final_ymin, final_xmax, final_ymax = final_bbox
+    #the boundingbox of the tile seems to missing the last pixels, that is why we add 1 resolution to the second argument
+    grid_x, grid_y = np.meshgrid(
+        np.arange(final_xmin - (rim_pixels * resolution), final_xmax + resolution +(rim_pixels * resolution), resolution),
+        np.arange(final_ymax + (rim_pixels * resolution), final_ymin - resolution - (rim_pixels * resolution), -resolution)  # without lat mirrored
+        # np.arange(ref_ymin, ref_ymax, self.final_grid_resolution)   #with lat mirrored
+    )
+    target_shape = grid_x.shape
+    target_coordinates = np.column_stack((grid_x.ravel(), grid_y.ravel()))
+    return target_coordinates, target_shape
+
+
+def do_reproject(creo_path, source_coordinates, target_coordinates):
+    """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
+
+    Parameters
+    ----------
+    out_file : str
+        the output file used for writing the data. The file should already exist and initialised correctly
+    target_coordinates : float
+        a 2D numpy array representing the complete grid for the tile.
+
+    Returns
+    -------
+    out_file: str
+        the name of the output file
+    is_empty: bool
+        True in case no valid data was found in the reprojected data. This test is based on layer Oa02_radiance
+    """
+
+    is_empty = False
+    logger.info("Reprojecting OLCI")
+    ### create LUT for radiances
+    distance, LUT = create_index_LUT(source_coordinates,
+                                     target_coordinates,
+                                     2 * FINAL_GRID_RESOLUTION)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
+
+
+    latitude = target_coordinates[:, 1, 1]  # get only the unique latitudes (1 column)
+    longitude = target_coordinates[1, :, 0]  # get only the unique longitudes (1 row)
+
+    varOut = None
+
+    #### OLCI file ####
+    for band_name in ["Oa02_radiance", "Oa03_radiance",]:
+        logger.info(" Reprojecting %s" % band_name)
+        in_file = os.path.join(creo_path, band_name + '.nc')
+
+        # default
+        band_data, band_settings = read_band(in_file, band_name)
+
+        reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
+        raise NotImplementedError(reprojected_data.shape)
+
+        # TODO: append reprojected_data to varOut to create a 3D array
+
+    logger.info("Done reprojecting OLCI")
+    return varOut, is_empty
+
+
+def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude"):
+    """Read latlon data from this netcdf file
+
+    Parameters
+    ----------
+    latlon_file : str
+        the file containing the latitudes and longitudes
+    lat_band : str
+        the band containing the latitudes (default=latitude)
+    lon_band : float
+        the band containing the longitudes (default=longitude)
+
+    Returns
+    -------
+    bbox_original: [float, float, float, float]
+        the surrounding boundingbox of the lat/lon : x_min, y_min, x_max, y_max
+    source_coordinates: a list of coordinates
+        2D-numpy array [[lon, lat], ..., [lon, lat]]
+    """
+    # getting  geo information
+    logger.debug("Reading lat/lon from file %s" % latlon_file)
+    lat_lon_ds = xr.open_dataset(latlon_file)
+    # Create the coordinate arrays for latitude and longitude
+    ## Coordinated referring to the CENTER of the pixel
+    lat_orig = lat_lon_ds[lat_band].values
+    lon_orig = lat_lon_ds[lon_band].values
+    lat_lon_ds.close()
+
+    extreme_right_lon = lon_orig[0,-1] # negative degrees (-170)
+    extreme_left_lon = lon_orig[-1,0]  # possitive degrees (169)
+    if extreme_right_lon < extreme_left_lon:
+        passing_date_line = True
+        # self.lon_orig=np.where(self.lon_orig<0, self.lon_orig+360, self.lon_orig) #change grid from -180->180 to 0->360
+
+    x_min, x_max = np.min(lon_orig), np.max(lon_orig)
+    y_min, y_max = np.min(lat_orig), np.max(lat_orig)
+    bbox_original = [x_min, y_min, x_max, y_max]
+    source_coordinates = np.column_stack((lon_orig.flatten(), lat_orig.flatten()))
+    return bbox_original, source_coordinates
+
+def create_index_LUT(coordinates, target_coordinates, max_distance):
+    """Create A LUT containing the reprojection indexes. Find ALL the indices of the nearest neighbors within the maximum distance.
+
+    Parameters
+    ----------
+    coordinates : float
+        2D-numpy array [[lon, lat], ..., [lon, lat]] from the source
+    target_coordinates : float
+        2D-numpy array [[lon, lat], ..., [lon, lat]] from the complete gridded target tile
+    max_distance : float
+        The maximum distance to reproject pixels
+
+    Returns
+    -------
+    distances: numpy array
+        2D-numpy array [[lon, lat], ..., [lon, lat]] containing the distance between source and target location
+    lut_indices: numpy arry
+        This numpy array contains the source index for each target location.
+        If the index is not available in the source array(value=len(source_array)), it means that no valid pixel was found=> nodata
+    """
+    logger.info("Creating LUT with shape " + str(target_coordinates.shape))
+    # Create a KDTree from the input points
+    tree = cKDTree(coordinates)
+
+    # Find ALL the indices of the nearest neighbors within the maximum distance
+    distances, lut_indices = tree.query(target_coordinates, k=1,
+                                        distance_upper_bound=max_distance)  # empty results will have an index=len(indices)
+    # lut_indices refer to the index of the "coordinates" and has the length of target_coordinates.
+
+    return distances, lut_indices
+
+
+def read_band(in_file, in_band, get_data_array=True):
+    """get array and settings(metadata) out of the in_file
+
+    Parameters
+    ----------
+    in_file : str
+        The input file that needs to be read
+    in_band : str
+        The band name of the netcdf that needs to be read
+    get_data_array : bool
+        True : return input_array and settings
+        False : return only the settings(metadata)
+
+    Returns
+    -------
+    data_array: numpy array
+        The array from the netcdf band
+    settings: dict
+        A dict containing the bands metadata (_FillValue, name, dtype, units,...)
+    """
+    # can be used to get only the band settings or together with the data
+    dataset = xr.open_dataset(in_file, mask_and_scale=False)  # disable autoconvert digital values
+    settings = dataset[in_band].attrs
+    settings['dtype'] = dataset[in_band].dtype.name
+    settings['name'] = in_band
+
+    for key, value in settings.items():
+        if isinstance(value, str) or isinstance(value, np.ndarray):
+            continue
+        if value.dtype.kind in ['i', 'u']:
+            settings[key] = int(value)
+        elif value.dtype.kind in ['f']:
+            settings[key] = float(value)
+
+    # overwrite initial band settings by their final values
+    band = in_band
+    if band[-9:] == '_radiance':  # OLCI Radiance
+        settings["_FillValue"] = 65535
+        settings['name'] = band
+        settings['standard_name'] = band
+    elif 'radiance_unc' in band:  # OLCI Radiance uncertainties
+        settings["_FillValue"] = 255
+        settings['name'] = band
+        settings['standard_name'] = band
+    elif 'radiance_an' in band:  # SLSTR radiance
+        settings["_FillValue"] = -32768
+        settings['name'] = band
+        settings['standard_name'] = band
+    elif band == 'quality_flags':
+        settings["_FillValue"] = np.array(4294967295, dtype=settings['dtype'])  # 2147483647 in NRT_production, 4294967295 in TOA-TDS
+    elif band == 'pixel_classif_flags':
+        settings["_FillValue"] = -1
+    elif band in ['OAA', 'OZA', 'SAA', 'SZA', 'sea_level_pressure', 'total_columnar_water_vapour']:
+        settings["_FillValue"] = None
+    elif band == 'cloud_an':
+        settings["_FillValue"] = 65535
+    elif band in ['sat_zenith_tn', 'solar_azimuth_tn', 'sat_azimuth_tn', 'solar_zenith_tn']:
+        settings["_FillValue"] = None
+        settings["dtype"] = 'float32'
+
+    if get_data_array:
+        data_array = dataset[in_band].data
+    else:
+        data_array = None
+    dataset.close()
+
+    return data_array, settings
+
+
+def apply_LUT_on_band(in_data, LUT, nodata=None):
+    """Apply reprojection LUT on an array. The LUT contains the index of the source array
+
+    Parameters
+    ----------
+    in_data : numpy array
+        A 2D-numpy array containing all the source(frame) values
+    LUT : numpy array
+        A 2D-numpy array : LUT has the size of a tile, containing the index of the source data
+    nodata : float
+        The nodata value to use when a target coordinate has no corresponding input value.
+
+    Returns
+    -------
+    grid_values: numpy array
+        2D-numpy array with the size of a tile containing reprojected values
+    """
+    data_flat = in_data.flatten()
+
+    # if nodata is empty, we will just use the max possible value
+    if nodata is None:
+        if in_data.dtype.kind in ['i', 'u']:
+            nodata = np.nan
+            # nodata = np.iinfo(in_data.dtype).max
+        elif in_data.dtype.kind in ['f']:
+            nodata = np.nan
+            # nodata = np.finfo(in_data.dtype).max
+
+    data_flat = np.append(data_flat, nodata)
+    grid_values = data_flat[LUT]
+    #ncols = self.target_shape[1]
+    #grid_values.shape = (grid_values.size // ncols, ncols)  # convert flattend array to 2D
+    return grid_values
+
+
+def ensure_executor_logging(f) -> Callable:
+    decorator = on_first_time(lambda: logging.basicConfig(level="INFO"))
+    return decorator(f)
 
 
 if __name__ == '__main__':
