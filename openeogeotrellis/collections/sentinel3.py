@@ -99,7 +99,6 @@ def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cub
     per_product = pyrdd.map(process_feature).groupByKey().mapValues(list)
 
     tile_rdd = per_product.flatMap(partial(read_olci, band_names=band_names, tile_size=tile_size))
-    logger.info(tile_rdd.count())
 
     # TODO: create a TileLayerRDD (GeoPySpark equivalent)
     logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
