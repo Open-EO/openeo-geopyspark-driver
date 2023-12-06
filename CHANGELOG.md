@@ -22,7 +22,8 @@ without compromising stable operations.
 ## 0.19.4
 
 - eliminate `use_etl_api` arg from `GeoPySparkBackendImplementation` in favor of `use_etl_api_on_sync_processing` config field
-
+- Upgrade GDAL to 3.8.1 and Orfeo Toolbox to 8.1.2 https://github.com/Open-EO/openeo-geopyspark-driver/issues/571
+- Performance improvement for apply_dimension with target='bands'  (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/235 , https://github.com/Open-EO/openeo-geopyspark-driver/issues/595 ) 
 
 ## 0.19.3
 
