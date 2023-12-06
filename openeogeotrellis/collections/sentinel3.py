@@ -3,11 +3,11 @@ import logging
 import os
 import pathlib
 import sys
+from functools import partial
 from glob import glob
 from typing import Tuple, Callable
 
 import numpy as np
-import numpy.ma as ma
 import pyspark
 from epsel import on_first_time
 from pyspark import SparkContext, find_spark_home
@@ -80,7 +80,7 @@ def main(bbox, crs, from_date, to_date):
         pyrdd = gps.create_python_rdd(j2p_rdd, serializer=serializer)
         pyrdd = pyrdd.map(json.loads)
 
-        metadata = S1BackscatterOrfeoV2(jvm)._convert_scala_metadata(metadata_sc)
+        layer_metadata_py = S1BackscatterOrfeoV2(jvm)._convert_scala_metadata(metadata_sc)
 
         # -----------------------------------
         prefix = ""
@@ -97,16 +97,31 @@ def main(bbox, crs, from_date, to_date):
 
         per_product = pyrdd.map(process_feature).groupByKey().mapValues(list)
 
-        olci_layer = per_product.flatMap(read_olci)
-
-        logger.debug(olci_layer.count())
+        tile_rdd = per_product.flatMap(partial(read_olci, tile_size=tile_size))
+        logger.info(tile_rdd.count())
 
         # TODO: create a TileLayerRDD (GeoPySpark equivalent)
+        logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
+
+        tile_layer = gps.TiledRasterLayer.from_numpy_rdd(
+            layer_type=gps.LayerType.SPACETIME,
+            numpy_rdd=tile_rdd,
+            metadata=layer_metadata_py
+        )
+        # Merge any keys that have more than one tile.
+        contextRDD = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+        srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom), contextRDD)
+        merged_tile_layer = gps.TiledRasterLayer(gps.LayerType.SPACETIME, srdd)
+
         # TODO: stitch it and write to file
+        # gps.write(uri="file:///tmp/sentinel3", layer_name="OLCI", tiled_raster_layer=merged_tile_layer, time_unit='days')
+        merged_tile_layer.to_spatial_layer().save_stitched("/tmp/olci.tif", crop_bounds=gps.geotrellis.Extent(*bbox))
 
 
-def read_olci(product):
-    from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
+def read_olci(product, tile_size):
+    from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
+    import geopyspark
 
     creo_path, features = product  # better: "tiles"
     log_prefix = ""
@@ -140,12 +155,34 @@ def read_olci(product):
         f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
     )
 
-    create_s3_toa(creo_path,
-                  [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'], layout_extent['ymax']])
+    orfeo_bands = create_s3_toa(creo_path,
+                                     [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
+                                      layout_extent['ymax']])
 
     # TODO: cut the grid up in tiles again
 
-    return features
+    debug_mode = True
+
+    # Split orfeo output in tiles
+    logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
+    nodata = 65535  # TODO: is band-specific
+    cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: map from orfeo_bands.dtype.name?
+    tiles = []
+    for c in range(col_max - col_min + 1):
+        for r in range(row_max - row_min + 1):
+            col = col_min + c
+            row = row_min + r
+            key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+            tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
+            if not (tile == nodata).all():
+                if debug_mode:
+                    logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
+                tiles.append((key, tile))
+
+    logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
+
+    return tiles
 
 
 def create_s3_toa(creo_path, bbox_tile):
@@ -164,7 +201,7 @@ def create_s3_toa(creo_path, bbox_tile):
 
     reprojected_data, is_empty = do_reproject(creo_path, source_coordinates, tile_coordinates)
 
-    raise NotImplementedError("create_s3_toa")
+    return reprojected_data
 
 
 def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
@@ -229,7 +266,7 @@ def do_reproject(creo_path, source_coordinates, target_coordinates):
     latitude = target_coordinates[:, 1, 1]  # get only the unique latitudes (1 column)
     longitude = target_coordinates[1, :, 0]  # get only the unique longitudes (1 row)
 
-    varOut = None
+    varOut = []
 
     #### OLCI file ####
     for band_name in ["Oa02_radiance", "Oa03_radiance",]:
@@ -240,12 +277,11 @@ def do_reproject(creo_path, source_coordinates, target_coordinates):
         band_data, band_settings = read_band(in_file, band_name)
 
         reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
-        raise NotImplementedError(reprojected_data.shape)
 
-        # TODO: append reprojected_data to varOut to create a 3D array
+        varOut.append(reprojected_data)
 
     logger.info("Done reprojecting OLCI")
-    return varOut, is_empty
+    return np.array(varOut), is_empty
 
 
 def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude"):
