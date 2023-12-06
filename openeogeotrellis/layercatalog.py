@@ -654,7 +654,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 max_soft_errors_ratio=max_soft_errors_ratio
             )
         elif layer_source_type == 'file-s3':
-            pyramid = sentinel3.olci(projected_polygons_native_crs, from_date, to_date, bands, datacubeParams, jvm)
+            pyramid = sentinel3.olci(projected_polygons_native_crs, from_date, to_date, metadata.band_names,
+                                     datacubeParams, jvm)
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
         elif layer_source_type == 'testing':
