@@ -1952,9 +1952,20 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_application_id(job_id, user_id, None)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
 
-        spec = json.loads(job_info['specification'])
+        if "specification" in job_info:
+            # This is old-style (ZK based) job info with "specification" being a JSON string.
+            # TODO #498 eliminate ZK code path, or at least encapsulate this logic better
+            job_specification_json = job_info["specification"]
+            job_specification = json.loads(job_specification_json)
+            job_process_graph = job_specification["process_graph"]
+            job_options = job_specification.get("job_options", {})
+        else:
+            # New style job info (EJR based)
+            job_process_graph = job_info["process"]["process_graph"]
+            job_options = job_info.get("job_options", {})
+            job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
+
         job_title = job_info.get('title', '')
-        job_options = spec.get('job_options', {})
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
         log.debug("job_options: {o!r}".format(o=job_options))
@@ -1972,7 +1983,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                process_graph=spec["process_graph"],
+                process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
                 job_id=job_id,
@@ -2171,9 +2182,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
             job_specification_file = output_dir + '/job_specification.json'
 
-            jobspec_bytes = str.encode(job_info['specification'])
-            file = io.BytesIO(jobspec_bytes)
-            s3_instance.upload_fileobj(file, bucket, job_specification_file.strip('/'))
+            s3_instance.upload_fileobj(
+                io.BytesIO(job_specification_json.encode("utf8")),
+                bucket,
+                job_specification_file.strip("/"),
+            )
 
             if api_version:
                 api_version = api_version
@@ -2291,29 +2304,30 @@ class GpsBatchJobs(backend.BatchJobs):
                 dir=self._output_root_dir,
                 prefix=f"{job_id}_",
                 suffix=".in",
-            ) as temp_input_file, tempfile.NamedTemporaryFile(
+            ) as job_specification_file, tempfile.NamedTemporaryFile(
                 mode="wt",
                 encoding="utf-8",
                 dir=self._output_root_dir,
                 prefix=f"{job_id}_",
                 suffix=".properties",
             ) as temp_properties_file:
-                temp_input_file.write(job_info["specification"])
-                temp_input_file.flush()
+                job_specification_file.write(job_specification_json)
+                job_specification_file.flush()
 
                 self._write_sensitive_values(temp_properties_file,
                                              vault_token=None if sentinel_hub_client_alias == 'default'
                                              else get_vault_token(sentinel_hub_client_alias))
                 temp_properties_file.flush()
 
-                job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title,j=job_id, u=user_id)
-                args = [script_location,
-                        job_name,
-                        temp_input_file.name,
-                        str(self.get_job_output_dir(job_id)),
-                        "out",  # TODO: how support multiple output files?
-                        JOB_METADATA_FILENAME,
-                        ]
+                job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
+                args = [
+                    script_location,
+                    job_name,
+                    job_specification_file.name,
+                    str(self.get_job_output_dir(job_id)),
+                    "out",  # TODO: how support multiple output files?
+                    JOB_METADATA_FILENAME,
+                ]
 
                 if self._principal is not None and self._key_tab is not None:
                     args.append(self._principal)
@@ -2366,7 +2380,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
                         f.write(json.dumps(persistent_args))
                     with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
-                        f.write(job_info["specification"])
+                        f.write(job_specification_json)
                     # Generate our own random application id.
                     application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
                     output_string = f"Application report for application_{application_id} (state: running)"
