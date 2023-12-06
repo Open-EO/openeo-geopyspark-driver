@@ -116,7 +116,7 @@ def main(bbox, crs, from_date, to_date):
 
         # TODO: stitch it and write to file
         # gps.write(uri="file:///tmp/sentinel3", layer_name="OLCI", tiled_raster_layer=merged_tile_layer, time_unit='days')
-        merged_tile_layer.to_spatial_layer().save_stitched("/tmp/olci.tif", crop_bounds=gps.geotrellis.Extent(*bbox))
+        merged_tile_layer.to_spatial_layer().save_stitched(f"/tmp/olci_{from_date}_{to_date}.tif", crop_bounds=gps.geotrellis.Extent(*bbox))
 
 
 def read_olci(product, tile_size):
@@ -470,7 +470,7 @@ if __name__ == '__main__':
 
     bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
     crs = "EPSG:4326"
-    from_date = "2017-03-06T00:00:00Z"
-    to_date = "2017-03-06T10:39:01Z"
+    from_date = "2018-03-10T00:00:00Z"
+    to_date = from_date
 
     main(bbox, crs, from_date, to_date)
