@@ -22,13 +22,12 @@ FINAL_GRID_RESOLUTION = 1 / 112 / 3
 logger = logging.getLogger(__name__)
 
 
-def main(bbox, crs, from_date, to_date):
+def main(lat_lon_bbox, from_date, to_date, band_names):
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
 
     import geopyspark as gps
-    from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
 
     conf = gps.geopyspark_conf(master="local[*]", appName=__file__)
     conf.set('spark.kryo.registrator', 'geotrellis.spark.store.kryo.KryoRegistrator')
@@ -37,89 +36,89 @@ def main(bbox, crs, from_date, to_date):
     with SparkContext(conf=conf):
         jvm = get_jvm()
 
-        opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-            "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
-        )
-
-        collection_id = "Sentinel3"
-        attribute_values = {"productType": OLCI_PRODUCT_TYPE}
-        correlation_id = ""
-
-        file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
-            opensearch_client, collection_id, [], attribute_values, correlation_id,
-        )
-
-        extent = jvm.geotrellis.vector.Extent(*bbox)
-        projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
-        # do in EPSG:4326 (~ SENTINEL3_OLCI_L1B on Terrascope)
-        #  ProjectedPolygons.crs() is "EPSG:4326"
-        #  ProjectedPolygons.polygons() is in "EPSG:4326"
-        #  maxSpatialResolution is CellSize(0.00297619047619,0.00297619047619)
-        #  result of DatacubeSupport.layerMetadata is: TileLayerMetadata(float32ud0.0,LayoutDefinition(Extent(5.027, 50.45939523809536, 5.78890476190464, 51.2213),CellSize(0.0029761904761900007,0.0029761904761899938),1x1 tiles,256x256 pixels),Extent(5.027, 51.1974, 5.0438, 51.2213),EPSG:4326,KeyBounds(SpaceTimeKey(0,0,1533513600000),SpaceTimeKey(0,0,1533599999999)))
-        target_epsg_code = 4326
-        projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
-                                         .reproject(projected_polygons, target_epsg_code))
-
-        zoom = 0
-        tile_size = 256
+        extent = jvm.geotrellis.vector.Extent(*lat_lon_bbox)
+        crs = "EPSG:4326"
+        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
 
         data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-        getattr(data_cube_parameters, "tileSize_$eq")(tile_size)
+        getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
-        data_cube_parameters.setGlobalExtent(*bbox, crs)
+        data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
 
-        keyed_feature_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(
-            projected_polygons_native_crs, from_date, to_date, zoom, tile_size, data_cube_parameters
-        )
-
-        jrdd = keyed_feature_rdd._1()
-        metadata_sc = keyed_feature_rdd._2()
-
-        j2p_rdd = jvm.SerDe.javaToPython(jrdd)
-        serializer = pyspark.serializers.PickleSerializer()
-        pyrdd = gps.create_python_rdd(j2p_rdd, serializer=serializer)
-        pyrdd = pyrdd.map(json.loads)
-
-        layer_metadata_py = S1BackscatterOrfeoV2(jvm)._convert_scala_metadata(metadata_sc)
-
-        # -----------------------------------
-        prefix = ""
-
-        @ensure_executor_logging
-        def process_feature(feature: dict) -> Tuple[str, dict]:
-            creo_path = prefix + feature["feature"]["id"]
-            return creo_path, {
-                "key": feature["key"],
-                "key_extent": feature["key_extent"],
-                "bbox": feature["feature"]["bbox"],
-                "key_epsg": feature["metadata"]["crs_epsg"]
-            }
-
-        per_product = pyrdd.map(process_feature).groupByKey().mapValues(list)
-
-        tile_rdd = per_product.flatMap(partial(read_olci, tile_size=tile_size))
-        logger.info(tile_rdd.count())
-
-        # TODO: create a TileLayerRDD (GeoPySpark equivalent)
-        logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
-
-        tile_layer = gps.TiledRasterLayer.from_numpy_rdd(
-            layer_type=gps.LayerType.SPACETIME,
-            numpy_rdd=tile_rdd,
-            metadata=layer_metadata_py
-        )
-        # Merge any keys that have more than one tile.
-        contextRDD = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom), contextRDD)
-        merged_tile_layer = gps.TiledRasterLayer(gps.LayerType.SPACETIME, srdd)
-
-        # TODO: stitch it and write to file
-        # gps.write(uri="file:///tmp/sentinel3", layer_name="OLCI", tiled_raster_layer=merged_tile_layer, time_unit='days')
-        merged_tile_layer.to_spatial_layer().save_stitched(f"/tmp/olci_{from_date}_{to_date}.tif", crop_bounds=gps.geotrellis.Extent(*bbox))
+        olci_layer = olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, jvm)[0]
+        olci_layer.to_spatial_layer().save_stitched(f"/tmp/olci_{from_date}_{to_date}.tif",
+                                                    crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
 
 
-def read_olci(product, tile_size):
+def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, jvm):
+    from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
+    import geopyspark as gps
+
+    opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
+        "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
+    )
+
+    collection_id = "Sentinel3"
+    attribute_values = {"productType": OLCI_PRODUCT_TYPE}
+    correlation_id = ""
+
+    file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
+        opensearch_client, collection_id, [], attribute_values, correlation_id,
+    )
+
+    zoom = 0
+    tile_size = data_cube_parameters.tileSize()
+
+    keyed_feature_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(
+        projected_polygons_native_crs, from_date, to_date, zoom, tile_size, data_cube_parameters
+    )
+
+    jrdd = keyed_feature_rdd._1()
+    metadata_sc = keyed_feature_rdd._2()
+
+    j2p_rdd = jvm.SerDe.javaToPython(jrdd)
+    serializer = pyspark.serializers.PickleSerializer()
+    pyrdd = gps.create_python_rdd(j2p_rdd, serializer=serializer)
+    pyrdd = pyrdd.map(json.loads)
+
+    layer_metadata_py = S1BackscatterOrfeoV2(jvm)._convert_scala_metadata(metadata_sc)
+
+    # -----------------------------------
+    prefix = ""
+
+    @ensure_executor_logging
+    def process_feature(feature: dict) -> Tuple[str, dict]:
+        creo_path = prefix + feature["feature"]["id"]
+        return creo_path, {
+            "key": feature["key"],
+            "key_extent": feature["key_extent"],
+            "bbox": feature["feature"]["bbox"],
+            "key_epsg": feature["metadata"]["crs_epsg"]
+        }
+
+    per_product = pyrdd.map(process_feature).groupByKey().mapValues(list)
+
+    tile_rdd = per_product.flatMap(partial(read_olci, band_names=band_names, tile_size=tile_size))
+    logger.info(tile_rdd.count())
+
+    # TODO: create a TileLayerRDD (GeoPySpark equivalent)
+    logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
+
+    tile_layer = gps.TiledRasterLayer.from_numpy_rdd(
+        layer_type=gps.LayerType.SPACETIME,
+        numpy_rdd=tile_rdd,
+        metadata=layer_metadata_py
+    )
+    # Merge any keys that have more than one tile.
+    contextRDD = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+    temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
+    srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom), contextRDD)
+    merged_tile_layer = gps.TiledRasterLayer(gps.LayerType.SPACETIME, srdd)
+
+    return {zoom: merged_tile_layer}
+
+
+def read_olci(product, band_names, tile_size):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
     import geopyspark
 
@@ -155,9 +154,9 @@ def read_olci(product, tile_size):
         f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
     )
 
-    orfeo_bands = create_s3_toa(creo_path,
-                                     [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                      layout_extent['ymax']])
+    orfeo_bands = create_s3_toa(creo_path, band_names,
+                                [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
+                                 layout_extent['ymax']])
 
     # TODO: cut the grid up in tiles again
 
@@ -185,7 +184,7 @@ def read_olci(product, tile_size):
     return tiles
 
 
-def create_s3_toa(creo_path, bbox_tile):
+def create_s3_toa(creo_path, band_names, bbox_tile):
     # TODO: do the TOA-S3 thing on this envelope into an xarray
 
     tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=FINAL_GRID_RESOLUTION)
@@ -199,7 +198,7 @@ def create_s3_toa(creo_path, bbox_tile):
     bbox_original, source_coordinates = _read_latlonfile(geofile)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
-    reprojected_data, is_empty = do_reproject(creo_path, source_coordinates, tile_coordinates)
+    reprojected_data, is_empty = do_reproject(creo_path, band_names, source_coordinates, tile_coordinates)
 
     return reprojected_data
 
@@ -237,7 +236,7 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 
-def do_reproject(creo_path, source_coordinates, target_coordinates):
+def do_reproject(creo_path, band_names, source_coordinates, target_coordinates):
     """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
 
     Parameters
@@ -269,7 +268,7 @@ def do_reproject(creo_path, source_coordinates, target_coordinates):
     varOut = []
 
     #### OLCI file ####
-    for band_name in ["Oa02_radiance", "Oa03_radiance",]:
+    for band_name in band_names:
         logger.info(" Reprojecting %s" % band_name)
         in_file = os.path.join(creo_path, band_name + '.nc')
 
@@ -468,9 +467,9 @@ def ensure_executor_logging(f) -> Callable:
 if __name__ == '__main__':
     logging.basicConfig(level="INFO")
 
-    bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
-    crs = "EPSG:4326"
+    lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
     from_date = "2018-03-10T00:00:00Z"
     to_date = from_date
+    band_names = ["Oa02_radiance", "Oa03_radiance"]
 
-    main(bbox, crs, from_date, to_date)
+    main(lat_lon_bbox, from_date, to_date, band_names)
