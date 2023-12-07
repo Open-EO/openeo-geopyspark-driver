@@ -4,6 +4,7 @@ Utilities, helpers, adapters for integration with Kubernetes (K8s)
 import logging
 
 from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.utils import generate_unique_id
 
 _log = logging.getLogger(__name__)
 
@@ -25,11 +26,8 @@ def truncate_user_id_k8s(user_id: str) -> str:
     return user_id.split("@")[0][:20]
 
 
-def k8s_job_name(job_id: str, user_id: str) -> str:
-    # TODO: shouldn't this be unique, like a YARN application ID, so that it resembles an "attempt" (think: restarting an OpenEO batch job)?
-    user_id_truncated = truncate_user_id_k8s(user_id)
-    job_id_truncated = truncate_job_id_k8s(job_id)
-    return "job-{id}-{user}".format(id=job_id_truncated, user=user_id_truncated)
+def k8s_job_name() -> str:
+    return generate_unique_id(prefix="a", date_prefix=False)
 
 
 class K8S_SPARK_APP_STATE:
