@@ -395,10 +395,10 @@ class S1BackscatterOrfeo:
         ortho_rect.SetParameterString("map", "epsg")
         ortho_rect.SetParameterInt("map.epsg.code", epsg)
 
-        ortho_rect.SetParameterDouble("outputs.spacingx", 10.0)
-        ortho_rect.SetParameterDouble("outputs.spacingy", -10.0)
+        ortho_rect.SetParameterFloat("outputs.spacingx", 10.0)
+        ortho_rect.SetParameterFloat("outputs.spacingy", -10.0)
         ortho_rect.SetParameterString("interpolator", "linear")
-        ortho_rect.SetParameterDouble("opt.gridspacing", 40.0)
+        ortho_rect.SetParameterFloat("opt.gridspacing", 40.0)
 
         #ortho_rect.SetParameterString("outputs.mode", "autosize")
         #TODO autosize may not align perfectly with Sentinel-2 grid, need to realign
