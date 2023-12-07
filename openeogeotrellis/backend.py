@@ -2215,7 +2215,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 loader=FileSystemLoader(jinja_dir)
             ).from_string(open(jinja_path).read())
 
-            spark_app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+            spark_app_id = k8s_job_name()
 
             rendered = jinja_template.render(
                 job_name=spark_app_id,

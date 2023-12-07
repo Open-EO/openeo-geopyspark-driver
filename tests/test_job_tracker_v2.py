@@ -1063,7 +1063,7 @@ class TestK8sJobTracker:
 
         # Submit Kubernetes app
         time_machine.coordinates.shift(70)
-        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+        app_id = k8s_job_name()
         kube_app = k8s_mock.submit(app_id=app_id)
         kube_app.set_submitted()
         zk_job_registry.set_application_id(
@@ -1206,7 +1206,7 @@ class TestK8sJobTracker:
 
         # Submit Kubernetes app
         time_machine.coordinates.shift(70)
-        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+        app_id = k8s_job_name()
         kube_app = k8s_mock.submit(app_id=app_id, state=K8S_SPARK_APP_STATE.NEW)
         zk_job_registry.set_application_id(
             job_id=job_id, user_id=user_id, application_id=app_id
@@ -1250,10 +1250,12 @@ class TestK8sJobTracker:
         """
         caplog.set_level(logging.WARNING)
 
+        app_ids = {}
+
         for j in [1, 2, 3]:
             job_id = f"job-{j}"
             user_id = f"user{j}"
-            app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+            app_ids[j] = app_id = k8s_job_name()
 
             zk_job_registry.register(
                 job_id=job_id,
@@ -1294,7 +1296,7 @@ class TestK8sJobTracker:
             (
                 "openeogeotrellis.job_tracker_v2",
                 logging.WARNING,
-                "App not found: job_id='job-2' application_id='job-job-2-user2'",
+                f"App not found: job_id='job-2' application_id='{app_ids[2]}'",
             )
         ]
 
@@ -1315,7 +1317,7 @@ class TestK8sJobTracker:
         for j in [1, 2, 3]:
             job_id = f"job-{j}"
             user_id = f"user{j}"
-            app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+            app_id = k8s_job_name()
 
             zk_job_registry.register(
                 job_id=job_id,
@@ -1387,7 +1389,7 @@ class TestK8sStatusGetter:
 
         user_id = "john"
         job_id = "job-123"
-        app_id = k8s_job_name(job_id=job_id, user_id=user_id)
+        app_id = k8s_job_name()
         job_metadata = k8s_status_getter.get_job_metadata(job_id=job_id, user_id=user_id, app_id=app_id)
 
         assert (
