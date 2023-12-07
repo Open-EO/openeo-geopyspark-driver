@@ -898,21 +898,3 @@ class DoubleJobRegistry:
             user_limit=user_limit,
         )
         return jobs
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
-    with ZkJobRegistry(
-        root_path="/openeo/dev/jobs"
-        # root_path="/openeo/jobs"
-    ) as zk_registry:
-        zk_registry.get_running_jobs(
-            # user_limit=1000,
-            # user_limit=None,
-        )
-
-        # zk_registry.prune_empty_users(
-        #     dry_run=True
-        #     # dry_run=False
-        # )

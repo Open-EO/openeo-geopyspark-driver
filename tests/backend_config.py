@@ -32,6 +32,7 @@ config = GpsBackendConfig(
     zookeeper_hosts=["zk.test"],
     zookeeper_root_path="/openeo-test",
     etl_api="https://etl-api.test",
+    etl_source_id="openeo-gps-tests",
     vault_addr="https://vault.test",
     enable_basic_auth=True,
     valid_basic_auth=lambda u, p: p == f"{u}123",

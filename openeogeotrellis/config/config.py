@@ -1,9 +1,14 @@
+from __future__ import annotations
+
+import abc
 import os
 from typing import List, Optional
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
+from openeo_driver.users import User
 from openeo_driver.users.oidc import OidcProvider
+from openeo_driver.util.auth import ClientCredentials
 
 from openeogeotrellis import get_backend_version
 from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
@@ -20,6 +25,28 @@ def _default_capabilities_deploy_metadata() -> dict:
         jar_paths=find_geotrellis_jars(),
     )
     return metadata
+
+
+class EtlApiConfig(metaclass=abc.ABCMeta):
+    """
+    Interface for configuration of ETL API access (possibly dynamic based on user, ...).
+
+    The basic design idea of this interface is to use the ETL API root URL as full identifier of an ETL API.
+    Being a simple string, instead of a complex object (e.g. an `EtlApi` instance), it does not raise
+    serialization challenges when there is need to pass it from the web app context to the batch job tracker context.
+
+    Additional dependencies to (re)construct an operational `EtlApi` instance can be obtained with dedicated methods
+    using the ETL API root URL identifier, e.g. client credentials with `get_client_credentials(root_url)`.
+    """
+
+    @abc.abstractmethod
+    def get_root_url(self, *, user: Optional[User] = None) -> str:
+        """Get root URL of the ETL API"""
+        ...
+
+    def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
+        """Get client credentials corresponding to root URL."""
+        return None
 
 
 @attrs.frozen(kw_only=True)
@@ -53,6 +80,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # TODO: eliminate hardcoded VITO-specific defaults?
     logging_es_hosts: List[str] = os.environ.get("LOGGING_ES_HOSTS", "https://es-infra.vgt.vito.be").split(",")
+    # TODO: this index pattern is specifically used for fetching batch job logs, which is not obvious from the name (and env var)
     logging_es_index_pattern: str = os.environ.get("LOGGING_ES_INDEX_PATTERN", "openeo-*-index-1m*")
 
     # TODO eliminate hardcoded VITO reference
@@ -77,6 +105,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
+    etl_dynamic_api_flag: Optional[str] = None  # TODO eliminate this temporary feature flag?
+
+    # TODO: this config is meant to replace `etl_api` from above
+    etl_api_config: Optional[EtlApiConfig] = None
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
 
