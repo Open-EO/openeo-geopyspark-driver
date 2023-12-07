@@ -17,12 +17,13 @@ import xarray as xr
 from openeogeotrellis.utils import get_jvm
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
+SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
 FINAL_GRID_RESOLUTION = 1 / 112 / 3
 
 logger = logging.getLogger(__name__)
 
 
-def main(lat_lon_bbox, from_date, to_date, band_names):
+def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
@@ -46,13 +47,13 @@ def main(lat_lon_bbox, from_date, to_date, band_names):
         data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
         cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)
 
-        olci_layer = olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
-                          cell_size, jvm)[0]
-        olci_layer.to_spatial_layer().save_stitched(f"/tmp/olci_{from_date}_{to_date}.tif",
-                                                    crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
+        layer = pyramid(product_type, projected_polygons_native_crs, from_date, to_date, band_names,
+                        data_cube_parameters, cell_size, jvm)[0]
+        layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}.tif",
+                                               crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
 
 
-def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, cell_size, jvm):
+def pyramid(product_type, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, cell_size, jvm):
     from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
     import geopyspark as gps
 
@@ -61,7 +62,7 @@ def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cub
     )
 
     collection_id = "Sentinel3"
-    attribute_values = {"productType": OLCI_PRODUCT_TYPE}
+    attribute_values = {"productType": product_type}
     correlation_id = ""
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
@@ -100,7 +101,8 @@ def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cub
 
     per_product = pyrdd.map(process_feature).groupByKey().mapValues(list)
 
-    tile_rdd = per_product.flatMap(partial(read_olci, band_names=band_names, tile_size=tile_size))
+    tile_rdd = per_product.flatMap(partial(read_product, product_type=product_type, band_names=band_names,
+                                           tile_size=tile_size))
 
     # TODO: create a TileLayerRDD (GeoPySpark equivalent)
     logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
@@ -119,7 +121,7 @@ def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cub
     return {zoom: merged_tile_layer}
 
 
-def read_olci(product, band_names, tile_size):
+def read_product(product, product_type, band_names, tile_size):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
     import geopyspark
 
@@ -155,7 +157,7 @@ def read_olci(product, band_names, tile_size):
         f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
     )
 
-    orfeo_bands = create_s3_toa(creo_path, band_names,
+    orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
                                 [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
                                  layout_extent['ymax']])
 
@@ -185,21 +187,29 @@ def read_olci(product, band_names, tile_size):
     return tiles
 
 
-def create_s3_toa(creo_path, band_names, bbox_tile):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile):
     # TODO: do the TOA-S3 thing on this envelope into an xarray
 
     tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=FINAL_GRID_RESOLUTION)
     tile_coordinates.shape = tile_shape + (2,)  # target =((4352, 5114, 2)) before=22256128,2
 
-    latitude = tile_coordinates[:, 1, 1]  # get only the unique latitudes (1 column)
-    longitude = tile_coordinates[1, :, 0]  # get only the unique longitudes (1 row)
+    if product_type == OLCI_PRODUCT_TYPE:
+        geofile = 'geo_coordinates.nc'
+        lat_band = 'latitude'
+        lon_band = 'longitude'
+    elif product_type == SYNERGY_PRODUCT_TYPE:
+        geofile = 'geolocation.nc'
+        lat_band = 'lat'
+        lon_band = 'lon'
+    else:
+        raise ValueError(product_type)
 
-    geofile = os.path.join(creo_path, 'geo_coordinates.nc')
+    geofile = os.path.join(creo_path, geofile)
 
-    bbox_original, source_coordinates = _read_latlonfile(geofile)
+    bbox_original, source_coordinates = _read_latlonfile(geofile, lat_band, lon_band)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
-    reprojected_data, is_empty = do_reproject(creo_path, band_names, source_coordinates, tile_coordinates)
+    reprojected_data, is_empty = do_reproject(product_type, creo_path, band_names, source_coordinates, tile_coordinates)
 
     return reprojected_data
 
@@ -237,7 +247,7 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 
-def do_reproject(creo_path, band_names, source_coordinates, target_coordinates):
+def do_reproject(product_type, creo_path, band_names, source_coordinates, target_coordinates):
     """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
 
     Parameters
@@ -256,7 +266,7 @@ def do_reproject(creo_path, band_names, source_coordinates, target_coordinates):
     """
 
     is_empty = False
-    logger.info("Reprojecting OLCI")
+    logger.info(f"Reprojecting {product_type}")
     ### create LUT for radiances
     distance, LUT = create_index_LUT(source_coordinates,
                                      target_coordinates,
@@ -273,14 +283,20 @@ def do_reproject(creo_path, band_names, source_coordinates, target_coordinates):
         logger.info(" Reprojecting %s" % band_name)
         in_file = os.path.join(creo_path, band_name + '.nc')
 
-        # default
-        band_data, band_settings = read_band(in_file, band_name)
+        def variable_name(band_name: str):  # actually, the file without the .nc extension
+            if product_type == OLCI_PRODUCT_TYPE:
+                return band_name
+            if product_type == SYNERGY_PRODUCT_TYPE:
+                return f"SDR_{band_name.split('_')[1]}"
+            raise ValueError(band_name)
+
+        band_data, band_settings = read_band(in_file, in_band=variable_name(band_name))
 
         reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
         varOut.append(reprojected_data)
 
-    logger.info("Done reprojecting OLCI")
+    logger.info(f"Done reprojecting {product_type}")
     return np.array(varOut), is_empty
 
 
@@ -469,8 +485,9 @@ if __name__ == '__main__':
     logging.basicConfig(level="INFO")
 
     lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
-    from_date = "2018-03-10T00:00:00Z"
+    lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
+    from_date = "2018-10-08T00:00:00Z"
     to_date = from_date
-    band_names = ["Oa02_radiance", "Oa03_radiance"]
+    band_names = ["Syn_Oa02_reflectance", "Syn_S6O_reflectance", "Syn_S1N_reflectance"]
 
-    main(lat_lon_bbox, from_date, to_date, band_names)
+    main(SYNERGY_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
