@@ -44,13 +44,15 @@ def main(lat_lon_bbox, from_date, to_date, band_names):
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
         data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
+        cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)
 
-        olci_layer = olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, jvm)[0]
+        olci_layer = olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
+                          cell_size, jvm)[0]
         olci_layer.to_spatial_layer().save_stitched(f"/tmp/olci_{from_date}_{to_date}.tif",
                                                     crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
 
 
-def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, jvm):
+def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, cell_size, jvm):
     from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
     import geopyspark as gps
 
@@ -63,7 +65,7 @@ def olci(projected_polygons_native_crs, from_date, to_date, band_names, data_cub
     correlation_id = ""
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
-        opensearch_client, collection_id, [], attribute_values, correlation_id,
+        opensearch_client, collection_id, attribute_values, correlation_id, cell_size
     )
 
     zoom = 0
