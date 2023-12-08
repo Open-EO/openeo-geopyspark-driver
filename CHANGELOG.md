@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 0.21.1
+
+- job tracker: do job info iteration in streaming fashion (instead of loading all job info in memory at once)
+
 ## 0.21.0
 
 - Initial support for dynamic ETL API configuration ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
@@ -29,7 +33,7 @@ without compromising stable operations.
 
 - eliminate `use_etl_api` arg from `GeoPySparkBackendImplementation` in favor of `use_etl_api_on_sync_processing` config field
 - Upgrade GDAL to 3.8.1 and Orfeo Toolbox to 8.1.2 https://github.com/Open-EO/openeo-geopyspark-driver/issues/571
-- Performance improvement for apply_dimension with target='bands'  (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/235 , https://github.com/Open-EO/openeo-geopyspark-driver/issues/595 ) 
+- Performance improvement for apply_dimension with target='bands'  (https://github.com/Open-EO/openeo-geotrellis-extensions/issues/235 , https://github.com/Open-EO/openeo-geopyspark-driver/issues/595 )
 
 ## 0.19.3
 

@@ -164,10 +164,8 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
-    def get_running_jobs(self, user_limit: Optional[int] = 1000) -> List[Dict]:
-        """Returns a list of jobs that are currently not finished (should still be tracked)."""
-
-        jobs = []
+    def get_running_jobs(self, user_limit: Optional[int] = 1000) -> Iterator[Dict]:
+        """Returns an interator job info dicts that are currently not finished (should still be tracked)."""
 
         with StatsReporter(name="get_running_jobs", report=_log) as stats, TimingLogger(
             title="get_running_jobs", logger=_log
@@ -188,13 +186,13 @@ class ZkJobRegistry:
                     job_ids = random.sample(job_ids, user_limit)
 
                 if job_ids:
-                    jobs.extend([self.get_job(job_id, user_id) for job_id in job_ids])
                     stats["user_id with jobs"] += 1
-                    stats["job_ids"] += len(job_ids)
+                    for job_id in job_ids:
+                        yield self.get_job(job_id, user_id)
+                        stats["job_ids"] += 1
                 else:
                     stats["user_id without jobs"] += 1
 
-        return jobs
 
     def get_job(self, job_id: str, user_id: str) -> Dict:
         """Returns details of a job."""
