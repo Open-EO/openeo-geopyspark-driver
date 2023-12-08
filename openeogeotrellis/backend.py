@@ -75,7 +75,12 @@ from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api, get_etl_a
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s
 from openeogeotrellis.integrations.traefik import Traefik
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import (
+    DoubleJobRegistry,
+    ZkJobRegistry,
+    get_deletable_dependency_sources,
+    parse_zk_job_specification,
+)
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     check_missing_products,
@@ -1964,9 +1969,7 @@ class GpsBatchJobs(backend.BatchJobs):
             # This is old-style (ZK based) job info with "specification" being a JSON string.
             # TODO #498 eliminate ZK code path, or at least encapsulate this logic better
             job_specification_json = job_info["specification"]
-            job_specification = json.loads(job_specification_json)
-            job_process_graph = job_specification["process_graph"]
-            job_options = job_specification.get("job_options", {})
+            job_process_graph, job_options = parse_zk_job_specification(job_info)
         else:
             # New style job info (EJR based)
             job_process_graph = job_info["process"]["process_graph"]
