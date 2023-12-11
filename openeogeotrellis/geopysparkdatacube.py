@@ -1119,6 +1119,9 @@ class GeopysparkDataCube(DriverDataCube):
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x_value, overlap_y_value))
 
+        retiled_metadata: Metadata = retiled_collection.pyramid.levels[retiled_collection.pyramid.max_zoom].layer_metadata
+        retiled_tile_layout = retiled_metadata.tile_layout
+
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         process = GeoPySparkBackendImplementation.accept_process_graph(process)
@@ -1168,6 +1171,17 @@ class GeopysparkDataCube(DriverDataCube):
             raise OpenEOApiException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
 
         if overlap_x_value > 0 or overlap_y_value > 0:
+            # Check if the resolution of result_collection changed (UDF feature).
+            result_metadata: Metadata = result_collection.pyramid.levels[
+                result_collection.pyramid.max_zoom].layer_metadata
+            result_tile_layout = result_metadata.tile_layout  # geopyspark.geotrellis.TileLayout
+            if result_tile_layout.layoutCols != retiled_tile_layout.layoutCols or result_tile_layout.layoutRows != retiled_tile_layout.layoutRows:
+                ratio_x = result_tile_layout.layoutCols / retiled_tile_layout.layoutCols
+                ratio_y = result_tile_layout.layoutRows / retiled_tile_layout.layoutRows
+                sizeX = int(sizeX * ratio_x)
+                sizeY = int(sizeY * ratio_y)
+                overlap_x_value = int(overlap_x_value * ratio_x)
+                overlap_y_value = int(overlap_y_value * ratio_y)
 
             result_collection = result_collection._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().remove_overlap(rdd, sizeX, sizeY,
