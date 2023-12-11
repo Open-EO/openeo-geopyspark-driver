@@ -351,6 +351,7 @@ DUMMY_PG_1 = {
     "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}
 }
 DUMMY_PROCESS_1 = {"process_graph": DUMMY_PG_1}
+DUMMY_JOB_OPTIONS = {"speed": "fast"}
 
 
 def _extract_update_statuses_stats(caplog) -> List[dict]:
@@ -378,6 +379,7 @@ class TestYarnJobTracker:
         )
         return job_tracker
 
+    @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     def test_yarn_zookeeper_basic(
         self,
         zk_job_registry,
@@ -387,6 +389,7 @@ class TestYarnJobTracker:
         caplog,
         time_machine,
         job_costs_calculator,
+        job_options,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -398,10 +401,10 @@ class TestYarnJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
 
         def zk_job_info() -> dict:
@@ -539,7 +542,6 @@ class TestYarnJobTracker:
 
         calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
         assert len(calculate_costs_calls) == 1
-        costs_details: CostsDetails
         (costs_details,), _ = calculate_costs_calls[0]
 
         assert costs_details == CostsDetails(
@@ -554,7 +556,8 @@ class TestYarnJobTracker:
             cpu_seconds=32,
             mb_seconds=1234,
             sentinelhub_processing_units=None,
-            unique_process_ids=[]
+            unique_process_ids=[],
+            job_options=job_options,
         )
 
         assert caplog.record_tuples == []
@@ -579,13 +582,15 @@ class TestYarnJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -635,13 +640,15 @@ class TestYarnJobTracker:
                 job_id=f"job-{j}",
                 user_id=f"user{j}",
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
             )
             elastic_job_registry.create_job(
-                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1
+                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -702,10 +709,12 @@ class TestYarnJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
         # Another job that has an app id (already running)
@@ -713,10 +722,12 @@ class TestYarnJobTracker:
             job_id=job_id + "-other",
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id + "-other", user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id + "-other", user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
         app_other = yarn_mock.submit(app_id="app-123-other").set_running()
         zk_job_registry.set_application_id(
@@ -779,10 +790,12 @@ class TestYarnJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
         def zk_job_info() -> dict:
@@ -866,7 +879,9 @@ class TestYarnJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
@@ -1010,6 +1025,7 @@ class TestK8sJobTracker:
         )
         return job_tracker
 
+    @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     def test_k8s_zookeeper_basic(
         self,
         zk_job_registry,
@@ -1019,6 +1035,7 @@ class TestK8sJobTracker:
         time_machine,
         k8s_mock,
         job_costs_calculator,
+        job_options,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -1029,10 +1046,10 @@ class TestK8sJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
 
         def zk_job_info() -> dict:
@@ -1155,7 +1172,6 @@ class TestK8sJobTracker:
 
         calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
         assert len(calculate_costs_calls) == 1
-        costs_details: CostsDetails
         (costs_details,), _ = calculate_costs_calls[0]
 
         assert costs_details == CostsDetails(
@@ -1170,7 +1186,8 @@ class TestK8sJobTracker:
             cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
             mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
             sentinelhub_processing_units=1.25,
-            unique_process_ids=[]
+            unique_process_ids=[],
+            job_options=job_options,
         )
 
         assert caplog.record_tuples == []
@@ -1195,10 +1212,12 @@ class TestK8sJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
         def zk_job_info() -> dict:
@@ -1261,13 +1280,15 @@ class TestK8sJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # K8s apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -1323,13 +1344,15 @@ class TestK8sJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # K8s apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:

@@ -496,6 +496,7 @@ class JobTracker:
                 sentinelhub_processing_units=(sentinelhub_processing_units + sentinelhub_batch_processing_units)
                 or None,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
+                job_options=job_info.get("job_options"),
             )
 
             try:

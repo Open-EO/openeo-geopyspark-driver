@@ -57,6 +57,17 @@ class ZkJobRegistry:
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
 
+    @staticmethod
+    def build_specification_dict(process_graph: dict, job_options: Optional[dict] = None) -> dict:
+        """
+        Helper to build a specification dict for ZK job registry from process graph and job options in a consistent way.
+        """
+        assert "process_graph" not in process_graph
+        return dict_no_none(
+            process_graph=process_graph,
+            job_options=job_options,
+        )
+
     def register(
             self, job_id: str, user_id: str, api_version: str, specification: dict,
             title: str = None, description: str = None
@@ -448,12 +459,12 @@ def get_deletable_dependency_sources(job_info: dict) -> List[str]:
     return [source for dependency in (job_info.get("dependencies") or []) for source in sources(dependency)]
 
 
-def parse_zk_job_specification(job_info: dict) -> Tuple[dict, dict]:
+def parse_zk_job_specification(job_info: dict) -> Tuple[dict, Union[dict, None]]:
     """Parse the JSON-encoded 'specification' field from ZK job info dict"""
     specification_json = job_info["specification"]
     specification = json.loads(specification_json)
     process_graph = specification["process_graph"]
-    job_options = specification.get("job_options", {})
+    job_options = specification.get("job_options", None)
     return process_graph, job_options
 
 
@@ -729,7 +740,7 @@ class DoubleJobRegistry:
                 job_id=job_id,
                 user_id=user_id,
                 api_version=api_version,
-                specification=dict_no_none(
+                specification=ZkJobRegistry.build_specification_dict(
                     process_graph=process["process_graph"],
                     job_options=job_options,
                 ),

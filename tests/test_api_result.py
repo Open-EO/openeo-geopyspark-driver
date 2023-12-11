@@ -2932,7 +2932,9 @@ def _setup_existing_job(
         job_id=job_id,
         user_id=user_id,
         api_version="1.1.0",
-        specification=load_json(result_dir / "process_graph.json"),
+        specification=ZkJobRegistry.build_specification_dict(
+            process_graph=load_json(result_dir / "process_graph.json")["process_graph"],
+        ),
     )
     job_metadata = load_json(job_metadata_file)
     zk_job_registry.patch(

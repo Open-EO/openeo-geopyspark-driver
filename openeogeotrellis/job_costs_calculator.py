@@ -26,6 +26,7 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     mb_seconds: Optional[float] = None
     sentinelhub_processing_units: Optional[float] = None
     unique_process_ids: List[str] = []
+    job_options: Optional[dict] = None
 
 
 class JobCostsCalculator(metaclass=abc.ABCMeta):
