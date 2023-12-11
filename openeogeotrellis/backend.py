@@ -1969,7 +1969,7 @@ class GpsBatchJobs(backend.BatchJobs):
             # This is old-style (ZK based) job info with "specification" being a JSON string.
             # TODO #498 eliminate ZK code path, or at least encapsulate this logic better
             job_specification_json = job_info["specification"]
-            job_process_graph, job_options = parse_zk_job_specification(job_info)
+            job_process_graph, job_options = parse_zk_job_specification(job_info, default_job_options={})
         else:
             # New style job info (EJR based)
             job_process_graph = job_info["process"]["process_graph"]

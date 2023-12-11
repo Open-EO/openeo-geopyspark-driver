@@ -459,12 +459,12 @@ def get_deletable_dependency_sources(job_info: dict) -> List[str]:
     return [source for dependency in (job_info.get("dependencies") or []) for source in sources(dependency)]
 
 
-def parse_zk_job_specification(job_info: dict) -> Tuple[dict, Union[dict, None]]:
+def parse_zk_job_specification(job_info: dict, default_job_options=None) -> Tuple[dict, Union[dict, None]]:
     """Parse the JSON-encoded 'specification' field from ZK job info dict"""
     specification_json = job_info["specification"]
     specification = json.loads(specification_json)
     process_graph = specification["process_graph"]
-    job_options = specification.get("job_options", None)
+    job_options = specification.get("job_options", default_job_options)
     return process_graph, job_options
 
 
