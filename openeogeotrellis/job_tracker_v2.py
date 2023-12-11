@@ -350,7 +350,7 @@ class JobTracker:
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
             # TODO: #236/#498 also/instead get jobs_to_track from EJR?
-            jobs_to_track = zk_job_registry.get_running_jobs()
+            jobs_to_track = zk_job_registry.get_running_jobs(parse_specification=True)
 
             for job_info in jobs_to_track:
                 stats["collected jobs"] += 1
@@ -496,6 +496,7 @@ class JobTracker:
                 sentinelhub_processing_units=(sentinelhub_processing_units + sentinelhub_batch_processing_units)
                 or None,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
+                job_options=job_info.get("job_options"),
             )
 
             try:
