@@ -3,9 +3,7 @@ import datetime as dt
 import logging
 from typing import NamedTuple, Optional, List
 
-from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATE, ETL_API_STATUS
-from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE
-from openeogeotrellis.integrations.yarn import YARN_STATE
+from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATUS
 
 _log = logging.getLogger(__name__)
 
@@ -17,7 +15,8 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     job_id: str
     user_id: str
     execution_id: str
-    app_state: Optional[str] = None  # TODO #610 Deprecated?
+    # TODO #610 this is just part of a temporary migration path, to be cleaned up when just openEO-style `job_status` can be used
+    app_state_etl_api_deprecated: Optional[str] = None
     job_status: Optional[str] = None  # (openEO style) job status #TODO #610
     area_square_meters: Optional[float] = None
     job_title: Optional[str] = None
@@ -51,13 +50,6 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
     def __init__(self, etl_api: EtlApi):
         self._etl_api = etl_api
 
-    @abc.abstractmethod
-    def etl_api_state(self, app_state: str) -> str:
-        """Map implementation specific Spark/Kubernetes app state to standardized ETL_API_STATE value."""
-        # TODO #610 eliminate need for cluster-specific state indicator mapping at this phase
-        #       by doing it while constructing CostsDetails instead
-        raise NotImplementedError
-
     def calculate_costs(self, details: CostsDetails) -> float:
         started_ms = details.start_time.timestamp() * 1000 if details.start_time is not None else None
         finished_ms = details.finish_time.timestamp() * 1000 if details.finish_time is not None else None
@@ -70,8 +62,10 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             user_id=details.user_id,
             started_ms=started_ms,
             finished_ms=finished_ms,
-            state=self.etl_api_state(details.app_state),
+            # TODO #610 replace state/status with generic openEO-style job status
+            state=details.app_state_etl_api_deprecated,
             status=ETL_API_STATUS.UNDEFINED,  # TODO: map as well? it's just for reporting
+            # TODO #610 already possible to send `details.job_status` in request?
             cpu_seconds=details.cpu_seconds,
             mb_seconds=details.mb_seconds,
             duration_ms=duration_ms,
@@ -94,40 +88,3 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
                 ) for process_id in details.unique_process_ids)
 
         return resource_costs_in_credits + added_value_costs_in_credits
-
-
-class YarnJobCostsCalculator(EtlApiJobCostsCalculator):
-    # TODO #610 eliminate this YARN-ETL coupling by normalizing "job status" while constructing CostDetails iso just-in-time mapping for doing ETL request
-
-    _yarn_state_to_etl_api_state = {
-        YARN_STATE.ACCEPTED: ETL_API_STATE.ACCEPTED,
-        YARN_STATE.RUNNING: ETL_API_STATE.RUNNING,
-        YARN_STATE.FINISHED: ETL_API_STATE.FINISHED,
-        YARN_STATE.KILLED: ETL_API_STATE.KILLED,
-        YARN_STATE.FAILED: ETL_API_STATE.FAILED,
-    }
-
-    def etl_api_state(self, app_state: str) -> str:
-        if app_state not in self._yarn_state_to_etl_api_state:
-            _log.warning(f"Unhandled YARN app state mapping: {app_state}")
-        return self._yarn_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
-
-
-class K8sJobCostsCalculator(EtlApiJobCostsCalculator):
-    # TODO #610 eliminate this K8s-ETL coupling by normalizing "job status" while constructing CostDetails iso just-in-time mapping for doing ETL request
-
-    _k8s_state_to_etl_api_state = {
-        K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
-        K8S_SPARK_APP_STATE.SUBMITTED: ETL_API_STATE.ACCEPTED,
-        K8S_SPARK_APP_STATE.RUNNING: ETL_API_STATE.RUNNING,
-        K8S_SPARK_APP_STATE.SUCCEEDING: ETL_API_STATE.RUNNING,
-        K8S_SPARK_APP_STATE.COMPLETED: ETL_API_STATE.FINISHED,
-        K8S_SPARK_APP_STATE.FAILED: ETL_API_STATE.FAILED,
-        K8S_SPARK_APP_STATE.SUBMISSION_FAILED: ETL_API_STATE.FAILED,
-        K8S_SPARK_APP_STATE.FAILING: ETL_API_STATE.FAILED,
-    }
-
-    def etl_api_state(self, app_state: str) -> str:
-        if app_state not in self._k8s_state_to_etl_api_state:
-            _log.warning(f"Unhandled K8s app state mapping {app_state}")
-        return self._k8s_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
