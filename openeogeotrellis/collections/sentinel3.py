@@ -18,7 +18,7 @@ from openeogeotrellis.utils import get_jvm
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
-FINAL_GRID_RESOLUTION = 1 / 112 / 3
+SLSTR_PRODUCT_TYPE = "SL_2_LST___"
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
         data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
-        cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)
+        cell_size = jvm.geotrellis.raster.CellSize(0.008928571428571, 0.008928571428571)
 
         layer = pyramid(product_type, projected_polygons_native_crs, from_date, to_date, band_names,
                         data_cube_parameters, cell_size, jvm)[0]
@@ -104,7 +104,6 @@ def pyramid(product_type, projected_polygons_native_crs, from_date, to_date, ban
     tile_rdd = per_product.flatMap(partial(read_product, product_type=product_type, band_names=band_names,
                                            tile_size=tile_size))
 
-    # TODO: create a TileLayerRDD (GeoPySpark equivalent)
     logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
 
     tile_layer = gps.TiledRasterLayer.from_numpy_rdd(
@@ -161,14 +160,12 @@ def read_product(product, product_type, band_names, tile_size):
                                 [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
                                  layout_extent['ymax']])
 
-    # TODO: cut the grid up in tiles again
-
     debug_mode = True
 
     # Split orfeo output in tiles
     logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-    nodata = 65535  # TODO: is band-specific
-    cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: map from orfeo_bands.dtype.name?
+    nodata = -32768 if product_type == SLSTR_PRODUCT_TYPE else 65535  # TODO: check if right
+    cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
     tiles = []
     for c in range(col_max - col_min + 1):
         for r in range(row_max - row_min + 1):
@@ -188,28 +185,34 @@ def read_product(product, product_type, band_names, tile_size):
 
 
 def create_s3_toa(product_type, creo_path, band_names, bbox_tile):
-    # TODO: do the TOA-S3 thing on this envelope into an xarray
-
-    tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=FINAL_GRID_RESOLUTION)
-    tile_coordinates.shape = tile_shape + (2,)  # target =((4352, 5114, 2)) before=22256128,2
-
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
+        final_grid_resolution = 1 / 112 / 3
     elif product_type == SYNERGY_PRODUCT_TYPE:
         geofile = 'geolocation.nc'
         lat_band = 'lat'
         lon_band = 'lon'
+        final_grid_resolution = 1 / 112 / 3
+    elif product_type == SLSTR_PRODUCT_TYPE:
+        geofile = 'geodetic_in.nc'
+        lat_band = 'latitude_in'
+        lon_band = 'longitude_in'
+        final_grid_resolution = 1 / 112
     else:
         raise ValueError(product_type)
+
+    tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=final_grid_resolution)
+    tile_coordinates.shape = tile_shape + (2,)  # target =((4352, 5114, 2)) before=22256128,2
 
     geofile = os.path.join(creo_path, geofile)
 
     bbox_original, source_coordinates = _read_latlonfile(geofile, lat_band, lon_band)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
-    reprojected_data, is_empty = do_reproject(product_type, creo_path, band_names, source_coordinates, tile_coordinates)
+    reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
+                                              source_coordinates, tile_coordinates)
 
     return reprojected_data
 
@@ -247,7 +250,7 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 
-def do_reproject(product_type, creo_path, band_names, source_coordinates, target_coordinates):
+def do_reproject(product_type, final_grid_resolution, creo_path, band_names, source_coordinates, target_coordinates):
     """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
 
     Parameters
@@ -270,7 +273,7 @@ def do_reproject(product_type, creo_path, band_names, source_coordinates, target
     ### create LUT for radiances
     distance, LUT = create_index_LUT(source_coordinates,
                                      target_coordinates,
-                                     2 * FINAL_GRID_RESOLUTION)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
+                                     2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
 
 
     latitude = target_coordinates[:, 1, 1]  # get only the unique latitudes (1 column)
@@ -281,13 +284,21 @@ def do_reproject(product_type, creo_path, band_names, source_coordinates, target
     #### OLCI file ####
     for band_name in band_names:
         logger.info(" Reprojecting %s" % band_name)
-        in_file = os.path.join(creo_path, band_name + '.nc')
+
+        if ":" in band_name:
+            base_name, band_name = band_name.split(":")
+        else:
+            base_name = band_name
+
+        in_file = os.path.join(creo_path, base_name + '.nc')
 
         def variable_name(band_name: str):  # actually, the file without the .nc extension
             if product_type == OLCI_PRODUCT_TYPE:
                 return band_name
             if product_type == SYNERGY_PRODUCT_TYPE:
                 return f"SDR_{band_name.split('_')[1]}"
+            if product_type == SLSTR_PRODUCT_TYPE:
+                return band_name
             raise ValueError(band_name)
 
         band_data, band_settings = read_band(in_file, in_band=variable_name(band_name))
@@ -486,8 +497,10 @@ if __name__ == '__main__':
 
     lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
     lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
-    from_date = "2018-10-08T00:00:00Z"
+    lat_lon_bbox = [-128.4272367635350349, 49.7476186207236424, -126.9726189291401113, 50.8176823149911527]
+    #lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
+    from_date = "2018-03-12T00:00:00Z"
     to_date = from_date
-    band_names = ["Syn_Oa02_reflectance", "Syn_S6O_reflectance", "Syn_S1N_reflectance"]
+    band_names = ["LST_in:LST"]
 
-    main(SYNERGY_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
+    main(SLSTR_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
