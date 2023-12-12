@@ -164,7 +164,14 @@ def read_product(product, product_type, band_names, tile_size):
 
     # Split orfeo output in tiles
     logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-    nodata = -32768 if product_type == SLSTR_PRODUCT_TYPE else -10000  # TODO: check if right
+    if product_type == OLCI_PRODUCT_TYPE:
+        nodata = 65535
+    elif product_type == SYNERGY_PRODUCT_TYPE:
+        nodata = -10000
+    elif product_type == SLSTR_PRODUCT_TYPE:
+        nodata = -32768
+    else:
+        raise ValueError(product_type)
     cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
     tiles = []
     for c in range(col_max - col_min + 1):
