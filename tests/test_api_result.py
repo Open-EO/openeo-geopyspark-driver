@@ -3620,7 +3620,7 @@ class TestEtlApiReporting:
 
         # Setup up ETL mapping based on user name: one for Alice, another for Bob
         class CustomEtlConfig(DynamicEtlApiConfig):
-            def get_root_url(self, *, user: Optional[User] = None) -> str:
+            def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
                 return {
                     "a": "https://etl-alt.test",
                     "b": "https://etl.planb.test",

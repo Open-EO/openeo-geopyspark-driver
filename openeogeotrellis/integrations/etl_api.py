@@ -198,7 +198,7 @@ class SimpleEtlApiConfig(EtlApiConfig):
         self._root_url = root_url
         self._client_credentials = client_credentials
 
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         return self._root_url
 
     def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
@@ -212,7 +212,7 @@ class DynamicEtlApiConfig(EtlApiConfig):
     def __init__(self, urls_and_credentials: Dict[str, ClientCredentials]):
         self._urls_and_credentials = urls_and_credentials
 
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         # TODO: possible to provide some generic logic here?
         raise NotImplementedError
 
@@ -222,7 +222,11 @@ class DynamicEtlApiConfig(EtlApiConfig):
 
 
 def get_etl_api(
-    *, root_url: Optional[str] = None, user: Optional[User] = None, requests_session: Optional[requests.Session] = None
+    *,
+    root_url: Optional[str] = None,
+    user: Optional[User] = None,
+    job_options: Optional[dict] = None,
+    requests_session: Optional[requests.Session] = None,
 ) -> Union[EtlApi, None]:
     """Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...)."""
     etl_config: Optional[EtlApiConfig] = get_backend_config().etl_api_config
@@ -231,7 +235,7 @@ def get_etl_api(
         return None
 
     if root_url is None:
-        root_url = etl_config.get_root_url(user=user)
+        root_url = etl_config.get_root_url(user=user, job_options=job_options)
     client_credentials = etl_config.get_client_credentials(root_url=root_url)
     return EtlApi(endpoint=root_url, credentials=client_credentials, requests_session=requests_session)
 
