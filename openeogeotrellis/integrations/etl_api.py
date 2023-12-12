@@ -21,6 +21,8 @@ class ETL_API_STATE:
     (e.g. `POST /resources` endpoint https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource).
     Note that this roughly corresponds to YARN app state (for legacy reasons), also see `YARN_STATE`.
     """
+
+    # TODO #610 Simplify ETL-level state/status complexity to a single openEO-style job status
     ACCEPTED = "ACCEPTED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
@@ -36,6 +38,7 @@ class ETL_API_STATUS:
     Note that this roughly corresponds to YARN final status (for legacy reasons), also see `YARN_FINAL_STATUS`.
     """
 
+    # TODO #610 Simplify ETL-level state/status complexity to a single openEO-style job status
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     KILLED = "KILLED"
@@ -106,6 +109,7 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            # TODO #610 simplify this state/status stuff to single openEO-style job status?
             'state': state,
             'status': status,
             'metrics': metrics

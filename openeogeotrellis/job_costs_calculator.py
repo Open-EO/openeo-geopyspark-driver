@@ -17,7 +17,8 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     job_id: str
     user_id: str
     execution_id: str
-    app_state: str
+    app_state: Optional[str] = None  # TODO #610 Deprecated?
+    job_status: Optional[str] = None  # (openEO style) job status #TODO #610
     area_square_meters: Optional[float] = None
     job_title: Optional[str] = None
     start_time: Optional[dt.datetime] = None
@@ -53,6 +54,8 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
     @abc.abstractmethod
     def etl_api_state(self, app_state: str) -> str:
         """Map implementation specific Spark/Kubernetes app state to standardized ETL_API_STATE value."""
+        # TODO #610 eliminate need for cluster-specific state indicator mapping at this phase
+        #       by doing it while constructing CostsDetails instead
         raise NotImplementedError
 
     def calculate_costs(self, details: CostsDetails) -> float:
@@ -94,6 +97,8 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
 
 
 class YarnJobCostsCalculator(EtlApiJobCostsCalculator):
+    # TODO #610 eliminate this YARN-ETL coupling by normalizing "job status" while constructing CostDetails iso just-in-time mapping for doing ETL request
+
     _yarn_state_to_etl_api_state = {
         YARN_STATE.ACCEPTED: ETL_API_STATE.ACCEPTED,
         YARN_STATE.RUNNING: ETL_API_STATE.RUNNING,
@@ -109,6 +114,8 @@ class YarnJobCostsCalculator(EtlApiJobCostsCalculator):
 
 
 class K8sJobCostsCalculator(EtlApiJobCostsCalculator):
+    # TODO #610 eliminate this K8s-ETL coupling by normalizing "job status" while constructing CostDetails iso just-in-time mapping for doing ETL request
+
     _k8s_state_to_etl_api_state = {
         K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
         K8S_SPARK_APP_STATE.SUBMITTED: ETL_API_STATE.ACCEPTED,

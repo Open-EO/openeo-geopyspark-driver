@@ -486,7 +486,8 @@ class JobTracker:
                 job_id=job_info["job_id"],
                 user_id=job_info["user_id"],
                 execution_id=job_info["application_id"],
-                app_state=job_metadata.app_state,
+                app_state=job_metadata.app_state,  # TODO #610 eliminate cluster specific app_state
+                job_status=job_metadata.status,
                 area_square_meters=area,
                 job_title=job_info.get("title"),
                 start_time=job_metadata.start_time,
