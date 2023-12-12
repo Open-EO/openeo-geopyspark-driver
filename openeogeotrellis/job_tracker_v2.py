@@ -327,8 +327,6 @@ class JobTracker:
     ):
         self._app_state_getter = app_state_getter
         self._zk_job_registry = zk_job_registry
-        self._principal = principal
-        self._keytab = keytab
         self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
         #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.

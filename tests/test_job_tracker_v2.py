@@ -361,18 +361,17 @@ def _extract_update_statuses_stats(caplog) -> List[dict]:
         if msg.startswith("JobTracker.update_statuses stats:")
     ]
 
+
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
         self, zk_job_registry, elastic_job_registry, batch_job_output_root, job_costs_calculator
     ) -> JobTracker:
-        principal = "john@EXAMPLE.TEST"
-        keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=YarnStatusGetter(ConfigParams().yarn_rest_api_base_url),
             zk_job_registry=zk_job_registry,
-            principal=principal,
-            keytab=keytab,
+            principal="john@EXAMPLE.TEST",
+            keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
@@ -1013,13 +1012,11 @@ class TestK8sJobTracker:
         prometheus_mock,
         job_costs_calculator
     ) -> JobTracker:
-        principal = "john@EXAMPLE.TEST"
-        keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
             zk_job_registry=zk_job_registry,
-            principal=principal,
-            keytab=keytab,
+            principal="john@EXAMPLE.TEST",
+            keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,

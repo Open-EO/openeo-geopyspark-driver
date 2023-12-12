@@ -33,6 +33,7 @@ class ConfigParams:
         )
 
         self.yarn_rest_api_base_url = env.get(
+            # TODO eliminate hardcoded VITO resources
             "YARN_REST_API_BASE_URL", "https://epod-master1.vgt.vito.be:8090"
         )
 
