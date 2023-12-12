@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## 0.21.3
+
+- job tracker: move app state mapping to CostDetails construction time
+
 ## 0.21.2
 
 - job tracker: pass `job_options` to JobCostsCalculator through `CostDetails` (related to [#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))

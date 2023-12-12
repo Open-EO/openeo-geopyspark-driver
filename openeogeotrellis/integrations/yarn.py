@@ -42,7 +42,7 @@ def yarn_state_to_openeo_job_status(state: str, final_state: str) -> str:
         job_status = JOB_STATUS.QUEUED
     elif state == YARN_STATE.RUNNING:
         job_status = JOB_STATUS.RUNNING
-    elif final_state == YARN_FINAL_STATUS.KILLED:
+    elif state == YARN_STATE.KILLED or final_state == YARN_FINAL_STATUS.KILLED:
         job_status = JOB_STATUS.CANCELED
     elif final_state == YARN_FINAL_STATUS.SUCCEEDED:
         job_status = JOB_STATUS.FINISHED

@@ -42,10 +42,14 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env
-from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
-from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCostsCalculator, YarnJobCostsCalculator,
-                                                   K8sJobCostsCalculator, CostsDetails)
+from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env, ETL_API_STATE
+from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status, YARN_STATE
+from openeogeotrellis.job_costs_calculator import (
+    JobCostsCalculator,
+    noJobCostsCalculator,
+    CostsDetails,
+    EtlApiJobCostsCalculator,
+)
 from openeogeotrellis.job_registry import ZkJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 
@@ -101,6 +105,12 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+        raise NotImplementedError
+
+    @classmethod
+    @abc.abstractmethod
+    def app_state_to_etl_state(cls, app_state: str) -> str:
+        # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
         raise NotImplementedError
 
 
@@ -228,6 +238,22 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         except Exception as e:
             raise YarnAppReportParseException() from e
 
+    # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+    _yarn_state_to_etl_api_state = {
+        YARN_STATE.ACCEPTED: ETL_API_STATE.ACCEPTED,
+        YARN_STATE.RUNNING: ETL_API_STATE.RUNNING,
+        YARN_STATE.FINISHED: ETL_API_STATE.FINISHED,
+        YARN_STATE.KILLED: ETL_API_STATE.KILLED,
+        YARN_STATE.FAILED: ETL_API_STATE.FAILED,
+    }
+
+    @classmethod
+    def app_state_to_etl_state(cls, app_state: str) -> str:
+        # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+        if app_state not in cls._yarn_state_to_etl_api_state:
+            _log.warning(f"Unhandled YARN app state mapping: {app_state}")
+        return cls._yarn_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
+
 
 class K8sException(Exception):
     pass
@@ -312,6 +338,25 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             )
 
         return _Usage()
+
+    # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+    _k8s_state_to_etl_api_state = {
+        K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
+        K8S_SPARK_APP_STATE.SUBMITTED: ETL_API_STATE.ACCEPTED,
+        K8S_SPARK_APP_STATE.RUNNING: ETL_API_STATE.RUNNING,
+        K8S_SPARK_APP_STATE.SUCCEEDING: ETL_API_STATE.RUNNING,
+        K8S_SPARK_APP_STATE.COMPLETED: ETL_API_STATE.FINISHED,
+        K8S_SPARK_APP_STATE.FAILED: ETL_API_STATE.FAILED,
+        K8S_SPARK_APP_STATE.SUBMISSION_FAILED: ETL_API_STATE.FAILED,
+        K8S_SPARK_APP_STATE.FAILING: ETL_API_STATE.FAILED,
+    }
+
+    @classmethod
+    def app_state_to_etl_state(cls, app_state: str) -> str:
+        # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+        if app_state not in cls._k8s_state_to_etl_api_state:
+            _log.warning(f"Unhandled K8s app state mapping: {app_state}")
+        return cls._k8s_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
 
 
 class JobTracker:
@@ -484,7 +529,8 @@ class JobTracker:
                 job_id=job_info["job_id"],
                 user_id=job_info["user_id"],
                 execution_id=job_info["application_id"],
-                app_state=job_metadata.app_state,  # TODO #610 eliminate cluster specific app_state
+                # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore. Just use `job_status`
+                app_state_etl_api_deprecated=self._app_state_getter.app_state_to_etl_state(job_metadata.app_state),
                 job_status=job_metadata.status,
                 area_square_meters=area,
                 job_title=job_info.get("title"),
@@ -587,11 +633,11 @@ class CliApp:
                             mutual_authentication=requests_gssapi.REQUIRED
                         ),
                     )
-                    job_costs_calculator = YarnJobCostsCalculator(etl_api)
+                    job_costs_calculator = EtlApiJobCostsCalculator(etl_api)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter(kube_client(),
                                                        Prometheus(get_backend_config().prometheus_api))
-                    job_costs_calculator = K8sJobCostsCalculator(etl_api)
+                    job_costs_calculator = EtlApiJobCostsCalculator(etl_api)
                 else:
                     raise ValueError(app_cluster)
                 job_tracker = JobTracker(
