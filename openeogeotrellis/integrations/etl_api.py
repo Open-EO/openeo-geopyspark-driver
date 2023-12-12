@@ -21,6 +21,8 @@ class ETL_API_STATE:
     (e.g. `POST /resources` endpoint https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource).
     Note that this roughly corresponds to YARN app state (for legacy reasons), also see `YARN_STATE`.
     """
+
+    # TODO #610 Simplify ETL-level state/status complexity to a single openEO-style job status
     ACCEPTED = "ACCEPTED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
@@ -36,6 +38,7 @@ class ETL_API_STATUS:
     Note that this roughly corresponds to YARN final status (for legacy reasons), also see `YARN_FINAL_STATUS`.
     """
 
+    # TODO #610 Simplify ETL-level state/status complexity to a single openEO-style job status
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     KILLED = "KILLED"
@@ -106,6 +109,7 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            # TODO #610 simplify this state/status stuff to single openEO-style job status?
             'state': state,
             'status': status,
             'metrics': metrics
@@ -198,7 +202,7 @@ class SimpleEtlApiConfig(EtlApiConfig):
         self._root_url = root_url
         self._client_credentials = client_credentials
 
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         return self._root_url
 
     def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
@@ -212,7 +216,7 @@ class DynamicEtlApiConfig(EtlApiConfig):
     def __init__(self, urls_and_credentials: Dict[str, ClientCredentials]):
         self._urls_and_credentials = urls_and_credentials
 
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         # TODO: possible to provide some generic logic here?
         raise NotImplementedError
 
@@ -222,7 +226,11 @@ class DynamicEtlApiConfig(EtlApiConfig):
 
 
 def get_etl_api(
-    *, root_url: Optional[str] = None, user: Optional[User] = None, requests_session: Optional[requests.Session] = None
+    *,
+    root_url: Optional[str] = None,
+    user: Optional[User] = None,
+    job_options: Optional[dict] = None,
+    requests_session: Optional[requests.Session] = None,
 ) -> Union[EtlApi, None]:
     """Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...)."""
     etl_config: Optional[EtlApiConfig] = get_backend_config().etl_api_config
@@ -231,7 +239,7 @@ def get_etl_api(
         return None
 
     if root_url is None:
-        root_url = etl_config.get_root_url(user=user)
+        root_url = etl_config.get_root_url(user=user, job_options=job_options)
     client_credentials = etl_config.get_client_credentials(root_url=root_url)
     return EtlApi(endpoint=root_url, credentials=client_credentials, requests_session=requests_session)
 

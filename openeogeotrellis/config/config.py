@@ -40,7 +40,7 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
     """
 
     @abc.abstractmethod
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         """Get root URL of the ETL API"""
         ...
 
