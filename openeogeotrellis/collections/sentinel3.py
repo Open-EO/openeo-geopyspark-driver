@@ -53,7 +53,7 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
                                                crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
 
 
-def pyramid(product_type, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, cell_size, jvm):
+def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, cell_size, jvm):
     from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
     import geopyspark as gps
 
@@ -62,11 +62,11 @@ def pyramid(product_type, projected_polygons_native_crs, from_date, to_date, ban
     )
 
     collection_id = "Sentinel3"
-    attribute_values = {"productType": product_type}
+    product_type = metadata_properties["productType"]
     correlation_id = ""
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
-        opensearch_client, collection_id, attribute_values, correlation_id, cell_size
+        opensearch_client, collection_id, metadata_properties, correlation_id, cell_size
     )
 
     zoom = 0
@@ -164,7 +164,7 @@ def read_product(product, product_type, band_names, tile_size):
 
     # Split orfeo output in tiles
     logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-    nodata = -32768 if product_type == SLSTR_PRODUCT_TYPE else 65535  # TODO: check if right
+    nodata = -32768 if product_type == SLSTR_PRODUCT_TYPE else -10000  # TODO: check if right
     cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
     tiles = []
     for c in range(col_max - col_min + 1):

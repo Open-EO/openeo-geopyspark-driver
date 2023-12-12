@@ -653,16 +653,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 datacubeParams = datacubeParams,
                 max_soft_errors_ratio=max_soft_errors_ratio
             )
-        elif layer_source_type == 'file-s3-olci':
-            pyramid = sentinel3.pyramid("OL_1_EFR___",
-                                        projected_polygons_native_crs, from_date, to_date, metadata.band_names,
-                                        datacubeParams, jvm.geotrellis.raster.CellSize(cell_width, cell_height), jvm)
-        elif layer_source_type == 'file-s3-synergy':
-            pyramid = sentinel3.pyramid("SY_2_SYN___",
-                                        projected_polygons_native_crs, from_date, to_date, metadata.band_names,
-                                        datacubeParams, jvm.geotrellis.raster.CellSize(cell_width, cell_height), jvm)
-        elif layer_source_type == 'file-s3-slstr':
-            pyramid = sentinel3.pyramid("SL_2_LST___",
+        elif layer_source_type == 'file-s3':
+            pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date, metadata.band_names,
                                         datacubeParams, jvm.geotrellis.raster.CellSize(cell_width, cell_height), jvm)
         elif layer_source_type == 'accumulo':
