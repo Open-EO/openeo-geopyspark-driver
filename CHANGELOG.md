@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## Unreleased
+
+- Support for reading GeoPackage vector data
+
 ## 0.21.3
 
 - job tracker: move app state mapping to CostDetails construction time

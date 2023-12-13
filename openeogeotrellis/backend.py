@@ -413,6 +413,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["vector"],
                     "parameters": {},
                 },
+                "GPKG": {
+                    "title": "GeoPackage",
+                    "description": "GeoPackage is an open, standards-based, platform-independent, portable, self-describing, compact format for transferring geospatial information.",
+                    "gis_data_types": ["vector"],
+                    "parameters": {},
+                },
                 "GTiff": {
                     "title": "GeoTiff",
                     "description": "Geotiff is one of the most widely supported formats. This backend allows reading from Geotiff to create raster data cubes.",
