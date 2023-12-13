@@ -783,7 +783,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         )
 
         temporal_extent = load_params.temporal_extent
-        from_date, to_date = normalize_temporal_extent(temporal_extent)
+        from_date, until_date = normalize_temporal_extent(temporal_extent)
+
+        def get_to_date() -> dt.datetime:
+            from_date_obj = dt.datetime.fromisoformat(from_date)
+            until_date_obj = dt.datetime.fromisoformat(until_date)
+
+            if from_date_obj == until_date_obj:
+                return dt.datetime.combine(until_date_obj, dt.time.max, until_date_obj.tzinfo)
+            else:
+                return until_date_obj - dt.timedelta(milliseconds=1)
+
+        to_date = get_to_date().isoformat()
 
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
             def intersects_temporally() -> bool:
