@@ -1,5 +1,6 @@
 import contextlib
 import datetime as dt
+import io
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
 import mock
+import numpy
 import numpy as np
 import pytest
 import rasterio
@@ -3472,6 +3474,37 @@ class TestLoadStac:
         collection.set_root(root_catalog)
 
         return collection
+
+    def test_load_stac_with_stac_item_json_01(self, api110, urllib_mock, tmp_path):
+        item_json = (
+            get_test_data_file("stac/item01.json").read_text()
+            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+            .replace(
+                "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
+            )
+        )
+        urllib_mock.get("https://stac.test/item01.json", data=item_json)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item01.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
 
 class TestEtlApiReporting:
