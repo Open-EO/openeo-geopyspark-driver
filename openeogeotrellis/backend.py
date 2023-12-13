@@ -1462,19 +1462,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             cpu_seconds = backend_config.default_usage_cpu_seconds
             mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-            if (
-                backend_config.etl_api_config
-                # TODO: eliminate this temporary feature flag eventually
-                and backend_config.etl_dynamic_api_flag
-                and flask.request.args.get(backend_config.etl_dynamic_api_flag)
-            ):
-                etl_api = get_etl_api(user=user)
-            else:
-                etl_api = EtlApi(
-                    endpoint=backend_config.etl_api,
-                    credentials=get_etl_api_credentials_from_env(),
-                    requests_session=requests_session,
-                )
+            etl_api = get_etl_api(
+                user=user,
+                allow_dynamic_etl_api=bool(
+                    # TODO #531 this is temporary feature flag, to removed when done
+                    backend_config.etl_dynamic_api_flag
+                    and flask.request.args.get(backend_config.etl_dynamic_api_flag)
+                ),
+                requests_session=requests_session,
+            )
 
             costs = etl_api.log_resource_usage(
                 batch_job_id=request_id,

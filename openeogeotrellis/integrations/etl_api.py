@@ -64,6 +64,10 @@ class EtlApi:
         self._session = requests_session or requests.Session()
         self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
 
+    @property
+    def root_url(self) -> str:
+        return self._endpoint
+
     def assert_access_token_valid(self, access_token: Optional[str] = None):
         # will work regardless of ability to log resources
         access_token = access_token or self._access_token_helper.get_access_token()
@@ -231,18 +235,28 @@ def get_etl_api(
     user: Optional[User] = None,
     job_options: Optional[dict] = None,
     requests_session: Optional[requests.Session] = None,
-) -> Union[EtlApi, None]:
+    # TODO #531 remove this temporary feature flag/toggle for dynamic ETL selection.
+    allow_dynamic_etl_api: bool = False,
+) -> EtlApi:
     """Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...)."""
-    etl_config: Optional[EtlApiConfig] = get_backend_config().etl_api_config
+    backend_config = get_backend_config()
+    etl_config: Optional[EtlApiConfig] = backend_config.etl_api_config
 
-    if etl_config is None:
-        return None
-
-    if root_url is None:
-        root_url = etl_config.get_root_url(user=user, job_options=job_options)
-    client_credentials = etl_config.get_client_credentials(root_url=root_url)
-    return EtlApi(endpoint=root_url, credentials=client_credentials, requests_session=requests_session)
-
+    dynamic_etl_mode = allow_dynamic_etl_api and (etl_config is not None)
+    if dynamic_etl_mode:
+        _log.debug("get_etl_api: dynamic EtlApiConfig based ETL API selection")
+        if root_url is None:
+            root_url = etl_config.get_root_url(user=user, job_options=job_options)
+        client_credentials = etl_config.get_client_credentials(root_url=root_url)
+        return EtlApi(endpoint=root_url, credentials=client_credentials, requests_session=requests_session)
+    else:
+        # TODO #531 eliminate this code path
+        _log.debug("get_etl_api: legacy static EtlApi")
+        return EtlApi(
+            endpoint=backend_config.etl_api,
+            credentials=get_etl_api_credentials_from_env(),
+            requests_session=requests_session,
+        )
 
 def assert_resource_logging_possible():
     # TODO: still necessary to keep this function around, or was this just a temp debugging thing?

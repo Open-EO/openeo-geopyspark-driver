@@ -12,7 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.21.4
+
 - Support for reading GeoPackage vector data
+- move legacy-vs-dynamic ETL selection logic to `get_etl_api()` ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
 
 ## 0.21.3
 
