@@ -546,10 +546,13 @@ class JobTracker:
 
             try:
                 job_costs = self._job_costs_calculator.calculate_costs(costs_details)
+                _log.debug(f"job_costs: calculated {job_costs}")
+                stats["job_costs: calculated"] += 1
+                stats[f"job_costs: nonzero={job_costs>0}"] += 1
                 # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
-                stats["failed cost calculation"] += 1
+                stats["job_costs: failed"] += 1
                 job_costs = None
 
             usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
