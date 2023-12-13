@@ -1,9 +1,12 @@
 import abc
 import datetime as dt
 import logging
-from typing import NamedTuple, Optional, List
+from typing import List, NamedTuple, Optional
 
-from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATUS
+from openeo_driver.util.caching import TtlCache
+from openeo_driver.util.http import requests_with_retry
+
+from openeogeotrellis.integrations.etl_api import ETL_API_STATUS, EtlApi, get_etl_api
 
 _log = logging.getLogger(__name__)
 
@@ -48,6 +51,7 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
     Base class for cost calculators based on resource reporting with ETL API.
     """
     def __init__(self, etl_api: EtlApi):
+        super().__init__()
         self._etl_api = etl_api
 
     def calculate_costs(self, details: CostsDetails) -> float:
@@ -88,3 +92,25 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
                 ) for process_id in details.unique_process_ids)
 
         return resource_costs_in_credits + added_value_costs_in_credits
+
+
+class DynamicEtlApiJobCostCalculator(JobCostsCalculator):
+    """
+    Like EtlApiJobCostsCalculator but with an ETL API endpoint that is determined based on user or job data
+    """
+
+    def __init__(self, cache_ttl: int = 5 * 60):
+        self._request_session = requests_with_retry(total=3, backoff_factor=2)
+        self._etl_cache: Optional[TtlCache] = TtlCache(default_ttl=cache_ttl) if cache_ttl > 0 else None
+
+    def calculate_costs(self, details: CostsDetails) -> float:
+        job_options = details.job_options or {}
+        etl_api = get_etl_api(
+            job_options=job_options,
+            allow_dynamic_etl_api=True,
+            requests_session=self._request_session,
+            etl_api_cache=self._etl_cache,
+        )
+        _log.debug(f"DynamicEtlApiJobCostCalculator.calculate_costs with {etl_api=}")
+        # Reuse logic from EtlApiJobCostsCalculator
+        return EtlApiJobCostsCalculator(etl_api=etl_api).calculate_costs(details=details)

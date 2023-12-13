@@ -1,16 +1,17 @@
 from typing import Optional
 
 import pytest
-
 from openeo.rest.auth.testing import OidcMock
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
+from openeo_driver.util.caching import TtlCache
+
 from openeogeotrellis.integrations.etl_api import (
     ETL_API_STATE,
-    get_etl_api_credentials_from_env,
-    get_etl_api,
-    EtlApi,
     DynamicEtlApiConfig,
+    EtlApi,
+    get_etl_api,
+    get_etl_api_credentials_from_env,
 )
 from openeogeotrellis.testing import gps_config_overrides
 
@@ -146,3 +147,63 @@ class TestGetEtlApi:
             assert isinstance(etl_api, EtlApi)
             assert etl_api.root_url == "https://etl.planb.test"
             self.assert_etl_access_token(etl_api=etl_api, requests_mock=requests_mock, oidc_mock=oidc_mock)
+
+    def test_legacy_mode_with_caching(self, etl_credentials_in_env, time_machine, oidc_mock):
+        assert oidc_mock.mocks["oidc_discovery"].call_count == 0
+
+        time_machine.move_to("2023-04-05T12:00:00Z")
+        etl_api_cache = TtlCache(default_ttl=60)
+        etl_api1 = get_etl_api(etl_api_cache=etl_api_cache)
+        assert isinstance(etl_api1, EtlApi)
+        assert oidc_mock.mocks["oidc_discovery"].call_count == 1
+
+        time_machine.move_to("2023-04-05T12:00:10Z")
+        etl_api2 = get_etl_api(etl_api_cache=etl_api_cache)
+        assert isinstance(etl_api2, EtlApi)
+        assert etl_api2 is etl_api1
+        assert oidc_mock.mocks["oidc_discovery"].call_count == 1
+
+        time_machine.move_to("2023-04-05T12:30:00Z")
+        etl_api3 = get_etl_api(etl_api_cache=etl_api_cache)
+        assert isinstance(etl_api3, EtlApi)
+        assert etl_api3 is not etl_api1
+        assert etl_api3 is not etl_api2
+        assert oidc_mock.mocks["oidc_discovery"].call_count == 2
+        etl_api4 = get_etl_api(etl_api_cache=etl_api_cache)
+        assert isinstance(etl_api4, EtlApi)
+        assert etl_api4 is etl_api3
+        assert oidc_mock.mocks["oidc_discovery"].call_count == 2
+
+    def test_dynamic_mode_with_caching(self, custom_etl_api_config, time_machine, oidc_mock):
+        with gps_config_overrides(etl_api_config=custom_etl_api_config):
+            etl_api_cache = TtlCache(default_ttl=60)
+            assert oidc_mock.mocks["oidc_discovery"].call_count == 0
+
+            time_machine.move_to("2023-04-05T12:00:00Z")
+            etl_api1 = get_etl_api(user=User("alice"), allow_dynamic_etl_api=True, etl_api_cache=etl_api_cache)
+            assert isinstance(etl_api1, EtlApi)
+            assert oidc_mock.mocks["oidc_discovery"].call_count == 1
+
+            etl_api2 = get_etl_api(user=User("alphonse"), allow_dynamic_etl_api=True, etl_api_cache=etl_api_cache)
+            assert isinstance(etl_api2, EtlApi)
+            assert etl_api2 is etl_api1
+            assert oidc_mock.mocks["oidc_discovery"].call_count == 1
+
+            time_machine.move_to("2023-04-05T12:00:10Z")
+            etl_api3 = get_etl_api(user=User("alice"), allow_dynamic_etl_api=True, etl_api_cache=etl_api_cache)
+            assert isinstance(etl_api3, EtlApi)
+            assert etl_api3 is etl_api1
+            assert oidc_mock.mocks["oidc_discovery"].call_count == 1
+
+            time_machine.move_to("2023-04-05T12:30:00Z")
+            etl_api4 = get_etl_api(user=User("alice"), allow_dynamic_etl_api=True, etl_api_cache=etl_api_cache)
+            assert isinstance(etl_api4, EtlApi)
+            assert etl_api4 is not etl_api1
+            assert etl_api4 is not etl_api2
+            assert etl_api4 is not etl_api3
+            assert oidc_mock.mocks["oidc_discovery"].call_count == 2
+
+            etl_api5 = get_etl_api(user=User("alfred"), allow_dynamic_etl_api=True, etl_api_cache=etl_api_cache)
+            assert isinstance(etl_api5, EtlApi)
+            assert etl_api5 is etl_api4
+            assert oidc_mock.mocks["oidc_discovery"].call_count == 2

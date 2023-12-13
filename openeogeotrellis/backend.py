@@ -1472,6 +1472,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     and flask.request.args.get(backend_config.etl_dynamic_api_flag)
                 ),
                 requests_session=requests_session,
+                # TODO #531 provide a TtlCache here
+                etl_api_cache=None,
             )
 
             costs = etl_api.log_resource_usage(

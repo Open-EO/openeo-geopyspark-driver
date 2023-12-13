@@ -13,6 +13,10 @@ without compromising stable operations.
 ## Unreleased
 
 
+## 0.21.5
+
+- Initial implementation of `DynamicEtlApiJobCostCalculator` and added caching feature to `get_etl_api()`  ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
 ## 0.21.4
 
 - Support for reading GeoPackage vector data

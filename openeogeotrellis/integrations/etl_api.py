@@ -1,11 +1,12 @@
 import logging
 import os
-from typing import Dict, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import requests
 from openeo_driver.config import get_backend_config
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials, ClientCredentialsAccessTokenHelper
+from openeo_driver.util.caching import TtlCache
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.config import EtlApiConfig
@@ -51,6 +52,8 @@ class EtlApi:
     and deriving a cost estimate.
     """
 
+    __slots__ = ("_endpoint", "_source_id", "_session", "_access_token_helper")
+
     def __init__(
         self,
         endpoint: str,
@@ -59,6 +62,7 @@ class EtlApi:
         source_id: Optional[str] = None,
         requests_session: Optional[requests.Session] = None,
     ):
+        _log.debug(f"EtlApi.__init__() with {endpoint=} {source_id=}")
         self._endpoint = endpoint
         self._source_id = source_id or get_backend_config().etl_source_id
         self._session = requests_session or requests.Session()
@@ -237,26 +241,55 @@ def get_etl_api(
     requests_session: Optional[requests.Session] = None,
     # TODO #531 remove this temporary feature flag/toggle for dynamic ETL selection.
     allow_dynamic_etl_api: bool = False,
+    etl_api_cache: Optional[TtlCache] = None,
 ) -> EtlApi:
-    """Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...)."""
+    """
+    Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...).
+
+    :param etl_api_cache: (optional) provide a `TtlCache` to fetch existing `EtlApi` instances from
+        to avoid repeatedly setting up `EtlApi` instances each time
+        (which can be costly due to client credentials related OIDC discovery requests).
+        Note that the caller is cache owner and responsible for providing the same cache instance on each call
+        and setting the default TTL (as desired).
+    """
     backend_config = get_backend_config()
     etl_config: Optional[EtlApiConfig] = backend_config.etl_api_config
+
+    def get_cached_or_build(cache_key: tuple, build: Callable[[], EtlApi]) -> EtlApi:
+        """Helper to build an EtlApi object, with optional caching."""
+        if etl_api_cache:
+            return etl_api_cache.get_or_call(cache_key, build)
+        else:
+            return build()
 
     dynamic_etl_mode = allow_dynamic_etl_api and (etl_config is not None)
     if dynamic_etl_mode:
         _log.debug("get_etl_api: dynamic EtlApiConfig based ETL API selection")
+        # First get root URL as main ETL API identifier
         if root_url is None:
             root_url = etl_config.get_root_url(user=user, job_options=job_options)
-        client_credentials = etl_config.get_client_credentials(root_url=root_url)
-        return EtlApi(endpoint=root_url, credentials=client_credentials, requests_session=requests_session)
+
+        # Build EtlApi (or get from cache if possible)
+        return get_cached_or_build(
+            cache_key=("get_etl_api", root_url),
+            build=lambda: EtlApi(
+                endpoint=root_url,
+                credentials=etl_config.get_client_credentials(root_url=root_url),
+                requests_session=requests_session,
+            ),
+        )
     else:
         # TODO #531 eliminate this code path
         _log.debug("get_etl_api: legacy static EtlApi")
-        return EtlApi(
-            endpoint=backend_config.etl_api,
-            credentials=get_etl_api_credentials_from_env(),
-            requests_session=requests_session,
+        return get_cached_or_build(
+            cache_key=("get_etl_api", "__static_etl_api__"),
+            build=lambda: EtlApi(
+                endpoint=backend_config.etl_api,
+                credentials=get_etl_api_credentials_from_env(),
+                requests_session=requests_session,
+            ),
         )
+
 
 def assert_resource_logging_possible():
     # TODO: still necessary to keep this function around, or was this just a temp debugging thing?
