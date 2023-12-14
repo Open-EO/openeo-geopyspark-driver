@@ -902,9 +902,21 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if not intersects_spatiotemporally(item):
                     raise no_data_available_exception
 
-                eo_bands_location = (item.properties if "eo:bands" in item.properties
-                                     else item.get_collection().summaries.lists)
-                band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
+                # TODO: band order is not "stable" here, also see https://github.com/Open-EO/openeo-processes/issues/488
+                band_names = [
+                    eo_band["name"]
+                    for asset in item.get_assets().values()
+                    for eo_band in asset.extra_fields.get("eo:bands", [])
+                    if "name" in eo_band
+                ]
+                logger.debug(f"load_stac with item {url=}: extracted {band_names=} from assets")
+                if not band_names:
+                    # TODO: are there valid or at least practical use cases that require this legacy approach?
+                    # TODO: item.get_collection might be None (when STAC item does not link back to its parend STAC collection)
+                    eo_bands_location = (
+                        item.properties if "eo:bands" in item.properties else item.get_collection().summaries.lists
+                    )
+                    band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
                 intersecting_items = [item]
             elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):

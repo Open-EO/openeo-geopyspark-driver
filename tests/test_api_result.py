@@ -3475,21 +3475,29 @@ class TestLoadStac:
 
         return collection
 
-    def test_load_stac_with_stac_item_json_01(self, api110, urllib_mock, tmp_path):
+    @pytest.mark.parametrize(
+        "item_path",
+        [
+            "stac/item01.json",
+            "stac/item02.json",
+        ],
+    )
+    def test_load_stac_with_stac_item_json(self, item_path, api110, urllib_mock, tmp_path):
+        """load_stac with a simple STAC item (as JSON file)"""
         item_json = (
-            get_test_data_file("stac/item01.json").read_text()
+            get_test_data_file(item_path).read_text()
             # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
             .replace(
                 # TODO: better tiff file to inject here?
                 "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
             )
         )
-        urllib_mock.get("https://stac.test/item01.json", data=item_json)
+        urllib_mock.get("https://stac.test/item.json", data=item_json)
 
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
-                "arguments": {"url": "https://stac.test/item01.json"},
+                "arguments": {"url": "https://stac.test/item.json"},
             },
             "saveresult1": {
                 "process_id": "save_result",
