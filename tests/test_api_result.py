@@ -3473,6 +3473,117 @@ class TestLoadStac:
 
         return collection
 
+    @pytest.mark.skip("Test is not working yet, WIP")
+    def test_load_stac_handles_tz_utc_zulu_timestamps(self, api110, tmp_path):
+        """It should support UTC timestamps with both timezone formats: "Z" or "+00:00"
+
+        This is a regression test for GH issue #402
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/402
+        """
+        test_collection_file = tmp_path / "test_static_stac_collection.json"
+        collection = self._create_static_stac_collection(test_collection_file)
+        # collection.validate_all()
+        assert test_collection_file.exists()
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": str(test_collection_file),
+                    "spatial_extent": {
+                        "west": 4309100,
+                        "south": 3014100,
+                        "east": 4309900,
+                        "north": 3014900,
+                        "crs": "EPSG:3035",
+                    },
+                    "temporal_extent": ["2021-01-01T00:00:00Z", "2021-02-01T00:00:00Z"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True,
+            },
+        }
+        api110.result(process_graph).assert_status_code(200)
+
+        # mock_stac_client = MagicMock()
+        # mock_item_search = mock_stac_client.search.return_value
+        # mock_item_search.items.return_value = [
+        #     Item(
+        #         id="item",
+        #         geometry={"type": "Polygon", "coordinates": [
+        #             [[9.831776345947729, 50.23804708435827], [9.831776345947729, 50.24705765771707],
+        #              [9.845824108087408, 50.24705765771707], [9.845824108087408, 50.23804708435827],
+        #              [9.831776345947729, 50.23804708435827]]]},
+        #         bbox=[9.831776345947729, 50.23804708435827, 9.845824108087408, 50.24705765771707],
+        #         datetime=dt.datetime(2021, 1, 1, 0, 0, 0, 0, tzinfo=dt.timezone.utc),
+        #         properties={"datetime": "2021-01-01T00:00:00Z",
+        #                     "proj:epsg": 3035,
+        #                     "proj:bbox": [4309000, 3014000, 4310000, 3015000],
+        #                     "proj:shape": [100, 100]},
+        #         assets={"result": Asset(href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
+        #                                 extra_fields={"eo:bands": [{"name": "class"}]})})]
+
+        # with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
+        #         "pystac_client.Client.open", return_value=mock_stac_client):
+        #     api110.result(process_graph).assert_status_code(200)
+
+        # requested_bbox = mock_stac_client.search.call_args.kwargs["bbox"]
+        # assert requested_bbox == pytest.approx((9.83318136095339, 50.23894821967924,
+        #                                         9.844419570631366, 50.246156678379016))
+
+    @staticmethod
+    def _create_static_stac_collection(path: Path) -> Collection:
+        item = Item(
+            id="item",
+            geometry={
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [9.831776345947729, 50.23804708435827],
+                        [9.831776345947729, 50.24705765771707],
+                        [9.845824108087408, 50.24705765771707],
+                        [9.845824108087408, 50.23804708435827],
+                        [9.831776345947729, 50.23804708435827],
+                    ]
+                ],
+            },
+            bbox=[9.831776345947729, 50.23804708435827, 9.845824108087408, 50.24705765771707],
+            datetime=dt.datetime(2021, 1, 1, 0, 0, 0, 0, tzinfo=dt.timezone.utc),
+            properties={
+                "datetime": "2021-01-01T00:00:00Z",
+                "proj:epsg": 3035,
+                "proj:bbox": [4309000, 3014000, 4310000, 3015000],
+                "proj:shape": [100, 100],
+            },
+            assets={
+                "result": Asset(
+                    href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
+                    extra_fields={"eo:bands": [{"name": "class"}]},
+                )
+            },
+        )
+
+        # start_dt = dt.datetime.from_isoformat("2021-01-01T00:00:00Z")
+        # end_dt = dt.datetime.from_isoformat("2022-01-01T00:00:00Z")
+        start_dt = dt.datetime(2021, 1, 1, 0, 0, tzinfo=dt.timezone.utc)
+        end_dt = dt.datetime(2022, 1, 1, 0, 0, tzinfo=dt.timezone.utc)
+
+        collection = Collection(
+            id="BVL_v1",
+            description="BVL_v1",
+            href=str(path),
+            extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[start_dt, end_dt]])),
+        )
+        collection.add_item(item)
+
+        # collection.save_object(dest_href=str(path))
+        from pystac import CatalogType
+
+        collection.save(catalog_type=CatalogType.SELF_CONTAINED)
+        return collection
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
