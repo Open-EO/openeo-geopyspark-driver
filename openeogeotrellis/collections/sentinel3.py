@@ -14,7 +14,7 @@ from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 import xarray as xr
 
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis.utils import get_jvm, ensure_executor_logging
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
@@ -492,11 +492,6 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
     #ncols = self.target_shape[1]
     #grid_values.shape = (grid_values.size // ncols, ncols)  # convert flattend array to 2D
     return grid_values
-
-
-def ensure_executor_logging(f) -> Callable:
-    decorator = on_first_time(lambda: logging.basicConfig(level="INFO"))
-    return decorator(f)
 
 
 if __name__ == '__main__':
