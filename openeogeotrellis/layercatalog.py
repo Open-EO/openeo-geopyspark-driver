@@ -1145,6 +1145,7 @@ def is_layer_too_large(
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+    # TODO #618 estimation assumes there is an observation for every day, which is typically quite an overestimation.
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
     logger.debug(
         f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
