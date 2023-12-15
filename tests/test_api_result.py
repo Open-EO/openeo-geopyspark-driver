@@ -3480,6 +3480,7 @@ class TestLoadStac:
             get_test_data_file("stac/item01.json").read_text()
             # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
             .replace(
+                # TODO: better tiff file to inject here?
                 "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
             )
         )
@@ -3501,6 +3502,95 @@ class TestLoadStac:
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
         ds = xarray.load_dataset(res_path)
+        # TODO: why are these values not exactly 100?
+        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+
+    def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_item_properties(
+        self, api110, urllib_mock, tmp_path
+    ):
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+
+        STAC Item following outdated STAC version with "eo:bands" being integer indices into item properties
+        """
+        tiff_path = get_test_data_file("binary/load_stac/BVL_v1/BVL_v1_2021.tif").absolute()
+        item_json = (
+            get_test_data_file("stac/issue619-eobands-int/item01.json")
+            .read_text()
+            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+            # TODO: better tiff files to inject here?
+            .replace("asset_red.tiff", f"file://{tiff_path}")
+            .replace("asset_green.tiff", f"file://{tiff_path}")
+            .replace("asset_blue.tiff", f"file://{tiff_path}")
+        )
+        urllib_mock.get("https://stac.test/item01.json", data=item_json)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item01.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        # TODO: why are these values not exactly 100?
+        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+
+    def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_parent_collection_summaries(
+        self, api110, urllib_mock, tmp_path
+    ):
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+
+        STAC Item following outdated STAC version with "eo:bands" being integer indices into parent collection "eo:bands" summaries
+        """
+        tiff_path = get_test_data_file("binary/load_stac/BVL_v1/BVL_v1_2021.tif").absolute()
+        item_json = (
+            get_test_data_file("stac/issue619-eobands-int/item02.json")
+            .read_text()
+            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+            # TODO: better tiff files to inject here?
+            .replace("asset_red.tiff", f"file://{tiff_path}")
+            .replace("asset_green.tiff", f"file://{tiff_path}")
+            .replace("asset_blue.tiff", f"file://{tiff_path}")
+        )
+        urllib_mock.get("https://stac.test/item02.json", data=item_json)
+        urllib_mock.get(
+            "https://stac.test/collection02.json",
+            data=get_test_data_file("stac/issue619-eobands-int/collection02.json").read_text(),
+        )
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item02.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        # TODO: why are these values not exactly 100?
         assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
         assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
         assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)

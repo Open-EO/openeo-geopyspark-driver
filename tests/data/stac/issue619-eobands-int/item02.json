@@ -1,10 +1,11 @@
 {
   "stac_version": "1.0.0",
   "type": "Feature",
+  "id": "issue619",
+  "collection": "i619",
   "stac_extensions": [
     "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
   ],
-  "id": "item",
   "bbox": [
     9.831776345947729,
     50.23804708435827,
@@ -50,23 +51,41 @@
     "proj:shape": [
       100,
       100
-    ],
-    "eo:bands": [
-      {
-        "name": "A1"
-      }
     ]
   },
-  "links": [],
   "assets": {
-    "asset1": {
-      "href": "asset01.tiff",
+    "red": {
+      "href": "asset_red.tiff",
       "type": "image/tiff; application=geotiff",
       "eo:bands": [
-        {
-          "name": "A1"
-        }
+        2
+      ]
+    },
+    "blue": {
+      "href": "asset_blue.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        0
+      ]
+    },
+    "green": {
+      "href": "asset_green.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        1
       ]
     }
-  }
+  },
+  "links": [
+    {
+      "href": "item02.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "collection02.json",
+      "rel": "collection",
+      "type": "application/json"
+    }
+  ]
 }

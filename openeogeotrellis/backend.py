@@ -825,7 +825,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if isinstance(eo_band, dict):
                     return eo_band["name"]
 
-                # can also be an index into a list of bands elsewhere
+                # can also be an index into a list of bands elsewhere.
+                # TODO: still necessary to support this? See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
                 assert isinstance(eo_band, int)
                 eo_band_index = eo_band
 
