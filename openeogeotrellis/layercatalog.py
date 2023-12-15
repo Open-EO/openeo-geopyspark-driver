@@ -1146,6 +1146,9 @@ def is_layer_too_large(
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
+    logger.debug(
+        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+    )
     if estimated_pixels > threshold_pixels:
         if geometries and not isinstance(geometries, dict):
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
@@ -1165,6 +1168,9 @@ def is_layer_too_large(
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
+            logger.debug(
+                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+            )
             if estimated_pixels <= threshold_pixels:
                 return False, estimated_pixels, threshold_pixels
         return True, estimated_pixels, threshold_pixels
