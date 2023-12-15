@@ -62,9 +62,9 @@ class EtlApi:
         source_id: Optional[str] = None,
         requests_session: Optional[requests.Session] = None,
     ):
-        _log.debug(f"EtlApi.__init__() with {endpoint=} {source_id=}")
         self._endpoint = endpoint
         self._source_id = source_id or get_backend_config().etl_source_id
+        _log.debug(f"EtlApi.__init__() with {self._endpoint=} {self._source_id=}")
         self._session = requests_session or requests.Session()
         self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
 
