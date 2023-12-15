@@ -255,7 +255,7 @@ spec:
     lifecycle:
       preStop:
         exec:
-          command: ['sh', '-c', '/opt/decom.sh']
+          command: ['/bin/bash', '-c', '/opt/decom.sh']
     podSecurityContext:
 {%- block executor_podSecurityContext %}
       fsGroup: 18585
