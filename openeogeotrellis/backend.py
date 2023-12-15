@@ -1367,14 +1367,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
-                else:
+                elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
                         summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
                     else:
-                        summary = f"Exception during Spark execution: {root_cause_message}"
+                        summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
+                else:
+                    summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
-                summary = root_cause_class_name + ": " + str(root_cause_message)
+                summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
@@ -1383,7 +1385,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return ErrorSummary(error, is_client_error, summary)
 
     @staticmethod
-    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+    def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:
         """
         Select all lines a bit under 'run_udf_code'.
         This is what interests the user
