@@ -1547,7 +1547,8 @@ class GpsProcessing(ConcreteProcessing):
                     continue
 
                 if spatial_extent and temporal_extent:
-                    bands = constraints.get("bands", [])
+                    # TODO #618 get correct number of bands if none specified by user
+                    nr_bands = len(constraints.get("bands", ["_at_least_assume_one_band_"]))
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
@@ -1555,7 +1556,7 @@ class GpsProcessing(ConcreteProcessing):
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
-                        nr_bands=len(bands),
+                        nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,
                         native_crs=native_crs,
