@@ -967,7 +967,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
                         if not (numpy_tiles==nodata).all():
                             if debug_mode:
-                                logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                                logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
                             tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
                             tiles.append((key, tile))
                     ds = None
