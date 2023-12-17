@@ -318,12 +318,12 @@ class S1BackscatterOrfeo:
 
         #with tempfile.TemporaryDirectory() as temp_dir:
         out_path = os.path.join(".", input_tiff.name)
-        write_to_numpy = True#extent_height_px > 2500 or extent_width_px > 2500
+        write_to_numpy = False#extent_height_px > 2500 or extent_width_px > 2500
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
             arr = None
             if write_to_numpy:
-                multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
+                arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
