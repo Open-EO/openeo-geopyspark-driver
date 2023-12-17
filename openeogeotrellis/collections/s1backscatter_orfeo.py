@@ -514,7 +514,7 @@ class S1BackscatterOrfeo:
                             if isinstance(data,str):
                                 from osgeo import gdal
                                 ds = gdal.Open(data, gdal.GA_ReadOnly)
-                                tile_data[b] = ds.readAsArray()
+                                tile_data[b] = ds.ReadAsArray()
                             else:
                                 tile_data[b] = data
 
@@ -945,8 +945,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         trackers=trackers,
                         max_soft_errors_ratio = max_soft_errors_ratio
                     )
-                    #orfeo_bands = y,x
-                    orfeo_bands[b] = data
+                    orfeo_bands.append(data)
 
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
