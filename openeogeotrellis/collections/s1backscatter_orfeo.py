@@ -512,9 +512,9 @@ class S1BackscatterOrfeo:
                                 max_soft_errors_ratio=max_soft_errors_ratio,
                             )
                             if isinstance(data,str):
-                                from osgeo import gdal
-                                ds = gdal.Open(data, gdal.GA_ReadOnly)
-                                tile_data[b] = ds.ReadAsArray()
+                                import rasterio
+                                ds = rasterio.open(data)
+                                tile_data[b] = ds.read(1)
                             else:
                                 tile_data[b] = data
 
@@ -954,18 +954,14 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                     orfeo_bands = 10 * numpy.log10(orfeo_bands)
 
                 # Split orfeo output in tiles
-                logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
+
                 cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
                 tiles = []
                 if isinstance(orfeo_bands[0],str):
-                    from osgeo import gdal
+                    import rasterio
+                    from rasterio.windows import Window
 
-                    ds = [gdal.Open(filename, gdal.GA_ReadOnly) for filename in orfeo_bands]
-                    col_min = min(f["key"]["col"] for f in features)
-                    col_max = max(f["key"]["col"] for f in features)
-                    cols = col_max - col_min + 1
-                    row_min = min(f["key"]["row"] for f in features)
-
+                    ds = [rasterio.open(filename) for filename in orfeo_bands]
                     for f in features:
                         col = f["key"]["col"]
                         row = f["key"]["row"]
@@ -973,10 +969,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         r = row - row_min
 
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                        numpy_tiles = [band.ReadAsArray(xoff=c * tile_size, yoff=r * tile_size,
-                                                   xsize=tile_size, ysize=tile_size,
-                                                   buf_xsize=tile_size, buf_ysize=tile_size,
-                                                   buf_type=gdal.GDT_Float32) for band in ds]
+                        numpy_tiles = [band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
+                                        for band in ds]
 
                         if not (numpy_tiles==nodata).all():
                             if debug_mode:
@@ -984,6 +978,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                             tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
                             tiles.append((key, tile))
                 else:
+                    logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
                     for f in features:
                         col = f["key"]["col"]
                         row = f["key"]["row"]
