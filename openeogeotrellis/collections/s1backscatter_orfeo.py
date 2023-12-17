@@ -511,7 +511,12 @@ class S1BackscatterOrfeo:
                                 trackers=trackers,
                                 max_soft_errors_ratio=max_soft_errors_ratio,
                             )
-                            tile_data[b] = data
+                            if isinstance(data,str):
+                                from osgeo import gdal
+                                ds = gdal.Open(data, gdal.GA_ReadOnly)
+                                tile_data[b] = ds.readAsArray()
+                            else:
+                                tile_data[b] = data
 
                         if sar_backscatter_arguments.options.get("to_db", False):
                             # TODO: keep this "to_db" shortcut feature or drop it
@@ -922,7 +927,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             msg = f"{log_prefix} Process {creo_path} "
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
-                orfeo_bands = numpy.zeros((len(bands),layout_height_px,layout_width_px ), dtype=result_dtype)
+                orfeo_bands = []
 
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
