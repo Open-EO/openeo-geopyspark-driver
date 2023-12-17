@@ -969,9 +969,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         r = row - row_min
 
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                        numpy_tiles = [band.ReadRaster(xoff=c * tile_size, yoff=r * tile_size,
+                        numpy_tiles = [band.ReadAsArray(xoff=c * tile_size, yoff=r * tile_size,
                                                    xsize=tile_size, ysize=tile_size,
-                                                   buf_xsize=1, buf_ysize=1,
+                                                   buf_xsize=tile_size, buf_ysize=tile_size,
                                                    buf_type=gdal.GDT_Float32) for band in ds]
 
                         if not (numpy_tiles==nodata).all():
