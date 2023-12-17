@@ -316,8 +316,8 @@ class S1BackscatterOrfeo:
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
 
-        #with tempfile.TemporaryDirectory() as temp_dir:
-        out_path = os.path.join(".", input_tiff.name)
+        tempdir = tempfile.mkdtemp()
+        out_path = os.path.join(tempdir, input_tiff.name)
         write_to_numpy = False#extent_height_px > 2500 or extent_width_px > 2500
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
@@ -342,13 +342,6 @@ class S1BackscatterOrfeo:
                         logger.info(f"{log_prefix} Write orfeo pipeline output to temporary {out_path}")
                         ortho_rect.SetParameterString("io.out", out_path)
                         ortho_rect.ExecuteAndWriteOutput()
-
-                        import rasterio
-                        with rasterio.open(out_path) as ds:
-                            logger.info(f"{log_prefix} Reading {out_path}: metadata: {ds.meta}, bounds {ds.bounds}")
-                            assert (ds.count, ds.width, ds.height) == (1, extent_width_px, extent_height_px)
-                            data = ds.read(1)
-                            nodata = ds.nodata
                     else:
                         ortho_rect.Execute()
                         # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
@@ -513,7 +506,7 @@ class S1BackscatterOrfeo:
                             )
                             if isinstance(data,str):
                                 import rasterio
-                                ds = rasterio.open(data)
+                                ds = rasterio.open(data,driver="GTiff")
                                 tile_data[b] = ds.read(1)
                             else:
                                 tile_data[b] = data
@@ -525,7 +518,7 @@ class S1BackscatterOrfeo:
                             tile_data = 10 * numpy.log10(tile_data)
 
                         key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
-                        cell_type = geopyspark.CellType(tile_data.dtype.name)
+                        cell_type = geopyspark.CellType(tile_data[0].dtype.name)
                         logger.debug(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                         tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                         resultlist.append((key, tile))
@@ -955,13 +948,13 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
                 # Split orfeo output in tiles
 
-                cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
+
                 tiles = []
                 if isinstance(orfeo_bands[0],str):
                     import rasterio
                     from rasterio.windows import Window
 
-                    ds = [rasterio.open(filename) for filename in orfeo_bands]
+                    ds = [rasterio.open(filename,driver="GTiff") for filename in orfeo_bands]
                     for f in features:
                         col = f["key"]["col"]
                         row = f["key"]["row"]
@@ -971,13 +964,18 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                         numpy_tiles = [band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
                                         for band in ds]
-
+                        cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
                         if not (numpy_tiles==nodata).all():
                             if debug_mode:
                                 logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                             tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
                             tiles.append((key, tile))
+                    ds = None
+                    for file in orfeo_bands:
+                        os.remove(file)
+
                 else:
+                    cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
                     logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
                     for f in features:
                         col = f["key"]["col"]
