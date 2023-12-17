@@ -962,8 +962,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         r = row - row_min
 
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                        numpy_tiles = [band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
-                                        for band in ds]
+                        numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
+                                        for band in ds])
                         cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
                         if not (numpy_tiles==nodata).all():
                             if debug_mode:
