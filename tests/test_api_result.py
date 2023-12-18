@@ -3604,6 +3604,50 @@ class TestLoadStac:
         assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
+    def test_load_stac_from_stac_item_respects_collection_bands_order(self, api110, urllib_mock, tmp_path):
+        """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
+        collection's "summaries"/"eo:bands"
+        """
+        item_json = (
+            get_test_data_file("stac/item03.json").read_text()
+            .replace(
+                "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+            )
+            .replace(
+                "asset02.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset02.tif').absolute()}"
+            )
+        )
+        urllib_mock.get("https://stac.test/item.json", data=item_json)
+        urllib_mock.get("https://stac.test/collection01.json",
+                        data=get_test_data_file("stac/collection01.json").read_text())
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": 1, "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(5.05)
+        assert ds.coords["y"].values.min() == pytest.approx(50.05)
+        assert list(ds.data_vars.keys())[1:] == ["band5", "band1", "band4", "band2", "band3"]
+        assert (ds["band1"] == 1).all()
+        assert (ds["band2"] == 2).all()
+        assert (ds["band3"] == 3).all()
+        assert (ds["band4"] == 4).all()
+        assert (ds["band5"] == 5).all()
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
