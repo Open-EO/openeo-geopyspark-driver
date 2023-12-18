@@ -48,7 +48,14 @@ def main():
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
-    app = build_app(backend_implementation=GeoPySparkBackendImplementation())
+    backend_implementation = GeoPySparkBackendImplementation()
+    app = build_app(backend_implementation=backend_implementation)
+
+    #https://github.com/Open-EO/openeo-python-driver/issues/242
+    #A more generic deployment specific override system does not yet exist, so do it here.
+    processes  = backend_implementation.processing.get_process_registry("1.2.0")
+    backscatter_spec = processes.get_spec("sar_backscatter")
+    backscatter_spec["experimental"] = False
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:
