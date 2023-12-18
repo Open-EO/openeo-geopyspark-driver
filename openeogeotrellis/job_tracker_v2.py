@@ -42,7 +42,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env, ETL_API_STATE
+from openeogeotrellis.integrations.etl_api import ETL_API_STATE, get_etl_api
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status, YARN_STATE
 from openeogeotrellis.job_costs_calculator import (
     JobCostsCalculator,
@@ -546,10 +546,13 @@ class JobTracker:
 
             try:
                 job_costs = self._job_costs_calculator.calculate_costs(costs_details)
+                _log.debug(f"job_costs: calculated {job_costs}")
+                stats["job_costs: calculated"] += 1
+                stats[f"job_costs: nonzero={isinstance(job_costs, float) and job_costs>0}"] += 1
                 # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
-                stats["failed cost calculation"] += 1
+                stats["job_costs: failed"] += 1
                 job_costs = None
 
             usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
@@ -612,12 +615,6 @@ class CliApp:
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
-                etl_api = EtlApi(
-                    get_backend_config().etl_api,
-                    credentials=get_etl_api_credentials_from_env(),
-                    requests_session=requests_session,
-                )
-
                 # Elastic Job Registry (EJR)
                 elastic_job_registry = get_elastic_job_registry(requests_session)
 
@@ -633,13 +630,15 @@ class CliApp:
                             mutual_authentication=requests_gssapi.REQUIRED
                         ),
                     )
-                    job_costs_calculator = EtlApiJobCostsCalculator(etl_api)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter(kube_client(),
                                                        Prometheus(get_backend_config().prometheus_api))
-                    job_costs_calculator = EtlApiJobCostsCalculator(etl_api)
                 else:
                     raise ValueError(app_cluster)
+
+                etl_api = get_etl_api(requests_session=requests_session)
+                job_costs_calculator = EtlApiJobCostsCalculator(etl_api=etl_api)
+
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
                     zk_job_registry=zk_job_registry,

@@ -337,8 +337,6 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
                 ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
                 try:
-
-
                     if(not write_to_numpy):
 
                         logger.info(f"{log_prefix} Write orfeo pipeline output to temporary {out_path}")
@@ -348,9 +346,8 @@ class S1BackscatterOrfeo:
                         ortho_rect.Execute()
                         # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
                         localdata = ortho_rect.GetImageAsNumpyArray('io.out')
-                        np.copyto(np.frombuffer(arr,dtype=np.float32).reshape((extent_height_px, extent_width_px)), localdata,casting="same_kind")
-
-
+                        np.copyto(dst=np.frombuffer(arr, dtype=np.float32).reshape((extent_height_px, extent_width_px)),
+                              src=localdata, casting="same_kind")
                 except RuntimeError as e:
                     error_counter.value += 1
                     msg = f"Error while running Orfeo toolbox. {input_tiff}, {e}   {extent} EPSG {extent_epsg} {sar_calibration_lut}"
@@ -839,6 +836,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
+        # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
@@ -863,6 +861,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 "key_epsg": feature["metadata"]["crs_epsg"]
             }
 
+        # a pair RDD of product -> tile
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
         # TODO: still split if full layout extent is too large for processing as a whole?
@@ -1008,6 +1007,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             except Exception as e:
                 hashPartitioner = pyspark.rdd.portable_hash
                 return hashPartitioner(tuple)
+
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
