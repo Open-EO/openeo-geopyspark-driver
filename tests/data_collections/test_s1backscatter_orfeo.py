@@ -344,6 +344,7 @@ class TestOrfeoPipeline:
         implementation_version,
         ref_path,
         elevation_model,
+        monkeypatch
     ):
         """
         Depends on:
@@ -356,6 +357,9 @@ class TestOrfeoPipeline:
         @param expected_shape:
         @return:
         """
+
+        monkeypatch.setenv('PYTHON_MAX_MEMORY', 1024*1024*128)
+
         # Provide test Sentinel-1 and DEM data.
         symlinks = {
             "./data/binary/s1backscatter_orfeo/Sentinel-1/zeebrugge_2020_06_06.SAFE": [
@@ -400,7 +404,7 @@ class TestOrfeoPipeline:
             sar_backscatter=SarBackscatterArgs(
                 coefficient="sigma0-ellipsoid",
                 elevation_model=elevation_model,
-                options={"dem_zoom_level": 6, "implementation_version": implementation_version, "debug": True},
+                options={"dem_zoom_level": 6, "implementation_version": implementation_version, "debug": True, "otb_memory":64},
             ),
             properties={"COG":{
                 "process_graph": {

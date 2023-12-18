@@ -318,13 +318,15 @@ class S1BackscatterOrfeo:
 
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
-        write_to_numpy = extent_height_px > 2500 or extent_width_px > 2500
+        write_to_numpy = extent_height_px < 2500 and extent_width_px < 2500
+
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
             arr = None
             if write_to_numpy:
                 arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
+            last_error = multiprocessing.Value(ctypes.c_wchar_p,"",lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
                                                                sar_calibration_lut, epsg=extent_epsg)
@@ -351,19 +353,23 @@ class S1BackscatterOrfeo:
 
                 except RuntimeError as e:
                     error_counter.value += 1
-                    logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
+                    msg = f"Error while running Orfeo toolbox. {input_tiff}, {e}   {extent} EPSG {extent_epsg} {sar_calibration_lut}"
+                    last_error.value = msg
+                    logger.error(msg,exc_info=True)
 
             p = Process(target=run, args=())
             p.start()
             p.join()
             if p.exitcode == -signal.SIGSEGV:
                 error_counter.value += 1
-                logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
+                msg = f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}"
+                last_error.value = msg
+                logger.error(msg)
             # Check soft error ratio.
             if trackers is not None:
                 if max_soft_errors_ratio == 0.0:
                     if error_counter.value > 0:
-                        raise RuntimeError("Too many errors while running Orfeo toolbox")
+                        raise RuntimeError(f"sar_backscatter: {last_error.value} \n Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing.")
                 else:
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
@@ -975,6 +981,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         os.remove(file)
 
                 else:
+                    orfeo_bands = numpy.array(orfeo_bands)
                     cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
                     logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
                     for f in features:
