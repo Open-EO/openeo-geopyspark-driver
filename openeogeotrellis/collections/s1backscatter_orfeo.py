@@ -326,7 +326,6 @@ class S1BackscatterOrfeo:
             if write_to_numpy:
                 arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
-            last_error = multiprocessing.Value(ctypes.c_wchar_p,"",lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
                                                                sar_calibration_lut, epsg=extent_epsg)
@@ -351,7 +350,6 @@ class S1BackscatterOrfeo:
                 except RuntimeError as e:
                     error_counter.value += 1
                     msg = f"Error while running Orfeo toolbox. {input_tiff}, {e}   {extent} EPSG {extent_epsg} {sar_calibration_lut}"
-                    last_error.value = msg
                     logger.error(msg,exc_info=True)
 
             p = Process(target=run, args=())
@@ -360,13 +358,13 @@ class S1BackscatterOrfeo:
             if p.exitcode == -signal.SIGSEGV:
                 error_counter.value += 1
                 msg = f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}"
-                last_error.value = msg
                 logger.error(msg)
             # Check soft error ratio.
             if trackers is not None:
                 if max_soft_errors_ratio == 0.0:
                     if error_counter.value > 0:
-                        raise RuntimeError(f"sar_backscatter: {last_error.value} \n Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing.")
+                        msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
+                        raise RuntimeError(msg)
                 else:
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
