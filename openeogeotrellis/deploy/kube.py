@@ -61,6 +61,7 @@ def main():
     """
     parameters = { p["name"]:p for p in backscatter_spec["parameters"]}
     parameters["coefficient"]["default"] = "sigma0-ellipsoid"
+    parameters["coefficient"]["description"] = "Select the radiometric correction coefficient. The following options are available:\n\n* `sigma0-ellipsoid`: ground area computed with ellipsoid earth model\n"
     parameters["coefficient"]["schema"] = [
         {
             "type": "string",
