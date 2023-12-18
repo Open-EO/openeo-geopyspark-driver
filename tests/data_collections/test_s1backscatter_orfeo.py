@@ -359,6 +359,7 @@ class TestOrfeoPipeline:
         """
 
         monkeypatch.setenv('PYTHON_MAX_MEMORY', 1024*1024*128)
+        monkeypatch.setenv('GDAL_CACHEMAX', 64)
 
         # Provide test Sentinel-1 and DEM data.
         symlinks = {
