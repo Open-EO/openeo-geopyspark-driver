@@ -326,7 +326,7 @@ class S1BackscatterOrfeo:
             if write_to_numpy:
                 arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
-            last_error = multiprocessing.Value(ctypes.c_wchar_p,"",lock=True)
+            last_error = multiprocessing.Value(ctypes.c_wchar_p,"",lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
                                                                sar_calibration_lut, epsg=extent_epsg)
