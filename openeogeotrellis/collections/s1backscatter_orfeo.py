@@ -354,7 +354,7 @@ class S1BackscatterOrfeo:
                     last_error.value = msg
                     logger.error(msg,exc_info=True)
 
-            p = Process(target=run, args=(),kwargs ={'env' : os.environ.copy()})
+            p = Process(target=run, args=())
             p.start()
             p.join()
             if p.exitcode == -signal.SIGSEGV:
