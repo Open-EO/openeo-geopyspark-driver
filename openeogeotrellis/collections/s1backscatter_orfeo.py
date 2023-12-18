@@ -318,7 +318,7 @@ class S1BackscatterOrfeo:
 
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
-        write_to_numpy = False#extent_height_px > 2500 or extent_width_px > 2500
+        write_to_numpy = extent_height_px > 2500 or extent_width_px > 2500
 
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
             arr = None
