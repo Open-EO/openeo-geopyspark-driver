@@ -902,8 +902,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if not intersects_spatiotemporally(item):
                     raise no_data_available_exception
 
-                eo_bands_location = (item.properties if "eo:bands" in item.properties
-                                     else item.get_collection().summaries.lists)
+                if "eo:bands" in item.properties:
+                    eo_bands_location = item.properties
+                elif item.get_collection() is not None:
+                    eo_bands_location = item.get_collection().summaries.lists
+                else:
+                    # TODO: band order is not "stable" here, see https://github.com/Open-EO/openeo-processes/issues/488
+                    eo_bands_location = {}
                 band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
                 intersecting_items = [item]
