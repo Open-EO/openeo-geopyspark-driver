@@ -940,8 +940,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if load_params.properties:
                     raise properties_unsupported_exception
 
-                band_names = (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
-                              else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])
+                band_names = [b["name"] for b in (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
+                                                  else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])]
 
                 def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
                     def intersects_spatiotemporally(coll: pystac.Collection) -> bool:

@@ -3648,6 +3648,63 @@ class TestLoadStac:
         assert (ds["band4"] == 4).all()
         assert (ds["band5"] == 5).all()
 
+    @pytest.mark.parametrize(
+        "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
+        [
+            ("2021-02-03", "2021-02-03", ["2021-02-03"]),  # for backwards compatibility
+            ("2021-02-03", "2021-02-04", ["2021-02-03"]),
+            ("2021-02-03", "2021-02-05", ["2021-02-03", "2021-02-04"]),
+            ("2021-02-03T00:00:00Z", "2021-02-04T00:00:00Z", ["2021-02-03"]),
+            ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
+        ],
+    )
+    def test_load_stac_from_stac_collection_upper_temporal_bound(self, api110, urllib_mock, tmp_path,
+                                                                 lower_temporal_bound, upper_temporal_bound,
+                                                                 expected_timestamps):
+        """load_stac from a STAC Collection with two items that have different timestamps"""
+
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace(
+                    "asset01.tiff",
+                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                )
+            )
+
+        urllib_mock.get("https://stac.test/collection.json",
+                        data=get_test_data_file("stac/issue609-temporal-bound-exclusive/collection.json").read_text())
+        urllib_mock.get("https://stac.test/item01.json",
+                        data=item_json("stac/issue609-temporal-bound-exclusive/item01.json"))
+        urllib_mock.get("https://stac.test/item02.json",
+                        data=item_json("stac/issue609-temporal-bound-exclusive/item02.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collection.json",
+                    "temporal_extent": [lower_temporal_bound, upper_temporal_bound]
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": len(expected_timestamps), "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == expected_timestamps
+        assert list(ds.data_vars.keys())[1:] == ["band1", "band2", "band3"]
+        assert (ds["band1"] == 1).all()
+        assert (ds["band2"] == 2).all()
+        assert (ds["band3"] == 3).all()
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
