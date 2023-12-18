@@ -56,6 +56,30 @@ def main():
     processes  = backend_implementation.processing.get_process_registry("1.2.0")
     backscatter_spec = processes.get_spec("sar_backscatter")
     backscatter_spec["experimental"] = False
+    backscatter_spec["description"] = backscatter_spec["description"] + """
+    \n\n ## Backend notes \n\n The implementation in this backend is based on Orfeo Toolbox. 
+    """
+    parameters = { p["name"]:p for p in backscatter_spec["parameters"]}
+    parameters["coefficient"]["default"] = "sigma0-ellipsoid"
+    parameters["coefficient"]["schema"] = [
+        {
+            "type": "string",
+            "enum": [
+                "sigma0-ellipsoid"
+            ]
+        },
+        {
+            "title": "Non-normalized backscatter",
+            "type": "null"
+        }
+    ]
+    backscatter_spec["links"].append({
+        {
+            "rel": "about",
+            "href": "https://www.orfeo-toolbox.org/CookBook/Applications/app_SARCalibration.html",
+            "title": "Orfeo toolbox backscatter processor."
+        },
+    })
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:
