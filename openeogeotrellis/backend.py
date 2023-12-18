@@ -825,7 +825,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if isinstance(eo_band, dict):
                     return eo_band["name"]
 
-                # can also be an index into a list of bands elsewhere
+                # can also be an index into a list of bands elsewhere.
+                # TODO: still necessary to support this? See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
                 assert isinstance(eo_band, int)
                 eo_band_index = eo_band
 
@@ -901,8 +902,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if not intersects_spatiotemporally(item):
                     raise no_data_available_exception
 
-                eo_bands_location = (item.properties if "eo:bands" in item.properties
-                                     else item.get_collection().summaries.lists)
+                if "eo:bands" in item.properties:
+                    eo_bands_location = item.properties
+                elif item.get_collection() is not None:
+                    eo_bands_location = item.get_collection().summaries.lists
+                else:
+                    # TODO: band order is not "stable" here, see https://github.com/Open-EO/openeo-processes/issues/488
+                    eo_bands_location = {}
                 band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
                 intersecting_items = [item]
@@ -1367,14 +1373,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
-                else:
+                elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
                         summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
                     else:
-                        summary = f"Exception during Spark execution: {root_cause_message}"
+                        summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
+                else:
+                    summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
-                summary = root_cause_class_name + ": " + str(root_cause_message)
+                summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
@@ -1383,7 +1391,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return ErrorSummary(error, is_client_error, summary)
 
     @staticmethod
-    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+    def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:
         """
         Select all lines a bit under 'run_udf_code'.
         This is what interests the user
@@ -1462,19 +1470,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             cpu_seconds = backend_config.default_usage_cpu_seconds
             mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-            if (
-                backend_config.etl_api_config
-                # TODO: eliminate this temporary feature flag eventually
-                and backend_config.etl_dynamic_api_flag
-                and flask.request.args.get(backend_config.etl_dynamic_api_flag)
-            ):
-                etl_api = get_etl_api(user=user)
-            else:
-                etl_api = EtlApi(
-                    endpoint=backend_config.etl_api,
-                    credentials=get_etl_api_credentials_from_env(),
-                    requests_session=requests_session,
-                )
+            etl_api = get_etl_api(
+                user=user,
+                allow_dynamic_etl_api=bool(
+                    # TODO #531 this is temporary feature flag, to removed when done
+                    backend_config.etl_dynamic_api_flag
+                    and flask.request.args.get(backend_config.etl_dynamic_api_flag)
+                ),
+                requests_session=requests_session,
+                # TODO #531 provide a TtlCache here
+                etl_api_cache=None,
+            )
 
             costs = etl_api.log_resource_usage(
                 batch_job_id=request_id,
@@ -1549,7 +1555,8 @@ class GpsProcessing(ConcreteProcessing):
                     continue
 
                 if spatial_extent and temporal_extent:
-                    bands = constraints.get("bands", [])
+                    # TODO #618 get correct number of bands if none specified by user
+                    nr_bands = len(constraints.get("bands", ["_at_least_assume_one_band_"]))
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
@@ -1557,7 +1564,7 @@ class GpsProcessing(ConcreteProcessing):
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
-                        nr_bands=len(bands),
+                        nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,
                         native_crs=native_crs,

@@ -415,12 +415,15 @@ FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1
                              (False, 0.0, "FAILED", "FAILED"),
                          ])
 @gps_config_overrides(use_etl_api_on_sync_processing=True)
-@mock.patch("openeogeotrellis.backend.get_etl_api_credentials_from_env")
+@mock.patch("openeogeotrellis.integrations.etl_api.get_etl_api_credentials_from_env")
 def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation, success, shpu, state, status):
+    # TODO: this test does quite a bit of mocking, which might break when internals change
+    #       The tested functionality is also tested in TestEtlApiReporting (test_api_result.py), so maybe we can remove this test?
     user_id = 'testuser'
 
-    with mock.patch("openeogeotrellis.backend.EtlApi") as MockEtlApi,\
-            mock.patch("openeogeotrellis.backend.get_jvm") as get_jvm:
+    with mock.patch("openeogeotrellis.integrations.etl_api.EtlApi") as MockEtlApi, mock.patch(
+        "openeogeotrellis.backend.get_jvm"
+    ) as get_jvm:
         mock_etl_api = MockEtlApi.return_value
         mock_etl_api.log_resource_usage.return_value = 6
 
