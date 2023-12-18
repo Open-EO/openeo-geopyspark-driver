@@ -74,11 +74,9 @@ def main():
         }
     ]
     backscatter_spec["links"].append({
-        {
-            "rel": "about",
-            "href": "https://www.orfeo-toolbox.org/CookBook/Applications/app_SARCalibration.html",
-            "title": "Orfeo toolbox backscatter processor."
-        },
+        "rel": "about",
+        "href": "https://www.orfeo-toolbox.org/CookBook/Applications/app_SARCalibration.html",
+        "title": "Orfeo toolbox backscatter processor."
     })
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
