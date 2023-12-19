@@ -570,7 +570,7 @@ class GeopysparkDataCube(DriverDataCube):
                 time_coordinates=pd.DatetimeIndex(dates)
             )
 
-            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=udf_context)
+            data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=udf_context)
             _log.debug(f"[apply_tiles_spatiotemporal] running UDF {str_truncate(udf_code, width=1000)!r} on {datacube!r} with context {udf_context}")
             result_data = run_udf_code(code=udf_code, data=data)
             cubes = result_data.get_datacube_list()
