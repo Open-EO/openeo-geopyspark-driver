@@ -339,7 +339,7 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude"):
     """
     # getting  geo information
     logger.debug("Reading lat/lon from file %s" % latlon_file)
-    lat_lon_ds = xr.open_dataset(latlon_file)
+    lat_lon_ds = xr.open_dataset(latlon_file).astype("float32")
     # Create the coordinate arrays for latitude and longitude
     ## Coordinated referring to the CENTER of the pixel
     lat_orig = lat_lon_ds[lat_band].values
