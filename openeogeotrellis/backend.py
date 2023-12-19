@@ -783,23 +783,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         )
 
         temporal_extent = load_params.temporal_extent
-        from_date, until_date = normalize_temporal_extent(temporal_extent)
-
-        def get_to_date() -> dt.datetime:
-            from_date_obj = dt.datetime.fromisoformat(from_date)
-            until_date_obj = dt.datetime.fromisoformat(until_date)
-
-            if from_date_obj == until_date_obj:
-                return dt.datetime.combine(until_date_obj, dt.time.max, until_date_obj.tzinfo)
-            else:
-                return until_date_obj - dt.timedelta(milliseconds=1)
-
-        to_date = get_to_date().isoformat()
+        from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+        to_date = (dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo) if from_date == until_date
+                   else until_date - dt.timedelta(milliseconds=1))
 
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
             def intersects_temporally() -> bool:
                 nominal_date = itm.datetime or dt.datetime.fromisoformat(itm.properties["start_datetime"])
-                return dt.datetime.fromisoformat(from_date) <= nominal_date <= dt.datetime.fromisoformat(to_date)
+                return from_date <= nominal_date <= to_date
 
             def intersects_spatially() -> bool:
                 if not requested_bbox or itm.bbox is None:
@@ -926,7 +917,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     collections=collection_id,
                     bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                     limit=20,
-                    datetime=f"{from_date}/{to_date}",  # inclusive
+                    datetime=f"{from_date.isoformat()}/{to_date.isoformat()}",  # inclusive
                 )
 
                 logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
@@ -958,12 +949,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             start, end = interval
 
                             if start is not None and end is not None:
-                                return (dt.datetime.fromisoformat(to_date) >= start and
-                                        dt.datetime.fromisoformat(from_date) <= end)
+                                return to_date >= start and from_date <= end
                             if start is not None:
-                                return dt.datetime.fromisoformat(to_date) >= start
+                                return to_date >= start
                             if end is not None:
-                                return dt.datetime.fromisoformat(from_date) <= end
+                                return from_date <= end
                             return True
 
                         bboxes = coll.extent.spatial.bboxes
@@ -1104,8 +1094,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if single_level:
-            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
-                                                   correlation_id, data_cube_parameters)
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
+                                                   metadata_properties, correlation_id, data_cube_parameters)
         else:
             if requested_bbox:
                 extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
@@ -1115,11 +1105,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 extent_crs = "EPSG:4326"
 
             pyramid = pyramid_factory.pyramid_seq(
-                extent, extent_crs, from_date, to_date,
+                extent, extent_crs, from_date.isoformat(), to_date.isoformat(),
                 metadata_properties, correlation_id
             )
 
-        metadata = metadata.filter_temporal(from_date, to_date)
+        metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
 
         metadata = metadata.filter_bbox(
             west=extent.xmin(),
