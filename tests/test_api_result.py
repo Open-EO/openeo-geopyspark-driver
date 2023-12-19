@@ -3473,7 +3473,7 @@ class TestLoadStac:
 
         return collection
 
-    @pytest.mark.skip("Test is not working yet, WIP")
+    #@pytest.mark.skip("Test is not working yet, WIP")
     def test_load_stac_handles_tz_utc_zulu_timestamps(self, api110, tmp_path):
         """It should support UTC timestamps with both timezone formats: "Z" or "+00:00"
 
@@ -3560,7 +3560,7 @@ class TestLoadStac:
             },
             assets={
                 "result": Asset(
-                    href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
+                    href=f"{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
                     extra_fields={"eo:bands": [{"name": "class"}]},
                 )
             },
