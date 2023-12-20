@@ -5,16 +5,15 @@ import pathlib
 import sys
 from functools import partial
 from glob import glob
-from typing import Tuple, Callable
+from typing import Tuple
 
 import numpy as np
 import pyspark
-from epsel import on_first_time
 from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 import xarray as xr
 
-from openeogeotrellis.utils import get_jvm, ensure_executor_logging
+from openeogeotrellis.utils import get_jvm, ensure_executor_logging, set_max_memory
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
@@ -124,12 +123,16 @@ def read_product(product, product_type, band_names, tile_size):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
     import geopyspark
 
+    max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
+    if max_total_memory_in_bytes:
+        set_max_memory(int(max_total_memory_in_bytes))
+
     creo_path, features = product  # better: "tiles"
     log_prefix = ""
 
     creo_path = pathlib.Path(creo_path)
     if not creo_path.exists():
-        raise Exception(f"read_olci: path {creo_path} does not exist.")
+        raise Exception(f"read_product: path {creo_path} does not exist.")
 
     # Get whole extent of tile layout
     col_min = min(f["key"]["col"] for f in features)
@@ -282,13 +285,8 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
                                      target_coordinates,
                                      2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
 
-
-    latitude = target_coordinates[:, 1, 1]  # get only the unique latitudes (1 column)
-    longitude = target_coordinates[1, :, 0]  # get only the unique longitudes (1 row)
-
     varOut = []
 
-    #### OLCI file ####
     for band_name in band_names:
         logger.info(" Reprojecting %s" % band_name)
 
