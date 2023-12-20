@@ -12,6 +12,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+### Bugfix
+
+- apply_neighborhood: fix error if overlap is null/None ([#519](https://github.com/Open-EO/openeo-python-client/issues/519))
+
 
 ## 0.21.5
 

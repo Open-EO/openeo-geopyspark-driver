@@ -1099,7 +1099,7 @@ class GeopysparkDataCube(DriverDataCube):
         x = spatial_dims[0]
         y = spatial_dims[1]
         size_dict = {e['dimension']:e for e in size}
-        overlap_dict = {e['dimension']: e for e in overlap}
+        overlap_dict = {e['dimension']: e for e in overlap} if overlap is not None else {}
         if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
             raise OpenEOApiException(message="apply_neighborhood: window sizes for the spatial dimensions"
                                              " of this datacube should be specified in pixels."
