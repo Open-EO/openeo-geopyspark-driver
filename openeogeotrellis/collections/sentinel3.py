@@ -100,8 +100,11 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     per_product = pyrdd.map(process_feature).groupByKey().mapValues(list)
 
-    tile_rdd = per_product.flatMap(partial(read_product, product_type=product_type, band_names=band_names,
-                                           tile_size=tile_size))
+    creo_paths = per_product.keys().collect()
+
+    tile_rdd = (per_product
+                .partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index)
+                .flatMap(partial(read_product, product_type=product_type, band_names=band_names, tile_size=tile_size)))
 
     logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
 
