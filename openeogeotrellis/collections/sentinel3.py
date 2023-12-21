@@ -88,7 +88,6 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     # -----------------------------------
     prefix = ""
 
-    @ensure_executor_logging
     def process_feature(feature: dict) -> Tuple[str, dict]:
         creo_path = prefix + feature["feature"]["id"]
         return creo_path, {
@@ -122,6 +121,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     return {zoom: merged_tile_layer}
 
 
+@ensure_executor_logging
 def read_product(product, product_type, band_names, tile_size):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
     import geopyspark
