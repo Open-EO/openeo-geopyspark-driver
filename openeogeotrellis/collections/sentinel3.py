@@ -52,9 +52,12 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
                                                crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
 
 
-def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters, cell_size, jvm):
+def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
+            cell_size, feature_flags, jvm):
     from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
     import geopyspark as gps
+
+    limit_executor_python_memory = feature_flags.get("limit_executor_python_memory", False)
 
     opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
         "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
@@ -103,7 +106,8 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     tile_rdd = (per_product
                 .partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index)
-                .flatMap(partial(read_product, product_type=product_type, band_names=band_names, tile_size=tile_size)))
+                .flatMap(partial(read_product, product_type=product_type, band_names=band_names, tile_size=tile_size,
+                                 limit_python_memory=limit_executor_python_memory)))
 
     logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
 
@@ -122,13 +126,14 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
 
 @ensure_executor_logging
-def read_product(product, product_type, band_names, tile_size):
+def read_product(product, product_type, band_names, tile_size, limit_python_memory):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
     import geopyspark
 
-    max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-    if max_total_memory_in_bytes:
-        set_max_memory(int(max_total_memory_in_bytes))
+    if limit_python_memory:
+        max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
+        if max_total_memory_in_bytes:
+            set_max_memory(int(max_total_memory_in_bytes))
 
     creo_path, features = product  # better: "tiles"
     log_prefix = ""

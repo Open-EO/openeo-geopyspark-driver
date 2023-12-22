@@ -657,7 +657,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
-                                        jvm.geotrellis.raster.CellSize(cell_width, cell_height), jvm,
+                                        jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
                                         )
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
