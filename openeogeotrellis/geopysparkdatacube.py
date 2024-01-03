@@ -755,7 +755,7 @@ class GeopysparkDataCube(DriverDataCube):
                         extent=extent,
                         band_coordinates=openeo_metadata.band_dimension.band_names
                     )
-                    data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
+                    data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=context)
 
                     # Run UDF.
                     _log.debug(f"[apply_tiles] running UDF {str_truncate(udf_code, width=1000)!r} on {data}!r")
