@@ -1637,7 +1637,7 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=ZkJobRegistry,  # TODO #236/#498 allow to disable this with config?
+            zk_job_registry_factory=ZkJobRegistry if get_backend_config().use_zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 

@@ -97,6 +97,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
         default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
     )
 
+    # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
+    use_zk_job_registry: bool = True
+
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")

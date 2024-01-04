@@ -9,7 +9,7 @@ from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging, LOG_HANDLER_STDERR_JSON
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
 
@@ -37,7 +37,8 @@ def main():
     SparkContext.getOrCreate()
 
     def setup_batch_jobs():
-        if not ConfigParams().is_ci_context:
+        if get_backend_config().use_zk_job_registry:
+            # TODO #236/#498/#632 Phase out ZkJobRegistry?
             with ZkJobRegistry() as job_registry:
                 job_registry.ensure_paths()
 

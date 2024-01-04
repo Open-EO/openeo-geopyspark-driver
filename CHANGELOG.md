@@ -12,6 +12,12 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.22.0
+
+### Added
+
+- Added config `use_zk_job_registry` to disable `ZkJobRegistry` usage
+
 ### Bugfix
 
 - apply_neighborhood: fix error if overlap is null/None ([#519](https://github.com/Open-EO/openeo-python-client/issues/519))

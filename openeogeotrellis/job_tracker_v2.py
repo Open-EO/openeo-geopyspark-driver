@@ -371,6 +371,7 @@ class JobTracker:
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
+        # TODO #236/#498/#632 make ZkJobRegistry optional
         self._zk_job_registry = zk_job_registry
         self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
@@ -388,11 +389,12 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
+        # TODO #236/#498/#632 make ZkJobRegistry optional
         with self._zk_job_registry as zk_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
-            # TODO: #236/#498 also/instead get jobs_to_track from EJR?
+            # TODO: #236/#498/#632 also/instead get jobs_to_track from EJR?
             jobs_to_track = zk_job_registry.get_running_jobs(parse_specification=True)
 
             for job_info in jobs_to_track:
@@ -453,6 +455,7 @@ class JobTracker:
         user_id: str,
         application_id: str,
         job_info: dict,
+        # TODO #236/#498/#632 make ZkJobRegistry optional
         zk_job_registry: ZkJobRegistry,
         stats: collections.Counter,
     ):
@@ -611,6 +614,7 @@ class CliApp:
                 # ZooKeeper Job Registry
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
+                # TODO #236/#498/#632 make ZkJobRegistry optional
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
