@@ -27,7 +27,7 @@ from openeo.util import TimingLogger
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.utils import StatsReporter
 
-_log = logging.getLogger("openeogeotrellis.zkpruner")
+_log = logging.getLogger("openeogeotrellis.zktool")
 
 
 def main():
@@ -43,10 +43,10 @@ def main():
     #     zk_job_registry=zk_job_registry,
     #     dry_run=False,
     #     user_ids=["cdse-ci-service-account"],
-    #     per_user_limit=10,
-    #     min_age_in_days=30,
+    #     per_user_limit=2500,
+    #     min_age_in_days=7,
     #     include_done=True,
-    #     include_ongoing=True,
+    #     include_ongoing=False,
     # )
 
 
@@ -90,12 +90,12 @@ def prune(
                 include_done=include_done,
                 include_ongoing=include_ongoing,
                 user_ids=user_ids,
+                field_whitelist=["user_id", "job_id", "status", "created", "updated"],
             )
         _log.info(f"collected {len(jobs)=}")
         stats["collected jobs"] = len(jobs)
         for job in jobs:
-            job_info = {k: job.get(k) for k in ["user_id", "job_id", "status", "created", "updated"]}
-            _log.info(f"To prune: {job_info}")
+            _log.info(f"To prune: {job}")
 
         if dry_run:
             _log.info("Dry run, not pruning")

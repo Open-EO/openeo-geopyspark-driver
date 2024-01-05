@@ -259,6 +259,7 @@ class ZkJobRegistry:
         include_ongoing: bool = True,
         include_done: bool = True,
         per_user_limit: Optional[int] = 1000,
+        field_whitelist: Optional[List[str]] = None,
     ) -> List[Dict]:
         def get_jobs_in(
             get_path: Callable[[Union[str, None], Union[str, None]], str],
@@ -300,7 +301,8 @@ class ZkJobRegistry:
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
-                        # TODO: not all job_info data is used, just pass the necessary bits?
+                        if field_whitelist:
+                            job_info = {k: job_info[k] for k in field_whitelist if k in job_info}
                         jobs_before.append(job_info)
 
             return jobs_before
