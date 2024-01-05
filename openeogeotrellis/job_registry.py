@@ -258,7 +258,7 @@ class ZkJobRegistry:
         user_ids: Optional[List[str]] = None,
         include_ongoing: bool = True,
         include_done: bool = True,
-        user_limit: Optional[int] = 1000,
+        per_user_limit: Optional[int] = 1000,
     ) -> List[Dict]:
         def get_jobs_in(
             get_path: Callable[[Union[str, None], Union[str, None]], str],
@@ -266,6 +266,9 @@ class ZkJobRegistry:
         ) -> List[Dict]:
             if user_ids is None:
                 user_ids = self._zk.get_children(get_path(None, None))
+                _log.info(f"Collected {len(user_ids)=} in {get_path(None, None)!r}")
+            else:
+                _log.info(f"Using provided user_id list {user_ids=}")
 
             jobs_before = []
 
@@ -279,12 +282,12 @@ class ZkJobRegistry:
                     )
                     continue
 
-                if user_limit and len(user_job_ids) > user_limit:
+                if per_user_limit and len(user_job_ids) > per_user_limit:
                     _log.warning(
                         f"User {user_id} has excessive number of jobs: {len(user_job_ids)}. "
-                        f"Sampling down to {user_limit}."
+                        f"Sampling down to {per_user_limit}."
                     )
-                    user_job_ids = random.sample(user_job_ids, k=user_limit)
+                    user_job_ids = random.sample(user_job_ids, k=per_user_limit)
 
                 for job_id in user_job_ids:
                     path = get_path(user_id, job_id)
@@ -926,6 +929,6 @@ class DoubleJobRegistry:
             user_ids=user_ids,
             include_ongoing=include_ongoing,
             include_done=include_done,
-            user_limit=user_limit,
+            per_user_limit=user_limit,
         )
         return jobs
