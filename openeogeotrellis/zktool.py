@@ -100,9 +100,7 @@ def prune(
         if dry_run:
             _log.info("Dry run, not pruning")
         with TimingLogger(title="Prune jobs", logger=_log):
-            for job in jobs:
-                user_id = job["user_id"]
-                job_id = job["job_id"]
+            for user_id, job_id in sorted((job["user_id"], job["job_id"]) for job in jobs):
                 if dry_run:
                     stats["dry-run pruning skips"] += 1
                 else:

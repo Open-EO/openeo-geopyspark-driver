@@ -273,7 +273,7 @@ class ZkJobRegistry:
 
             jobs_before = []
 
-            for user_id in user_ids:
+            for user_id in sorted(user_ids):
                 path = get_path(user_id, None)
                 try:
                     user_job_ids = self._zk.get_children(path)
