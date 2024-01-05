@@ -6,7 +6,7 @@ import random
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Callable, Union, Optional, Iterator, Tuple
+from typing import Any, List, Dict, Callable, Union, Optional, Iterator, Tuple
 
 import kazoo
 import kazoo.exceptions
@@ -97,15 +97,25 @@ class ZkJobRegistry:
         self.patch(job_id, user_id, application_id=application_id)
 
     def set_status(
-        self, job_id: str, user_id: str, status: str, auto_mark_done: bool = True
+        self, job_id: str, user_id: str, status: str, started: Optional[str] = None, finished: Optional[str] = None,
+            auto_mark_done: bool = True
     ) -> None:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
+        kwargs = {
+            "status": status,
+            "updated": rfc3339.utcnow(),
+        }
+
+        if started:
+            kwargs["started"] = started
+        if finished:
+            kwargs["finished"] = finished
+
         self.patch(
             job_id,
             user_id,
-            status=status,
-            updated=rfc3339.utcnow(),
             auto_mark_done=auto_mark_done,
+            **kwargs
         )
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
 
@@ -647,6 +657,9 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
         return self._update(job_id=job_id, costs=costs, usage=usage)
 
+    def set_results_metadata(self, job_id: str, results_metadata: Dict[str, Any]) -> JobDict:
+        return self._update(job_id=job_id, **results_metadata)
+
     def list_user_jobs(
         self, user_id: str, fields: Optional[List[str]] = None
     ) -> List[JobDict]:
@@ -664,7 +677,7 @@ class DoubleJobRegistryException(Exception):
     pass
 
 
-class DoubleJobRegistry:
+class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
     """
     Adapter to simultaneously keep track of jobs in two job registries:
     a legacy ZkJobRegistry and a new ElasticJobRegistry.
@@ -804,12 +817,15 @@ class DoubleJobRegistry:
         elif zk_job_info is None and ejr_job_info is None:
             raise JobNotFoundException(job_id=job_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str) -> None:
+    def set_status(self, job_id: str, user_id: str, status: str,
+                   started: Optional[str] = None, finished: Optional[str] = None,
+                   ) -> None:
         if self.zk_job_registry:
-            self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
+            self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
+                                            finished=finished)
         if self.elastic_job_registry:
             with self._just_log_errors("set_status", job_id=job_id):
-                self.elastic_job_registry.set_status(job_id=job_id, status=status)
+                self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
 
     def delete_job(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
@@ -929,3 +945,18 @@ class DoubleJobRegistry:
             user_limit=user_limit,
         )
         return jobs
+
+    def get_running_jobs(self) -> Iterator[Dict]:
+        if self.zk_job_registry:
+            yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
+        if self.elastic_job_registry:
+            return iter(self.elastic_job_registry.list_active_jobs())
+
+        return iter(())
+
+    def set_results_metadata(self, job_id, user_id, **kwargs):
+        if self.zk_job_registry:
+            self.zk_job_registry.patch(job_id=job_id, user_id=user_id, **kwargs)
+
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_results_metadata(job_id=job_id, results_metadata=kwargs)

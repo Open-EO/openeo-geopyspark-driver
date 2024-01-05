@@ -333,7 +333,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if use_job_registry and not elastic_job_registry:
             # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
-            elastic_job_registry = get_elastic_job_registry()
+            elastic_job_registry = get_elastic_job_registry(requests_session)
 
         # Start persistent workers if configured.
         config_params = ConfigParams()
@@ -1583,28 +1583,27 @@ class GpsProcessing(ConcreteProcessing):
 
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
-) -> Optional[ElasticJobRegistry]:
+) -> ElasticJobRegistry:
     """Build ElasticJobRegistry instance from config"""
-    with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
-        config = get_backend_config()
-        job_registry = ElasticJobRegistry(
-            api_url=config.ejr_api,
-            backend_id=config.ejr_backend_id,
-            session=requests_session,
-        )
-        # Get credentials from env (preferably) or vault (as fallback).
-        ejr_creds = get_ejr_credentials_from_env(strict=False)
-        if not ejr_creds:
-            if config.ejr_credentials_vault_path:
-                # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
-                vault = Vault(config.vault_addr, requests_session=requests_session)
-                ejr_creds = vault.get_elastic_job_registry_credentials()
-            else:
-                # Fail harder
-                ejr_creds = get_ejr_credentials_from_env(strict=True)
-        job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
-        job_registry.health_check(log=True)
-        return job_registry
+    config = get_backend_config()
+    job_registry = ElasticJobRegistry(
+        api_url=config.ejr_api,
+        backend_id=config.ejr_backend_id,
+        session=requests_session,
+    )
+    # Get credentials from env (preferably) or vault (as fallback).
+    ejr_creds = get_ejr_credentials_from_env(strict=False)
+    if not ejr_creds:
+        if config.ejr_credentials_vault_path:
+            # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
+            vault = Vault(config.vault_addr, requests_session=requests_session)
+            ejr_creds = vault.get_elastic_job_registry_credentials()
+        else:
+            # Fail harder
+            ejr_creds = get_ejr_credentials_from_env(strict=True)
+    job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
+    job_registry.health_check(log=True)
+    return job_registry
 
 
 class GpsBatchJobs(backend.BatchJobs):
