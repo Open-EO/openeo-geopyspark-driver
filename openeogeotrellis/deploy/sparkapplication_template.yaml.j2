@@ -306,8 +306,10 @@ spec:
         value: "/usr/lib/otb/applications"
       - name: GDAL_NUM_THREADS
         value: "2"
+      - name: GDAL_DATASET_CACHE_SIZE
+        value: "{{gdal_dataset_cache_size}}"
       - name: GDAL_CACHEMAX
-        value: "150"
+        value: "{{gdal_cachemax}}"
       - name: GDAL_DISABLE_READDIR_ON_OPEN
         value: "EMPTY_DIR"
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
