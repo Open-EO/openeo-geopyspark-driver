@@ -599,3 +599,65 @@ class TestDoubleJobRegistry:
             "Failed to enter ZkJobRegistry: KazooTimeoutError('Connection time-out')",
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=1",
         ]
+
+    def test_set_results_metadata_no_zk(self, double_jr_no_zk, zk_client, memory_jr, time_machine):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr_no_zk.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
+                                                 usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                                                 results_metadata={"epsg": 4326})
+
+        expected = DictSubSet(
+            {
+                "costs": 1.23,
+                "usage": {"cpu": {"unit": "cpu-seconds", "value": 32}},
+                "results_metadata": {
+                    "epsg": 4326
+                },
+            }
+        )
+        assert zk_client.dump() == {"/": b""}
+        assert memory_jr.db["j-123"] == expected
+
+    def test_get_results_metadata_no_zk(self, double_jr_no_zk):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr_no_zk.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
+                                                 usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                                                 results_metadata={
+                                                     "start_datetime": "2023-09-24T00:00:00Z",
+                                                     "end_datetime": "2023-09-29T00:00:00Z",
+                                                     "geometry": {"type": "Polygon", "coordinates": [[[7, 51.3], [7, 51.75], [7.6, 51.75], [7.6, 51.3], [7, 51.3]]]},
+                                                     "bbox": [4.0, 50.0, 5.0, 51.0],
+                                                     "epsg": 32631,
+                                                     "instruments": [],
+                                                     "links": [
+                                                         {
+                                                             "href": "openEO_2023-09-27Z.tif",
+                                                             "rel": "derived_from",
+                                                             "title": "Derived from openEO_2023-09-27Z.tif",
+                                                             "type": "application/json"
+                                                         }
+                                                     ],
+                                                     "proj:bbox": [634111.429, 5654675.526, 634527.619, 5654913.158],
+                                                     "proj:shape": [23, 43]
+                                                 })
+            job_metadata = double_jr_no_zk.get_job_metadata(job_id="j-123", user_id="john")
+
+        assert job_metadata.costs == 1.23
+        assert job_metadata.usage == {"cpu": {"unit": "cpu-seconds", "value": 32}}
+        assert job_metadata.start_datetime == datetime.datetime(2023, 9, 24, 0, 0, 0)
+        assert job_metadata.end_datetime == datetime.datetime(2023, 9, 29, 0, 0, 0)
+        assert job_metadata.geometry == {"type": "Polygon",
+                                         "coordinates": [[[7, 51.3], [7, 51.75], [7.6, 51.75], [7.6, 51.3], [7, 51.3]]]}
+        assert job_metadata.bbox == [4.0, 50.0, 5.0, 51.0]
+        assert job_metadata.epsg == 32631
+        assert job_metadata.instruments == []
+        assert job_metadata.links == [{
+            "href": "openEO_2023-09-27Z.tif",
+            "rel": "derived_from",
+            "title": "Derived from openEO_2023-09-27Z.tif",
+            "type": "application/json"
+        }]
+        assert job_metadata.proj_bbox == [634111.429, 5654675.526, 634527.619, 5654913.158]
+        assert job_metadata.proj_shape == [23, 43]

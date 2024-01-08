@@ -553,9 +553,9 @@ class JobTracker:
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
-            usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            double_job_registry.set_results_metadata(job_id, user_id,
-                                                     **dict(result_metadata, costs=job_costs, usage=usage))
+            total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
+            double_job_registry.set_results_metadata(job_id, user_id, costs=job_costs, usage=dict(total_usage),
+                                                     results_metadata=result_metadata)
 
         datetime_formatter = Rfc3339(propagate_none=True)
 

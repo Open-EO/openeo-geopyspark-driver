@@ -533,6 +533,13 @@ def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
         value = job_info.get(prop)
         return f(value) if value else None
 
+    def get_results_metadata(result_metadata_prop: str):
+        return job_info.get("results_metadata", {}).get(result_metadata_prop)
+
+    def map_results_metadata_safe(result_metadata_prop: str, f):
+        value = get_results_metadata(result_metadata_prop)
+        return f(value) if value is not None else None
+
     return BatchJobMetadata(
         id=job_info["job_id"],
         status=job_info["status"],
@@ -546,17 +553,17 @@ def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
         finished=map_safe("finished", rfc3339.parse_datetime),
         memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
         cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
-        geometry=job_info.get("geometry"),
-        bbox=job_info.get("bbox"),
-        start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
-        end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
-        instruments=job_info.get("instruments"),
-        epsg=job_info.get("epsg"),
-        links=job_info.get("links"),
+        geometry=get_results_metadata("geometry"),
+        bbox=get_results_metadata("bbox"),
+        start_datetime=map_results_metadata_safe("start_datetime", rfc3339.parse_datetime),
+        end_datetime=map_results_metadata_safe("end_datetime", rfc3339.parse_datetime),
+        instruments=get_results_metadata("instruments"),
+        epsg=job_info.get("results_metadata", {}).get("epsg"),
+        links=get_results_metadata("links"),
         usage=job_info.get("usage"),
         costs=job_info.get("costs"),
-        proj_shape=job_info.get("proj:shape"),
-        proj_bbox=job_info.get("proj:bbox"),
+        proj_shape=get_results_metadata("proj:shape"),
+        proj_bbox=get_results_metadata("proj:bbox"),
     )
 
 
@@ -657,8 +664,9 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
         return self._update(job_id=job_id, costs=costs, usage=usage)
 
-    def set_results_metadata(self, job_id: str, results_metadata: Dict[str, Any]) -> JobDict:
-        return self._update(job_id=job_id, **results_metadata)
+    def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
+                             results_metadata: Dict[str, Any]) -> JobDict:
+        return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
     def list_user_jobs(
         self, user_id: str, fields: Optional[List[str]] = None
@@ -954,9 +962,12 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
         return iter(())
 
-    def set_results_metadata(self, job_id, user_id, **kwargs):
+    def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
+                             results_metadata: Dict[str, Any]):
         if self.zk_job_registry:
-            self.zk_job_registry.patch(job_id=job_id, user_id=user_id, **kwargs)
+            self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
+                                       **dict(results_metadata, costs=costs, usage=usage))
 
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_results_metadata(job_id=job_id, results_metadata=kwargs)
+            self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
+                                                           results_metadata=results_metadata)
