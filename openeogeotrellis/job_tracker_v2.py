@@ -62,6 +62,7 @@ class _Usage(NamedTuple):
     cpu_seconds: Optional[float] = None
     mb_seconds: Optional[float] = None
     network_receive_bytes: Optional[float] = None
+    max_executor_gigabytes: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -72,6 +73,8 @@ class _Usage(NamedTuple):
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
+        if self.max_executor_gigabytes:
+            result["max_executor_memory"] = {"value": self.max_executor_gigabytes, "unit": "gb"}
 
         return result
 
@@ -313,8 +316,11 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
+            max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
+
+
             _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
-                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}",
+                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}, {max_executor_gigabyte=}",
                       extra={"job_id": job_id, "user_id": user_id})
 
             if application_duration_s is not None:
