@@ -2095,6 +2095,8 @@ class GpsBatchJobs(backend.BatchJobs):
             executor_corerequest = str(int(executor_cores)/2*1000)+"m"
         max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
         executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
+        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", 26))
+        gdal_cachemax = str(job_options.get("gdal-cachemax", 150))
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
         max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
@@ -2257,6 +2259,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 user_id=user_id,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 task_cpus=task_cpus,
+                gdal_dataset_cache_size=gdal_dataset_cache_size,
+                gdal_cachemax=gdal_cachemax,
                 current_time=int(time.time()),
                 aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                 aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
