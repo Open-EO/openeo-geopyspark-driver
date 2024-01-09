@@ -599,7 +599,8 @@ class CliApp:
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
                 # Elastic Job Registry (EJR)
-                elastic_job_registry = get_elastic_job_registry(requests_session)
+                elastic_job_registry = (get_elastic_job_registry(requests_session) if get_backend_config().ejr_api
+                                        else None)
 
                 # YARN or Kubernetes?
                 app_cluster = args.app_cluster
