@@ -932,12 +932,12 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         return jobs
 
     def get_running_jobs(self) -> Iterator[Dict]:
+        # TODO: rename to more aptly named get_active_jobs?
+        # TODO: incorporate user_limit?
         if self.zk_job_registry:
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
-        if self.elastic_job_registry:
-            return iter(self.elastic_job_registry.list_active_jobs())
-
-        return iter(())
+        elif self.elastic_job_registry:
+            yield from self.elastic_job_registry.list_active_jobs()
 
     def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]):
