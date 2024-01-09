@@ -363,7 +363,7 @@ class JobTracker:
     def __init__(
         self,
         app_state_getter: JobMetadataGetterInterface,
-        zk_job_registry: ZkJobRegistry,
+        zk_job_registry: Optional[ZkJobRegistry],
         principal: str,
         keytab: str,
         job_costs_calculator: JobCostsCalculator = noJobCostsCalculator,
@@ -384,7 +384,7 @@ class JobTracker:
             elastic_job_registry=elastic_job_registry,
         )
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=lambda: zk_job_registry if get_backend_config().use_zk_job_registry else None,
+            zk_job_registry_factory=(lambda: zk_job_registry) if zk_job_registry is not None else None,
             elastic_job_registry=elastic_job_registry,
         )
 
@@ -591,16 +591,20 @@ class CliApp:
 
         with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
             try:
+                config = get_backend_config()
+
                 # ZooKeeper Job Registry
-                zk_root_path = args.zk_job_registry_root_path
-                _log.info(f"Using {zk_root_path=}")
-                zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+                if config.use_zk_job_registry:
+                    zk_root_path = args.zk_job_registry_root_path
+                    _log.info(f"Using {zk_root_path=}")
+                    zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+                else:
+                    zk_job_registry = None
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
                 # Elastic Job Registry (EJR)
-                elastic_job_registry = (get_elastic_job_registry(requests_session) if get_backend_config().ejr_api
-                                        else None)
+                elastic_job_registry = get_elastic_job_registry(requests_session) if config.ejr_api else None
 
                 # YARN or Kubernetes?
                 app_cluster = args.app_cluster
@@ -615,8 +619,7 @@ class CliApp:
                         ),
                     )
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(kube_client(),
-                                                       Prometheus(get_backend_config().prometheus_api))
+                    app_state_getter = K8sStatusGetter(kube_client(), Prometheus(config.prometheus_api))
                 else:
                     raise ValueError(app_cluster)
 
