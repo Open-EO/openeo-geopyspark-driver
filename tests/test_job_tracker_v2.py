@@ -873,6 +873,7 @@ class TestYarnJobTracker:
     def test_yarn_zookeeper_stats(
         self,
         zk_job_registry,
+        elastic_job_registry,
         yarn_mock,
         job_tracker,
         caplog,
@@ -895,6 +896,9 @@ class TestYarnJobTracker:
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
+            )
+            elastic_job_registry.create_job(
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
