@@ -659,3 +659,35 @@ class TestDoubleJobRegistry:
         }]
         assert job_metadata.proj_bbox == [634111.429, 5654675.526, 634527.619, 5654913.158]
         assert job_metadata.proj_shape == [23, 43]
+
+    @pytest.mark.parametrize(
+        ["with_zk", "with_ejr"],
+        [
+            (True, True),
+            (False, True),
+            (True, False),
+        ],
+    )
+    def test_get_running_jobs(self, double_jr, zk_client, memory_jr, with_zk, with_ejr):
+        with double_jr:
+            double_jr.create_job(
+                job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
+            )
+            double_jr.create_job(
+                job_id="j-456", user_id="alice", process=self.DUMMY_PROCESS
+            )
+            double_jr.create_job(
+                job_id="j-789", user_id="john", process=self.DUMMY_PROCESS
+            )
+            double_jr.set_status(job_id="j-123", user_id="john", status=JOB_STATUS.FINISHED)
+
+        other_double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
+            elastic_job_registry=memory_jr if with_ejr else None,
+        )
+
+        with other_double_jr:
+            running_jobs = list(other_double_jr.get_running_jobs())
+
+        running_job_ids = set(job["job_id"] for job in running_jobs)
+        assert running_job_ids == {"j-456", "j-789"}
