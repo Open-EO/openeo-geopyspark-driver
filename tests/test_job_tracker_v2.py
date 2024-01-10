@@ -1592,8 +1592,6 @@ class TestK8sJobTracker:
             elastic_job_registry=elastic_job_registry,
         )
 
-        # TODO: check if job entity in elastic_job_registry is ultimately patched with costs, usage and results_metadata
-
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
 
