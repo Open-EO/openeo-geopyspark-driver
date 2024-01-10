@@ -598,14 +598,22 @@ class TestDoubleJobRegistry:
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=1",
         ]
 
-    def test_set_results_metadata_no_zk(self, double_jr_no_zk, zk_client, memory_jr, time_machine):
-        with double_jr_no_zk:
-            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
-            double_jr_no_zk.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
-                                                 usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
-                                                 results_metadata={"epsg": 4326})
+    def test_set_results_metadata(self, double_jr, zk_client, memory_jr, time_machine):
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
+                                           usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                                           results_metadata={"epsg": 4326})
 
-        expected = DictSubSet(
+        assert zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123") == DictSubSet(
+            {
+                "costs": 1.23,
+                "usage": {"cpu": {"unit": "cpu-seconds", "value": 32}},
+                "epsg": 4326,
+            }
+        )
+
+        assert memory_jr.db["j-123"] == DictSubSet(
             {
                 "costs": 1.23,
                 "usage": {"cpu": {"unit": "cpu-seconds", "value": 32}},
@@ -614,33 +622,46 @@ class TestDoubleJobRegistry:
                 },
             }
         )
-        assert zk_client.dump() == {"/": b""}
-        assert memory_jr.db["j-123"] == expected
 
-    def test_get_results_metadata_no_zk(self, double_jr_no_zk):
-        with double_jr_no_zk:
-            double_jr_no_zk.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
-            double_jr_no_zk.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
-                                                 usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
-                                                 results_metadata={
-                                                     "start_datetime": "2023-09-24T00:00:00Z",
-                                                     "end_datetime": "2023-09-29T00:00:00Z",
-                                                     "geometry": {"type": "Polygon", "coordinates": [[[7, 51.3], [7, 51.75], [7.6, 51.75], [7.6, 51.3], [7, 51.3]]]},
-                                                     "bbox": [4.0, 50.0, 5.0, 51.0],
-                                                     "epsg": 32631,
-                                                     "instruments": [],
-                                                     "links": [
-                                                         {
-                                                             "href": "openEO_2023-09-27Z.tif",
-                                                             "rel": "derived_from",
-                                                             "title": "Derived from openEO_2023-09-27Z.tif",
-                                                             "type": "application/json"
-                                                         }
-                                                     ],
-                                                     "proj:bbox": [634111.429, 5654675.526, 634527.619, 5654913.158],
-                                                     "proj:shape": [23, 43]
-                                                 })
-            job_metadata = double_jr_no_zk.get_job_metadata(job_id="j-123", user_id="john")
+    @pytest.mark.parametrize(
+        ["with_zk", "with_ejr"],
+        [
+            (True, True),
+            (False, True),
+            (True, False),
+        ],
+    )
+    def test_get_results_metadata(self, double_jr, zk_client, memory_jr, with_zk, with_ejr):
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
+                                           usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                                           results_metadata={
+                                               "start_datetime": "2023-09-24T00:00:00Z",
+                                               "end_datetime": "2023-09-29T00:00:00Z",
+                                               "geometry": {"type": "Polygon", "coordinates": [[[7, 51.3], [7, 51.75], [7.6, 51.75], [7.6, 51.3], [7, 51.3]]]},
+                                               "bbox": [4.0, 50.0, 5.0, 51.0],
+                                               "epsg": 32631,
+                                               "instruments": [],
+                                               "links": [
+                                                   {
+                                                       "href": "openEO_2023-09-27Z.tif",
+                                                       "rel": "derived_from",
+                                                       "title": "Derived from openEO_2023-09-27Z.tif",
+                                                       "type": "application/json"
+                                                   }
+                                               ],
+                                               "proj:bbox": [634111.429, 5654675.526, 634527.619, 5654913.158],
+                                               "proj:shape": [23, 43]
+                                           })
+
+        other_double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
+            elastic_job_registry=memory_jr if with_ejr else None,
+        )
+
+        with other_double_jr:
+            job_metadata = other_double_jr.get_job_metadata(job_id="j-123", user_id="john")
 
         assert job_metadata.costs == 1.23
         assert job_metadata.usage == {"cpu": {"unit": "cpu-seconds", "value": 32}}
