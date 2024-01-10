@@ -13,88 +13,111 @@ from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry, Do
 from openeogeotrellis.testing import KazooClientMock
 
 
-@pytest.fixture
-def zk_client() -> KazooClientMock:
-    return KazooClientMock()
+class TestZkJobRegistry:
+    @pytest.fixture(autouse=True)
+    def _default_time(self, time_machine):
+        time_machine.move_to("2023-02-15T17:17:17Z")
 
+    @pytest.fixture
+    def zk_client(self) -> KazooClientMock:
+        return KazooClientMock()
 
-def test_basic(zk_client):
-    zjr = ZkJobRegistry(zk_client=zk_client)
-    zjr.register(
-        job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
-    )
+    def test_basic(self, zk_client):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+        )
 
-    data = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/u456/j123")
-    assert data == DictSubSet(
-        user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created"
-    )
+        data = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/u456/j123")
+        assert data == DictSubSet(
+            user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created"
+        )
 
+    def test_set_status(self, zk_client, time_machine):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+        )
+        time_machine.move_to("2023-02-15T18:18:18Z")
+        zjr.set_status(job_id="j123", user_id="u456", status=JOB_STATUS.FINISHED,
+                       started="2023-02-15T17:18:17Z", finished="2023-02-15T18:17:18Z")
 
-@pytest.mark.parametrize(
-    ["job_info", "expected"],
-    [
-        ({}, []),
-        (
+        expected = DictSubSet(
             {
-                "dependencies": [
-                    {
-                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
-                        "card4l": False,
-                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                    }
-                ]
-            },
-            ["s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83"],
-        ),
-        (
-            {"dependencies": [{"batch_request_id": "98029-652-3423"}]},
-            ["s3://openeo-sentinelhub/98029-652-3423"],
-        ),
-        (
-            {"dependencies": [{"subfolder": "foo", "batch_request_id": "98029-652-3423"}, {"subfolder": "bar"}]},
-            [
-                "s3://openeo-sentinelhub/foo",
-                "s3://openeo-sentinelhub/bar",
-            ],
-        ),
-        (
-            {
-                "dependencies": [
-                    {
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                        "assembled_location": "s3://foo/bar",
-                    },
-                    {
-                        "partial_job_results_url": "https://oeo.org/jobs/j-abc123/results"
-                    }
-                ]
-            },
-            [
-                "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                "s3://foo/bar",
-            ],
-        ),
-    ],
-)
-def test_get_dependency_sources(job_info, expected):
-    assert get_deletable_dependency_sources(job_info) == expected
+                "job_id": "j123",
+                "created": "2023-02-15T17:17:17Z",
+                "status": "finished",
+                "updated": "2023-02-15T18:18:18Z",
+                "started": "2023-02-15T17:18:17Z",
+                "finished": "2023-02-15T18:17:18Z"
+            }
+        )
+        assert zk_client.get_json_decoded("/openeo.test/jobs/done/u456/j123") == expected
 
-
-@pytest.mark.parametrize(
-    ["root_path", "path"],
-    [
-        ("/oeo.test/jobs", "/oeo.test/jobs/ongoing/u456/j123"),
-        ("/oeo/test/jobs/", "/oeo/test/jobs/ongoing/u456/j123"),
-    ],
-)
-def test_root_path(zk_client, root_path, path):
-    zjr = ZkJobRegistry(zk_client=zk_client, root_path=root_path)
-    zjr.register(
-        job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+    @pytest.mark.parametrize(
+        ["job_info", "expected"],
+        [
+            ({}, []),
+            (
+                {
+                    "dependencies": [
+                        {
+                            "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                            "card4l": False,
+                            "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                            "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                        }
+                    ]
+                },
+                ["s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83"],
+            ),
+            (
+                {"dependencies": [{"batch_request_id": "98029-652-3423"}]},
+                ["s3://openeo-sentinelhub/98029-652-3423"],
+            ),
+            (
+                {"dependencies": [{"subfolder": "foo", "batch_request_id": "98029-652-3423"}, {"subfolder": "bar"}]},
+                [
+                    "s3://openeo-sentinelhub/foo",
+                    "s3://openeo-sentinelhub/bar",
+                ],
+            ),
+            (
+                {
+                    "dependencies": [
+                        {
+                            "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                            "assembled_location": "s3://foo/bar",
+                        },
+                        {
+                            "partial_job_results_url": "https://oeo.org/jobs/j-abc123/results"
+                        }
+                    ]
+                },
+                [
+                    "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    "s3://foo/bar",
+                ],
+            ),
+        ],
     )
+    def test_get_dependency_sources(self, job_info, expected):
+        assert get_deletable_dependency_sources(job_info) == expected
 
-    assert zk_client.get_json_decoded(path) == DictSubSet(user_id="u456", job_id="j123")
+    @pytest.mark.parametrize(
+        ["root_path", "path"],
+        [
+            ("/oeo.test/jobs", "/oeo.test/jobs/ongoing/u456/j123"),
+            ("/oeo/test/jobs/", "/oeo/test/jobs/ongoing/u456/j123"),
+        ],
+    )
+    def test_root_path(self, zk_client, root_path, path):
+        zjr = ZkJobRegistry(zk_client=zk_client, root_path=root_path)
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+        )
+
+        assert zk_client.get_json_decoded(path) == DictSubSet(user_id="u456", job_id="j123")
 
 
 class TestInMemoryJobRegistry:
