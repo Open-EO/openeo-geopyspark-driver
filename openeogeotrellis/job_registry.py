@@ -931,8 +931,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
         return jobs
 
-    def get_running_jobs(self) -> Iterator[Dict]:
-        # TODO: rename to more aptly named get_active_jobs?
+    def get_active_jobs(self) -> Iterator[Dict]:
         # TODO: incorporate user_limit?
         if self.zk_job_registry:
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)

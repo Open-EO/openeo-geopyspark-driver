@@ -689,7 +689,7 @@ class TestDoubleJobRegistry:
             (True, False),
         ],
     )
-    def test_get_running_jobs(self, double_jr, zk_client, memory_jr, with_zk, with_ejr):
+    def test_get_active_jobs(self, double_jr, zk_client, memory_jr, with_zk, with_ejr):
         with double_jr:
             double_jr.create_job(
                 job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
@@ -708,7 +708,7 @@ class TestDoubleJobRegistry:
         )
 
         with other_double_jr:
-            running_jobs = list(other_double_jr.get_running_jobs())
+            active_jobs = list(other_double_jr.get_active_jobs())
 
-        running_job_ids = set(job["job_id"] for job in running_jobs)
-        assert running_job_ids == {"j-456", "j-789"}
+        active_job_ids = set(job["job_id"] for job in active_jobs)
+        assert active_job_ids == {"j-456", "j-789"}

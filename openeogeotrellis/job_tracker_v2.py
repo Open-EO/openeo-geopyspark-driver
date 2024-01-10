@@ -394,7 +394,7 @@ class JobTracker:
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
-            jobs_to_track = double_job_registry.get_running_jobs()
+            jobs_to_track = double_job_registry.get_active_jobs()
 
             for job_info in jobs_to_track:
                 stats["collected jobs"] += 1
