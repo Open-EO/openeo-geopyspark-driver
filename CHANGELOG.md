@@ -12,6 +12,12 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.22.1
+
+### Bugfix
+
+ - Prevent usage duplication in ETL API ([#41](https://github.com/eu-cdse/openeo-cdse-infra/issues/41))
+
 ## 0.22.0
 
 ### Added
