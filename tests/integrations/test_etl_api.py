@@ -210,11 +210,10 @@ class TestGetEtlApi:
             assert etl_api5 is etl_api4
             assert oidc_mock.mocks["oidc_discovery"].call_count == 2
 
+
 class TestEtlApi:
     def test_log_resource_usage(self, requests_mock, etl_credentials):
         mock_endpoint = "https://etl-api.test"
-        requests_mock.get(f"{mock_endpoint}/user/permissions", json={"execution": True})
-
         etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
 
         def verify_request(request, context):
@@ -254,3 +253,37 @@ class TestEtlApi:
                                                   sentinel_hub_processing_units=4.0)
 
         assert credits_cost == 9.87
+
+    def test_log_added_value(self, requests_mock, etl_credentials):
+        mock_endpoint = "https://etl-api.test"
+        etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
+
+        def verify_request(request, context):
+            assert request.json() == dict(
+                jobId="j-abc123",
+                jobName="a test",
+                executionId="application_1704961751000_456",
+                userId="johndoe",
+                sourceId="test",
+                orchestrator="openeo",
+                jobStart=1704961751000,
+                jobFinish=1704961804000,
+                idempotencyKey="application_1704961751000_456",
+                service="load_stac",
+                area={"value": 40.0, "unit": "square_meter"},
+            )
+
+            context.status_code = 201
+            return [{
+                "jobId": "j-abc123",
+                "cost": 8.76
+            }]
+
+        requests_mock.post(f"{mock_endpoint}/addedvalue", json=verify_request)
+
+        credits_cost = etl_api.log_added_value(batch_job_id="j-abc123", title="a test",
+                                               execution_id="application_1704961751000_456", user_id="johndoe",
+                                               started_ms=1704961751000, finished_ms=1704961804000,
+                                               process_id="load_stac", square_meters=40.0)
+
+        assert credits_cost == 8.76

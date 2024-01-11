@@ -162,6 +162,7 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            'idempotencyKey': execution_id,
             'service': process_id,
             'area': {'value': square_meters, 'unit': 'square_meter'}
         }
