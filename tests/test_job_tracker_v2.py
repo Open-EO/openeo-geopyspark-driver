@@ -1101,6 +1101,7 @@ class TestK8sJobTracker:
         prometheus_mock.get_cpu_usage.return_value = 2.34 * 3600
         prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
         prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
+        prometheus_mock.get_max_executor_memory_usage.return_value = 3.5
 
         return prometheus_mock
 
@@ -1244,6 +1245,7 @@ class TestK8sJobTracker:
                 "foo": "bar",
                 "usage": {
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
@@ -1261,6 +1263,7 @@ class TestK8sJobTracker:
                 "finished": "2022-12-14T12:03:30Z",
                 "usage": {
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
