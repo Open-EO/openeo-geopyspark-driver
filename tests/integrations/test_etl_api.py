@@ -41,23 +41,25 @@ def test_get_etl_api_credentials_from_env_default():
         _ = get_etl_api_credentials_from_env()
 
 
+@pytest.fixture
+def etl_credentials() -> ClientCredentials:
+    """Default client credentials for ETL API access"""
+    return ClientCredentials(oidc_issuer="https://oidc.test", client_id="client123", client_secret="s3cr3t")
+
+
+@pytest.fixture(autouse=True)
+def oidc_mock(requests_mock, etl_credentials: ClientCredentials) -> OidcMock:
+    oidc_mock = OidcMock(
+        requests_mock=requests_mock,
+        oidc_issuer=etl_credentials.oidc_issuer,
+        expected_grant_type="client_credentials",
+        expected_client_id=etl_credentials.client_id,
+        expected_fields={"client_secret": etl_credentials.client_secret, "scope": "openid"},
+    )
+    return oidc_mock
+
+
 class TestGetEtlApi:
-    @pytest.fixture
-    def etl_credentials(self) -> ClientCredentials:
-        """Default client credentials for ETL API access"""
-        return ClientCredentials(oidc_issuer="https://oidc.test", client_id="client123", client_secret="s3cr3t")
-
-    @pytest.fixture(autouse=True)
-    def oidc_mock(self, requests_mock, etl_credentials: ClientCredentials) -> OidcMock:
-        oidc_mock = OidcMock(
-            requests_mock=requests_mock,
-            oidc_issuer=etl_credentials.oidc_issuer,
-            expected_grant_type="client_credentials",
-            expected_client_id=etl_credentials.client_id,
-            expected_fields={"client_secret": etl_credentials.client_secret, "scope": "openid"},
-        )
-        return oidc_mock
-
     @pytest.fixture
     def etl_credentials_in_env(self, etl_credentials, monkeypatch):
         """Set env var to get ETL OIDC client credentials from"""
@@ -207,3 +209,48 @@ class TestGetEtlApi:
             assert isinstance(etl_api5, EtlApi)
             assert etl_api5 is etl_api4
             assert oidc_mock.mocks["oidc_discovery"].call_count == 2
+
+class TestEtlApi:
+    def test_log_resource_usage(self, requests_mock, etl_credentials):
+        mock_endpoint = "https://etl-api.test"
+        requests_mock.get(f"{mock_endpoint}/user/permissions", json={"execution": True})
+
+        etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
+
+        def verify_request(request, context):
+            assert request.json() == dict(
+                jobId="j-abc123",
+                jobName="a test",
+                executionId="application_1704961751000_456",
+                userId="johndoe",
+                sourceId="test",
+                orchestrator="openeo",
+                jobStart=1704961751000,
+                jobFinish=1704961804000,
+                idempotencyKey="application_1704961751000_456",
+                state="FINISHED",
+                status="SUCCEEDED",
+                metrics={
+                    "cpu": {"value": 53, "unit": "cpu-seconds"},
+                    "memory": {"value": 6784, "unit": "mb-seconds"},
+                    "time": {"value": 53000, "unit": "milliseconds"},
+                    "processing": {"value": 4.0, "unit": "shpu"},
+                }
+            )
+
+            context.status_code = 201
+            return [{
+                "jobId": "j-abc123",
+                "cost": 9.87
+            }]
+
+        requests_mock.post(f"{mock_endpoint}/resources", json=verify_request)
+
+        credits_cost = etl_api.log_resource_usage(batch_job_id="j-abc123", title="a test",
+                                                  execution_id="application_1704961751000_456", user_id="johndoe",
+                                                  started_ms=1704961751000, finished_ms=1704961804000,
+                                                  state="FINISHED", status="SUCCEEDED",
+                                                  cpu_seconds=53, mb_seconds=6784, duration_ms=53000,
+                                                  sentinel_hub_processing_units=4.0)
+
+        assert credits_cost == 9.87
