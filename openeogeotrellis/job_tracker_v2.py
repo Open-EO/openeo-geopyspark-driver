@@ -335,7 +335,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             return _Usage(cpu_seconds=cpu_seconds,
                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes,
+                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte
                           )
         except Exception as e:
             _log.exception(
