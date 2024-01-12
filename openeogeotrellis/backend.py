@@ -1548,7 +1548,12 @@ class GpsProcessing(ConcreteProcessing):
 
                 if spatial_extent and temporal_extent:
                     # TODO #618 get correct number of bands if none specified by user
-                    nr_bands = len(metadata.get("cube:dimensions", "bands", "values", default = ["default_band"]))
+                    bands = constraints.get(
+                        "bands",
+                        metadata.get("cube:dimensions", "bands", "values",
+                                     default=["_at_least_assume_one_band_"])
+                    )
+                    nr_bands = len(bands)
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
