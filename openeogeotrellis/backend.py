@@ -2413,28 +2413,28 @@ class GpsBatchJobs(backend.BatchJobs):
                         f.write(job_specification_json)
                     # Generate our own random application id.
                     application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
-                    output_string = f"Application report for application_{application_id} (state: running)"
+                    script_output = f"Application report for application_{application_id} (state: running)"
                 else:
                     try:
                         log.info(f"Submitting job with command {args!r}")
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                        log.info(f"Submitted job, output was: {output_string}")
+                        script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                        log.info(f"Submitted job, output was: {script_output}")
                     except CalledProcessError as e:
                         log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
                         raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
 
             try:
-                application_id = self._extract_application_id(output_string)
+                application_id = self._extract_application_id(script_output)
                 log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_application_id(job_id, user_id, application_id)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
-            except _BatchJobError as e:
+            except _BatchJobError:
                 traceback.print_exc(file=sys.stderr)
                 # TODO: why reraise as CalledProcessError?
-                raise CalledProcessError(1, str(args), output=output_string)
+                raise CalledProcessError(1, str(args), output=script_output)
 
     def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
@@ -2444,13 +2444,13 @@ class GpsBatchJobs(backend.BatchJobs):
             output_file.write(f"spark.openeo.vault.token={vault_token}\n")
 
     @staticmethod
-    def _extract_application_id(stream) -> str:
+    def _extract_application_id(script_output: str) -> str:
         regex = re.compile(r"^.*Application report for (application_\d{13}_\d+)\s\(state:.*", re.MULTILINE)
-        match = regex.search(stream)
+        match = regex.search(script_output)
         if match:
             return match.group(1)
         else:
-            raise _BatchJobError(stream)
+            raise _BatchJobError(script_output)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
