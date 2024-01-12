@@ -2247,6 +2247,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_id_full=job_id,
                 driver_cores=driver_cores,
                 driver_memory=driver_memory,
+                driver_memory_overhead=driver_memory_overhead,
                 executor_cores=executor_cores,
                 executor_corerequest=executor_corerequest,
                 executor_memory=executor_memory,
