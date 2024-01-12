@@ -2084,8 +2084,8 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", "2G" if isKube else "8G" )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", "1G" if isKube else "2G")
+        driver_memory = job_options.get("driver-memory", "3G" if isKube else "8G" )
+        driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G" if isKube else "2G")
         executor_memory = job_options.get("executor-memory", "2G")
         executor_memory_overhead = job_options.get("executor-memoryOverhead", "2500m" if isKube else "3G")
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
