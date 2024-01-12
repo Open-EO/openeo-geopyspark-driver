@@ -1120,7 +1120,12 @@ def is_layer_too_large(
              Also returns the estimated number of pixels and the threshold.
     """
     from_date, to_date = temporal_extent
-    days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    if from_date is None or to_date is None:
+        days = 1
+        logger.warning(f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day.")
+    else:
+        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    days = max(days, 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
