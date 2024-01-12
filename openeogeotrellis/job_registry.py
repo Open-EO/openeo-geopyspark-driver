@@ -921,7 +921,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         include_done: bool = True,
         user_limit: Optional[int] = 1000,
     ) -> List[dict]:
-        # TODO #236/#498 Need to have EJR implementation for this? This is only necessary for ZK cleaner script anyway.
+        if not self.zk_job_registry:
+            raise NotImplementedError("only necessary for ZK cleaner script")
+
         jobs = self.zk_job_registry.get_all_jobs_before(
             upper=upper,
             user_ids=user_ids,
