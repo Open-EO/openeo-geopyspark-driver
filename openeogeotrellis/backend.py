@@ -57,7 +57,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
 from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
@@ -85,7 +85,7 @@ from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     check_missing_products,
     get_layer_catalog,
-    is_layer_too_large,
+    is_layer_too_large, LARGE_LAYER_THRESHOLD_IN_PIXELS,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -1501,6 +1501,8 @@ class GpsProcessing(ConcreteProcessing):
     ) -> Iterable[dict]:
 
         catalog = env.backend_implementation.catalog
+        allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
+        large_layer_threshold_in_pixels = int(float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
 
         for source_id, constraints in source_constraints:
             source_id_proc, source_id_args = source_id
@@ -1510,7 +1512,7 @@ class GpsProcessing(ConcreteProcessing):
                 temporal_extent = constraints.get("temporal_extent")
                 spatial_extent = constraints.get("spatial_extent")
 
-                if metadata.get("_vito", "data_source", "check_missing_products", default=None):
+                if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
                     properties = constraints.get("properties", {})
                     if temporal_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
@@ -1559,6 +1561,7 @@ class GpsProcessing(ConcreteProcessing):
                         cell_height=cell_height,
                         native_crs=native_crs,
                         resample_params=constraints.get("resample", {}),
+                        threshold_pixels=large_layer_threshold_in_pixels,
                     )
                     if too_large:
                         yield {

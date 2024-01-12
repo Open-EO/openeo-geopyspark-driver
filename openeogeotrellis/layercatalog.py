@@ -65,7 +65,7 @@ WHITELIST = [
     CORRELATION_ID,
     USER
 ]
-LARGE_LAYER_THRESHOLD_IN_PIXELS = 100 * pow(10, 9)
+LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
 logger = logging.getLogger(__name__)
 
