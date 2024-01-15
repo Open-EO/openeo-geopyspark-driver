@@ -1096,6 +1096,9 @@ def reproject_cellsize(
         native_resolution: dict,  # cell_width, cell_height, crs
         to_crs: str,
 ) -> Tuple[float, float]:
+    if "crs" not in spatial_extent:
+        spatial_extent = spatial_extent.copy()
+        spatial_extent["crs"] = "EPSG:4326"
     west, south = spatial_extent["west"], spatial_extent["south"]
     east, north = spatial_extent["east"], spatial_extent["north"]
     spatial_extent_shaply = box(west, south, east, north)
