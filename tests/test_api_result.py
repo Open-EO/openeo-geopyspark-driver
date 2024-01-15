@@ -1945,7 +1945,7 @@ def test_extra_validation_terrascope(jvm_mock, api100):
         "arguments": {
             "id": "TERRASCOPE_S2_TOC_V2",
             "temporal_extent": ["2020-03-01", "2020-03-10"],
-            "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68},
+            "spatial_extent": {"west": -86.1, "south": 67, "east": -86, "north": 67.1},
             "properties": {"eo:cloud_cover": {"process_graph": {
                 "lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50},
                          "result": True}}}}
