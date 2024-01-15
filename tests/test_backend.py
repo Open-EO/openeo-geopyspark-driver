@@ -163,7 +163,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
     source_id2 = "load_collection", ("COPERNICUS_30", None)
-    polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (10.0, 0.0), (0.0, 10.0), (10.0, 10.0)]]}
+    polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
     polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
     env_source_constraints = [
@@ -194,7 +194,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     processing = GpsProcessing()
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
     source_id2 = "load_collection", ("COPERNICUS_30", None)
-    polygon1 = shapely.geometry.Polygon([(0, 0), (10, 0), (0, 10), (10, 10)])
+    polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
     polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
     env_source_constraints = [
         (source_id1, {
@@ -286,7 +286,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
             },
             "resample": {
                 "target_crs": "EPSG:3035",
-                "resolution": [1000.0, 1000.0],
+                "resolution": [10000.0, 10000.0],
                 "method": "near",
             },
         }),
@@ -311,7 +311,7 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
                         "code": "Auto42001"
                     }
                 },
-                "resolution": [1000.0, 1000.0],
+                "resolution": [10000.0, 10000.0],
                 "method": "near",
             },
         }),

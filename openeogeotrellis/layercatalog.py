@@ -1160,7 +1160,7 @@ def is_layer_too_large(
     """
 
     ##################################################
-    threshold_pixels = LARGE_LAYER_THRESHOLD_IN_PIXELS  # TODO, remove
+    threshold_pixels = pow(10, 8)  # TODO, remove
     ##################################################
 
 
