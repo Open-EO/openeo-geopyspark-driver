@@ -54,9 +54,9 @@ from openeo_driver.jobregistry import DEPENDENCY_STATUS, JOB_STATUS, ElasticJobR
 from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
-from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
+from openeo_driver.util.geometry import BoundingBox, GeometryBufferer, reproject_bounding_box
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg
+from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg, auto_utm_epsg_for_geometry
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
 from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
@@ -64,7 +64,7 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, box
 from xarray import DataArray
 
 from openeogeotrellis import sentinel_hub
@@ -85,7 +85,7 @@ from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     check_missing_products,
     get_layer_catalog,
-    is_layer_too_large, LARGE_LAYER_THRESHOLD_IN_PIXELS,
+    is_layer_too_large, LARGE_LAYER_THRESHOLD_IN_PIXELS, reproject_cellsize,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -1534,8 +1534,21 @@ class GpsProcessing(ConcreteProcessing):
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
 
-                cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
-                cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                if collection_id == 'TestCollection-LonLat4x4':
+                    # This layer is always 4x4 pixels, adapt resolution accordingly
+                    bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+                    bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+                    cell_width_latlon = bbox_width / 4
+                    cell_height_latlon = bbox_height / 4
+                    native_resolution = {
+                        "cell_width": cell_width_latlon,
+                        "cell_height": cell_height_latlon,
+                        "crs": "EPSG:4326"
+                    }
+                    cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
+                else:
+                    cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
+                    cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
                 native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)

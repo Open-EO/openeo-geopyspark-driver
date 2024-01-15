@@ -1091,6 +1091,42 @@ def check_missing_products(
         return missing
 
 
+def reproject_cellsize(
+        spatial_extent: dict,
+        native_resolution: dict,  # cell_width, cell_height, crs
+        to_crs: str,
+) -> Tuple[float, float]:
+    west, south = spatial_extent["west"], spatial_extent["south"]
+    east, north = spatial_extent["east"], spatial_extent["north"]
+    spatial_extent_shaply = box(west, south, east, north)
+    if to_crs == "Auto42001" or native_resolution["crs"] == "Auto42001":
+        # Find correct UTM zone
+        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
+        if to_crs == "Auto42001":
+            to_crs = utm_zone_crs
+        if native_resolution["crs"] == "Auto42001":
+            native_resolution = native_resolution.copy()
+            native_resolution["crs"] = utm_zone_crs
+
+    p = spatial_extent_shaply.representative_point()
+    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], native_resolution["crs"], always_xy=True)
+    x, y = transformer.transform(p.x, p.y)
+
+    cell_bbox = {
+        "west": x,
+        "east": x + native_resolution["cell_width"],
+        "south": y,
+        "north": y + native_resolution["cell_height"],
+        "crs": native_resolution["crs"]
+    }
+    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
+
+    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
+    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
+
+    return cell_width_reprojected, cell_height_reprojected
+
+
 def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
@@ -1119,6 +1155,12 @@ def is_layer_too_large(
     :return: True if the layer exceeds the threshold in pixels. False otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+
+    ##################################################
+    threshold_pixels = LARGE_LAYER_THRESHOLD_IN_PIXELS  # TODO, remove
+    ##################################################
+
+
     from_date, to_date = temporal_extent
     if from_date is None or to_date is None:
         days = 1
@@ -1169,6 +1211,17 @@ def is_layer_too_large(
                 geometries_area = calculate_rough_area([geometries])
             else:
                 raise TypeError(f'Unsupported geometry type: {type(geometries)}')
+            native_resolution = {
+                "cell_width": cell_width,
+                "cell_height": cell_height,
+                "crs": native_crs,
+            }
+
+            # reproject_cellsize just to test:
+            cell_width2, cell_height2 = reproject_cellsize(spatial_extent, native_resolution, "EPSG:4326")
+            logger.warning(
+                f"is_layer_too_large {cell_width2=} {cell_height2=}"
+            )
             if native_crs != 'EPSG:4326':
                 # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
                 cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
@@ -1176,7 +1229,7 @@ def is_layer_too_large(
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
-            logger.debug(
+            logger.warning(
                 f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
             )
             if estimated_pixels <= threshold_pixels:
