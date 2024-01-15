@@ -425,26 +425,9 @@ class JobTracker:
 
                 job_id = job_info["job_id"]
                 user_id = job_info["user_id"]
+                application_id = job_info["application_id"]
 
                 try:
-                    application_id = job_info.get("application_id")
-                    status = job_info.get("status")
-
-                    if not application_id:
-                        # No application_id typically means that job hasn't been started yet.
-                        created = job_info.get("created")
-                        if created:
-                            age = dt.datetime.utcnow() - rfc3339.parse_datetime(created)
-                        else:
-                            age = "unknown"
-                        # TODO: handle very old, non-started jobs? E.g. mark as error?
-                        _log.info(
-                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}",
-                            extra={"job_id": job_id, "user_id": user_id}
-                        )
-                        stats[f"skip due to no application_id ({status=})"] += 1
-                        continue
-
                     self._sync_job_status(
                         job_id=job_id,
                         user_id=user_id,

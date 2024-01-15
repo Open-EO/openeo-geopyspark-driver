@@ -199,8 +199,10 @@ class ZkJobRegistry:
                 if job_ids:
                     stats["user_id with jobs"] += 1
                     for job_id in job_ids:
-                        yield self.get_job(job_id, user_id, parse_specification=parse_specification)
-                        stats["job_ids"] += 1
+                        job_info = self.get_job(job_id, user_id, parse_specification=parse_specification)
+                        if job_info.get("application_id"):
+                            yield job_info
+                            stats["job_ids"] += 1
                 else:
                     stats["user_id without jobs"] += 1
 
