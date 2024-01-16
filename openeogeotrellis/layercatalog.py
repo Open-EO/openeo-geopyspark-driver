@@ -1139,7 +1139,8 @@ def is_layer_too_large(
         cell_height: float,
         native_crs: str,
         resample_params: dict,
-        threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS
+        threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS,
+        sync_job: bool = False,
 ):
     """
     Estimates the number of pixels that will be required to load this layer
@@ -1155,15 +1156,9 @@ def is_layer_too_large(
     :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
 
-    :return: True if the layer exceeds the threshold in pixels. False otherwise.
+    :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
-
-    ##################################################
-    threshold_pixels = pow(10, 8)  # TODO, remove
-    ##################################################
-
-
     from_date, to_date = temporal_extent
     if from_date is None or to_date is None:
         days = 1
@@ -1198,6 +1193,11 @@ def is_layer_too_large(
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
     # TODO #618 estimation assumes there is an observation for every day, which is typically quite an overestimation.
+    pixels_width = bbox_width / cell_width
+    pixels_height = bbox_height / cell_height
+    if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:
+        return f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000)."
+
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
     logger.debug(
         f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
@@ -1231,14 +1231,16 @@ def is_layer_too_large(
                 cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
-            estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
+            surface_area_pixels = geometries_area / (cell_width * cell_height)
+            estimated_pixels = surface_area_pixels * days * nr_bands
             logger.warning(
                 f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
             )
             if estimated_pixels <= threshold_pixels:
-                return False, estimated_pixels, threshold_pixels
-        return True, estimated_pixels, threshold_pixels
-    return False, estimated_pixels, threshold_pixels
+                return None
+        return f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, " + \
+            f"threshold: {threshold_pixels:.2e}."
+    return None
 
 
 if __name__ == "__main__":

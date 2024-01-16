@@ -1502,6 +1502,7 @@ class GpsProcessing(ConcreteProcessing):
 
         catalog = env.backend_implementation.catalog
         allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
+        sync_job = smart_bool(env.get("sync_job", False))
         large_layer_threshold_in_pixels = int(float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
 
         for source_id, constraints in source_constraints:
@@ -1570,7 +1571,7 @@ class GpsProcessing(ConcreteProcessing):
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
-                    too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
+                    message = is_layer_too_large(
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
@@ -1580,13 +1581,12 @@ class GpsProcessing(ConcreteProcessing):
                         native_crs=native_crs,
                         resample_params=constraints.get("resample", {}),
                         threshold_pixels=large_layer_threshold_in_pixels,
+                        sync_job=sync_job,
                     )
-                    if too_large:
+                    if message:
                         yield {
                             "code": "ExtentTooLarge",
-                            "message": f"Requested extent for collection {collection_id!r} is too large to process. "
-                            f"Estimated number of pixels: {estimated_pixels:.2e}, "
-                            f"threshold: {threshold_pixels:.2e}.",
+                            "message": f"collection_id {collection_id!r}: {message}"
                         }
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
