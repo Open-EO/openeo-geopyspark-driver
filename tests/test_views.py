@@ -509,7 +509,8 @@ class TestBatchJobs:
             }
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-    def test_create_and_start_and_download(self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root):
+    def test_create_and_start_and_download(self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root,
+                                           job_registry):
         with self._mock_kazoo_client() as zk, \
                 self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
@@ -580,11 +581,14 @@ class TestBatchJobs:
             assert res["logs"] == []
 
             # Fake update from job tracker
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(
-                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
-                )
+            dbl_job_registry = DoubleJobRegistry(
+                # TODO #236/#498/#632 phase out ZkJobRegistry
+                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
+                elastic_job_registry=job_registry,
+            )
+            with dbl_job_registry as jr:
+                jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
+
             meta_data = zk.get_json_decoded(
                 f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
             )
@@ -607,9 +611,8 @@ class TestBatchJobs:
                 metadata = api.load_json(JOB_METADATA_FILENAME)
                 json.dump(metadata, f)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(
+            with dbl_job_registry as jr:
+                jr.set_status(
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
                 )
             res = (
@@ -665,7 +668,7 @@ class TestBatchJobs:
 
             assert res["logs"] == expected_log_entries
 
-    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root):
+    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un, mock.patch.dict(
             "os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}
         ):
@@ -741,9 +744,13 @@ class TestBatchJobs:
                 json.dump(job_metadata_contents, f)
 
             # Fake update from job tracker
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+            dbl_job_registry = DoubleJobRegistry(
+                # TODO #236/#498/#632 phase out ZkJobRegistry
+                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
+                elastic_job_registry=job_registry,
+            )
+            with dbl_job_registry as jr:
+                jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
             res = api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "finished"
 
@@ -1066,8 +1073,13 @@ class TestBatchJobs:
 
             # Fake running
             # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
+            dbl_job_registry = DoubleJobRegistry(
+                # TODO #236/#498/#632 phase out ZkJobRegistry
+                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
+                elastic_job_registry=job_registry,
+            )
+            with dbl_job_registry as jr:
+                jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "running"
 
@@ -1120,11 +1132,13 @@ class TestBatchJobs:
                 run.assert_called_once()
 
             # Fake running
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
-                reg.set_status(
-                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
-                )
+            dbl_job_registry = DoubleJobRegistry(
+                # TODO #236/#498/#632 phase out ZkJobRegistry
+                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
+                elastic_job_registry=job_registry,
+            )
+            with dbl_job_registry as jr:
+                jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
             res = (
                 api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
                 .assert_status_code(200)
@@ -1528,6 +1542,7 @@ class TestBatchJobs:
                         }
                     }
                 ]
+
 
 class TestSentinelHubBatchJobs:
     """Tests for batch jobs involving SentinelHub collections and batch processes"""
