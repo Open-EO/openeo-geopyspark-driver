@@ -1995,7 +1995,7 @@ class GpsBatchJobs(backend.BatchJobs):
         else:
             # New style job info (EJR based)
             job_process_graph = job_info["process"]["process_graph"]
-            job_options = job_info.get("job_options", {})
+            job_options = job_info.get("job_options") or {}  # can be None
             job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         job_title = job_info.get('title', '')
