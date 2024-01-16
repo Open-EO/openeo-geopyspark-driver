@@ -1220,11 +1220,6 @@ def is_layer_too_large(
                 "crs": native_crs,
             }
 
-            # reproject_cellsize just to test:
-            cell_width2, cell_height2 = reproject_cellsize(spatial_extent, native_resolution, "EPSG:4326")
-            logger.warning(
-                f"is_layer_too_large {cell_width2=} {cell_height2=}"
-            )
             if native_crs != 'EPSG:4326':
                 # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
                 cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
@@ -1233,7 +1228,7 @@ def is_layer_too_large(
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             surface_area_pixels = geometries_area / (cell_width * cell_height)
             estimated_pixels = surface_area_pixels * days * nr_bands
-            logger.warning(
+            logger.debug(
                 f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
             )
             if estimated_pixels <= threshold_pixels:
