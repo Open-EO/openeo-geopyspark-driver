@@ -679,6 +679,11 @@ class InMemoryJobRegistry(JobRegistryInterface):
         # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
 
+    def list_trackable_jobs(self, fields: Optional[List[str]] = None) -> List[JobDict]:
+        return [job for job in self.db.values()
+                if job["status"] in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
+                and job.get("application_id")]
+
 
 class DoubleJobRegistryException(Exception):
     pass
@@ -938,7 +943,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
         elif self.elastic_job_registry:
             # TODO: incorporate user_limit?
-            yield from self.elastic_job_registry.list_active_jobs(fields=[
+            yield from self.elastic_job_registry.list_trackable_jobs(fields=[
                 "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
                 "dependency_usage",
             ])
