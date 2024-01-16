@@ -1214,12 +1214,6 @@ def is_layer_too_large(
                 geometries_area = calculate_rough_area([geometries])
             else:
                 raise TypeError(f'Unsupported geometry type: {type(geometries)}')
-            native_resolution = {
-                "cell_width": cell_width,
-                "cell_height": cell_height,
-                "crs": native_crs,
-            }
-
             if native_crs != 'EPSG:4326':
                 # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
                 cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
