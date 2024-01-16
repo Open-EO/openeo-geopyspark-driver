@@ -1155,17 +1155,28 @@ def is_layer_too_large(
     :param native_crs: Native CRS of the layer.
     :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
+    :param sync_job: Is sync job.
 
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
     from_date, to_date = temporal_extent
-    if from_date is None or to_date is None:
-        days = 1
-        logger.warning(f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day.")
+    if to_date is None:
+        if from_date is None:
+            days = 1
+            logger.warning(
+                f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
+            )
+        else:
+            logger.warning(
+                f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
+            )
+            to_date = datetime.now().isoformat()
+            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
     else:
-        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
-    days = max(days, 1)
+        # Some datasets have coverage only once every 4 days. Be less strict here:
+        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+    days = max(int(days), 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)

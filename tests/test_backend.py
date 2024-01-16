@@ -159,6 +159,25 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
     assert errors[1]['code'] == "ExtentTooLarge"
 
 
+def test_extra_validation_layer_too_large_open_time_interval(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": [None, None],  # Will go from 2014 till current time
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929,
+                               "crs": "EPSG:32632"},
+            "bands": ["B01"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "ExtentTooLarge"
+
+
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)

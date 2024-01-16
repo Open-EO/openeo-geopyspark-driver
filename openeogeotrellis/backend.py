@@ -1560,8 +1560,32 @@ class GpsProcessing(ConcreteProcessing):
                                                                   f"collection {collection_id!r}"}
                     continue
 
+                # Get temporal extent out of metadata if not found in constraints:
+                # TODO: Could do this for spatial extent as well.
+                if temporal_extent is None or temporal_extent[0] is None or temporal_extent[1] is None:
+                    extents = metadata.get("extent", "temporal", "interval", default=None)
+                    begin = None
+                    end = None
+                    for extent in extents:
+                        if extent[0]:
+                            if begin is None:
+                                begin = extent[0]
+                            else:
+                                begin = min(begin, extent[0])
+                        if extent[1]:
+                            if end is None:
+                                end = extent[1]
+                            else:
+                                end = max(end, extent[1])
+                    if temporal_extent is None:
+                        temporal_extent = [begin, end]
+                    else:
+                        temporal_extent = [
+                            temporal_extent[0] or begin,
+                            temporal_extent[1] or end,
+                        ]
+
                 if spatial_extent and temporal_extent:
-                    # TODO #618 get correct number of bands if none specified by user
                     bands = constraints.get(
                         "bands",
                         metadata.get("cube:dimensions", "bands", "values",
