@@ -1591,6 +1591,7 @@ class TestK8sJobTracker:
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                    "max_executor_memory": {"unit": "gb", "value": 3.5},
                 },
                 "costs": 129.95,
                 "results_metadata": {
