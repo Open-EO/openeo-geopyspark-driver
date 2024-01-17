@@ -54,9 +54,9 @@ from openeo_driver.jobregistry import DEPENDENCY_STATUS, JOB_STATUS, ElasticJobR
 from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
-from openeo_driver.util.geometry import BoundingBox, GeometryBufferer, reproject_bounding_box
+from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg, auto_utm_epsg_for_geometry
+from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
 from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
@@ -64,7 +64,7 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon
 from xarray import DataArray
 
 from openeogeotrellis import sentinel_hub
@@ -85,7 +85,9 @@ from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     check_missing_products,
     get_layer_catalog,
-    is_layer_too_large, LARGE_LAYER_THRESHOLD_IN_PIXELS, reproject_cellsize,
+    is_layer_too_large,
+    LARGE_LAYER_THRESHOLD_IN_PIXELS,
+    reproject_cellsize,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
