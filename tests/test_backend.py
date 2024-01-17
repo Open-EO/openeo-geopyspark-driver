@@ -139,7 +139,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
     env_source_constraints = [
         (source_id1, {
-            "temporal_extent": ["2019-01-01", "2019-01-03"],
+            "temporal_extent": ["2019-01-01", "2019-01-09"],
             "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929, "crs": "EPSG:32632"},
             "bands": ["B01", "B02", "B03"],
         }),
@@ -159,11 +159,51 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
     assert errors[1]['code'] == "ExtentTooLarge"
 
 
+def test_extra_validation_layer_too_large_open_time_interval(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": [None, None],  # Will go from 2014 till current time
+            "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929,
+                               "crs": "EPSG:32632"},
+            "bands": ["B01"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "ExtentTooLarge"
+
+
+def test_extra_validation_layer_too_large_area(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2022-01-01", "2022-01-01"],
+            "spatial_extent": {"south": -952987.7582, "west": 1495130.8875, "north": 910166.7419, "east": 9088482.3929,
+                               "crs": "EPSG:32632"},
+            "bands": ["B01"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "sync_job": True,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]['message']
+
+
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
     source_id2 = "load_collection", ("COPERNICUS_30", None)
-    polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (10.0, 0.0), (0.0, 10.0), (10.0, 10.0)]]}
+    polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
     polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
     env_source_constraints = [
@@ -194,7 +234,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
     processing = GpsProcessing()
     source_id1 = "load_collection", ("SENTINEL1_GRD", None)
     source_id2 = "load_collection", ("COPERNICUS_30", None)
-    polygon1 = shapely.geometry.Polygon([(0, 0), (10, 0), (0, 10), (10, 10)])
+    polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
     polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
     env_source_constraints = [
         (source_id1, {
@@ -286,7 +326,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
             },
             "resample": {
                 "target_crs": "EPSG:3035",
-                "resolution": [1000.0, 1000.0],
+                "resolution": [10000.0, 10000.0],
                 "method": "near",
             },
         }),
@@ -311,7 +351,7 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
                         "code": "Auto42001"
                     }
                 },
-                "resolution": [1000.0, 1000.0],
+                "resolution": [10000.0, 10000.0],
                 "method": "near",
             },
         }),

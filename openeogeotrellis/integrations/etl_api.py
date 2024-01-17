@@ -117,6 +117,7 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            'idempotencyKey': execution_id,
             # TODO #610 simplify this state/status stuff to single openEO-style job status?
             'state': state,
             'status': status,
@@ -161,6 +162,7 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            'idempotencyKey': execution_id,
             'service': process_id,
             'area': {'value': square_meters, 'unit': 'square_meter'}
         }

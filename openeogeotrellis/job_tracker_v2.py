@@ -62,6 +62,7 @@ class _Usage(NamedTuple):
     cpu_seconds: Optional[float] = None
     mb_seconds: Optional[float] = None
     network_receive_bytes: Optional[float] = None
+    max_executor_gigabytes: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -72,6 +73,8 @@ class _Usage(NamedTuple):
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
+        if self.max_executor_gigabytes:
+            result["max_executor_memory"] = {"value": self.max_executor_gigabytes, "unit": "gb"}
 
         return result
 
@@ -285,6 +288,13 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
+            if "FAILED" == app_state and "errorMessage" in metadata["status"]["applicationState"]:
+                msg = metadata["status"]["applicationState"]["errorMessage"]
+                if "driver" in msg and "OOMKilled" in msg:
+                    logging.error("Your batch job main application went out of memory, consider increasing driver-memoryOverhead.")
+                else:
+                    logging.warning(f"Final application error message: {msg}")
+
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
             finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
@@ -313,8 +323,11 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
+            max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
+
+
             _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
-                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}",
+                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}, {max_executor_gigabyte=}",
                       extra={"job_id": job_id, "user_id": user_id})
 
             if application_duration_s is not None:
@@ -329,7 +342,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             return _Usage(cpu_seconds=cpu_seconds,
                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes,
+                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte
                           )
         except Exception as e:
             _log.exception(
@@ -411,26 +424,9 @@ class JobTracker:
 
                 job_id = job_info["job_id"]
                 user_id = job_info["user_id"]
+                application_id = job_info["application_id"]
 
                 try:
-                    application_id = job_info.get("application_id")
-                    status = job_info.get("status")
-
-                    if not application_id:
-                        # No application_id typically means that job hasn't been started yet.
-                        created = job_info.get("created")
-                        if created:
-                            age = dt.datetime.utcnow() - rfc3339.parse_datetime(created)
-                        else:
-                            age = "unknown"
-                        # TODO: handle very old, non-started jobs? E.g. mark as error?
-                        _log.info(
-                            f"Skipping job without application_id: {job_id=}, {created=}, {age=}, {status=}",
-                            extra={"job_id": job_id, "user_id": user_id}
-                        )
-                        stats[f"skip due to no application_id ({status=})"] += 1
-                        continue
-
                     self._sync_job_status(
                         job_id=job_id,
                         user_id=user_id,

@@ -65,7 +65,7 @@ WHITELIST = [
     CORRELATION_ID,
     USER
 ]
-LARGE_LAYER_THRESHOLD_IN_PIXELS = 100 * pow(10, 9)
+LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
 logger = logging.getLogger(__name__)
 
@@ -1091,6 +1091,45 @@ def check_missing_products(
         return missing
 
 
+def reproject_cellsize(
+        spatial_extent: dict,
+        native_resolution: dict,  # cell_width, cell_height, crs
+        to_crs: str,
+) -> Tuple[float, float]:
+    if "crs" not in spatial_extent:
+        spatial_extent = spatial_extent.copy()
+        spatial_extent["crs"] = "EPSG:4326"
+    west, south = spatial_extent["west"], spatial_extent["south"]
+    east, north = spatial_extent["east"], spatial_extent["north"]
+    spatial_extent_shaply = box(west, south, east, north)
+    if to_crs == "Auto42001" or native_resolution["crs"] == "Auto42001":
+        # Find correct UTM zone
+        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
+        if to_crs == "Auto42001":
+            to_crs = utm_zone_crs
+        if native_resolution["crs"] == "Auto42001":
+            native_resolution = native_resolution.copy()
+            native_resolution["crs"] = utm_zone_crs
+
+    p = spatial_extent_shaply.representative_point()
+    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], native_resolution["crs"], always_xy=True)
+    x, y = transformer.transform(p.x, p.y)
+
+    cell_bbox = {
+        "west": x,
+        "east": x + native_resolution["cell_width"],
+        "south": y,
+        "north": y + native_resolution["cell_height"],
+        "crs": native_resolution["crs"]
+    }
+    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
+
+    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
+    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
+
+    return cell_width_reprojected, cell_height_reprojected
+
+
 def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
@@ -1100,7 +1139,8 @@ def is_layer_too_large(
         cell_height: float,
         native_crs: str,
         resample_params: dict,
-        threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS
+        threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS,
+        sync_job: bool = False,
 ):
     """
     Estimates the number of pixels that will be required to load this layer
@@ -1115,12 +1155,28 @@ def is_layer_too_large(
     :param native_crs: Native CRS of the layer.
     :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
+    :param sync_job: Is sync job.
 
-    :return: True if the layer exceeds the threshold in pixels. False otherwise.
+    :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
     from_date, to_date = temporal_extent
-    days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days
+    if to_date is None:
+        if from_date is None:
+            days = 1
+            logger.warning(
+                f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
+            )
+        else:
+            logger.warning(
+                f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
+            )
+            to_date = datetime.now().isoformat()
+            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+    else:
+        # Some datasets have coverage only once every 4 days. Be less strict here:
+        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+    days = max(int(days), 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
@@ -1148,6 +1204,11 @@ def is_layer_too_large(
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
     # TODO #618 estimation assumes there is an observation for every day, which is typically quite an overestimation.
+    pixels_width = bbox_width / cell_width
+    pixels_height = bbox_height / cell_height
+    if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:
+        return f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000)."
+
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
     logger.debug(
         f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
@@ -1170,14 +1231,16 @@ def is_layer_too_large(
                 cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
-            estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
+            surface_area_pixels = geometries_area / (cell_width * cell_height)
+            estimated_pixels = surface_area_pixels * days * nr_bands
             logger.debug(
                 f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
             )
             if estimated_pixels <= threshold_pixels:
-                return False, estimated_pixels, threshold_pixels
-        return True, estimated_pixels, threshold_pixels
-    return False, estimated_pixels, threshold_pixels
+                return None
+        return f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, " + \
+            f"threshold: {threshold_pixels:.2e}."
+    return None
 
 
 if __name__ == "__main__":

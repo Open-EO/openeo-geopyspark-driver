@@ -88,7 +88,7 @@ def main():
 
     run_gunicorn(
         app,
-        threads=10,
+        threads=30,
         host=host,
         port=port,
         on_started=on_started

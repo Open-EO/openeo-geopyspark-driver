@@ -208,8 +208,10 @@ class ZkJobRegistry:
                 if job_ids:
                     stats["user_id with jobs"] += 1
                     for job_id in job_ids:
-                        yield self.get_job(job_id, user_id, parse_specification=parse_specification)
-                        stats["job_ids"] += 1
+                        job_info = self.get_job(job_id, user_id, parse_specification=parse_specification)
+                        if job_info.get("application_id"):
+                            yield job_info
+                            stats["job_ids"] += 1
                 else:
                     stats["user_id without jobs"] += 1
 
@@ -267,7 +269,8 @@ class ZkJobRegistry:
         user_ids: Optional[List[str]] = None,
         include_ongoing: bool = True,
         include_done: bool = True,
-        user_limit: Optional[int] = 1000,
+        per_user_limit: Optional[int] = 1000,
+        field_whitelist: Optional[List[str]] = None,
     ) -> List[Dict]:
         def get_jobs_in(
             get_path: Callable[[Union[str, None], Union[str, None]], str],
@@ -275,10 +278,13 @@ class ZkJobRegistry:
         ) -> List[Dict]:
             if user_ids is None:
                 user_ids = self._zk.get_children(get_path(None, None))
+                _log.info(f"Collected {len(user_ids)=} in {get_path(None, None)!r}")
+            else:
+                _log.info(f"Using provided user_id list {user_ids=}")
 
             jobs_before = []
 
-            for user_id in user_ids:
+            for user_id in sorted(user_ids):
                 path = get_path(user_id, None)
                 try:
                     user_job_ids = self._zk.get_children(path)
@@ -288,12 +294,12 @@ class ZkJobRegistry:
                     )
                     continue
 
-                if user_limit and len(user_job_ids) > user_limit:
+                if per_user_limit and len(user_job_ids) > per_user_limit:
                     _log.warning(
                         f"User {user_id} has excessive number of jobs: {len(user_job_ids)}. "
-                        f"Sampling down to {user_limit}."
+                        f"Sampling down to {per_user_limit}."
                     )
-                    user_job_ids = random.sample(user_job_ids, k=user_limit)
+                    user_job_ids = random.sample(user_job_ids, k=per_user_limit)
 
                 for job_id in user_job_ids:
                     path = get_path(user_id, job_id)
@@ -306,7 +312,8 @@ class ZkJobRegistry:
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
-                        # TODO: not all job_info data is used, just pass the necessary bits?
+                        if field_whitelist:
+                            job_info = {k: job_info[k] for k in field_whitelist if k in job_info}
                         jobs_before.append(job_info)
 
             return jobs_before
@@ -778,43 +785,36 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
     def get_job(self, job_id: str, user_id: str) -> dict:
         # TODO: eliminate get_job/get_job_metadata duplication?
-        zk_job = ejr_job = None
-        if self.zk_job_registry:
-            with contextlib.suppress(JobNotFoundException):
-                zk_job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+        ejr_job = None
         if self.elastic_job_registry:
             with contextlib.suppress(JobNotFoundException):
                 ejr_job = self.elastic_job_registry.get_job(job_id=job_id)
 
-        self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job, ejr_job_info=ejr_job)
-        return zk_job or ejr_job
+        if ejr_job:
+            return ejr_job
+
+        if self.zk_job_registry:
+            return self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+
+        raise JobNotFoundException(job_id=job_id)
 
     def get_job_metadata(self, job_id: str, user_id: str) -> BatchJobMetadata:
         # TODO: eliminate get_job/get_job_metadata duplication?
-        zk_job_info = ejr_job_info = None
-        if self.zk_job_registry:
-            with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
-                with contextlib.suppress(JobNotFoundException):
-                    zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+        ejr_job_info = None
         if self.elastic_job_registry:
             with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
                 with contextlib.suppress(JobNotFoundException):
                     ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id)
 
-        self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
-        job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
-        return job_metadata
+        if ejr_job_info:
+            return ejr_job_info_to_metadata(ejr_job_info)
 
-    def _check_zk_ejr_job_info(self, job_id: str, zk_job_info: Union[dict, None], ejr_job_info: Union[dict, None]):
-        # TODO #236/#498 For now: compare job metadata between Zk and EJR
-        fields = ["job_id", "status", "created"]
-        if zk_job_info is not None and ejr_job_info is not None:
-            zk_job_info = {k: v for (k, v) in zk_job_info.items() if k in fields}
-            ejr_job_info = {k: v for (k, v) in ejr_job_info.items() if k in fields}
-            if zk_job_info != ejr_job_info:
-                self._log.warning(f"DoubleJobRegistry mismatch {zk_job_info=} {ejr_job_info=}")
-        elif zk_job_info is None and ejr_job_info is None:
-            raise JobNotFoundException(job_id=job_id)
+        if self.zk_job_registry:
+            with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
+                zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+                return zk_job_info_to_metadata(zk_job_info)
+
+        raise JobNotFoundException(job_id=job_id)
 
     def set_status(self, job_id: str, user_id: str, status: str,
                    started: Optional[str] = None, finished: Optional[str] = None,
@@ -934,7 +934,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             user_ids=user_ids,
             include_ongoing=include_ongoing,
             include_done=include_done,
-            user_limit=user_limit,
+            per_user_limit=user_limit,
         )
         return jobs
 

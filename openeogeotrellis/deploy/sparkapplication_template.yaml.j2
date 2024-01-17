@@ -121,6 +121,7 @@ spec:
     cores: {{ driver_cores }}
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
     memory: "{{ driver_memory }}"
+    memoryOverhead: "{{ driver_memory_overhead }}"
     serviceAccount: batch-jobs
 {%- endblock %}
     initContainers:
@@ -192,8 +193,10 @@ spec:
         value: "/usr/lib/otb/applications"
       - name: GDAL_NUM_THREADS
         value: "2"
+      - name: GDAL_DATASET_CACHE_SIZE
+        value: "12"
       - name: GDAL_CACHEMAX
-        value: "200"
+        value: "100"
       - name: GDAL_HTTP_MAX_RETRY
         value: "10"
       - name: GDAL_DISABLE_READDIR_ON_OPEN
@@ -306,8 +309,10 @@ spec:
         value: "/usr/lib/otb/applications"
       - name: GDAL_NUM_THREADS
         value: "2"
+      - name: GDAL_DATASET_CACHE_SIZE
+        value: "{{gdal_dataset_cache_size}}"
       - name: GDAL_CACHEMAX
-        value: "150"
+        value: "{{gdal_cachemax}}"
       - name: GDAL_DISABLE_READDIR_ON_OPEN
         value: "EMPTY_DIR"
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES

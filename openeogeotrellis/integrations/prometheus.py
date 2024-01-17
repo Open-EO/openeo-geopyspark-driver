@@ -50,6 +50,13 @@ class Prometheus:
                 f'* {application_duration_s}'
         return self._query_for_float(query, at)
 
+    def get_max_executor_memory_usage(self, application_id: str, at: str = None) -> Optional[float]:
+        """Returns memory usage in byte-seconds."""
+
+        # Prometheus doesn't expose this as a counter: do integration over time ourselves
+        query = f'max(max_over_time(container_memory_usage_bytes{{pod=~"{application_id}-.+exec.+",image=""}}[5d]))/(1024*1024*1024) '
+        return self._query_for_float(query, at)
+
 
 if __name__ == '__main__':
     prometheus = Prometheus("https://prometheus.stag.warsaw.marketplace.dataspace.copernicus.eu/api/v1")
