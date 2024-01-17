@@ -684,13 +684,18 @@ class TestDoubleJobRegistry:
             double_jr.create_job(
                 job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
             )
+            double_jr.set_application_id(job_id="j-123", user_id="john", application_id="a-123")
+            double_jr.set_status(job_id="j-123", user_id="john", status=JOB_STATUS.FINISHED)
+
             double_jr.create_job(
                 job_id="j-456", user_id="alice", process=self.DUMMY_PROCESS
             )
+            double_jr.set_application_id(job_id="j-456", user_id="alice", application_id="a-456")
+            double_jr.set_status(job_id="j-456", user_id="alice", status=JOB_STATUS.QUEUED)
+
             double_jr.create_job(
                 job_id="j-789", user_id="john", process=self.DUMMY_PROCESS
             )
-            double_jr.set_status(job_id="j-123", user_id="john", status=JOB_STATUS.FINISHED)
 
         other_double_jr = DoubleJobRegistry(
             zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
@@ -701,4 +706,4 @@ class TestDoubleJobRegistry:
             active_jobs = list(other_double_jr.get_active_jobs())
 
         active_job_ids = set(job["job_id"] for job in active_jobs)
-        assert active_job_ids == {"j-456", "j-789"}
+        assert active_job_ids == {"j-456"}
