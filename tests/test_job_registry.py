@@ -275,10 +275,7 @@ class TestDoubleJobRegistry:
         assert job == {
             "job_id": "j-123",
             "user_id": "john",
-            "process": {"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                        "description": "dummy"},
-            "parent_id": None,
-            "job_options": {"prio": "low"},
+            "specification": '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}',
             "created": "2023-02-15T17:17:17Z",
             "status": "created",
             "updated": "2023-02-15T17:17:17Z",
@@ -291,8 +288,7 @@ class TestDoubleJobRegistry:
             id="j-123",
             status="created",
             created=datetime.datetime(2023, 2, 15, 17, 17, 17),
-            process={"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                     "description": "dummy"},
+            process={"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}}},
             job_options={"prio": "low"},
             title="John's job",
             description=None,
@@ -311,10 +307,24 @@ class TestDoubleJobRegistry:
                 _ = double_jr.get_job_metadata("j-nope", user_id="john")
         assert caplog.messages == []
 
+    def test_get_job_mismatch(self, double_jr, memory_jr, caplog):
+        with double_jr:
+            double_jr.create_job(
+                job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
+            )
+            memory_jr.db["j-123"]["status"] = "c0rRupt"
+            job = double_jr.get_job("j-123", user_id="john")
+        assert job == DictSubSet({"job_id": "j-123", "status": "created"})
+        assert caplog.messages == [
+            "DoubleJobRegistry mismatch"
+            " zk_job_info={'job_id': 'j-123', 'status': 'created', 'created': '2023-02-15T17:17:17Z'}"
+            " ejr_job_info={'job_id': 'j-123', 'status': 'c0rRupt', 'created': '2023-02-15T17:17:17Z'}"
+        ]
+
     @pytest.mark.parametrize(
         ["with_zk", "with_ejr", "expected_process_extra"],
         [
-            (True, True, {"description": "dummy"}),
+            (True, True, {}),
             (False, True, {"description": "dummy"}),
             (True, False, {}),
         ],
@@ -350,14 +360,14 @@ class TestDoubleJobRegistry:
             "title": "John's job",
             "description": None,
         }
-        if with_ejr:
-            expected_job["process"] = self.DUMMY_PROCESS
-            expected_job["job_options"] = {"prio": "low"}
-            expected_job["parent_id"] = None
-        elif with_zk:
+        if with_zk:
             expected_job[
                 "specification"
             ] = '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}'
+        elif with_ejr:
+            expected_job["process"] = self.DUMMY_PROCESS
+            expected_job["job_options"] = {"prio": "low"}
+            expected_job["parent_id"] = None
         assert job == expected_job
         assert job_metadata == BatchJobMetadata(
             id="j-123",
