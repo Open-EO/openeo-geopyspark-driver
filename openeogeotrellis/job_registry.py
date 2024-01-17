@@ -942,7 +942,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
         elif self.elastic_job_registry:
-            # TODO: incorporate user_limit?
             yield from self.elastic_job_registry.list_trackable_jobs(fields=[
                 "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
                 "dependency_usage",
