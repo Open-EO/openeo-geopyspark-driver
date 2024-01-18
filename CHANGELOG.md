@@ -12,6 +12,18 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.22.3
+
+### Bugfix
+
+- Restore batch job result metadata; this reverts the Zookeeper fix introduced in 0.22.2
+
+## 0.22.2
+
+### Bugfix
+
+- Prevent Zookeeper from blocking requests (https://github.com/Open-EO/openeo-geopyspark-driver/pull/639)
+
 ## 0.22.1
 
 ### Bugfix
