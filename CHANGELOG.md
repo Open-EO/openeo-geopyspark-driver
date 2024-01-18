@@ -17,7 +17,6 @@ without compromising stable operations.
 ### Bugfix
 
  - Prevent usage duplication in ETL API ([#41](https://github.com/eu-cdse/openeo-cdse-infra/issues/41))
- - Prevent Zookeeper from blocking requests (https://github.com/Open-EO/openeo-geopyspark-driver/pull/639)
 
 ## 0.22.0
 

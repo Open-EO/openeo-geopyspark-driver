@@ -771,38 +771,45 @@ class DoubleJobRegistry:
 
     def get_job(self, job_id: str, user_id: str) -> dict:
         # TODO: eliminate get_job/get_job_metadata duplication?
-        ejr_job = None
+        zk_job = ejr_job = None
+        if self.zk_job_registry:
+            with contextlib.suppress(JobNotFoundException):
+                zk_job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             with self._just_log_errors("get_job", job_id=job_id):
                 with contextlib.suppress(JobNotFoundException):
                     ejr_job = self.elastic_job_registry.get_job(job_id=job_id)
 
-        if ejr_job:
-            return ejr_job
-
-        if self.zk_job_registry:
-            return self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
-
-        raise JobNotFoundException(job_id=job_id)
+        self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job, ejr_job_info=ejr_job)
+        return zk_job or ejr_job
 
     def get_job_metadata(self, job_id: str, user_id: str) -> BatchJobMetadata:
         # TODO: eliminate get_job/get_job_metadata duplication?
-        ejr_job_info = None
+        zk_job_info = ejr_job_info = None
+        if self.zk_job_registry:
+            with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
+                with contextlib.suppress(JobNotFoundException):
+                    zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             with self._just_log_errors("get_job_metadata", job_id=job_id):
                 with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
                     with contextlib.suppress(JobNotFoundException):
                         ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id)
 
-        if ejr_job_info:
-            return ejr_job_info_to_metadata(ejr_job_info)
+        self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
+        job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
+        return job_metadata
 
-        if self.zk_job_registry:
-            with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
-                zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
-                return zk_job_info_to_metadata(zk_job_info)
-
-        raise JobNotFoundException(job_id=job_id)
+    def _check_zk_ejr_job_info(self, job_id: str, zk_job_info: Union[dict, None], ejr_job_info: Union[dict, None]):
+        # TODO #236/#498 For now: compare job metadata between Zk and EJR
+        fields = ["job_id", "status", "created"]
+        if zk_job_info is not None and ejr_job_info is not None:
+            zk_job_info = {k: v for (k, v) in zk_job_info.items() if k in fields}
+            ejr_job_info = {k: v for (k, v) in ejr_job_info.items() if k in fields}
+            if zk_job_info != ejr_job_info:
+                self._log.warning(f"DoubleJobRegistry mismatch {zk_job_info=} {ejr_job_info=}")
+        elif zk_job_info is None and ejr_job_info is None:
+            raise JobNotFoundException(job_id=job_id)
 
     def set_status(self, job_id: str, user_id: str, status: str) -> None:
         if self.zk_job_registry:
