@@ -12,13 +12,29 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.23.0
+
+### Added
+
+ - Support disabling ZkJobRegistry ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632))
+
+## 0.22.3
+
+### Bugfix
+
+- Restore batch job result metadata; this reverts the Zookeeper fix introduced in 0.22.2
+
+## 0.22.2
+
+### Bugfix
+
+- Prevent Zookeeper from blocking requests (https://github.com/Open-EO/openeo-geopyspark-driver/pull/639)
+
 ## 0.22.1
 
 ### Bugfix
 
  - Prevent usage duplication in ETL API ([#41](https://github.com/eu-cdse/openeo-cdse-infra/issues/41))
- - Prevent Zookeeper from blocking requests (https://github.com/Open-EO/openeo-geopyspark-driver/pull/639)
- - Support disabling ZkJobRegistry ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632))
 
 ## 0.22.0
 
