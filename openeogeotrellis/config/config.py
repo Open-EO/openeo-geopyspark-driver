@@ -40,7 +40,7 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
     """
 
     @abc.abstractmethod
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         """Get root URL of the ETL API"""
         ...
 
@@ -96,6 +96,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     zookeeper_root_path: str = attrs.field(
         default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
     )
+
+    # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
+    use_zk_job_registry: bool = True
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"

@@ -42,10 +42,14 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api_credentials_from_env
-from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status
-from openeogeotrellis.job_costs_calculator import (JobCostsCalculator, noJobCostsCalculator, YarnJobCostsCalculator,
-                                                   K8sJobCostsCalculator, CostsDetails)
+from openeogeotrellis.integrations.etl_api import ETL_API_STATE, get_etl_api
+from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status, YARN_STATE
+from openeogeotrellis.job_costs_calculator import (
+    JobCostsCalculator,
+    noJobCostsCalculator,
+    CostsDetails,
+    EtlApiJobCostsCalculator,
+)
 from openeogeotrellis.job_registry import ZkJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 
@@ -58,6 +62,7 @@ class _Usage(NamedTuple):
     cpu_seconds: Optional[float] = None
     mb_seconds: Optional[float] = None
     network_receive_bytes: Optional[float] = None
+    max_executor_gigabytes: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -68,6 +73,8 @@ class _Usage(NamedTuple):
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
+        if self.max_executor_gigabytes:
+            result["max_executor_memory"] = {"value": self.max_executor_gigabytes, "unit": "gb"}
 
         return result
 
@@ -101,6 +108,12 @@ class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_job_metadata(self, job_id: str, user_id: str, app_id: str) -> _JobMetadata:
+        raise NotImplementedError
+
+    @classmethod
+    @abc.abstractmethod
+    def app_state_to_etl_state(cls, app_state: str) -> str:
+        # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
         raise NotImplementedError
 
 
@@ -228,6 +241,22 @@ class YarnStatusGetter(JobMetadataGetterInterface):
         except Exception as e:
             raise YarnAppReportParseException() from e
 
+    # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+    _yarn_state_to_etl_api_state = {
+        YARN_STATE.ACCEPTED: ETL_API_STATE.ACCEPTED,
+        YARN_STATE.RUNNING: ETL_API_STATE.RUNNING,
+        YARN_STATE.FINISHED: ETL_API_STATE.FINISHED,
+        YARN_STATE.KILLED: ETL_API_STATE.KILLED,
+        YARN_STATE.FAILED: ETL_API_STATE.FAILED,
+    }
+
+    @classmethod
+    def app_state_to_etl_state(cls, app_state: str) -> str:
+        # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+        if app_state not in cls._yarn_state_to_etl_api_state:
+            _log.warning(f"Unhandled YARN app state mapping: {app_state}")
+        return cls._yarn_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
+
 
 class K8sException(Exception):
     pass
@@ -259,6 +288,13 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
+            if "FAILED" == app_state and "errorMessage" in metadata["status"]["applicationState"]:
+                msg = metadata["status"]["applicationState"]["errorMessage"]
+                if "driver" in msg and "OOMKilled" in msg:
+                    logging.error("Your batch job main application went out of memory, consider increasing driver-memoryOverhead.")
+                else:
+                    logging.warning(f"Final application error message: {msg}")
+
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
             finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
@@ -287,8 +323,11 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
+            max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
+
+
             _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
-                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}",
+                      f"{cpu_seconds=}, {byte_seconds=}, {network_receive_bytes=}, {max_executor_gigabyte=}",
                       extra={"job_id": job_id, "user_id": user_id})
 
             if application_duration_s is not None:
@@ -303,7 +342,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             return _Usage(cpu_seconds=cpu_seconds,
                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes,
+                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte
                           )
         except Exception as e:
             _log.exception(
@@ -312,6 +351,25 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             )
 
         return _Usage()
+
+    # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+    _k8s_state_to_etl_api_state = {
+        K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
+        K8S_SPARK_APP_STATE.SUBMITTED: ETL_API_STATE.ACCEPTED,
+        K8S_SPARK_APP_STATE.RUNNING: ETL_API_STATE.RUNNING,
+        K8S_SPARK_APP_STATE.SUCCEEDING: ETL_API_STATE.RUNNING,
+        K8S_SPARK_APP_STATE.COMPLETED: ETL_API_STATE.FINISHED,
+        K8S_SPARK_APP_STATE.FAILED: ETL_API_STATE.FAILED,
+        K8S_SPARK_APP_STATE.SUBMISSION_FAILED: ETL_API_STATE.FAILED,
+        K8S_SPARK_APP_STATE.FAILING: ETL_API_STATE.FAILED,
+    }
+
+    @classmethod
+    def app_state_to_etl_state(cls, app_state: str) -> str:
+        # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore
+        if app_state not in cls._k8s_state_to_etl_api_state:
+            _log.warning(f"Unhandled K8s app state mapping: {app_state}")
+        return cls._k8s_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
 
 
 class JobTracker:
@@ -326,9 +384,8 @@ class JobTracker:
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
+        # TODO #236/#498/#632 make ZkJobRegistry optional
         self._zk_job_registry = zk_job_registry
-        self._principal = principal
-        self._keytab = keytab
         self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
         #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.
@@ -345,12 +402,13 @@ class JobTracker:
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
+        # TODO #236/#498/#632 make ZkJobRegistry optional
         with self._zk_job_registry as zk_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
-            # TODO: #236/#498 also/instead get jobs_to_track from EJR?
-            jobs_to_track = zk_job_registry.get_running_jobs()
+            # TODO: #236/#498/#632 also/instead get jobs_to_track from EJR?
+            jobs_to_track = zk_job_registry.get_running_jobs(parse_specification=True)
 
             for job_info in jobs_to_track:
                 stats["collected jobs"] += 1
@@ -410,6 +468,7 @@ class JobTracker:
         user_id: str,
         application_id: str,
         job_info: dict,
+        # TODO #236/#498/#632 make ZkJobRegistry optional
         zk_job_registry: ZkJobRegistry,
         stats: collections.Counter,
     ):
@@ -486,7 +545,9 @@ class JobTracker:
                 job_id=job_info["job_id"],
                 user_id=job_info["user_id"],
                 execution_id=job_info["application_id"],
-                app_state=job_metadata.app_state,
+                # TODO #610 this is just part of a temporary migration path, to be cleaned up when not necessary anymore. Just use `job_status`
+                app_state_etl_api_deprecated=self._app_state_getter.app_state_to_etl_state(job_metadata.app_state),
+                job_status=job_metadata.status,
                 area_square_meters=area,
                 job_title=job_info.get("title"),
                 start_time=job_metadata.start_time,
@@ -496,14 +557,18 @@ class JobTracker:
                 sentinelhub_processing_units=(sentinelhub_processing_units + sentinelhub_batch_processing_units)
                 or None,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
+                job_options=job_info.get("job_options"),
             )
 
             try:
                 job_costs = self._job_costs_calculator.calculate_costs(costs_details)
+                _log.debug(f"job_costs: calculated {job_costs}")
+                stats["job_costs: calculated"] += 1
+                stats[f"job_costs: nonzero={isinstance(job_costs, float) and job_costs>0}"] += 1
                 # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
-                stats["failed cost calculation"] += 1
+                stats["job_costs: failed"] += 1
                 job_costs = None
 
             usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
@@ -562,15 +627,10 @@ class CliApp:
                 # ZooKeeper Job Registry
                 zk_root_path = args.zk_job_registry_root_path
                 _log.info(f"Using {zk_root_path=}")
+                # TODO #236/#498/#632 make ZkJobRegistry optional
                 zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
-
-                etl_api = EtlApi(
-                    get_backend_config().etl_api,
-                    credentials=get_etl_api_credentials_from_env(),
-                    requests_session=requests_session,
-                )
 
                 # Elastic Job Registry (EJR)
                 elastic_job_registry = get_elastic_job_registry(requests_session)
@@ -587,13 +647,15 @@ class CliApp:
                             mutual_authentication=requests_gssapi.REQUIRED
                         ),
                     )
-                    job_costs_calculator = YarnJobCostsCalculator(etl_api)
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter(kube_client(),
                                                        Prometheus(get_backend_config().prometheus_api))
-                    job_costs_calculator = K8sJobCostsCalculator(etl_api)
                 else:
                     raise ValueError(app_cluster)
+
+                etl_api = get_etl_api(requests_session=requests_session)
+                job_costs_calculator = EtlApiJobCostsCalculator(etl_api=etl_api)
+
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
                     zk_job_registry=zk_job_registry,

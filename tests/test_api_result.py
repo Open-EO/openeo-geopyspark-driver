@@ -1,5 +1,6 @@
 import contextlib
 import datetime as dt
+import io
 import json
 import logging
 import os
@@ -10,7 +11,9 @@ import urllib.request
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
+import dateutil.parser
 import mock
+import numpy
 import numpy as np
 import pytest
 import rasterio
@@ -2932,7 +2935,9 @@ def _setup_existing_job(
         job_id=job_id,
         user_id=user_id,
         api_version="1.1.0",
-        specification=load_json(result_dir / "process_graph.json"),
+        specification=ZkJobRegistry.build_specification_dict(
+            process_graph=load_json(result_dir / "process_graph.json")["process_graph"],
+        ),
     )
     job_metadata = load_json(job_metadata_file)
     zk_job_registry.patch(
@@ -3471,6 +3476,312 @@ class TestLoadStac:
 
         return collection
 
+    @pytest.mark.parametrize(
+        "item_path",
+        [
+            "stac/item01.json",
+            "stac/item02.json",
+        ],
+    )
+    def test_load_stac_with_stac_item_json(self, item_path, api110, urllib_mock, tmp_path):
+        """load_stac with a simple STAC item (as JSON file)"""
+        item_json = (
+            get_test_data_file(item_path).read_text()
+            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+            .replace(
+                # TODO: better tiff file to inject here?
+                "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
+            )
+        )
+        urllib_mock.get("https://stac.test/item.json", data=item_json)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        # TODO: why are these values not exactly 100?
+        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+
+    def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_item_properties(
+        self, api110, urllib_mock, tmp_path
+    ):
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+
+        STAC Item following outdated STAC version with "eo:bands" being integer indices into item properties
+        """
+        tiff_path = get_test_data_file("binary/load_stac/BVL_v1/BVL_v1_2021.tif").absolute()
+        item_json = (
+            get_test_data_file("stac/issue619-eobands-int/item01.json")
+            .read_text()
+            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+            # TODO: better tiff files to inject here?
+            .replace("asset_red.tiff", f"file://{tiff_path}")
+            .replace("asset_green.tiff", f"file://{tiff_path}")
+            .replace("asset_blue.tiff", f"file://{tiff_path}")
+        )
+        urllib_mock.get("https://stac.test/item01.json", data=item_json)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item01.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        # TODO: why are these values not exactly 100?
+        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+
+    def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_parent_collection_summaries(
+        self, api110, urllib_mock, tmp_path
+    ):
+        """
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+
+        STAC Item following outdated STAC version with "eo:bands" being integer indices into parent collection "eo:bands" summaries
+        """
+        tiff_path = get_test_data_file("binary/load_stac/BVL_v1/BVL_v1_2021.tif").absolute()
+        item_json = (
+            get_test_data_file("stac/issue619-eobands-int/item02.json")
+            .read_text()
+            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+            # TODO: better tiff files to inject here?
+            .replace("asset_red.tiff", f"file://{tiff_path}")
+            .replace("asset_green.tiff", f"file://{tiff_path}")
+            .replace("asset_blue.tiff", f"file://{tiff_path}")
+        )
+        urllib_mock.get("https://stac.test/item02.json", data=item_json)
+        urllib_mock.get(
+            "https://stac.test/collection02.json",
+            data=get_test_data_file("stac/issue619-eobands-int/collection02.json").read_text(),
+        )
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item02.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        # TODO: why are these values not exactly 100?
+        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+
+    def test_load_stac_from_stac_item_respects_collection_bands_order(self, api110, urllib_mock, tmp_path):
+        """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
+        collection's "summaries"/"eo:bands"
+        """
+        item_json = (
+            get_test_data_file("stac/item03.json").read_text()
+            .replace(
+                "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+            )
+            .replace(
+                "asset02.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset02.tif').absolute()}"
+            )
+        )
+        urllib_mock.get("https://stac.test/item.json", data=item_json)
+        urllib_mock.get("https://stac.test/collection01.json",
+                        data=get_test_data_file("stac/collection01.json").read_text())
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/item.json"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": 1, "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert ds.coords["x"].values.min() == pytest.approx(5.05)
+        assert ds.coords["y"].values.min() == pytest.approx(50.05)
+        assert list(ds.data_vars.keys())[1:] == ["band5", "band1", "band4", "band2", "band3"]
+        assert (ds["band1"] == 1).all()
+        assert (ds["band2"] == 2).all()
+        assert (ds["band3"] == 3).all()
+        assert (ds["band4"] == 4).all()
+        assert (ds["band5"] == 5).all()
+
+    @pytest.mark.parametrize(
+        "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
+        [
+            ("2021-02-03", "2021-02-03", ["2021-02-03"]),  # for backwards compatibility
+            ("2021-02-03", "2021-02-04", ["2021-02-03"]),
+            ("2021-02-03", "2021-02-05", ["2021-02-03", "2021-02-04"]),
+            ("2021-02-03T00:00:00Z", "2021-02-04T00:00:00Z", ["2021-02-03"]),
+            ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
+        ],
+    )
+    def test_load_stac_from_stac_collection_upper_temporal_bound(self, api110, urllib_mock, tmp_path,
+                                                                 lower_temporal_bound, upper_temporal_bound,
+                                                                 expected_timestamps):
+        """load_stac from a STAC Collection with two items that have different timestamps"""
+
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace(
+                    "asset01.tiff",
+                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                )
+            )
+
+        urllib_mock.get("https://stac.test/collection.json",
+                        data=get_test_data_file("stac/issue609-collection-temporal-bound-exclusive/collection.json").read_text())
+        urllib_mock.get("https://stac.test/item01.json",
+                        data=item_json("stac/issue609-collection-temporal-bound-exclusive/item01.json"))
+        urllib_mock.get("https://stac.test/item02.json",
+                        data=item_json("stac/issue609-collection-temporal-bound-exclusive/item02.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collection.json",
+                    "temporal_extent": [lower_temporal_bound, upper_temporal_bound]
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": len(expected_timestamps), "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == expected_timestamps
+        assert list(ds.data_vars.keys())[1:] == ["band1", "band2", "band3"]
+        assert (ds["band1"] == 1).all()
+        assert (ds["band2"] == 2).all()
+        assert (ds["band3"] == 3).all()
+
+    @pytest.mark.parametrize(
+        "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
+        [
+            ("2021-02-03", "2021-02-03", ["2021-02-03"]),  # for backwards compatibility
+            ("2021-02-03", "2021-02-04", ["2021-02-03"]),
+            ("2021-02-03", "2021-02-05", ["2021-02-03", "2021-02-04"]),
+            ("2021-02-03T00:00:00Z", "2021-02-04T00:00:00Z", ["2021-02-03"]),
+            ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
+        ],
+    )
+    def test_load_stac_from_stac_api_upper_temporal_bound(self, api110, urllib_mock, requests_mock, tmp_path,
+                                                          lower_temporal_bound, upper_temporal_bound,
+                                                          expected_timestamps):
+        """load_stac from a STAC API with two items that have different timestamps"""
+
+        def feature_collection(request, _) -> dict:
+            datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].split("/"))
+
+            def item(path) -> dict:
+                return json.loads(
+                    get_test_data_file(path).read_text()
+                    .replace(
+                        "asset01.tiff",
+                        f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                    )
+                )
+
+            items = [item(path) for path in ["stac/issue609-api-temporal-bound-exclusive/item01.json",
+                                             "stac/issue609-api-temporal-bound-exclusive/item02.json",
+                                             ]]
+
+            intersecting_items = [item for item in items if
+                                  datetime_from <=
+                                  dateutil.parser.parse(item["properties"]["datetime"])
+                                  <= datetime_to]
+
+            return {
+                "type": "FeatureCollection",
+                "features": intersecting_items,
+            }
+
+        urllib_mock.get("https://stac.test/collection.json",
+                        data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/collection.json").read_text())
+        urllib_mock.get("https://stac.test/catalog.json",  # for pystac
+                        data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
+        requests_mock.get("https://stac.test/catalog.json",  # for pystac_client
+                          text=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
+        requests_mock.get("https://stac.test/catalog.json/search",
+                          json=feature_collection)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collection.json",
+                    "temporal_extent": [lower_temporal_bound, upper_temporal_bound]
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": len(expected_timestamps), "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == expected_timestamps
+        assert list(ds.data_vars.keys())[1:] == ["band1", "band2", "band3"]
+        assert (ds["band1"] == 1).all()
+        assert (ds["band2"] == 2).all()
+        assert (ds["band3"] == 3).all()
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
@@ -3618,7 +3929,7 @@ class TestEtlApiReporting:
 
         # Setup up ETL mapping based on user name: one for Alice, another for Bob
         class CustomEtlConfig(DynamicEtlApiConfig):
-            def get_root_url(self, *, user: Optional[User] = None) -> str:
+            def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
                 return {
                     "a": "https://etl-alt.test",
                     "b": "https://etl.planb.test",

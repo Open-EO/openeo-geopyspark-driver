@@ -370,6 +370,7 @@ class TestBatchJobs:
     @staticmethod
     @contextlib.contextmanager
     def _mock_kazoo_client() -> KazooClientMock:
+        # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking of `KazooClient`
         zk_client = KazooClientMock()
         with mock.patch.object(openeogeotrellis.job_registry, 'KazooClient', return_value=zk_client):
             yield zk_client
@@ -579,6 +580,7 @@ class TestBatchJobs:
             assert res["logs"] == []
 
             # Fake update from job tracker
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
@@ -605,6 +607,7 @@ class TestBatchJobs:
                 metadata = api.load_json(JOB_METADATA_FILENAME)
                 json.dump(metadata, f)
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
@@ -738,6 +741,7 @@ class TestBatchJobs:
                 json.dump(job_metadata_contents, f)
 
             # Fake update from job tracker
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
             res = api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -812,6 +816,7 @@ class TestBatchJobs:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with ZkJobRegistry() as registry:
                 registry.register(
                     job_id=job_id,
@@ -911,6 +916,7 @@ class TestBatchJobs:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with ZkJobRegistry() as registry:
                 registry.register(
                     job_id=job_id,
@@ -1059,6 +1065,7 @@ class TestBatchJobs:
                 run.assert_called_once()
 
             # Fake running
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -1113,6 +1120,7 @@ class TestBatchJobs:
                 run.assert_called_once()
 
             # Fake running
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with openeogeotrellis.job_registry.ZkJobRegistry() as reg:
                 reg.set_status(
                     job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING
@@ -1181,6 +1189,7 @@ class TestBatchJobs:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with ZkJobRegistry() as registry:
                 registry.register(
                     job_id=job_id,
@@ -1241,6 +1250,7 @@ class TestBatchJobs:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with ZkJobRegistry() as registry:
                 registry.register(
                     job_id=job_id,
@@ -1361,6 +1371,7 @@ class TestBatchJobs:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with ZkJobRegistry() as registry:
                 registry.register(
                     job_id=job_id,
@@ -1469,6 +1480,7 @@ class TestBatchJobs:
             data = api100.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             job_options = {}
 
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
             with ZkJobRegistry() as registry:
                 registry.register(
                     job_id=job_id,
@@ -2141,6 +2153,7 @@ class TestSentinelHubBatchJobs:
 
         # Fake update from job tracker
         dbl_job_registry = DoubleJobRegistry(
+            # TODO #236/#498/#632 phase out ZkJobRegistry
             zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
             elastic_job_registry=job_registry,
         )
@@ -2345,6 +2358,7 @@ class TestSentinelHubBatchJobs:
 
         # Fake update from job tracker
         dbl_job_registry = DoubleJobRegistry(
+            # TODO #236/#498/#632 phase out ZkJobRegistry
             zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
             elastic_job_registry=job_registry,
         )

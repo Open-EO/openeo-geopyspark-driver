@@ -71,15 +71,20 @@ class YarnAppInfo:
 
     def set_finished(self, final_state: str = YARN_FINAL_STATUS.SUCCEEDED):
         assert final_state in {YARN_FINAL_STATUS.SUCCEEDED, YARN_FINAL_STATUS.FAILED}
-        if not self.finish_time:
-            self.finish_time = int(1000 * time.time())
+        self.set_finish_time()
         # TODO: what is the meaning actually of state=FINISHED + final-state=FAILED?
         return self.set_state(YARN_STATE.FINISHED, final_state)
 
+    def set_finish_time(self, force: bool = False):
+        if not self.finish_time or force:
+            self.finish_time = int(1000 * time.time())
+
     def set_failed(self):
+        self.set_finish_time()
         return self.set_state(YARN_STATE.FAILED, YARN_FINAL_STATUS.FAILED)
 
     def set_killed(self):
+        self.set_finish_time()
         return self.set_state(YARN_STATE.KILLED, YARN_FINAL_STATUS.KILLED)
 
     def set_launch_failed(self):
@@ -258,6 +263,9 @@ class KubernetesAppInfo:
     start_time: Union[str, None] = None
     finish_time: Union[str, None] = None
 
+    def set_state(self, state: str):
+        self.state = state
+
     def set_submitted(self):
         if not self.start_time:
             self.start_time = rfc3339.datetime(dt.datetime.utcnow())
@@ -267,14 +275,16 @@ class KubernetesAppInfo:
         self.state = K8S_SPARK_APP_STATE.RUNNING
 
     def set_completed(self):
-        if not self.finish_time:
-            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
+        self.set_finish_time()
         self.state = K8S_SPARK_APP_STATE.COMPLETED
 
     def set_failed(self):
-        if not self.finish_time:
-            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
+        self.set_finish_time()
         self.state = K8S_SPARK_APP_STATE.FAILED
+
+    def set_finish_time(self, force: bool = False):
+        if not self.finish_time or force:
+            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
 
 
 class KubernetesMock:
@@ -351,6 +361,7 @@ DUMMY_PG_1 = {
     "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}
 }
 DUMMY_PROCESS_1 = {"process_graph": DUMMY_PG_1}
+DUMMY_JOB_OPTIONS = {"speed": "fast"}
 
 
 def _extract_update_statuses_stats(caplog) -> List[dict]:
@@ -360,24 +371,24 @@ def _extract_update_statuses_stats(caplog) -> List[dict]:
         if msg.startswith("JobTracker.update_statuses stats:")
     ]
 
+
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
         self, zk_job_registry, elastic_job_registry, batch_job_output_root, job_costs_calculator
     ) -> JobTracker:
-        principal = "john@EXAMPLE.TEST"
-        keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=YarnStatusGetter(ConfigParams().yarn_rest_api_base_url),
             zk_job_registry=zk_job_registry,
-            principal=principal,
-            keytab=keytab,
+            principal="john@EXAMPLE.TEST",
+            keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
         )
         return job_tracker
 
+    @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     def test_yarn_zookeeper_basic(
         self,
         zk_job_registry,
@@ -387,6 +398,7 @@ class TestYarnJobTracker:
         caplog,
         time_machine,
         job_costs_calculator,
+        job_options,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -398,10 +410,10 @@ class TestYarnJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
 
         def zk_job_info() -> dict:
@@ -539,14 +551,14 @@ class TestYarnJobTracker:
 
         calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
         assert len(calculate_costs_calls) == 1
-        costs_details: CostsDetails
         (costs_details,), _ = calculate_costs_calls[0]
 
         assert costs_details == CostsDetails(
             job_id=job_id,
             user_id=user_id,
             execution_id=yarn_app.app_id,
-            app_state='FINISHED',
+            app_state_etl_api_deprecated="FINISHED",
+            job_status="finished",
             area_square_meters=None,
             job_title=None,
             start_time=dt.datetime(2022, 12, 14, 12, 3, 30),
@@ -554,7 +566,8 @@ class TestYarnJobTracker:
             cpu_seconds=32,
             mb_seconds=1234,
             sentinelhub_processing_units=None,
-            unique_process_ids=[]
+            unique_process_ids=[],
+            job_options=job_options,
         )
 
         assert caplog.record_tuples == []
@@ -579,13 +592,15 @@ class TestYarnJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -635,13 +650,15 @@ class TestYarnJobTracker:
                 job_id=f"job-{j}",
                 user_id=f"user{j}",
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
             )
             elastic_job_registry.create_job(
-                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1
+                job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -702,10 +719,12 @@ class TestYarnJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
         # Another job that has an app id (already running)
@@ -713,10 +732,12 @@ class TestYarnJobTracker:
             job_id=job_id + "-other",
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id + "-other", user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id + "-other", user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
         app_other = yarn_mock.submit(app_id="app-123-other").set_running()
         zk_job_registry.set_application_id(
@@ -779,10 +800,12 @@ class TestYarnJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
         def zk_job_info() -> dict:
@@ -866,7 +889,9 @@ class TestYarnJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
@@ -900,6 +925,98 @@ class TestYarnJobTracker:
             "status same": 2,
             "status same 'running'": 2,
         }
+
+    @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
+    @pytest.mark.parametrize(
+        ["yarn_state", "yarn_final_state", "expected_etl_state", "expected_job_status"],
+        [
+            (YARN_STATE.FINISHED, YARN_FINAL_STATUS.SUCCEEDED, "FINISHED", "finished"),
+            (
+                YARN_STATE.FINISHED,
+                YARN_FINAL_STATUS.FAILED,
+                "FINISHED",  # TODO #565 should be "etl state" "FAILED"
+                "error",
+            ),
+            (
+                YARN_STATE.FINISHED,
+                YARN_FINAL_STATUS.KILLED,
+                "FINISHED",  # TODO #565 should be "etl state" "KILLED"?
+                "canceled",
+            ),
+            (YARN_STATE.KILLED, YARN_FINAL_STATUS.KILLED, "KILLED", "canceled"),
+            (YARN_STATE.FAILED, YARN_FINAL_STATUS.FAILED, "FAILED", "error"),
+        ],
+    )
+    def test_yarn_zookeeper_job_cost(
+        self,
+        zk_job_registry,
+        yarn_mock,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        job_costs_calculator,
+        job_options,
+        yarn_state,
+        yarn_final_state,
+        expected_etl_state,
+        expected_job_status,
+    ):
+        caplog.set_level(logging.WARNING)
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+
+        # Create openeo batch job (not started yet)
+        user_id = "john"
+        job_id = "job-123"
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
+        )
+
+        # Start job: submit app to YARN and set running
+        time_machine.coordinates.shift(70)
+        yarn_app = yarn_mock.submit(app_id="app-123")
+        zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=yarn_app.app_id)
+        yarn_app.set_running()
+        job_tracker.update_statuses()
+
+        # Set end state in YARN
+        time_machine.coordinates.shift(70)
+        yarn_app.set_state(yarn_state, yarn_final_state)
+        yarn_app.set_finish_time()
+        json_write(
+            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
+            data={"foo": "bar", "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125}}},
+        )
+        job_tracker.update_statuses()
+
+        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+        assert len(calculate_costs_calls) == 1
+        (costs_details,), _ = calculate_costs_calls[0]
+
+        assert costs_details == CostsDetails(
+            job_id=job_id,
+            user_id=user_id,
+            execution_id=yarn_app.app_id,
+            app_state_etl_api_deprecated=expected_etl_state,
+            job_status=expected_job_status,
+            area_square_meters=None,
+            job_title=None,
+            start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
+            finish_time=dt.datetime(2022, 12, 14, 12, 2, 20),
+            cpu_seconds=32,
+            mb_seconds=1234,
+            sentinelhub_processing_units=None,
+            unique_process_ids=[],
+            job_options=job_options,
+        )
+
+        assert caplog.record_tuples == []
 
 
 class TestYarnStatusGetter:
@@ -984,6 +1101,7 @@ class TestK8sJobTracker:
         prometheus_mock.get_cpu_usage.return_value = 2.34 * 3600
         prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
         prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
+        prometheus_mock.get_max_executor_memory_usage.return_value = 3.5
 
         return prometheus_mock
 
@@ -997,19 +1115,18 @@ class TestK8sJobTracker:
         prometheus_mock,
         job_costs_calculator
     ) -> JobTracker:
-        principal = "john@EXAMPLE.TEST"
-        keytab = "test/openeo.keytab"
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
             zk_job_registry=zk_job_registry,
-            principal=principal,
-            keytab=keytab,
+            principal="john@EXAMPLE.TEST",
+            keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
             output_root_dir=batch_job_output_root,
             elastic_job_registry=elastic_job_registry,
         )
         return job_tracker
 
+    @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     def test_k8s_zookeeper_basic(
         self,
         zk_job_registry,
@@ -1019,6 +1136,7 @@ class TestK8sJobTracker:
         time_machine,
         k8s_mock,
         job_costs_calculator,
+        job_options,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -1029,10 +1147,10 @@ class TestK8sJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
 
         def zk_job_info() -> dict:
@@ -1127,6 +1245,7 @@ class TestK8sJobTracker:
                 "foo": "bar",
                 "usage": {
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
@@ -1144,6 +1263,7 @@ class TestK8sJobTracker:
                 "finished": "2022-12-14T12:03:30Z",
                 "usage": {
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
@@ -1155,14 +1275,14 @@ class TestK8sJobTracker:
 
         calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
         assert len(calculate_costs_calls) == 1
-        costs_details: CostsDetails
         (costs_details,), _ = calculate_costs_calls[0]
 
         assert costs_details == CostsDetails(
             job_id=job_id,
             user_id=user_id,
             execution_id=kube_app.app_id,
-            app_state='COMPLETED',
+            app_state_etl_api_deprecated="FINISHED",
+            job_status="finished",
             area_square_meters=None,
             job_title=None,
             start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
@@ -1170,7 +1290,8 @@ class TestK8sJobTracker:
             cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
             mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
             sentinelhub_processing_units=1.25,
-            unique_process_ids=[]
+            unique_process_ids=[],
+            job_options=job_options,
         )
 
         assert caplog.record_tuples == []
@@ -1195,10 +1316,12 @@ class TestK8sJobTracker:
             job_id=job_id,
             user_id=user_id,
             api_version="1.2.3",
-            specification=DUMMY_PROCESS_1,
+            specification=ZkJobRegistry.build_specification_dict(
+                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+            ),
         )
         elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
         def zk_job_info() -> dict:
@@ -1261,13 +1384,15 @@ class TestK8sJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # K8s apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -1323,13 +1448,15 @@ class TestK8sJobTracker:
                 job_id=job_id,
                 user_id=user_id,
                 api_version="1.2.3",
-                specification=DUMMY_PROCESS_1,
+                specification=ZkJobRegistry.build_specification_dict(
+                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
+                ),
             )
             zk_job_registry.set_application_id(
                 job_id=job_id, user_id=user_id, application_id=app_id
             )
             elastic_job_registry.create_job(
-                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
             # K8s apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
@@ -1366,6 +1493,91 @@ class TestK8sJobTracker:
             )
         ]
 
+    @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
+    @pytest.mark.parametrize(
+        ["k8s_app_state", "expected_etl_state", "expected_job_status"],
+        [
+            (K8S_SPARK_APP_STATE.COMPLETED, "FINISHED", "finished"),
+            (K8S_SPARK_APP_STATE.FAILED, "FAILED", "error"),
+            (K8S_SPARK_APP_STATE.SUBMISSION_FAILED, "FAILED", "error"),
+            (K8S_SPARK_APP_STATE.FAILING, "FAILED", "error"),
+        ],
+    )
+    def test_k8s_zookeeper_job_cost(
+        self,
+        zk_job_registry,
+        job_tracker,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        k8s_mock,
+        job_costs_calculator,
+        job_options,
+        k8s_app_state,
+        expected_etl_state,
+        expected_job_status,
+    ):
+        caplog.set_level(logging.WARNING)
+        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+
+        user_id = "john"
+        job_id = "job-123"
+        zk_job_registry.register(
+            job_id=job_id,
+            user_id=user_id,
+            api_version="1.2.3",
+            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
+        )
+        elastic_job_registry.create_job(
+            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
+        )
+
+        # Submit Kubernetes app and set running
+        time_machine.coordinates.shift(70)
+        app_id = k8s_job_name()
+        kube_app = k8s_mock.submit(app_id=app_id)
+        zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=app_id)
+        kube_app.set_submitted()
+        kube_app.set_running()
+        job_tracker.update_statuses()
+
+        # Set COMPLETED IN Kubernetes
+        time_machine.coordinates.shift(70)
+        kube_app.set_state(k8s_app_state)
+        kube_app.set_finish_time()
+        json_write(
+            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
+            data={
+                "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                }
+            },
+        )
+        job_tracker.update_statuses()
+
+        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+        assert len(calculate_costs_calls) == 1
+        (costs_details,), _ = calculate_costs_calls[0]
+
+        assert costs_details == CostsDetails(
+            job_id=job_id,
+            user_id=user_id,
+            execution_id=kube_app.app_id,
+            app_state_etl_api_deprecated=expected_etl_state,
+            job_status=expected_job_status,
+            area_square_meters=None,
+            job_title=None,
+            start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
+            finish_time=dt.datetime(2022, 12, 14, 12, 2, 20),
+            cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
+            mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
+            sentinelhub_processing_units=1.25,
+            unique_process_ids=[],
+            job_options=job_options,
+        )
+
+        assert caplog.record_tuples == []
 
 class TestK8sStatusGetter:
     def test_cpu_and_memory_usage_not_in_prometheus(self, caplog):

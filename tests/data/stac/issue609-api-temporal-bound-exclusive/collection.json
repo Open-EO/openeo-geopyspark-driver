@@ -1,0 +1,46 @@
+{
+  "id": "collection",
+  "type": "Collection",
+  "description": "description",
+  "license": "proprietary",
+  "stac_version": "1.0.0",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -180,
+          -90,
+          180,
+          90
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "1982-08-22T00:00:00.000Z",
+          null
+        ]
+      ]
+    }
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "catalog.json"
+    }
+  ],
+  "summaries": {
+    "eo:bands": [
+        {
+          "name": "band1"
+        },
+        {
+          "name": "band2"
+        },
+        {
+          "name": "band3"
+        }
+      ]
+  }
+}

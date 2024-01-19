@@ -10,6 +10,42 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## Unreleased
+
+## 0.22.1
+
+### Bugfix
+
+ - Prevent usage duplication in ETL API ([#41](https://github.com/eu-cdse/openeo-cdse-infra/issues/41))
+
+## 0.22.0
+
+### Added
+
+- Added config `use_zk_job_registry` to disable `ZkJobRegistry` usage
+
+### Bugfix
+
+- apply_neighborhood: fix error if overlap is null/None ([#519](https://github.com/Open-EO/openeo-python-client/issues/519))
+
+
+## 0.21.5
+
+- Initial implementation of `DynamicEtlApiJobCostCalculator` and added caching feature to `get_etl_api()`  ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
+## 0.21.4
+
+- Support for reading GeoPackage vector data
+- move legacy-vs-dynamic ETL selection logic to `get_etl_api()` ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
+## 0.21.3
+
+- job tracker: move app state mapping to CostDetails construction time
+
+## 0.21.2
+
+- job tracker: pass `job_options` to JobCostsCalculator through `CostDetails` (related to [#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
 ## 0.21.1
 
 - job tracker: do job info iteration in streaming fashion (instead of loading all job info in memory at once)

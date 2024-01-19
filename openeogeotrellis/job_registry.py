@@ -6,7 +6,7 @@ import random
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Callable, Union, Optional, Iterator
+from typing import List, Dict, Callable, Union, Optional, Iterator, Tuple
 
 import kazoo
 import kazoo.exceptions
@@ -56,6 +56,17 @@ class ZkJobRegistry:
         #       Or do this only automatically before first write operation from an instance?
         self._zk.ensure_path(self._ongoing())
         self._zk.ensure_path(self._done())
+
+    @staticmethod
+    def build_specification_dict(process_graph: dict, job_options: Optional[dict] = None) -> dict:
+        """
+        Helper to build a specification dict for ZK job registry from process graph and job options in a consistent way.
+        """
+        assert "process_graph" not in process_graph
+        return dict_no_none(
+            process_graph=process_graph,
+            job_options=job_options,
+        )
 
     def register(
             self, job_id: str, user_id: str, api_version: str, specification: dict,
@@ -164,7 +175,7 @@ class ZkJobRegistry:
 
         self._zk.delete(source, version)
 
-    def get_running_jobs(self, user_limit: Optional[int] = 1000) -> Iterator[Dict]:
+    def get_running_jobs(self, *, user_limit: Optional[int] = 1000, parse_specification: bool = True) -> Iterator[Dict]:
         """Returns an interator job info dicts that are currently not finished (should still be tracked)."""
 
         with StatsReporter(name="get_running_jobs", report=_log) as stats, TimingLogger(
@@ -188,15 +199,14 @@ class ZkJobRegistry:
                 if job_ids:
                     stats["user_id with jobs"] += 1
                     for job_id in job_ids:
-                        yield self.get_job(job_id, user_id)
+                        yield self.get_job(job_id, user_id, parse_specification=parse_specification)
                         stats["job_ids"] += 1
                 else:
                     stats["user_id without jobs"] += 1
 
-
-    def get_job(self, job_id: str, user_id: str) -> Dict:
+    def get_job(self, job_id: str, user_id: str, parse_specification: bool = False) -> dict:
         """Returns details of a job."""
-        job_info, _ = self._read(job_id, user_id, include_done=True)
+        job_info, _ = self._read(job_id, user_id, include_done=True, parse_specification=parse_specification)
         return job_info
 
     def get_user_jobs(self, user_id: str) -> List[Dict]:
@@ -248,7 +258,8 @@ class ZkJobRegistry:
         user_ids: Optional[List[str]] = None,
         include_ongoing: bool = True,
         include_done: bool = True,
-        user_limit: Optional[int] = 1000,
+        per_user_limit: Optional[int] = 1000,
+        field_whitelist: Optional[List[str]] = None,
     ) -> List[Dict]:
         def get_jobs_in(
             get_path: Callable[[Union[str, None], Union[str, None]], str],
@@ -256,10 +267,13 @@ class ZkJobRegistry:
         ) -> List[Dict]:
             if user_ids is None:
                 user_ids = self._zk.get_children(get_path(None, None))
+                _log.info(f"Collected {len(user_ids)=} in {get_path(None, None)!r}")
+            else:
+                _log.info(f"Using provided user_id list {user_ids=}")
 
             jobs_before = []
 
-            for user_id in user_ids:
+            for user_id in sorted(user_ids):
                 path = get_path(user_id, None)
                 try:
                     user_job_ids = self._zk.get_children(path)
@@ -269,12 +283,12 @@ class ZkJobRegistry:
                     )
                     continue
 
-                if user_limit and len(user_job_ids) > user_limit:
+                if per_user_limit and len(user_job_ids) > per_user_limit:
                     _log.warning(
                         f"User {user_id} has excessive number of jobs: {len(user_job_ids)}. "
-                        f"Sampling down to {user_limit}."
+                        f"Sampling down to {per_user_limit}."
                     )
-                    user_job_ids = random.sample(user_job_ids, k=user_limit)
+                    user_job_ids = random.sample(user_job_ids, k=per_user_limit)
 
                 for job_id in user_job_ids:
                     path = get_path(user_id, job_id)
@@ -287,7 +301,8 @@ class ZkJobRegistry:
 
                     if job_date < upper:
                         _log.debug("job {j}'s job_date {d} is before {u}".format(j=job_id, d=job_date, u=upper))
-                        # TODO: not all job_info data is used, just pass the necessary bits?
+                        if field_whitelist:
+                            job_info = {k: job_info[k] for k in field_whitelist if k in job_info}
                         jobs_before.append(job_info)
 
             return jobs_before
@@ -309,7 +324,13 @@ class ZkJobRegistry:
 
         self._zk.create(path, data, makepath=True)
 
-    def _read(self, job_id: str, user_id: str, include_done=False) -> (Dict, int):
+    def _read(
+        self, job_id: str, user_id: str, include_done: bool = False, parse_specification: bool = False
+    ) -> Tuple[Dict, int]:
+        """
+        :param parse_specification: parse the (JSON encoded) "specification" field
+            and inject the process_graph (as `"process": {"process_graph": ...}`) and job_options as additional fields
+        """
         assert job_id, "Shouldn't be empty: job_id"
         assert user_id, "Shouldn't be empty: user_id"
 
@@ -330,7 +351,15 @@ class ZkJobRegistry:
             else:
                 raise JobNotFoundException(job_id) from e
 
-        return json.loads(data.decode()), stat.version
+        job_info = json.loads(data.decode())
+        if parse_specification:
+            process_graph, job_options = parse_zk_job_specification(job_info)
+            if "process" not in job_info:
+                job_info["process"] = {"process_graph": process_graph}
+            if "job_options" not in job_info:
+                job_info["job_options"] = job_options
+
+        return job_info, stat.version
 
     def _update(self, job_info: Dict, version: int) -> None:
         job_id = job_info['job_id']
@@ -433,6 +462,15 @@ def get_deletable_dependency_sources(job_info: dict) -> List[str]:
             yield dependency["assembled_location"]
 
     return [source for dependency in (job_info.get("dependencies") or []) for source in sources(dependency)]
+
+
+def parse_zk_job_specification(job_info: dict, default_job_options=None) -> Tuple[dict, Union[dict, None]]:
+    """Parse the JSON-encoded 'specification' field from ZK job info dict"""
+    specification_json = job_info["specification"]
+    specification = json.loads(specification_json)
+    process_graph = specification["process_graph"]
+    job_options = specification.get("job_options", default_job_options)
+    return process_graph, job_options
 
 
 def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
@@ -707,7 +745,7 @@ class DoubleJobRegistry:
                 job_id=job_id,
                 user_id=user_id,
                 api_version=api_version,
-                specification=dict_no_none(
+                specification=ZkJobRegistry.build_specification_dict(
                     process_graph=process["process_graph"],
                     job_options=job_options,
                 ),
@@ -893,6 +931,6 @@ class DoubleJobRegistry:
             user_ids=user_ids,
             include_ongoing=include_ongoing,
             include_done=include_done,
-            user_limit=user_limit,
+            per_user_limit=user_limit,
         )
         return jobs

@@ -241,6 +241,7 @@ def main():
                 while True:
                     time.sleep(DEPENDENCIES_POLL_INTERVAL_S)
 
+                    # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
                     with ZkJobRegistry() as registry:
                         job_info = registry.get_job(batch_job_id, user_id)
 
@@ -257,6 +258,7 @@ def main():
                             # TODO: retry in Nifi? How to mark this job as 'error' then?
                             log.exception("failed to handle polling job dependencies")
 
+                            # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
                             with ZkJobRegistry() as registry:
                                 registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
 
@@ -267,6 +269,7 @@ def main():
                                                        f" {DEPENDENCIES_MAX_POLL_DELAY_S} s, aborting"
                         log.error(max_poll_delay_reached_error)
 
+                        # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
                         with ZkJobRegistry() as registry:
                             registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
 

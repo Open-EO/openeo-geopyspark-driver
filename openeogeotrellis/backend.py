@@ -75,7 +75,12 @@ from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api, get_etl_a
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s
 from openeogeotrellis.integrations.traefik import Traefik
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import (
+    DoubleJobRegistry,
+    ZkJobRegistry,
+    get_deletable_dependency_sources,
+    parse_zk_job_specification,
+)
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     check_missing_products,
@@ -405,6 +410,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "Parquet": {
                     "title": "(Geo)Parquet",
                     "description": "GeoParquet is an efficient binary format, to distribute large amounts of vector data.",
+                    "gis_data_types": ["vector"],
+                    "parameters": {},
+                },
+                "GPKG": {
+                    "title": "GeoPackage",
+                    "description": "GeoPackage is an open, standards-based, platform-independent, portable, self-describing, compact format for transferring geospatial information.",
                     "gis_data_types": ["vector"],
                     "parameters": {},
                 },
@@ -772,12 +783,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         )
 
         temporal_extent = load_params.temporal_extent
-        from_date, to_date = normalize_temporal_extent(temporal_extent)
+        from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+        to_date = (dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo) if from_date == until_date
+                   else until_date - dt.timedelta(milliseconds=1))
 
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
             def intersects_temporally() -> bool:
                 nominal_date = itm.datetime or dt.datetime.fromisoformat(itm.properties["start_datetime"])
-                return dt.datetime.fromisoformat(from_date) <= nominal_date <= dt.datetime.fromisoformat(to_date)
+                return from_date <= nominal_date <= to_date
 
             def intersects_spatially() -> bool:
                 if not requested_bbox or itm.bbox is None:
@@ -803,7 +816,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if isinstance(eo_band, dict):
                     return eo_band["name"]
 
-                # can also be an index into a list of bands elsewhere
+                # can also be an index into a list of bands elsewhere.
+                # TODO: still necessary to support this? See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
                 assert isinstance(eo_band, int)
                 eo_band_index = eo_band
 
@@ -879,8 +893,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if not intersects_spatiotemporally(item):
                     raise no_data_available_exception
 
-                eo_bands_location = (item.properties if "eo:bands" in item.properties
-                                     else item.get_collection().summaries.lists)
+                if "eo:bands" in item.properties:
+                    eo_bands_location = item.properties
+                elif item.get_collection() is not None:
+                    eo_bands_location = item.get_collection().summaries.lists
+                else:
+                    # TODO: band order is not "stable" here, see https://github.com/Open-EO/openeo-processes/issues/488
+                    eo_bands_location = {}
                 band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
                 intersecting_items = [item]
@@ -898,7 +917,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     collections=collection_id,
                     bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                     limit=20,
-                    datetime=f"{from_date}/{to_date}",
+                    datetime=f"{from_date.isoformat()}/{to_date.isoformat()}",  # inclusive
                 )
 
                 logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
@@ -912,8 +931,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if load_params.properties:
                     raise properties_unsupported_exception
 
-                band_names = (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
-                              else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])
+                band_names = [b["name"] for b in (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
+                                                  else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])]
 
                 def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
                     def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
@@ -930,12 +949,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             start, end = interval
 
                             if start is not None and end is not None:
-                                return (dt.datetime.fromisoformat(to_date) >= start and
-                                        dt.datetime.fromisoformat(from_date) <= end)
+                                return to_date >= start and from_date <= end
                             if start is not None:
-                                return dt.datetime.fromisoformat(to_date) >= start
+                                return to_date >= start
                             if end is not None:
-                                return dt.datetime.fromisoformat(from_date) <= end
+                                return from_date <= end
                             return True
 
                         bboxes = coll.extent.spatial.bboxes
@@ -1076,8 +1094,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if single_level:
-            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date, to_date, metadata_properties,
-                                                   correlation_id, data_cube_parameters)
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
+                                                   metadata_properties, correlation_id, data_cube_parameters)
         else:
             if requested_bbox:
                 extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
@@ -1087,11 +1105,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 extent_crs = "EPSG:4326"
 
             pyramid = pyramid_factory.pyramid_seq(
-                extent, extent_crs, from_date, to_date,
+                extent, extent_crs, from_date.isoformat(), to_date.isoformat(),
                 metadata_properties, correlation_id
             )
 
-        metadata = metadata.filter_temporal(from_date, to_date)
+        metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
 
         metadata = metadata.filter_bbox(
             west=extent.xmin(),
@@ -1345,14 +1363,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
-                else:
+                elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
                         summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
                     else:
-                        summary = f"Exception during Spark execution: {root_cause_message}"
+                        summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
+                else:
+                    summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
-                summary = root_cause_class_name + ": " + str(root_cause_message)
+                summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
@@ -1361,7 +1381,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return ErrorSummary(error, is_client_error, summary)
 
     @staticmethod
-    def extract_udf_stacktrace(full_stacktrace) -> Optional[str]:
+    def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:
         """
         Select all lines a bit under 'run_udf_code'.
         This is what interests the user
@@ -1440,19 +1460,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             cpu_seconds = backend_config.default_usage_cpu_seconds
             mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-            if (
-                backend_config.etl_api_config
-                # TODO: eliminate this temporary feature flag eventually
-                and backend_config.etl_dynamic_api_flag
-                and flask.request.args.get(backend_config.etl_dynamic_api_flag)
-            ):
-                etl_api = get_etl_api(user=user)
-            else:
-                etl_api = EtlApi(
-                    endpoint=backend_config.etl_api,
-                    credentials=get_etl_api_credentials_from_env(),
-                    requests_session=requests_session,
-                )
+            etl_api = get_etl_api(
+                user=user,
+                allow_dynamic_etl_api=bool(
+                    # TODO #531 this is temporary feature flag, to removed when done
+                    backend_config.etl_dynamic_api_flag
+                    and flask.request.args.get(backend_config.etl_dynamic_api_flag)
+                ),
+                requests_session=requests_session,
+                # TODO #531 provide a TtlCache here
+                etl_api_cache=None,
+            )
 
             costs = etl_api.log_resource_usage(
                 batch_job_id=request_id,
@@ -1527,7 +1545,8 @@ class GpsProcessing(ConcreteProcessing):
                     continue
 
                 if spatial_extent and temporal_extent:
-                    bands = constraints.get("bands", [])
+                    # TODO #618 get correct number of bands if none specified by user
+                    nr_bands = len(metadata.get("cube:dimensions", "bands", "values", default = ["default_band"]))
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
@@ -1535,7 +1554,7 @@ class GpsProcessing(ConcreteProcessing):
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
-                        nr_bands=len(bands),
+                        nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,
                         native_crs=native_crs,
@@ -1618,7 +1637,7 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=ZkJobRegistry,  # TODO #236/#498 allow to disable this with config?
+            zk_job_registry_factory=ZkJobRegistry if get_backend_config().use_zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 
@@ -1964,9 +1983,7 @@ class GpsBatchJobs(backend.BatchJobs):
             # This is old-style (ZK based) job info with "specification" being a JSON string.
             # TODO #498 eliminate ZK code path, or at least encapsulate this logic better
             job_specification_json = job_info["specification"]
-            job_specification = json.loads(job_specification_json)
-            job_process_graph = job_specification["process_graph"]
-            job_options = job_specification.get("job_options", {})
+            job_process_graph, job_options = parse_zk_job_specification(job_info, default_job_options={})
         else:
             # New style job info (EJR based)
             job_process_graph = job_info["process"]["process_graph"]
@@ -2067,8 +2084,8 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", "2G" if isKube else "8G" )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", "1G" if isKube else "2G")
+        driver_memory = job_options.get("driver-memory", "3G" if isKube else "8G" )
+        driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G" if isKube else "2G")
         executor_memory = job_options.get("executor-memory", "2G")
         executor_memory_overhead = job_options.get("executor-memoryOverhead", "2500m" if isKube else "3G")
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
@@ -2078,6 +2095,8 @@ class GpsBatchJobs(backend.BatchJobs):
             executor_corerequest = str(int(executor_cores)/2*1000)+"m"
         max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
         executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
+        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", 26))
+        gdal_cachemax = str(job_options.get("gdal-cachemax", 150))
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
         max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
@@ -2228,6 +2247,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_id_full=job_id,
                 driver_cores=driver_cores,
                 driver_memory=driver_memory,
+                driver_memory_overhead=driver_memory_overhead,
                 executor_cores=executor_cores,
                 executor_corerequest=executor_corerequest,
                 executor_memory=executor_memory,
@@ -2240,6 +2260,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 user_id=user_id,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 task_cpus=task_cpus,
+                gdal_dataset_cache_size=gdal_dataset_cache_size,
+                gdal_cachemax=gdal_cachemax,
                 current_time=int(time.time()),
                 aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                 aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),

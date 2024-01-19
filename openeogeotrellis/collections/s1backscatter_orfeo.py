@@ -316,8 +316,15 @@ class S1BackscatterOrfeo:
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
 
+        tempdir = tempfile.mkdtemp()
+        out_path = os.path.join(tempdir, input_tiff.name)
+        write_to_numpy = extent_height_px < 2500 and extent_width_px < 2500
+
+
         with TimingLogger(title=f"{log_prefix} Orfeo processing pipeline on {input_tiff}", logger=logger):
-            arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
+            arr = None
+            if write_to_numpy:
+                arr = multiprocessing.Array(ctypes.c_float, extent_width_px*extent_height_px, lock=False)
             error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
@@ -329,36 +336,49 @@ class S1BackscatterOrfeo:
                 ortho_rect.SetParameterInt("outputs.ulx", int(extent["xmin"]))
                 ortho_rect.SetParameterInt("outputs.uly", int(extent["ymax"]))
                 try:
-                    ortho_rect.Execute()
-                    # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
-                    localdata = ortho_rect.GetImageAsNumpyArray('io.out')
-                    np.copyto(np.frombuffer(arr,dtype=np.float32).reshape((extent_height_px, extent_width_px)), localdata,casting="same_kind")
+                    if(not write_to_numpy):
+
+                        logger.info(f"{log_prefix} Write orfeo pipeline output to temporary {out_path}")
+                        ortho_rect.SetParameterString("io.out", out_path)
+                        ortho_rect.ExecuteAndWriteOutput()
+                    else:
+                        ortho_rect.Execute()
+                        # ram = ortho_rect.PropagateRequestedRegion("io.out", myRegion)
+                        localdata = ortho_rect.GetImageAsNumpyArray('io.out')
+                        np.copyto(dst=np.frombuffer(arr, dtype=np.float32).reshape((extent_height_px, extent_width_px)),
+                              src=localdata, casting="same_kind")
                 except RuntimeError as e:
                     error_counter.value += 1
-                    logger.error(f"Error while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}",exc_info=True)
+                    msg = f"Error while running Orfeo toolbox. {input_tiff}, {e}   {extent} EPSG {extent_epsg} {sar_calibration_lut}"
+                    logger.error(msg,exc_info=True)
 
             p = Process(target=run, args=())
             p.start()
             p.join()
             if p.exitcode == -signal.SIGSEGV:
                 error_counter.value += 1
-                logger.error(f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}")
+                msg = f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}"
+                logger.error(msg)
             # Check soft error ratio.
             if trackers is not None:
                 if max_soft_errors_ratio == 0.0:
                     if error_counter.value > 0:
-                        raise RuntimeError("Too many errors while running Orfeo toolbox")
+                        msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
+                        raise RuntimeError(msg)
                 else:
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
-            data = np.reshape(np.frombuffer(arr,dtype=np.float32), (extent_height_px, extent_width_px))
+            if write_to_numpy:
+                data = np.reshape(np.frombuffer(arr,dtype=np.float32), (extent_height_px, extent_width_px))
 
-            logger.info(
-                f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
-                f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
-            )
-            return data, 0
+                logger.info(
+                    f"{log_prefix} Final orfeo pipeline result: shape {data.shape},"
+                    f" min {numpy.nanmin(data)}, max {numpy.nanmax(data)}"
+                )
+                return data, 0
+            else:
+                return out_path, 0
 
 
 
@@ -485,7 +505,12 @@ class S1BackscatterOrfeo:
                                 trackers=trackers,
                                 max_soft_errors_ratio=max_soft_errors_ratio,
                             )
-                            tile_data[b] = data
+                            if isinstance(data,str):
+                                import rasterio
+                                ds = rasterio.open(data,driver="GTiff")
+                                tile_data[b] = ds.read(1)
+                            else:
+                                tile_data[b] = data
 
                         if sar_backscatter_arguments.options.get("to_db", False):
                             # TODO: keep this "to_db" shortcut feature or drop it
@@ -494,7 +519,7 @@ class S1BackscatterOrfeo:
                             tile_data = 10 * numpy.log10(tile_data)
 
                         key = geopyspark.SpaceTimeKey(row=row, col=col, instant=_instant_ms_to_day(instant))
-                        cell_type = geopyspark.CellType(tile_data.dtype.name)
+                        cell_type = geopyspark.CellType(tile_data[0].dtype.name)
                         logger.debug(f"{log_prefix} Create Tile for key {key} from {tile_data.shape}")
                         tile = geopyspark.Tile(tile_data, cell_type, no_data_value=nodata)
                         resultlist.append((key, tile))
@@ -809,6 +834,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
+        # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
@@ -833,6 +859,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 "key_epsg": feature["metadata"]["crs_epsg"]
             }
 
+        # a pair RDD of product -> tile
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
         # TODO: still split if full layout extent is too large for processing as a whole?
@@ -896,7 +923,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             msg = f"{log_prefix} Process {creo_path} "
             with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
                 # Allocate numpy array tile
-                orfeo_bands = numpy.zeros((len(bands),layout_height_px,layout_width_px ), dtype=result_dtype)
+                orfeo_bands = []
 
                 for b, band in enumerate(bands):
                     if band.lower() not in band_tiffs:
@@ -914,8 +941,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                         trackers=trackers,
                         max_soft_errors_ratio = max_soft_errors_ratio
                     )
-                    #orfeo_bands = y,x
-                    orfeo_bands[b] = data
+                    orfeo_bands.append(data)
 
                 if sar_backscatter_arguments.options.get("to_db", False):
                     # TODO: keep this "to_db" shortcut feature or drop it
@@ -924,13 +950,42 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                     orfeo_bands = 10 * numpy.log10(orfeo_bands)
 
                 # Split orfeo output in tiles
-                logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-                cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
+
+
                 tiles = []
-                for c in range(col_max - col_min + 1):
-                    for r in range(row_max - row_min + 1):
-                        col = col_min + c
-                        row = row_min + r
+                if isinstance(orfeo_bands[0],str):
+                    import rasterio
+                    from rasterio.windows import Window
+
+                    ds = [rasterio.open(filename,driver="GTiff") for filename in orfeo_bands]
+                    for f in features:
+                        col = f["key"]["col"]
+                        row = f["key"]["row"]
+                        c = col - col_min
+                        r = row - row_min
+
+                        key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+                        numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
+                                        for band in ds])
+                        cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
+                        if not (numpy_tiles==nodata).all():
+                            if debug_mode:
+                                logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
+                            tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
+                            tiles.append((key, tile))
+                    ds = None
+                    for file in orfeo_bands:
+                        os.remove(file)
+
+                else:
+                    orfeo_bands = numpy.array(orfeo_bands)
+                    cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
+                    logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
+                    for f in features:
+                        col = f["key"]["col"]
+                        row = f["key"]["row"]
+                        c = col - col_min
+                        r = row - row_min
                         key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                         tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                         if not (tile==nodata).all():
@@ -950,6 +1005,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             except Exception as e:
                 hashPartitioner = pyspark.rdd.portable_hash
                 return hashPartitioner(tuple)
+
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:

@@ -1,11 +1,12 @@
 import logging
 import os
-from typing import Dict, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import requests
 from openeo_driver.config import get_backend_config
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials, ClientCredentialsAccessTokenHelper
+from openeo_driver.util.caching import TtlCache
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.config import EtlApiConfig
@@ -21,6 +22,8 @@ class ETL_API_STATE:
     (e.g. `POST /resources` endpoint https://etl.terrascope.be/docs/#/resources/ResourcesController_upsertResource).
     Note that this roughly corresponds to YARN app state (for legacy reasons), also see `YARN_STATE`.
     """
+
+    # TODO #610 Simplify ETL-level state/status complexity to a single openEO-style job status
     ACCEPTED = "ACCEPTED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
@@ -36,6 +39,7 @@ class ETL_API_STATUS:
     Note that this roughly corresponds to YARN final status (for legacy reasons), also see `YARN_FINAL_STATUS`.
     """
 
+    # TODO #610 Simplify ETL-level state/status complexity to a single openEO-style job status
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     KILLED = "KILLED"
@@ -48,6 +52,8 @@ class EtlApi:
     and deriving a cost estimate.
     """
 
+    __slots__ = ("_endpoint", "_source_id", "_session", "_access_token_helper")
+
     def __init__(
         self,
         endpoint: str,
@@ -58,8 +64,13 @@ class EtlApi:
     ):
         self._endpoint = endpoint
         self._source_id = source_id or get_backend_config().etl_source_id
+        _log.debug(f"EtlApi.__init__() with {self._endpoint=} {self._source_id=}")
         self._session = requests_session or requests.Session()
         self._access_token_helper = ClientCredentialsAccessTokenHelper(session=self._session, credentials=credentials)
+
+    @property
+    def root_url(self) -> str:
+        return self._endpoint
 
     def assert_access_token_valid(self, access_token: Optional[str] = None):
         # will work regardless of ability to log resources
@@ -106,6 +117,8 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            'idempotencyKey': execution_id,
+            # TODO #610 simplify this state/status stuff to single openEO-style job status?
             'state': state,
             'status': status,
             'metrics': metrics
@@ -149,6 +162,7 @@ class EtlApi:
             'orchestrator': ORCHESTRATOR,
             'jobStart': started_ms,
             'jobFinish': finished_ms,
+            'idempotencyKey': execution_id,
             'service': process_id,
             'area': {'value': square_meters, 'unit': 'square_meter'}
         }
@@ -198,7 +212,7 @@ class SimpleEtlApiConfig(EtlApiConfig):
         self._root_url = root_url
         self._client_credentials = client_credentials
 
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         return self._root_url
 
     def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
@@ -212,7 +226,7 @@ class DynamicEtlApiConfig(EtlApiConfig):
     def __init__(self, urls_and_credentials: Dict[str, ClientCredentials]):
         self._urls_and_credentials = urls_and_credentials
 
-    def get_root_url(self, *, user: Optional[User] = None) -> str:
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         # TODO: possible to provide some generic logic here?
         raise NotImplementedError
 
@@ -222,18 +236,61 @@ class DynamicEtlApiConfig(EtlApiConfig):
 
 
 def get_etl_api(
-    *, root_url: Optional[str] = None, user: Optional[User] = None, requests_session: Optional[requests.Session] = None
-) -> Union[EtlApi, None]:
-    """Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...)."""
-    etl_config: Optional[EtlApiConfig] = get_backend_config().etl_api_config
+    *,
+    root_url: Optional[str] = None,
+    user: Optional[User] = None,
+    job_options: Optional[dict] = None,
+    requests_session: Optional[requests.Session] = None,
+    # TODO #531 remove this temporary feature flag/toggle for dynamic ETL selection.
+    allow_dynamic_etl_api: bool = False,
+    etl_api_cache: Optional[TtlCache] = None,
+) -> EtlApi:
+    """
+    Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...).
 
-    if etl_config is None:
-        return None
+    :param etl_api_cache: (optional) provide a `TtlCache` to fetch existing `EtlApi` instances from
+        to avoid repeatedly setting up `EtlApi` instances each time
+        (which can be costly due to client credentials related OIDC discovery requests).
+        Note that the caller is cache owner and responsible for providing the same cache instance on each call
+        and setting the default TTL (as desired).
+    """
+    backend_config = get_backend_config()
+    etl_config: Optional[EtlApiConfig] = backend_config.etl_api_config
 
-    if root_url is None:
-        root_url = etl_config.get_root_url(user=user)
-    client_credentials = etl_config.get_client_credentials(root_url=root_url)
-    return EtlApi(endpoint=root_url, credentials=client_credentials, requests_session=requests_session)
+    def get_cached_or_build(cache_key: tuple, build: Callable[[], EtlApi]) -> EtlApi:
+        """Helper to build an EtlApi object, with optional caching."""
+        if etl_api_cache:
+            return etl_api_cache.get_or_call(cache_key, build)
+        else:
+            return build()
+
+    dynamic_etl_mode = allow_dynamic_etl_api and (etl_config is not None)
+    if dynamic_etl_mode:
+        _log.debug("get_etl_api: dynamic EtlApiConfig based ETL API selection")
+        # First get root URL as main ETL API identifier
+        if root_url is None:
+            root_url = etl_config.get_root_url(user=user, job_options=job_options)
+
+        # Build EtlApi (or get from cache if possible)
+        return get_cached_or_build(
+            cache_key=("get_etl_api", root_url),
+            build=lambda: EtlApi(
+                endpoint=root_url,
+                credentials=etl_config.get_client_credentials(root_url=root_url),
+                requests_session=requests_session,
+            ),
+        )
+    else:
+        # TODO #531 eliminate this code path
+        _log.debug("get_etl_api: legacy static EtlApi")
+        return get_cached_or_build(
+            cache_key=("get_etl_api", "__static_etl_api__"),
+            build=lambda: EtlApi(
+                endpoint=backend_config.etl_api,
+                credentials=get_etl_api_credentials_from_env(),
+                requests_session=requests_session,
+            ),
+        )
 
 
 def assert_resource_logging_possible():

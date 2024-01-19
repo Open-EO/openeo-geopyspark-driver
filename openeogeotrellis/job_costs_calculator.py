@@ -1,11 +1,12 @@
 import abc
 import datetime as dt
 import logging
-from typing import NamedTuple, Optional, List
+from typing import List, NamedTuple, Optional
 
-from openeogeotrellis.integrations.etl_api import EtlApi, ETL_API_STATE, ETL_API_STATUS
-from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE
-from openeogeotrellis.integrations.yarn import YARN_STATE
+from openeo_driver.util.caching import TtlCache
+from openeo_driver.util.http import requests_with_retry
+
+from openeogeotrellis.integrations.etl_api import ETL_API_STATUS, EtlApi, get_etl_api
 
 _log = logging.getLogger(__name__)
 
@@ -17,7 +18,9 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     job_id: str
     user_id: str
     execution_id: str
-    app_state: str
+    # TODO #610 this is just part of a temporary migration path, to be cleaned up when just openEO-style `job_status` can be used
+    app_state_etl_api_deprecated: Optional[str] = None
+    job_status: Optional[str] = None  # (openEO style) job status #TODO #610
     area_square_meters: Optional[float] = None
     job_title: Optional[str] = None
     start_time: Optional[dt.datetime] = None
@@ -26,6 +29,7 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     mb_seconds: Optional[float] = None
     sentinelhub_processing_units: Optional[float] = None
     unique_process_ids: List[str] = []
+    job_options: Optional[dict] = None
 
 
 class JobCostsCalculator(metaclass=abc.ABCMeta):
@@ -47,12 +51,8 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
     Base class for cost calculators based on resource reporting with ETL API.
     """
     def __init__(self, etl_api: EtlApi):
+        super().__init__()
         self._etl_api = etl_api
-
-    @abc.abstractmethod
-    def etl_api_state(self, app_state: str) -> str:
-        """Map implementation specific Spark/Kubernetes app state to standardized ETL_API_STATE value."""
-        raise NotImplementedError
 
     def calculate_costs(self, details: CostsDetails) -> float:
         started_ms = details.start_time.timestamp() * 1000 if details.start_time is not None else None
@@ -66,8 +66,10 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             user_id=details.user_id,
             started_ms=started_ms,
             finished_ms=finished_ms,
-            state=self.etl_api_state(details.app_state),
+            # TODO #610 replace state/status with generic openEO-style job status
+            state=details.app_state_etl_api_deprecated,
             status=ETL_API_STATUS.UNDEFINED,  # TODO: map as well? it's just for reporting
+            # TODO #610 already possible to send `details.job_status` in request?
             cpu_seconds=details.cpu_seconds,
             mb_seconds=details.mb_seconds,
             duration_ms=duration_ms,
@@ -92,34 +94,23 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
         return resource_costs_in_credits + added_value_costs_in_credits
 
 
-class YarnJobCostsCalculator(EtlApiJobCostsCalculator):
-    _yarn_state_to_etl_api_state = {
-        YARN_STATE.ACCEPTED: ETL_API_STATE.ACCEPTED,
-        YARN_STATE.RUNNING: ETL_API_STATE.RUNNING,
-        YARN_STATE.FINISHED: ETL_API_STATE.FINISHED,
-        YARN_STATE.KILLED: ETL_API_STATE.KILLED,
-        YARN_STATE.FAILED: ETL_API_STATE.FAILED,
-    }
+class DynamicEtlApiJobCostCalculator(JobCostsCalculator):
+    """
+    Like EtlApiJobCostsCalculator but with an ETL API endpoint that is determined based on user or job data
+    """
 
-    def etl_api_state(self, app_state: str) -> str:
-        if app_state not in self._yarn_state_to_etl_api_state:
-            _log.warning(f"Unhandled YARN app state mapping: {app_state}")
-        return self._yarn_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
+    def __init__(self, cache_ttl: int = 5 * 60):
+        self._request_session = requests_with_retry(total=3, backoff_factor=2)
+        self._etl_cache: Optional[TtlCache] = TtlCache(default_ttl=cache_ttl) if cache_ttl > 0 else None
 
-
-class K8sJobCostsCalculator(EtlApiJobCostsCalculator):
-    _k8s_state_to_etl_api_state = {
-        K8S_SPARK_APP_STATE.NEW: ETL_API_STATE.ACCEPTED,
-        K8S_SPARK_APP_STATE.SUBMITTED: ETL_API_STATE.ACCEPTED,
-        K8S_SPARK_APP_STATE.RUNNING: ETL_API_STATE.RUNNING,
-        K8S_SPARK_APP_STATE.SUCCEEDING: ETL_API_STATE.RUNNING,
-        K8S_SPARK_APP_STATE.COMPLETED: ETL_API_STATE.FINISHED,
-        K8S_SPARK_APP_STATE.FAILED: ETL_API_STATE.FAILED,
-        K8S_SPARK_APP_STATE.SUBMISSION_FAILED: ETL_API_STATE.FAILED,
-        K8S_SPARK_APP_STATE.FAILING: ETL_API_STATE.FAILED,
-    }
-
-    def etl_api_state(self, app_state: str) -> str:
-        if app_state not in self._k8s_state_to_etl_api_state:
-            _log.warning(f"Unhandled K8s app state mapping {app_state}")
-        return self._k8s_state_to_etl_api_state.get(app_state, ETL_API_STATE.UNDEFINED)
+    def calculate_costs(self, details: CostsDetails) -> float:
+        job_options = details.job_options or {}
+        etl_api = get_etl_api(
+            job_options=job_options,
+            allow_dynamic_etl_api=True,
+            requests_session=self._request_session,
+            etl_api_cache=self._etl_cache,
+        )
+        _log.debug(f"DynamicEtlApiJobCostCalculator.calculate_costs with {etl_api=}")
+        # Reuse logic from EtlApiJobCostsCalculator
+        return EtlApiJobCostsCalculator(etl_api=etl_api).calculate_costs(details=details)

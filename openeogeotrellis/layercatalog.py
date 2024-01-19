@@ -36,6 +36,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
+from openeogeotrellis.collections import sentinel3
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -652,6 +653,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 datacubeParams = datacubeParams,
                 max_soft_errors_ratio=max_soft_errors_ratio
             )
+        elif layer_source_type == 'file-s3':
+            pyramid = sentinel3.pyramid(metadata_properties(),
+                                        projected_polygons_native_crs, from_date, to_date,
+                                        metadata.opensearch_link_titles, datacubeParams,
+                                        jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
+                                        )
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
         elif layer_source_type == 'testing':
@@ -1140,7 +1147,11 @@ def is_layer_too_large(
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+    # TODO #618 estimation assumes there is an observation for every day, which is typically quite an overestimation.
     estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
+    logger.debug(
+        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+    )
     if estimated_pixels > threshold_pixels:
         if geometries and not isinstance(geometries, dict):
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
@@ -1160,6 +1171,9 @@ def is_layer_too_large(
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             estimated_pixels = geometries_area / (cell_width * cell_height) * days * nr_bands
+            logger.debug(
+                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+            )
             if estimated_pixels <= threshold_pixels:
                 return False, estimated_pixels, threshold_pixels
         return True, estimated_pixels, threshold_pixels

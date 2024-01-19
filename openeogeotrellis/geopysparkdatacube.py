@@ -570,7 +570,7 @@ class GeopysparkDataCube(DriverDataCube):
                 time_coordinates=pd.DatetimeIndex(dates)
             )
 
-            data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=udf_context)
+            data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=udf_context)
             _log.debug(f"[apply_tiles_spatiotemporal] running UDF {str_truncate(udf_code, width=1000)!r} on {datacube!r} with context {udf_context}")
             result_data = run_udf_code(code=udf_code, data=data)
             cubes = result_data.get_datacube_list()
@@ -755,7 +755,7 @@ class GeopysparkDataCube(DriverDataCube):
                         extent=extent,
                         band_coordinates=openeo_metadata.band_dimension.band_names
                     )
-                    data = UdfData(proj={"EPSG": 900913}, datacube_list=[datacube], user_context=context)
+                    data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=context)
 
                     # Run UDF.
                     _log.debug(f"[apply_tiles] running UDF {str_truncate(udf_code, width=1000)!r} on {data}!r")
@@ -1099,7 +1099,7 @@ class GeopysparkDataCube(DriverDataCube):
         x = spatial_dims[0]
         y = spatial_dims[1]
         size_dict = {e['dimension']:e for e in size}
-        overlap_dict = {e['dimension']: e for e in overlap}
+        overlap_dict = {e['dimension']: e for e in overlap} if overlap is not None else {}
         if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
             raise OpenEOApiException(message="apply_neighborhood: window sizes for the spatial dimensions"
                                              " of this datacube should be specified in pixels."
