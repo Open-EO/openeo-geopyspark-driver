@@ -1574,7 +1574,9 @@ class TestK8sJobTracker:
             data={
                 "foo": "bar",
                 "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                          "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},}
+                          "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                          },
+                "b0rked": [24, ["a", {"b": [float('nan'), None]}], {"c": [float('inf'), 1.23]}],
             },
         )
         job_tracker.update_statuses()
@@ -1597,10 +1599,14 @@ class TestK8sJobTracker:
                 "results_metadata": {
                     "foo": "bar",
                     "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                              "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},}
+                              "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                              },
+                    "b0rked": [24, ["a", {"b": ['nan', None]}], {"c": ['inf', 1.23]}],
                 },
             }
         )
+
+        json.dumps(elastic_job_registry.db[job_id], allow_nan=False)
 
         assert caplog.record_tuples == []
 

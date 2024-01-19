@@ -9,6 +9,7 @@ import collections
 import datetime as dt
 import logging
 from decimal import Decimal
+from math import isfinite
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
@@ -550,8 +551,9 @@ class JobTracker:
                 job_costs = None
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            double_job_registry.set_results_metadata(job_id, user_id, costs=job_costs, usage=dict(total_usage),
-                                                     results_metadata=result_metadata)
+            double_job_registry.set_results_metadata(job_id, user_id, costs=job_costs,
+                                                     usage=self._to_jsonable(dict(total_usage)),
+                                                     results_metadata=self._to_jsonable(result_metadata))
 
         datetime_formatter = Rfc3339(propagate_none=True)
 
@@ -562,6 +564,21 @@ class JobTracker:
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
         )
+
+    @staticmethod
+    def _to_jsonable_float(x: float) -> Union[float, str]:
+        return x if isfinite(x) else str(x)
+
+    @staticmethod
+    def _to_jsonable(x):
+        if isinstance(x, float):
+            return JobTracker._to_jsonable_float(x)
+        if isinstance(x, dict):
+            return {JobTracker._to_jsonable(key): JobTracker._to_jsonable(value) for key, value in x.items()}
+        elif isinstance(x, list):
+            return [JobTracker._to_jsonable(elem) for elem in x]
+
+        return x
 
 
 class CliApp:
