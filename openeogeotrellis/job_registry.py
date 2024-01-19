@@ -564,7 +564,7 @@ def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
         start_datetime=map_results_metadata_safe("start_datetime", rfc3339.parse_datetime),
         end_datetime=map_results_metadata_safe("end_datetime", rfc3339.parse_datetime),
         instruments=get_results_metadata("instruments"),
-        epsg=job_info.get("results_metadata", {}).get("epsg"),
+        epsg=get_results_metadata("epsg"),
         links=get_results_metadata("links"),
         usage=job_info.get("usage"),
         costs=job_info.get("costs"),

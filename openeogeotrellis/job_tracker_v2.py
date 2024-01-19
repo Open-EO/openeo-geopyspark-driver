@@ -397,7 +397,7 @@ class JobTracker:
             elastic_job_registry=elastic_job_registry,
         )
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: zk_job_registry) if zk_job_registry is not None else None,
+            zk_job_registry_factory=(lambda: zk_job_registry) if zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 
