@@ -50,7 +50,7 @@ from openeogeotrellis.job_costs_calculator import (
     CostsDetails,
     EtlApiJobCostsCalculator,
 )
-from openeogeotrellis.job_registry import ZkJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
 
 
@@ -376,7 +376,7 @@ class JobTracker:
     def __init__(
         self,
         app_state_getter: JobMetadataGetterInterface,
-        zk_job_registry: ZkJobRegistry,
+        zk_job_registry: Optional[ZkJobRegistry],
         principal: str,
         keytab: str,
         job_costs_calculator: JobCostsCalculator = noJobCostsCalculator,
@@ -384,8 +384,6 @@ class JobTracker:
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
-        # TODO #236/#498/#632 make ZkJobRegistry optional
-        self._zk_job_registry = zk_job_registry
         self._job_costs_calculator = job_costs_calculator
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
         #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.
@@ -398,17 +396,18 @@ class JobTracker:
             output_root_dir=output_root_dir,
             elastic_job_registry=elastic_job_registry,
         )
-        self._elastic_job_registry = elastic_job_registry
+        self._double_job_registry = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: zk_job_registry) if zk_job_registry else None,
+            elastic_job_registry=elastic_job_registry,
+        )
 
     def update_statuses(self, fail_fast: bool = False) -> None:
         """Iterate through all known (ongoing) jobs and update their status"""
-        # TODO #236/#498/#632 make ZkJobRegistry optional
-        with self._zk_job_registry as zk_job_registry, StatsReporter(
+        with self._double_job_registry as double_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
 
-            # TODO: #236/#498/#632 also/instead get jobs_to_track from EJR?
-            jobs_to_track = zk_job_registry.get_running_jobs(parse_specification=True)
+            jobs_to_track = double_job_registry.get_active_jobs()
 
             for job_info in jobs_to_track:
                 stats["collected jobs"] += 1
@@ -433,7 +432,7 @@ class JobTracker:
                         user_id=user_id,
                         application_id=application_id,
                         job_info=job_info,
-                        zk_job_registry=zk_job_registry,
+                        double_job_registry=double_job_registry,
                         stats=stats,
                     )
                 except Exception as e:
@@ -451,8 +450,7 @@ class JobTracker:
         user_id: str,
         application_id: str,
         job_info: dict,
-        # TODO #236/#498/#632 make ZkJobRegistry optional
-        zk_job_registry: ZkJobRegistry,
+        double_job_registry: DoubleJobRegistry,
         stats: collections.Counter,
     ):
         """Sync job status for a single job"""
@@ -475,13 +473,10 @@ class JobTracker:
         except AppNotFound:
             log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
             # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
-            zk_job_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
-            with ElasticJobRegistry.just_log_errors("job_tracker app not found"):
-                if self._elastic_job_registry:
-                    # TODO: also set started/finished, exception/error info ...
-                    self._elastic_job_registry.set_status(
-                        job_id=job_id, status=JOB_STATUS.ERROR
-                    )
+            # TODO: also set started/finished, exception/error info ...
+            double_job_registry.set_status(
+                job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR
+            )
             stats["app not found"] += 1
             return
 
@@ -503,7 +498,7 @@ class JobTracker:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
-            zk_job_registry.remove_dependencies(job_id, user_id)
+            double_job_registry.remove_dependencies(job_id, user_id)
 
             # there can be duplicates if batch processes are recycled
             dependency_sources = list(set(get_deletable_dependency_sources(job_info)))
@@ -554,34 +549,19 @@ class JobTracker:
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
-            usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            zk_job_registry.patch(job_id, user_id, **dict(result_metadata, costs=job_costs, usage=usage))
-
-            with ElasticJobRegistry.just_log_errors(
-                    f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
-            ):
-                if self._elastic_job_registry:
-                    self._elastic_job_registry.set_usage(job_id, job_costs, dict(usage))
+            total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
+            double_job_registry.set_results_metadata(job_id, user_id, costs=job_costs, usage=dict(total_usage),
+                                                     results_metadata=result_metadata)
 
         datetime_formatter = Rfc3339(propagate_none=True)
 
-        zk_job_registry.patch(
+        double_job_registry.set_status(
             job_id=job_id,
             user_id=user_id,
             status=job_metadata.status,
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
         )
-        with ElasticJobRegistry.just_log_errors(
-            f"job_tracker {job_metadata.status=} from {type(self._app_state_getter).__name__}"
-        ):
-            if self._elastic_job_registry:
-                self._elastic_job_registry.set_status(
-                    job_id=job_id,
-                    status=job_metadata.status,
-                    started=datetime_formatter.datetime(job_metadata.start_time),
-                    finished=datetime_formatter.datetime(job_metadata.finish_time),
-                )
 
 
 class CliApp:
@@ -607,16 +587,20 @@ class CliApp:
 
         with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
             try:
+                config = get_backend_config()
+
                 # ZooKeeper Job Registry
-                zk_root_path = args.zk_job_registry_root_path
-                _log.info(f"Using {zk_root_path=}")
-                # TODO #236/#498/#632 make ZkJobRegistry optional
-                zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+                if config.use_zk_job_registry:
+                    zk_root_path = args.zk_job_registry_root_path
+                    _log.info(f"Using {zk_root_path=}")
+                    zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+                else:
+                    zk_job_registry = None
 
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
                 # Elastic Job Registry (EJR)
-                elastic_job_registry = get_elastic_job_registry(requests_session)
+                elastic_job_registry = get_elastic_job_registry(requests_session) if config.ejr_api else None
 
                 # YARN or Kubernetes?
                 app_cluster = args.app_cluster
@@ -631,8 +615,7 @@ class CliApp:
                         ),
                     )
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(kube_client(),
-                                                       Prometheus(get_backend_config().prometheus_api))
+                    app_state_getter = K8sStatusGetter(kube_client(), Prometheus(config.prometheus_api))
                 else:
                     raise ValueError(app_cluster)
 

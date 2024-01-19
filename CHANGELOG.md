@@ -12,6 +12,12 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.23.0
+
+### Added
+
+ - Support disabling ZkJobRegistry ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632))
+
 ## 0.22.3
 
 ### Bugfix

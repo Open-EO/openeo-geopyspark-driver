@@ -6,7 +6,7 @@ import random
 import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Callable, Union, Optional, Iterator, Tuple
+from typing import Any, List, Dict, Callable, Union, Optional, Iterator, Tuple
 
 import kazoo
 import kazoo.exceptions
@@ -23,7 +23,6 @@ from openeo_driver.jobregistry import (
     JobRegistryInterface,
     JobDict,
 )
-from openeo_driver.util.logging import just_log_exceptions
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.testing import KazooClientMock
@@ -97,15 +96,25 @@ class ZkJobRegistry:
         self.patch(job_id, user_id, application_id=application_id)
 
     def set_status(
-        self, job_id: str, user_id: str, status: str, auto_mark_done: bool = True
+        self, job_id: str, user_id: str, status: str, started: Optional[str] = None, finished: Optional[str] = None,
+            auto_mark_done: bool = True
     ) -> None:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
+        kwargs = {
+            "status": status,
+            "updated": rfc3339.utcnow(),
+        }
+
+        if started:
+            kwargs["started"] = started
+        if finished:
+            kwargs["finished"] = finished
+
         self.patch(
             job_id,
             user_id,
-            status=status,
-            updated=rfc3339.utcnow(),
             auto_mark_done=auto_mark_done,
+            **kwargs
         )
         _log.debug("batch job {j} -> {s}".format(j=job_id, s=status))
 
@@ -530,6 +539,13 @@ def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
         value = job_info.get(prop)
         return f(value) if value else None
 
+    def get_results_metadata(result_metadata_prop: str):
+        return job_info.get("results_metadata", {}).get(result_metadata_prop)
+
+    def map_results_metadata_safe(result_metadata_prop: str, f):
+        value = get_results_metadata(result_metadata_prop)
+        return f(value) if value is not None else None
+
     return BatchJobMetadata(
         id=job_info["job_id"],
         status=job_info["status"],
@@ -543,17 +559,17 @@ def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
         finished=map_safe("finished", rfc3339.parse_datetime),
         memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
         cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
-        geometry=job_info.get("geometry"),
-        bbox=job_info.get("bbox"),
-        start_datetime=map_safe("start_datetime", rfc3339.parse_datetime),
-        end_datetime=map_safe("end_datetime", rfc3339.parse_datetime),
-        instruments=job_info.get("instruments"),
-        epsg=job_info.get("epsg"),
-        links=job_info.get("links"),
+        geometry=get_results_metadata("geometry"),
+        bbox=get_results_metadata("bbox"),
+        start_datetime=map_results_metadata_safe("start_datetime", rfc3339.parse_datetime),
+        end_datetime=map_results_metadata_safe("end_datetime", rfc3339.parse_datetime),
+        instruments=get_results_metadata("instruments"),
+        epsg=get_results_metadata("epsg"),
+        links=get_results_metadata("links"),
         usage=job_info.get("usage"),
         costs=job_info.get("costs"),
-        proj_shape=job_info.get("proj:shape"),
-        proj_bbox=job_info.get("proj:bbox"),
+        proj_shape=get_results_metadata("proj:shape"),
+        proj_bbox=get_results_metadata("proj:bbox"),
     )
 
 
@@ -654,6 +670,10 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
         return self._update(job_id=job_id, costs=costs, usage=usage)
 
+    def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
+                             results_metadata: Dict[str, Any]) -> JobDict:
+        return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+
     def list_user_jobs(
         self, user_id: str, fields: Optional[List[str]] = None
     ) -> List[JobDict]:
@@ -666,12 +686,17 @@ class InMemoryJobRegistry(JobRegistryInterface):
         # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
 
+    def list_trackable_jobs(self, fields: Optional[List[str]] = None) -> List[JobDict]:
+        return [job for job in self.db.values()
+                if job["status"] in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
+                and job.get("application_id")]
+
 
 class DoubleJobRegistryException(Exception):
     pass
 
 
-class DoubleJobRegistry:
+class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
     """
     Adapter to simultaneously keep track of jobs in two job registries:
     a legacy ZkJobRegistry and a new ElasticJobRegistry.
@@ -720,16 +745,6 @@ class DoubleJobRegistry:
             self.zk_job_registry = None
             self._lock.release()
 
-    def _just_log_errors(
-        self, name: str, job_id: Optional[str] = None, extra: Optional[dict] = None
-    ):
-        """Context manager to just log exceptions"""
-        if job_id:
-            extra = dict(extra or {}, job_id=job_id)
-        return just_log_exceptions(
-            log=self._log.warning, name=f"DoubleJobRegistry.{name}", extra=extra
-        )
-
     def create_job(
         self,
         job_id: str,
@@ -755,16 +770,15 @@ class DoubleJobRegistry:
                 description=description,
             )
         if self.elastic_job_registry:
-            with self._just_log_errors("create_job", job_id=job_id):
-                ejr_job_info = self.elastic_job_registry.create_job(
-                    process=process,
-                    user_id=user_id,
-                    job_id=job_id,
-                    title=title,
-                    description=description,
-                    api_version=api_version,
-                    job_options=job_options,
-                )
+            ejr_job_info = self.elastic_job_registry.create_job(
+                process=process,
+                user_id=user_id,
+                job_id=job_id,
+                title=title,
+                description=description,
+                api_version=api_version,
+                job_options=job_options,
+            )
         if zk_job_info is None and ejr_job_info is None:
             raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
         return zk_job_info or ejr_job_info
@@ -776,9 +790,8 @@ class DoubleJobRegistry:
             with contextlib.suppress(JobNotFoundException):
                 zk_job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job", job_id=job_id):
-                with contextlib.suppress(JobNotFoundException):
-                    ejr_job = self.elastic_job_registry.get_job(job_id=job_id)
+            with contextlib.suppress(JobNotFoundException):
+                ejr_job = self.elastic_job_registry.get_job(job_id=job_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job, ejr_job_info=ejr_job)
         return zk_job or ejr_job
@@ -791,10 +804,9 @@ class DoubleJobRegistry:
                 with contextlib.suppress(JobNotFoundException):
                     zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job_metadata", job_id=job_id):
-                with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
-                    with contextlib.suppress(JobNotFoundException):
-                        ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id)
+            with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
+                with contextlib.suppress(JobNotFoundException):
+                    ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
         job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
@@ -811,19 +823,20 @@ class DoubleJobRegistry:
         elif zk_job_info is None and ejr_job_info is None:
             raise JobNotFoundException(job_id=job_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str) -> None:
+    def set_status(self, job_id: str, user_id: str, status: str,
+                   started: Optional[str] = None, finished: Optional[str] = None,
+                   ) -> None:
         if self.zk_job_registry:
-            self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status)
+            self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
+                                            finished=finished)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_status", job_id=job_id):
-                self.elastic_job_registry.set_status(job_id=job_id, status=status)
+            self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
 
     def delete_job(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("delete", job_id=job_id):
-                self.elastic_job_registry.delete_job(job_id=job_id)
+            self.elastic_job_registry.delete_job(job_id=job_id)
 
     # Legacy alias
     delete = delete_job
@@ -834,17 +847,15 @@ class DoubleJobRegistry:
         if self.zk_job_registry:
             self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependencies", job_id=job_id):
-                self.elastic_job_registry.set_dependencies(
-                    job_id=job_id, dependencies=dependencies
-                )
+            self.elastic_job_registry.set_dependencies(
+                job_id=job_id, dependencies=dependencies
+            )
 
     def remove_dependencies(self, job_id: str, user_id: str):
         if self.zk_job_registry:
             self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("remove_dependencies", job_id=job_id):
-                self.elastic_job_registry.remove_dependencies(job_id=job_id)
+            self.elastic_job_registry.remove_dependencies(job_id=job_id)
 
     def set_dependency_status(
         self, job_id: str, user_id: str, dependency_status: str
@@ -854,10 +865,9 @@ class DoubleJobRegistry:
                 job_id=job_id, user_id=user_id, dependency_status=dependency_status
             )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_status", job_id=job_id):
-                self.elastic_job_registry.set_dependency_status(
-                    job_id=job_id, dependency_status=dependency_status
-                )
+            self.elastic_job_registry.set_dependency_status(
+                job_id=job_id, dependency_status=dependency_status
+            )
 
     def set_dependency_usage(
         self, job_id: str, user_id: str, dependency_usage: Decimal
@@ -865,20 +875,18 @@ class DoubleJobRegistry:
         if self.zk_job_registry:
             self.zk_job_registry.set_dependency_usage(job_id=job_id, user_id=user_id, processing_units=dependency_usage)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_usage", job_id=job_id):
-                self.elastic_job_registry.set_dependency_usage(
-                    job_id=job_id, dependency_usage=dependency_usage
-                )
+            self.elastic_job_registry.set_dependency_usage(
+                job_id=job_id, dependency_usage=dependency_usage
+            )
 
     def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
         # TODO: add dedicated method
         if self.zk_job_registry:
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_proxy_user", job_id=job_id):
-                self.elastic_job_registry.set_proxy_user(
-                    job_id=job_id, proxy_user=proxy_user
-                )
+            self.elastic_job_registry.set_proxy_user(
+                job_id=job_id, proxy_user=proxy_user
+            )
 
     def set_application_id(
         self, job_id: str, user_id: str, application_id: str
@@ -886,10 +894,9 @@ class DoubleJobRegistry:
         if self.zk_job_registry:
             self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_application_id", job_id=job_id):
-                self.elastic_job_registry.set_application_id(
-                    job_id=job_id, application_id=application_id
-                )
+            self.elastic_job_registry.set_application_id(
+                job_id=job_id, application_id=application_id
+            )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
@@ -903,11 +910,10 @@ class DoubleJobRegistry:
         if self.zk_job_registry:
             zk_jobs = [zk_job_info_to_metadata(j) for j in self.zk_job_registry.get_user_jobs(user_id)]
         if self.elastic_job_registry:
-            with self._just_log_errors("get_user_jobs"):
-                ejr_jobs = [
-                    ejr_job_info_to_metadata(j)
-                    for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
-                ]
+            ejr_jobs = [
+                ejr_job_info_to_metadata(j)
+                for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
+            ]
 
         # TODO: more insightful comparison? (e.g. only consider recent jobs)
         self._log.log(
@@ -927,7 +933,9 @@ class DoubleJobRegistry:
         include_done: bool = True,
         user_limit: Optional[int] = 1000,
     ) -> List[dict]:
-        # TODO #236/#498 Need to have EJR implementation for this? This is only necessary for ZK cleaner script anyway.
+        if not self.zk_job_registry:
+            raise NotImplementedError("only necessary for ZK cleaner script")
+
         jobs = self.zk_job_registry.get_all_jobs_before(
             upper=upper,
             user_ids=user_ids,
@@ -936,3 +944,22 @@ class DoubleJobRegistry:
             per_user_limit=user_limit,
         )
         return jobs
+
+    def get_active_jobs(self) -> Iterator[Dict]:
+        if self.zk_job_registry:
+            yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
+        elif self.elastic_job_registry:
+            yield from self.elastic_job_registry.list_trackable_jobs(fields=[
+                "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
+                "dependency_usage",
+            ])
+
+    def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
+                             results_metadata: Dict[str, Any]):
+        if self.zk_job_registry:
+            self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
+                                       **dict(results_metadata, costs=costs, usage=usage))
+
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
+                                                           results_metadata=results_metadata)

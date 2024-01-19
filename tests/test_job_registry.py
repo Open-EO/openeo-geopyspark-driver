@@ -13,88 +13,111 @@ from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry, Do
 from openeogeotrellis.testing import KazooClientMock
 
 
-@pytest.fixture
-def zk_client() -> KazooClientMock:
-    return KazooClientMock()
+class TestZkJobRegistry:
+    @pytest.fixture(autouse=True)
+    def _default_time(self, time_machine):
+        time_machine.move_to("2023-02-15T17:17:17Z")
 
+    @pytest.fixture
+    def zk_client(self) -> KazooClientMock:
+        return KazooClientMock()
 
-def test_basic(zk_client):
-    zjr = ZkJobRegistry(zk_client=zk_client)
-    zjr.register(
-        job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
-    )
+    def test_basic(self, zk_client):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+        )
 
-    data = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/u456/j123")
-    assert data == DictSubSet(
-        user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created"
-    )
+        data = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/u456/j123")
+        assert data == DictSubSet(
+            user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created"
+        )
 
+    def test_set_status(self, zk_client, time_machine):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+        )
+        time_machine.move_to("2023-02-15T18:18:18Z")
+        zjr.set_status(job_id="j123", user_id="u456", status=JOB_STATUS.FINISHED,
+                       started="2023-02-15T17:18:17Z", finished="2023-02-15T18:17:18Z")
 
-@pytest.mark.parametrize(
-    ["job_info", "expected"],
-    [
-        ({}, []),
-        (
+        expected = DictSubSet(
             {
-                "dependencies": [
-                    {
-                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
-                        "card4l": False,
-                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                    }
-                ]
-            },
-            ["s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83"],
-        ),
-        (
-            {"dependencies": [{"batch_request_id": "98029-652-3423"}]},
-            ["s3://openeo-sentinelhub/98029-652-3423"],
-        ),
-        (
-            {"dependencies": [{"subfolder": "foo", "batch_request_id": "98029-652-3423"}, {"subfolder": "bar"}]},
-            [
-                "s3://openeo-sentinelhub/foo",
-                "s3://openeo-sentinelhub/bar",
-            ],
-        ),
-        (
-            {
-                "dependencies": [
-                    {
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                        "assembled_location": "s3://foo/bar",
-                    },
-                    {
-                        "partial_job_results_url": "https://oeo.org/jobs/j-abc123/results"
-                    }
-                ]
-            },
-            [
-                "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                "s3://foo/bar",
-            ],
-        ),
-    ],
-)
-def test_get_dependency_sources(job_info, expected):
-    assert get_deletable_dependency_sources(job_info) == expected
+                "job_id": "j123",
+                "created": "2023-02-15T17:17:17Z",
+                "status": "finished",
+                "updated": "2023-02-15T18:18:18Z",
+                "started": "2023-02-15T17:18:17Z",
+                "finished": "2023-02-15T18:17:18Z"
+            }
+        )
+        assert zk_client.get_json_decoded("/openeo.test/jobs/done/u456/j123") == expected
 
-
-@pytest.mark.parametrize(
-    ["root_path", "path"],
-    [
-        ("/oeo.test/jobs", "/oeo.test/jobs/ongoing/u456/j123"),
-        ("/oeo/test/jobs/", "/oeo/test/jobs/ongoing/u456/j123"),
-    ],
-)
-def test_root_path(zk_client, root_path, path):
-    zjr = ZkJobRegistry(zk_client=zk_client, root_path=root_path)
-    zjr.register(
-        job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+    @pytest.mark.parametrize(
+        ["job_info", "expected"],
+        [
+            ({}, []),
+            (
+                {
+                    "dependencies": [
+                        {
+                            "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
+                            "card4l": False,
+                            "collection_id": "SENTINEL2_L2A_SENTINELHUB",
+                            "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                        }
+                    ]
+                },
+                ["s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83"],
+            ),
+            (
+                {"dependencies": [{"batch_request_id": "98029-652-3423"}]},
+                ["s3://openeo-sentinelhub/98029-652-3423"],
+            ),
+            (
+                {"dependencies": [{"subfolder": "foo", "batch_request_id": "98029-652-3423"}, {"subfolder": "bar"}]},
+                [
+                    "s3://openeo-sentinelhub/foo",
+                    "s3://openeo-sentinelhub/bar",
+                ],
+            ),
+            (
+                {
+                    "dependencies": [
+                        {
+                            "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                            "assembled_location": "s3://foo/bar",
+                        },
+                        {
+                            "partial_job_results_url": "https://oeo.org/jobs/j-abc123/results"
+                        }
+                    ]
+                },
+                [
+                    "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
+                    "s3://foo/bar",
+                ],
+            ),
+        ],
     )
+    def test_get_dependency_sources(self, job_info, expected):
+        assert get_deletable_dependency_sources(job_info) == expected
 
-    assert zk_client.get_json_decoded(path) == DictSubSet(user_id="u456", job_id="j123")
+    @pytest.mark.parametrize(
+        ["root_path", "path"],
+        [
+            ("/oeo.test/jobs", "/oeo.test/jobs/ongoing/u456/j123"),
+            ("/oeo/test/jobs/", "/oeo/test/jobs/ongoing/u456/j123"),
+        ],
+    )
+    def test_root_path(self, zk_client, root_path, path):
+        zjr = ZkJobRegistry(zk_client=zk_client, root_path=root_path)
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"foo": "bar"}
+        )
+
+        assert zk_client.get_json_decoded(path) == DictSubSet(user_id="u456", job_id="j123")
 
 
 class TestInMemoryJobRegistry:
@@ -140,7 +163,7 @@ class TestInMemoryJobRegistry:
 
 class TestDoubleJobRegistry:
     DUMMY_PROCESS = {
-        "title": "dummy",
+        "description": "dummy",
         "process_graph": {
             "add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True},
         },
@@ -217,31 +240,6 @@ class TestDoubleJobRegistry:
             "job_options": None,
             "parent_id": None,
         }
-
-    def test_create_job_ejr_fail_just_log_errors(self, double_jr, zk_client, memory_jr, caplog, monkeypatch):
-        """Check `_just_log_errors` + "job_id" extra feature with broken memory_jr"""
-
-        class Formatter:
-            """Custom formatter to include "job_id" extra"""
-
-            def format(self, record: logging.LogRecord):
-                job_id = getattr(record, "job_id", None)
-                return f"[{job_id}] {record.levelname} {record.message}"
-
-        monkeypatch.setattr(caplog.handler, "formatter", Formatter())
-
-        with mock.patch.object(
-            memory_jr, "create_job", side_effect=RuntimeError("Nope!")
-        ):
-            with double_jr:
-                double_jr.create_job(
-                    job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
-                )
-        zk_result = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123")
-        assert zk_result == DictSubSet({"job_id": "j-123"})
-        assert memory_jr.db == {}
-        expected = "[j-123] WARNING In context 'DoubleJobRegistry.create_job': caught RuntimeError('Nope!')\n"
-        assert caplog.text == expected
 
     def test_create_job_no_zk(self, double_jr_no_zk, zk_client, memory_jr):
         with double_jr_no_zk:
@@ -327,7 +325,7 @@ class TestDoubleJobRegistry:
         ["with_zk", "with_ejr", "expected_process_extra"],
         [
             (True, True, {}),
-            (False, True, {"title": "dummy"}),
+            (False, True, {"description": "dummy"}),
             (True, False, {}),
         ],
     )
@@ -422,7 +420,7 @@ class TestDoubleJobRegistry:
             created=datetime.datetime(2023, 2, 15, 17, 17, 17),
             process=dict(
                 process_graph={"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                title="dummy",
+                description="dummy",
             ),
             job_options=None,
             title=None,
@@ -546,7 +544,7 @@ class TestDoubleJobRegistry:
         ["with_zk", "with_ejr", "expected_process_extra", "expected_log"],
         [
             (True, True, {}, "zk_jobs=1 ejr_jobs=1"),
-            (False, True, {"title": "dummy"}, "zk_jobs=None ejr_jobs=1"),
+            (False, True, {"description": "dummy"}, "zk_jobs=None ejr_jobs=1"),
             (True, False, {}, "zk_jobs=1 ejr_jobs=None"),
         ],
     )
@@ -599,3 +597,123 @@ class TestDoubleJobRegistry:
             "Failed to enter ZkJobRegistry: KazooTimeoutError('Connection time-out')",
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=1",
         ]
+
+    def test_set_results_metadata(self, double_jr, zk_client, memory_jr, time_machine):
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
+                                           usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                                           results_metadata={"epsg": 4326})
+
+        assert zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123") == DictSubSet(
+            {
+                "costs": 1.23,
+                "usage": {"cpu": {"unit": "cpu-seconds", "value": 32}},
+                "epsg": 4326,
+            }
+        )
+
+        assert memory_jr.db["j-123"] == DictSubSet(
+            {
+                "costs": 1.23,
+                "usage": {"cpu": {"unit": "cpu-seconds", "value": 32}},
+                "results_metadata": {
+                    "epsg": 4326
+                },
+            }
+        )
+
+    @pytest.mark.parametrize(
+        ["with_zk", "with_ejr"],
+        [
+            (True, True),
+            (False, True),
+            (True, False),
+        ],
+    )
+    def test_get_results_metadata(self, double_jr, zk_client, memory_jr, with_zk, with_ejr):
+        with double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr.set_results_metadata(job_id="j-123", user_id="john", costs=1.23,
+                                           usage={"cpu": {"unit": "cpu-seconds", "value": 32}},
+                                           results_metadata={
+                                               "start_datetime": "2023-09-24T00:00:00Z",
+                                               "end_datetime": "2023-09-29T00:00:00Z",
+                                               "geometry": {"type": "Polygon", "coordinates": [[[7, 51.3], [7, 51.75], [7.6, 51.75], [7.6, 51.3], [7, 51.3]]]},
+                                               "bbox": [4.0, 50.0, 5.0, 51.0],
+                                               "epsg": 32631,
+                                               "instruments": [],
+                                               "links": [
+                                                   {
+                                                       "href": "openEO_2023-09-27Z.tif",
+                                                       "rel": "derived_from",
+                                                       "title": "Derived from openEO_2023-09-27Z.tif",
+                                                       "type": "application/json"
+                                                   }
+                                               ],
+                                               "proj:bbox": [634111.429, 5654675.526, 634527.619, 5654913.158],
+                                               "proj:shape": [23, 43]
+                                           })
+
+        other_double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
+            elastic_job_registry=memory_jr if with_ejr else None,
+        )
+
+        with other_double_jr:
+            job_metadata = other_double_jr.get_job_metadata(job_id="j-123", user_id="john")
+
+        assert job_metadata.costs == 1.23
+        assert job_metadata.usage == {"cpu": {"unit": "cpu-seconds", "value": 32}}
+        assert job_metadata.start_datetime == datetime.datetime(2023, 9, 24, 0, 0, 0)
+        assert job_metadata.end_datetime == datetime.datetime(2023, 9, 29, 0, 0, 0)
+        assert job_metadata.geometry == {"type": "Polygon",
+                                         "coordinates": [[[7, 51.3], [7, 51.75], [7.6, 51.75], [7.6, 51.3], [7, 51.3]]]}
+        assert job_metadata.bbox == [4.0, 50.0, 5.0, 51.0]
+        assert job_metadata.epsg == 32631
+        assert job_metadata.instruments == []
+        assert job_metadata.links == [{
+            "href": "openEO_2023-09-27Z.tif",
+            "rel": "derived_from",
+            "title": "Derived from openEO_2023-09-27Z.tif",
+            "type": "application/json"
+        }]
+        assert job_metadata.proj_bbox == [634111.429, 5654675.526, 634527.619, 5654913.158]
+        assert job_metadata.proj_shape == [23, 43]
+
+    @pytest.mark.parametrize(
+        ["with_zk", "with_ejr"],
+        [
+            (True, True),
+            (False, True),
+            (True, False),
+        ],
+    )
+    def test_get_active_jobs(self, double_jr, zk_client, memory_jr, with_zk, with_ejr):
+        with double_jr:
+            double_jr.create_job(
+                job_id="j-123", user_id="john", process=self.DUMMY_PROCESS
+            )
+            double_jr.set_application_id(job_id="j-123", user_id="john", application_id="a-123")
+            double_jr.set_status(job_id="j-123", user_id="john", status=JOB_STATUS.FINISHED)
+
+            double_jr.create_job(
+                job_id="j-456", user_id="alice", process=self.DUMMY_PROCESS
+            )
+            double_jr.set_application_id(job_id="j-456", user_id="alice", application_id="a-456")
+            double_jr.set_status(job_id="j-456", user_id="alice", status=JOB_STATUS.QUEUED)
+
+            double_jr.create_job(
+                job_id="j-789", user_id="john", process=self.DUMMY_PROCESS
+            )
+
+        other_double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)) if with_zk else None,
+            elastic_job_registry=memory_jr if with_ejr else None,
+        )
+
+        with other_double_jr:
+            active_jobs = list(other_double_jr.get_active_jobs())
+
+        active_job_ids = set(job["job_id"] for job in active_jobs)
+        assert active_job_ids == {"j-456"}

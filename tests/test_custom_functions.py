@@ -150,7 +150,7 @@ class TestCustomFunctions(TestCase):
 def test_point_series_apply_tile(imagecollection_with_two_bands_and_one_date, udf_code):
     udf_code = textwrap.dedent(udf_code)
 
-    reducer = GeoPySparkBackendImplementation().visit_process_graph({
+    reducer = GeoPySparkBackendImplementation(use_job_registry=False).visit_process_graph({
         "udf_process": {
             "process_id": "run_udf",
             "arguments": {
