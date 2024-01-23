@@ -1175,9 +1175,9 @@ class GeopysparkDataCube(DriverDataCube):
             result_metadata: Metadata = result_collection.pyramid.levels[
                 result_collection.pyramid.max_zoom].layer_metadata
             result_tile_layout = result_metadata.tile_layout  # geopyspark.geotrellis.TileLayout
-            if result_tile_layout.layoutCols != retiled_tile_layout.layoutCols or result_tile_layout.layoutRows != retiled_tile_layout.layoutRows:
-                ratio_x = result_tile_layout.layoutCols / retiled_tile_layout.layoutCols
-                ratio_y = result_tile_layout.layoutRows / retiled_tile_layout.layoutRows
+            if result_tile_layout.tileCols != retiled_tile_layout.tileCols or result_tile_layout.tileRows != retiled_tile_layout.tileRows:
+                ratio_x = result_tile_layout.tileCols / retiled_tile_layout.tileCols
+                ratio_y = result_tile_layout.tileRows / retiled_tile_layout.tileRows
                 sizeX = int(sizeX * ratio_x)
                 sizeY = int(sizeY * ratio_y)
                 overlap_x_value = int(overlap_x_value * ratio_x)
