@@ -103,6 +103,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
+
+        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube",False))
+
         globalbounds = feature_flags.get("global_bounds", True)
         if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:
             ge = load_params.global_extent
