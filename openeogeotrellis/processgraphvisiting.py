@@ -15,6 +15,14 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         # process list to keep track of processes, so this class has a double function
         self.processes = OrderedDict()
 
+    def __init__(self, default_input_parameter = None, default_input_datatype=None):
+        builder = get_jvm().org.openeo.geotrellis.OpenEOProcessScriptBuilder()
+        if default_input_datatype is not None:
+            builder.setInputDataType(default_input_datatype)
+        if default_input_parameter is not None:
+            getattr(builder, "defaultDataParameterName_$eq")(default_input_parameter)
+        self.__init__(builder)
+
     def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
         self.builder.expressionStart(process_id, arguments)
         # TODO: store/use namespace?

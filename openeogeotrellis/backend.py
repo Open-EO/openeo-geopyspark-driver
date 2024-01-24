@@ -1305,9 +1305,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
 
     @classmethod
-    def accept_process_graph(cls, process_graph):
+    def accept_process_graph(cls, process_graph, default_input_parameter = None, default_input_datatype=None):
         if len(process_graph) == 1 and next(iter(process_graph.values())).get('process_id') == 'run_udf':
             return SingleNodeUDFProcessGraphVisitor().accept_process_graph(process_graph)
+
         return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
 
     def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
