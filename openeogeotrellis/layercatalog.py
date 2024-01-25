@@ -316,7 +316,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 root_path,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", [], catalog_type
+                    opensearch_endpoint, is_utm, "", metadata.band_names, catalog_type
                 )
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
@@ -638,7 +638,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_agera5_pyramid()
         elif layer_source_type == 'file-globspatialonly':
             pyramid = globspatialonly_pyramid()
-        elif layer_source_type == 'file-oscars':
+        elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
