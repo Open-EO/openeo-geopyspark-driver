@@ -889,6 +889,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             row_min = min(f["key"]["row"] for f in features)
             row_max = max(f["key"]["row"] for f in features)
             rows = row_max - row_min + 1
+
+            MAX_KEYS = 1024 / tile_size
+
             instants = set(f["key"]["instant"] for f in features)
             assert len(instants) == 1, f"Not single instant: {instants}"
             instant = instants.pop()
@@ -902,12 +905,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             key_epsgs = set(f["key_epsg"] for f in features)
             assert len(key_epsgs) == 1, f"Multiple key CRSs {key_epsgs}"
             layout_epsg = key_epsgs.pop()
-            layout_width_px = tile_size * (col_max - col_min + 1)
-            layout_height_px = tile_size * (row_max - row_min + 1)
-            logger.info(
-                f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
-                f" {layout_width_px}x{layout_height_px}px"
-            )
+
 
             band_tiffs = S1BackscatterOrfeo._creo_scan_for_band_tiffs(creo_path, log_prefix)
             if not band_tiffs:
@@ -921,78 +919,98 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             )
 
             msg = f"{log_prefix} Process {creo_path} "
-            with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
-                # Allocate numpy array tile
-                orfeo_bands = []
 
-                for b, band in enumerate(bands):
-                    if band.lower() not in band_tiffs:
-                        raise OpenEOApiException(f"{log_prefix} sar_backscatter: No tiff for band {band} in {creo_path}")
-                    data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
-                        input_tiff=band_tiffs[band.lower()],
-                        extent=layout_extent, extent_epsg=layout_epsg,
-                        dem_dir=dem_dir,
-                        extent_width_px=layout_width_px, extent_height_px=layout_height_px,
-                        sar_calibration_lut=sar_calibration_lut,
-                        noise_removal=noise_removal,
-                        elev_geoid=elev_geoid, elev_default=elev_default,
-                        log_prefix=f"{log_prefix}-{band}",
-                        orfeo_memory=orfeo_memory,
-                        trackers=trackers,
-                        max_soft_errors_ratio = max_soft_errors_ratio
+            tiles = []
+
+            for col_start in range(col_min, col_max, MAX_KEYS):
+                for row_start in range(row_min, row_max, MAX_KEYS):
+                    col_end = min(col_start + MAX_KEYS - 1, col_max)
+                    row_end = min(row_start + MAX_KEYS - 1, row_max)
+
+                    tiles_subset = [f for f in features if
+                                    f["key"]["col"] >= col_start and f["key"]["col"] <= col_end and f["key"][
+                                        "row"] >= row_start and f["key"]["row"] <= row_end]
+
+                    layout_subextent = get_total_extent(tiles_subset)
+
+                    layout_width_px = tile_size * (col_end - col_start + 1)
+                    layout_height_px = tile_size * (row_end - row_start + 1)
+                    logger.info(
+                        f"{log_prefix} Layout extent {layout_subextent} EPSG {layout_epsg}:"
+                        f" {layout_width_px}x{layout_height_px}px"
                     )
-                    orfeo_bands.append(data)
 
-                if sar_backscatter_arguments.options.get("to_db", False):
-                    # TODO: keep this "to_db" shortcut feature or drop it
-                    #       and require user to use standard openEO functionality (`apply` based conversion)?
-                    logger.info(f"{log_prefix} Converting backscatter intensity to decibel")
-                    orfeo_bands = 10 * numpy.log10(orfeo_bands)
+                    with TimingLogger(title=msg, logger=logger), dem_dir_context as dem_dir:
+                        # Allocate numpy array tile
+                        orfeo_bands = []
 
-                # Split orfeo output in tiles
+                        for b, band in enumerate(bands):
+                            if band.lower() not in band_tiffs:
+                                raise OpenEOApiException(f"{log_prefix} sar_backscatter: No tiff for band {band} in {creo_path}")
+                            data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
+                                input_tiff=band_tiffs[band.lower()],
+                                extent=layout_subextent, extent_epsg=layout_epsg,
+                                dem_dir=dem_dir,
+                                extent_width_px=layout_width_px, extent_height_px=layout_height_px,
+                                sar_calibration_lut=sar_calibration_lut,
+                                noise_removal=noise_removal,
+                                elev_geoid=elev_geoid, elev_default=elev_default,
+                                log_prefix=f"{log_prefix}-{band}",
+                                orfeo_memory=orfeo_memory,
+                                trackers=trackers,
+                                max_soft_errors_ratio = max_soft_errors_ratio
+                            )
+                            orfeo_bands.append(data)
+
+                        if sar_backscatter_arguments.options.get("to_db", False):
+                            # TODO: keep this "to_db" shortcut feature or drop it
+                            #       and require user to use standard openEO functionality (`apply` based conversion)?
+                            logger.info(f"{log_prefix} Converting backscatter intensity to decibel")
+                            orfeo_bands = 10 * numpy.log10(orfeo_bands)
+
+                        # Split orfeo output in tiles
 
 
-                tiles = []
-                if isinstance(orfeo_bands[0],str):
-                    import rasterio
-                    from rasterio.windows import Window
+                        if isinstance(orfeo_bands[0],str):
+                            import rasterio
+                            from rasterio.windows import Window
 
-                    ds = [rasterio.open(filename,driver="GTiff") for filename in orfeo_bands]
-                    for f in features:
-                        col = f["key"]["col"]
-                        row = f["key"]["row"]
-                        c = col - col_min
-                        r = row - row_min
+                            ds = [rasterio.open(filename,driver="GTiff") for filename in orfeo_bands]
+                            for f in tiles_subset:
+                                col = f["key"]["col"]
+                                row = f["key"]["row"]
+                                c = col - col_min
+                                r = row - row_min
 
-                        key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                        numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
-                                        for band in ds])
-                        cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
-                        if not (numpy_tiles==nodata).all():
-                            if debug_mode:
-                                logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
-                            tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
-                            tiles.append((key, tile))
-                    ds = None
-                    for file in orfeo_bands:
-                        os.remove(file)
+                                key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+                                numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
+                                                for band in ds])
+                                cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
+                                if not (numpy_tiles==nodata).all():
+                                    if debug_mode:
+                                        logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
+                                    tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
+                                    tiles.append((key, tile))
+                            ds = None
+                            for file in orfeo_bands:
+                                os.remove(file)
 
-                else:
-                    orfeo_bands = numpy.array(orfeo_bands)
-                    cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
-                    logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-                    for f in features:
-                        col = f["key"]["col"]
-                        row = f["key"]["row"]
-                        c = col - col_min
-                        r = row - row_min
-                        key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                        tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
-                        if not (tile==nodata).all():
-                            if debug_mode:
-                                logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
-                            tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
-                            tiles.append((key, tile))
+                        else:
+                            orfeo_bands = numpy.array(orfeo_bands)
+                            cell_type = geopyspark.CellType(orfeo_bands.dtype.name)
+                            logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
+                            for f in tiles_subset:
+                                col = f["key"]["col"]
+                                row = f["key"]["row"]
+                                c = col - col_min
+                                r = row - row_min
+                                key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+                                tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
+                                if not (tile==nodata).all():
+                                    if debug_mode:
+                                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                                    tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
+                                    tiles.append((key, tile))
 
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
             return tiles
