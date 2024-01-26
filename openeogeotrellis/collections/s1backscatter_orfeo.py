@@ -924,8 +924,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             tiles = []
 
             with dem_dir_context as dem_dir:
-                for col_start in range(col_min, col_max, MAX_KEYS):
-                    for row_start in range(row_min, row_max, MAX_KEYS):
+                for col_start in range(col_min, col_max+1, MAX_KEYS):
+                    for row_start in range(row_min, row_max+1, MAX_KEYS):
                         col_end = min(col_start + MAX_KEYS - 1, col_max)
                         row_end = min(row_start + MAX_KEYS - 1, row_max)
 
