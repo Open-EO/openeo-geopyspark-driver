@@ -1164,6 +1164,7 @@ def is_layer_too_large(
              Also returns the estimated number of pixels and the threshold.
     """
     from_date, to_date = temporal_extent
+    estimate_days_per_sample = 4  # Some datasets have coverage only once every 4 days. Be less strict here.
     if to_date is None:
         if from_date is None:
             days = 1
@@ -1174,11 +1175,11 @@ def is_layer_too_large(
             logger.warning(
                 f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
             )
-            to_date = datetime.now().isoformat()
-            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+            from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
+            to_date_now = datetime.now().replace(tzinfo=None)
+            days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
     else:
-        # Some datasets have coverage only once every 4 days. Be less strict here:
-        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / estimate_days_per_sample
     days = max(int(days), 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
