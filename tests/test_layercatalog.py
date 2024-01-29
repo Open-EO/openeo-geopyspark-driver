@@ -231,7 +231,7 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     ]
 
 
-# @pytest.mark.skip("Run manually when changing layercatalog.json files")
+@pytest.mark.skip("Run manually when changing layercatalog.json files")
 def test_layer_catalog_step_resolution(vault):
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
@@ -293,7 +293,7 @@ def test_layer_catalog_step_resolution(vault):
                 "crs": "EPSG:4326",
             }
             reprojected_alternative = reproject_cellsize(spatial_extent, native_resolution_alternative, crs)
-            warn_str += "Suggested alternative: " + str(reprojected_alternative[0]) + "\n"
+            warn_str += f"Suggested alternative: {reprojected_alternative[0]} + ({crs=})\n"
             warnings += warn_str + "\n"
     assert warnings == ""
 
