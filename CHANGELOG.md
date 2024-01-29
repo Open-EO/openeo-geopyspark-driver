@@ -12,6 +12,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+### Bugfix
+
+ - added max_processing_area_pixels custom option to sar_backscatter, avoiding going out of memory when processing too large chunks
+
 ## 0.23.1
 
 ### Bugfix
