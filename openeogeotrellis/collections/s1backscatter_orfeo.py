@@ -981,8 +981,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                 for f in tiles_subset:
                                     col = f["key"]["col"]
                                     row = f["key"]["row"]
-                                    c = col - col_min
-                                    r = row - row_min
+                                    c = col - col_start
+                                    r = row - row_start
 
                                     key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                                     numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
@@ -1004,8 +1004,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                 for f in tiles_subset:
                                     col = f["key"]["col"]
                                     row = f["key"]["row"]
-                                    c = col - col_min
-                                    r = row - row_min
+                                    c = col - col_start
+                                    r = row - row_start
                                     key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
                                     tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                                     if not (tile==nodata).all():
