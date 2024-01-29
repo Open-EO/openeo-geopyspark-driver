@@ -1028,6 +1028,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
         tile_rdd = grouped.flatMap(process_product)
+        all_keys = tile_rdd.keys().collect()
+        print(all_keys)
         if result_dtype:
             layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
