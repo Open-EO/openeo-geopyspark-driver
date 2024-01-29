@@ -1551,8 +1551,13 @@ class GpsProcessing(ConcreteProcessing):
                     }
                     cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
                 else:
-                    cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
-                    cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
+                    cell_width = metadata.get("cube:dimensions", "x", "step", default=None)
+                    cell_height = metadata.get("cube:dimensions", "y", "step", default=None)
+                    if cell_width is None or cell_height is None:
+                        # Resolution should be in CRS of layer. A default resolution seems bold to me.
+                        continue
+                    cell_width = float(cell_width)
+                    cell_height = float(cell_height)
                 native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)
