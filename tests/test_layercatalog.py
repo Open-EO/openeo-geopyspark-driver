@@ -10,7 +10,7 @@ from openeo_driver.utils import read_json
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
-from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name
+from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name, reproject_cellsize
 from openeogeotrellis.vault import Vault
 
 
@@ -229,6 +229,59 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
         {"id": "BAR", "description": "bar",  "links": ["example.com/bar"]},
         {"id": "BZZ"}
     ]
+
+
+@pytest.skip("Run manually when changing layercatalog.json files")
+def test_layer_catalog_step_resolution(vault):
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            "/home/emile/openeo/openeo-deploy/mep/layercatalog.json",
+            # "/home/emile/openeo/openeo-geotrellis-kubernetes/docker/creo_layercatalog.json",
+        ]
+        catalog = get_layer_catalog(vault, opensearch_enrich=True)
+        all_metadata = catalog.get_all_metadata()
+
+    for layer in all_metadata:
+        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
+        datasource_type= metadata.get("_vito", "data_source", "type")
+        print("\n" + layer["id"] + " datasource_type:" + str(datasource_type))
+
+        cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
+        cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
+        crs = metadata.get("cube:dimensions", "x", "reference_system", default='EPSG:4326')
+        if isinstance(crs, int):
+            crs = 'EPSG:%s' % str(crs)
+        elif isinstance(crs, dict):
+            if crs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
+                crs = 'Auto42001'
+        print(f"Raw cell_width: {cell_width}")
+        bboxes = metadata.get("extent", "spatial", "bbox")
+        if not bboxes or len(bboxes) == 0:
+            print("WARNING: no bbox found")
+            continue
+        bbox = bboxes[0]
+        # All spatial extends seem to be in LatLon:
+        spatial_extent = {'west': bbox[0], 'east': bbox[2], 'south': bbox[1], 'north': bbox[3], 'crs': "EPSG:4326"}
+
+        native_resolution = {
+            "cell_width": cell_width,
+            "cell_height": cell_height,
+            "crs": crs,
+            # "crs": "EPSG:4326",
+        }
+        reprojected = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
+        print(f"Resolution in meters: {reprojected}")
+        if (not 0.01 < reprojected[0] < 100000) or (not 0.01 < reprojected[1] < 100000):
+            print("WARNING: reprojected cellsize in meters is not in expected range: " + str(reprojected[0]) + "m")
+            native_resolution_alternative = {
+                "cell_width": cell_width,
+                "cell_height": cell_height,
+                # "crs": crs,
+                "crs": "EPSG:4326",
+            }
+            reprojected_alternative = reproject_cellsize(spatial_extent, native_resolution_alternative, crs)
+            print("Suggested alternative: " + str(reprojected_alternative[0]))
+
 
 
 def test_merge_layers_with_common_name_nothing():
