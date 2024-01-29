@@ -7,7 +7,7 @@ from pathlib import Path
 import boto3
 import flask
 import pytest
-from moto import mock_s3
+from moto import mock_aws as mock_s3
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses

@@ -5,7 +5,6 @@ import datetime
 
 import kazoo.exceptions
 import time_machine
-from moto import mock_s3
 import boto3
 
 import contextlib
