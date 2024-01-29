@@ -933,6 +933,12 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                         f["key"]["col"] >= col_start and f["key"]["col"] <= col_end and f["key"][
                                             "row"] >= row_start and f["key"]["row"] <= row_end]
 
+                        #it is possible that the bounds of subset are smaller than the iteration bounds
+                        col_start = min(f["key"]["col"] for f in tiles_subset)
+                        col_end   = max(f["key"]["col"] for f in tiles_subset)
+                        row_start = min(f["key"]["row"] for f in tiles_subset)
+                        row_end   = max(f["key"]["row"] for f in tiles_subset)
+
                         layout_subextent = get_total_extent(tiles_subset)
 
                         layout_width_px = tile_size * (col_end - col_start + 1)
@@ -1028,8 +1034,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
         tile_rdd = grouped.flatMap(process_product)
-        all_keys = tile_rdd.keys().collect()
-        print(all_keys)
         if result_dtype:
             layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
         logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
