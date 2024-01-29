@@ -7,7 +7,7 @@ from pathlib import Path
 import boto3
 import flask
 import pytest
-from moto import mock_aws as mock_s3
+import moto
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
@@ -272,13 +272,13 @@ def aws_credentials(monkeypatch):
 
 @pytest.fixture(scope="function")
 def mock_s3_resource(aws_credentials):
-    with mock_s3():
+    with moto.mock_aws():
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
 
 
 @pytest.fixture(scope="function")
 def mock_s3_client(aws_credentials):
-    with mock_s3():
+    with moto.mock_aws():
         yield boto3.s3_client("s3", region_name=TEST_AWS_REGION_NAME)
 
 
