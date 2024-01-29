@@ -973,7 +973,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         ejr_jobs = None
 
         if self.zk_job_registry:
-            zk_jobs = [j for j in self.zk_job_registry.get_running_jobs(parse_specification=True)]
+            zk_jobs = list(self.zk_job_registry.get_running_jobs(parse_specification=True))
 
         if self.elastic_job_registry:
             with self._just_log_errors("get_active_jobs"):
