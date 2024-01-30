@@ -18,7 +18,7 @@ version = __version__
 tests_require = [
     'pytest',
     'mock',
-    'moto',
+    'moto[s3]>=5.0.0',
     'schema',
     'scipy>=1.3.0',
     'requests-mock>=1.8.0',

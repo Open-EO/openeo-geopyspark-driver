@@ -103,6 +103,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
+
+        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube",False))
+
         globalbounds = feature_flags.get("global_bounds", True)
         if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:
             ge = load_params.global_extent
@@ -313,7 +316,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 root_path,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", [], catalog_type
+                    opensearch_endpoint, is_utm, "", metadata.band_names, catalog_type
                 )
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
@@ -635,7 +638,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_agera5_pyramid()
         elif layer_source_type == 'file-globspatialonly':
             pyramid = globspatialonly_pyramid()
-        elif layer_source_type == 'file-oscars':
+        elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()

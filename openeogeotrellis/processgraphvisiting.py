@@ -15,6 +15,15 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
         # process list to keep track of processes, so this class has a double function
         self.processes = OrderedDict()
 
+    @classmethod
+    def create(cls, default_input_parameter = None, default_input_datatype=None):
+        builder = get_jvm().org.openeo.geotrellis.OpenEOProcessScriptBuilder()
+        if default_input_datatype is not None:
+            builder.setInputDataType(default_input_datatype)
+        #if default_input_parameter is not None:
+        #    getattr(builder, "defaultDataParameterName_$eq")(default_input_parameter)
+        return cls(_builder=builder)
+
     def enterProcess(self, process_id: str, arguments: dict, namespace: Union[str, None]):
         self.builder.expressionStart(process_id, arguments)
         # TODO: store/use namespace?
@@ -114,14 +123,198 @@ if __name__ == "__main__":
     else:
         # Default example
         process_graph = {
-            "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
-            "band1": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}},
-            "add": {
-                "process_id": "add",
-                "arguments": {"x": {"from_node": "band0"}, "y": {"from_node": "band1"}},
-                "result": True,
+    "arrayapply1": {
+      "arguments": {
+        "data": {
+          "from_parameter": "data"
+        },
+        "process": {
+          "process_graph": {
+            "absolute1": {
+              "arguments": {
+                "x": {
+                  "from_node": "multiply1"
+                }
+              },
+              "process_id": "absolute"
             },
+            "absolute2": {
+              "arguments": {
+                "x": {
+                  "from_node": "datedifference1"
+                }
+              },
+              "process_id": "absolute"
+            },
+            "add1": {
+              "arguments": {
+                "x": {
+                  "from_node": "absolute1"
+                },
+                "y": {
+                  "from_node": "absolute2"
+                }
+              },
+              "process_id": "add",
+              "result": True
+            },
+            "datedifference1": {
+              "arguments": {
+                "date1": {
+                  "from_node": "datereplacecomponent1"
+                },
+                "date2": {
+                  "from_parameter": "label"
+                },
+                "unit": "day"
+              },
+              "process_id": "date_difference"
+            },
+            "datereplacecomponent1": {
+              "arguments": {
+                "component": "day",
+                "date": {
+                  "from_parameter": "label"
+                },
+                "value": 15
+              },
+              "process_id": "date_replace_component"
+            },
+            "multiply1": {
+              "arguments": {
+                "x": 15,
+                "y": {
+                  "from_parameter": "x"
+                }
+              },
+              "process_id": "multiply"
+            }
+          }
         }
+      },
+      "process_id": "array_apply"
+    },
+    "arrayapply3": {
+      "arguments": {
+        "data": {
+          "from_node": "arrayapply1"
+        },
+        "process": {
+          "process_graph": {
+            "arrayapply2": {
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                },
+                "process": {
+                  "process_graph": {
+                    "absolute3": {
+                      "arguments": {
+                        "x": {
+                          "from_node": "multiply2"
+                        }
+                      },
+                      "process_id": "absolute"
+                    },
+                    "absolute4": {
+                      "arguments": {
+                        "x": {
+                          "from_node": "datedifference2"
+                        }
+                      },
+                      "process_id": "absolute"
+                    },
+                    "add2": {
+                      "arguments": {
+                        "x": {
+                          "from_node": "absolute3"
+                        },
+                        "y": {
+                          "from_node": "absolute4"
+                        }
+                      },
+                      "process_id": "add",
+                      "result": True
+                    },
+                    "datedifference2": {
+                      "arguments": {
+                        "date1": {
+                          "from_node": "datereplacecomponent2"
+                        },
+                        "date2": {
+                          "from_parameter": "label"
+                        },
+                        "unit": "day"
+                      },
+                      "process_id": "date_difference"
+                    },
+                    "datereplacecomponent2": {
+                      "arguments": {
+                        "component": "day",
+                        "date": {
+                          "from_parameter": "label"
+                        },
+                        "value": 15
+                      },
+                      "process_id": "date_replace_component"
+                    },
+                    "multiply2": {
+                      "arguments": {
+                        "x": 15,
+                        "y": {
+                          "from_parameter": "x"
+                        }
+                      },
+                      "process_id": "multiply"
+                    }
+                  }
+                }
+              },
+              "process_id": "array_apply"
+            },
+            "int1": {
+              "arguments": {
+                "x": {
+                  "from_parameter": "x"
+                }
+              },
+              "process_id": "int"
+            },
+            "int2": {
+              "arguments": {
+                "x": {
+                  "from_node": "min1"
+                }
+              },
+              "process_id": "int"
+            },
+            "min1": {
+              "arguments": {
+                "data": {
+                  "from_node": "arrayapply2"
+                }
+              },
+              "process_id": "min"
+            },
+            "neq1": {
+              "arguments": {
+                "x": {
+                  "from_node": "int1"
+                },
+                "y": {
+                  "from_node": "int2"
+                }
+              },
+              "process_id": "neq",
+              "result": True
+            }
+          }
+        }
+      },
+      "process_id": "array_apply",
+      "result": True
+    }
+  }
 
     visitor = FakeGeotrellisTileProcessGraphVisitor()
     visitor.accept_process_graph(process_graph)

@@ -715,5 +715,5 @@ class TestDoubleJobRegistry:
         with other_double_jr:
             active_jobs = list(other_double_jr.get_active_jobs())
 
-        active_job_ids = set(job["job_id"] for job in active_jobs)
-        assert active_job_ids == {"j-456"}
+        assert len(active_jobs) == 1
+        assert active_jobs[0]["job_id"] == "j-456"

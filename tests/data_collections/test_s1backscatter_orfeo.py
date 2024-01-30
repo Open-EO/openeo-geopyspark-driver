@@ -405,7 +405,7 @@ class TestOrfeoPipeline:
             sar_backscatter=SarBackscatterArgs(
                 coefficient="sigma0-ellipsoid",
                 elevation_model=elevation_model,
-                options={"dem_zoom_level": 6, "implementation_version": implementation_version, "debug": True, "otb_memory":64},
+                options={"dem_zoom_level": 6, "implementation_version": implementation_version, "debug": True, "otb_memory":64, "max_processing_area_pixels":768},
             ),
             properties={"COG":{
                 "process_graph": {

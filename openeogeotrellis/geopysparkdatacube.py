@@ -297,9 +297,13 @@ class GeopysparkDataCube(DriverDataCube):
     ) -> "DriverDataCube":
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
+        apply_bands = self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name
+        datatype = "float32" if apply_bands else self.get_max_level().layer_metadata.cell_type
+
         if isinstance(process, dict):
-            process = GeoPySparkBackendImplementation.accept_process_graph(process)
+            process = GeoPySparkBackendImplementation.accept_process_graph(process,default_input_parameter="data",default_input_datatype=datatype)
         if isinstance(process, GeotrellisTileProcessGraphVisitor):
+
             if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
                 context = convert_node(context, env=env)
                 pysc = gps.get_spark_context()
@@ -316,7 +320,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     return self._apply_to_levels_geotrellis_rdd(
                         lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimension(rdd,process.builder,context if isinstance(context,dict) else {}))
-            elif self.metadata.has_band_dimension() and dimension == self.metadata.band_dimension.name:
+            elif apply_bands:
                 return self._apply_bands_dimension(process)
             else:
                 raise FeatureUnsupportedException(f"apply_dimension along dimension {dimension} is not supported. These dimensions are available: " + str(self.metadata.dimension_names()))
@@ -1368,7 +1372,7 @@ class GeopysparkDataCube(DriverDataCube):
             #postpone turning into an actual collection upon usage
             return DelayedVector(temp_file.name)
 
-    def get_max_level(self):
+    def get_max_level(self) -> TiledRasterLayer:
         return self.pyramid.levels[self.pyramid.max_zoom]
 
     def aggregate_spatial(self, geometries: Union[str, BaseGeometry, DriverVectorCube], reducer,

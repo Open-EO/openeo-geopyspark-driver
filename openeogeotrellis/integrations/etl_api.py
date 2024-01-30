@@ -248,12 +248,16 @@ def get_etl_api(
     """
     Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...).
 
+    :param user: (optional) user to dynamically determine ETL API endpoint with `EtlApiConfig.get_root_url` API
+    :param job_options: (optional) job options dict to dynamically determine ETL API endpoint with `EtlApiConfig.get_root_url` API
+    :param requests_session: (optional) provide a `requests.Session` (e.g. with desired retry settings) to use for HTTP requests
     :param etl_api_cache: (optional) provide a `TtlCache` to fetch existing `EtlApi` instances from
         to avoid repeatedly setting up `EtlApi` instances each time
         (which can be costly due to client credentials related OIDC discovery requests).
         Note that the caller is cache owner and responsible for providing the same cache instance on each call
         and setting the default TTL (as desired).
     """
+    # TODO #531 is there a practical need to expose `root_url` to the caller?
     backend_config = get_backend_config()
     etl_config: Optional[EtlApiConfig] = backend_config.etl_api_config
 
