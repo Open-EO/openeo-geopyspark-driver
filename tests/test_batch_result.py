@@ -433,6 +433,7 @@ def test_spatial_geoparquet(tmp_path):
 
     assert gpd.read_parquet(tmp_path / "timeseries.parquet").to_dict('list') == {
         'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
+        'feature_index': [0, 1],
         'name': ['maize', 'maize'],
         'avg_band_0': [1.0, 1.0],
         'avg_band_1': [2.0, 2.0],
