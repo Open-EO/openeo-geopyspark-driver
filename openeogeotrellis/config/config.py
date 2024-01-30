@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
@@ -35,6 +35,12 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
     Being a simple string, instead of a complex object (e.g. an `EtlApi` instance), it does not raise
     serialization challenges when there is need to pass it from the web app context to the batch job tracker context.
 
+    The ETL API selection strategy is to be implemented in `get_root_url()`,
+    which can use the provided user object or job options to pick the appropriate ETL API root URL.
+    Note that there is no guarantee that either of these inputs is available.
+    Typically, the job options will be provided in a job tracker context
+    and the user object will be provided in a synchronous processing request context.
+
     Additional dependencies to (re)construct an operational `EtlApi` instance can be obtained with dedicated methods
     using the ETL API root URL identifier, e.g. client credentials with `get_client_credentials(root_url)`.
     """
@@ -44,7 +50,7 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
         """Get root URL of the ETL API"""
         ...
 
-    def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
+    def get_client_credentials(self, root_url: str) -> Union[ClientCredentials, None]:
         """Get client credentials corresponding to root URL."""
         return None
 

@@ -260,6 +260,7 @@ def get_etl_api(
     # TODO #531 is there a practical need to expose `root_url` to the caller?
     backend_config = get_backend_config()
     etl_config: Optional[EtlApiConfig] = backend_config.etl_api_config
+    _log.info(f"get_etl_api with {etl_config=}")
 
     def get_cached_or_build(cache_key: tuple, build: Callable[[], EtlApi]) -> EtlApi:
         """Helper to build an EtlApi object, with optional caching."""
@@ -270,10 +271,10 @@ def get_etl_api(
 
     dynamic_etl_mode = allow_dynamic_etl_api and (etl_config is not None)
     if dynamic_etl_mode:
-        _log.debug("get_etl_api: dynamic EtlApiConfig based ETL API selection")
         # First get root URL as main ETL API identifier
         if root_url is None:
             root_url = etl_config.get_root_url(user=user, job_options=job_options)
+        _log.debug(f"get_etl_api: dynamic EtlApiConfig based ETL API selection: {root_url=}")
 
         # Build EtlApi (or get from cache if possible)
         return get_cached_or_build(
