@@ -231,11 +231,12 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     ]
 
 
-@pytest.mark.skip("Run manually when changing layercatalog.json files")
+# @pytest.mark.skip("Run manually when changing layercatalog.json files")
 def test_layer_catalog_step_resolution(vault):
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             "/home/emile/openeo/openeo-deploy/mep/layercatalog.json",
+            # "/home/emile/VITO/enriched_layercatalog.json",
             # "/home/emile/openeo/openeo-geotrellis-kubernetes/docker/creo_layercatalog.json",
         ]
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
@@ -244,57 +245,131 @@ def test_layer_catalog_step_resolution(vault):
     warnings = ""
     for layer in all_metadata:
         metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
+        print(f"\n{layer['id']=}")
         datasource_type = metadata.get("_vito", "data_source", "type")
         warn_str = layer["id"] + " datasource_type:" + str(datasource_type) + "\n"
 
-        cell_width = metadata.get("cube:dimensions", "x", "step", default=None)
-        cell_height = metadata.get("cube:dimensions", "y", "step", default=None)
-        if not cell_width or not cell_height:
+        def clean_tuple(tuple_to_clean):
+            if not tuple_to_clean:
+                return None
+            if isinstance(tuple_to_clean, float) or isinstance(tuple_to_clean, int):
+                return tuple_to_clean, tuple_to_clean
+            if (tuple_to_clean[0] is None) or (tuple_to_clean[1] is None):
+                return None
+            if isinstance(tuple_to_clean, tuple):
+                return tuple_to_clean
+            if isinstance(tuple_to_clean, list) and len(tuple_to_clean) == 2:
+                return tuple_to_clean[0], tuple_to_clean[1]
+            raise Exception(f"Could not clean tuple: {tuple_to_clean}")
+
+        dimensions_step = clean_tuple((
+            metadata.get("cube:dimensions", "x", "step", default=None),
+            metadata.get("cube:dimensions", "y", "step", default=None)
+        ))
+        json_blob = str(catalog.get_collection_metadata(collection_id=layer["id"])).lower()
+        count_gsd = json_blob.count("gsd") + json_blob.count("resolution")
+        if count_gsd == 0:
+            print("WARNING: no gsd found")
             continue
-        cell_width = float(cell_width)
-        cell_height = float(cell_height)
+        gsd_layer_wide = clean_tuple(metadata.get("item_assets", "classification", "gsd", default=None))
+
         crs = metadata.get("cube:dimensions", "x", "reference_system", default='EPSG:4326')
         if isinstance(crs, int):
             crs = 'EPSG:%s' % str(crs)
         elif isinstance(crs, dict):
             if crs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
                 crs = 'Auto42001'
-        warn_str += f"Raw cell_width: {cell_width}\n"
         bboxes = metadata.get("extent", "spatial", "bbox")
         if not bboxes or len(bboxes) == 0:
+            print("WARNING: no bbox found")
             continue
         bbox = bboxes[0]
         # All spatial extends seem to be in LatLon:
         spatial_extent = {'west': bbox[0], 'east': bbox[2], 'south': bbox[1], 'north': bbox[3], 'crs': "EPSG:4326"}
 
-        native_resolution = {
-            "cell_width": cell_width,
-            "cell_height": cell_height,
-            "crs": crs,  # https://github.com/stac-extensions/datacube#dimension-object
-            # "crs": "EPSG:4326",
-        }
-        reprojected = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
-        warn_str += f"Resolution in meters: {reprojected}\n"
-        # Example layer with low resolution: SEA_ICE_INDEX (25km)
-        if (not 0.01 < reprojected[0] < 100000) or (not 0.01 < reprojected[1] < 100000):
-            warn_str += "WARNING: reprojected cellsize in meters is not in expected range: " + str(
-                reprojected[0]) + "m\n"
-            bands = metadata.get("summaries", "raster:bands")
-            if bands:
-                for band in bands:
-                    if "openeo:gsd" in band:
-                        if "value" in band["openeo:gsd"]:
-                            warn_str += "Found openeo:gsd: " + str(band["openeo:gsd"]["value"]) + \
-                                  str(band["openeo:gsd"]["unit"]) + "\n"
-            native_resolution_alternative = {
-                "cell_width": cell_width,
-                "cell_height": cell_height,
-                # "crs": crs,
-                "crs": "EPSG:4326",
+        def validate_gsd(resolution_to_test):
+            nonlocal warn_str, warnings
+            warn_str += f"validate_gsd({resolution_to_test=})\n"
+
+            # Example layer with low resolution: SEA_ICE_INDEX (25km)
+            if (not 0.1 < resolution_to_test[0] < 50000) or (not 0.1 < resolution_to_test[1] < 50000):
+                warn_str += "WARNING: gsd is not in expected range: " + str(resolution_to_test[0]) + "m\n"
+                warnings += warn_str + "\n"
+
+        def validate_step(resolution_to_test):
+            nonlocal warn_str, warnings
+            if isinstance(resolution_to_test, float) or isinstance(resolution_to_test, int):
+                resolution_to_test = (resolution_to_test, resolution_to_test)
+            if not resolution_to_test or (resolution_to_test[0] is None) or (resolution_to_test[1] is None):
+                return
+            warn_str += f"validate_step({resolution_to_test=})\n"
+            if crs != "EPSG:4326":
+                print("WARNING: crs is not EPSG:4326 and could have inconsitencies")
+                return
+            native_resolution = {
+                "cell_width": resolution_to_test[0],
+                "cell_height": resolution_to_test[1],
+                "crs": crs,  # https://github.com/stac-extensions/datacube#dimension-object
+                # "crs": "EPSG:4326",
+                # "crs": "Auto42001",  # GSD seems to be expressed in meters
             }
-            reprojected_alternative = reproject_cellsize(spatial_extent, native_resolution_alternative, crs)
-            warn_str += f"Suggested alternative: {reprojected_alternative[0]} + ({crs=})\n"
-            warnings += warn_str + "\n"
+            reprojected = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
+            warn_str += f"Resolution in meters: {reprojected}\n"
+
+            # Example layer with low resolution: SEA_ICE_INDEX (25km)
+            if (not 0.1 < reprojected[0] < 50000) or (not 0.1 < reprojected[1] < 50000):
+                warn_str += "WARNING: reprojected cellsize in meters is not in expected range: " + str(
+                    reprojected[0]) + "m\n"
+                bands = metadata.get("summaries", "raster:bands")
+                if bands:
+                    for band in bands:
+                        if "openeo:gsd" in band:
+                            if "value" in band["openeo:gsd"]:
+                                warn_str += "Found openeo:gsd: " + str(band["openeo:gsd"]["value"]) + \
+                                            str(band["openeo:gsd"]["unit"]) + "\n"
+                native_resolution_alternative = {
+                    "cell_width": resolution_to_test[0],
+                    "cell_height": resolution_to_test[1],
+                    # "crs": crs,
+                    "crs": "EPSG:4326",
+                }
+                reprojected_alternative = reproject_cellsize(spatial_extent, native_resolution_alternative, crs)
+                warn_str += f"Suggested alternative: {reprojected_alternative[0]} ({crs=})\n"
+                warnings += warn_str + "\n"
+            print("validate_step done")
+        bands_metadata = metadata.get("summaries", "eo:bands", default=metadata.get("summaries", "raster:bands", default=[]))
+        validated_something = False
+        band_to_gsd = {}
+        for band_metadata in bands_metadata:
+            band_name = band_metadata.get("name")
+            band_gsd = band_metadata.get("gsd") or band_metadata.get("resolution")
+            if not band_gsd and "openeo:gsd" in band_metadata:
+                unit = band_metadata["openeo:gsd"]["unit"]
+                if unit and unit != "m":
+                    print(f"WARNING: {unit=} is not m")
+                    continue
+                band_gsd = band_metadata["openeo:gsd"]["value"]
+            if not band_gsd:
+                continue
+            band_gsd = clean_tuple(band_gsd)
+            if gsd_layer_wide:
+                if band_gsd != gsd_layer_wide:
+                    print(f"WARNING: {band_gsd=} != {gsd_layer_wide=}")
+            if band_gsd:
+                validate_gsd(band_gsd)
+                validated_something = True
+            band_to_gsd[band_name] = band_gsd
+
+        print(f"{gsd_layer_wide=}  {band_to_gsd=} {dimensions_step=}")
+        if gsd_layer_wide:
+            validate_gsd(gsd_layer_wide)
+            validated_something = True
+        # if layer["id"] == "S1_GRD_SIGMA0_DESCENDING":
+        if dimensions_step:
+            validate_step(dimensions_step)
+            validated_something = True
+        if not validated_something:
+            print("WARNING: Could not find any step / resolution / gsd to validate")
     assert warnings == ""
 
 
