@@ -50,6 +50,7 @@ from openeogeotrellis.job_costs_calculator import (
     noJobCostsCalculator,
     CostsDetails,
     EtlApiJobCostsCalculator,
+    DynamicEtlApiJobCostCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
@@ -636,8 +637,7 @@ class CliApp:
                 else:
                     raise ValueError(app_cluster)
 
-                etl_api = get_etl_api(requests_session=requests_session)
-                job_costs_calculator = EtlApiJobCostsCalculator(etl_api=etl_api)
+                job_costs_calculator: JobCostsCalculator = DynamicEtlApiJobCostCalculator()
 
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,

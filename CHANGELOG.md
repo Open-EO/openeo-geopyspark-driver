@@ -12,9 +12,15 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.24.0
+
+- Start using `DynamicEtlApiJobCostCalculator` in job tracker. Effective ETL API selection strategy is to be configured through `EtlApiConfig`
+
 ### Bugfix
 
  - added max_processing_area_pixels custom option to sar_backscatter, avoiding going out of memory when processing too large chunks
+
 
 ## 0.23.1
 
