@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
+import geopandas as gpd
 import pytest
+from shapely.geometry import Point
 import xarray
 from openeo.metadata import Band
 
@@ -340,3 +342,98 @@ def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
     metadata = extract_result_metadata(dry_run_tracer)
     assert metadata["area"]["value"] == pytest.approx(187056.07523286293, abs=0.001)
     assert metadata["area"]["unit"] == "square meter"
+
+
+def test_spatial_geoparquet(tmp_path):
+    job_specification = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-05", "2021-01-06"],
+                    "bands": ["Flat:1", "Flat:2"]
+                }
+            },
+            "reducedimension1": {
+                "process_id": "reduce_dimension",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "dimension": "t",
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    }
+                                },
+                                "process_id": "mean",
+                                "result": True
+                            }
+                        }
+                    }
+                }
+            },
+            "aggregatespatial1": {
+                "process_id": "aggregate_spatial",
+                "arguments": {
+                    "data": {"from_node": "reducedimension1"},
+                    "geometries": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "geometry": {
+                                    "coordinates": [4.834132470464912, 51.14651864980539],
+                                    "type": "Point"
+                                },
+                                "id": "0",
+                                "properties": {"name": "maize"},
+                                "type": "Feature"
+                            },
+                            {
+                                "geometry": {
+                                    "coordinates": [4.826795583109673, 51.154775560357045],
+                                    "type": "Point"
+                                },
+                                "id": "1",
+                                "properties": {"name": "maize"},
+                                "type": "Feature"
+                            }
+                        ]
+                    },
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    }
+                                },
+                                "process_id": "mean",
+                                "result": True
+                            }
+                        }
+                    }
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "aggregatespatial1"},
+                    "format": "Parquet"
+                },
+                "result": True
+            }
+        }
+    }
+
+    run_job(job_specification, output_file=tmp_path / "out", metadata_file=tmp_path / "metadata.json",
+            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+
+    assert gpd.read_parquet(tmp_path / "timeseries.parquet").to_dict('list') == {
+        'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
+        'name': ['maize', 'maize'],
+        'avg_band_0': [1.0, 1.0],
+        'avg_band_1': [2.0, 2.0],
+    }
