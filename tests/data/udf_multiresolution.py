@@ -41,6 +41,12 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
                           num=predicted_array.shape[-1], endpoint=False)
     coord_y = np.linspace(start=cube.get_array().coords['y'].min(), stop=cube.get_array().coords['y'].max() + init_pixel_size_y,
                           num=predicted_array.shape[-2], endpoint=False)
-    predicted_cube = xarray.DataArray(predicted_array, dims=['bands', 'y', 'x'], coords=dict(x=coord_x, y=coord_y))
 
+    if cube.get_array().data.ndim == 4:
+        # Add a new dimension for time.
+        predicted_array = np.expand_dims(predicted_array, axis = 0)
+        coord_t = cube.get_array().coords['t']
+        predicted_cube = xarray.DataArray(predicted_array, dims=['t', 'bands', 'y', 'x'], coords=dict(t=coord_t, x=coord_x, y=coord_y))
+        return XarrayDataCube(predicted_cube)
+    predicted_cube = xarray.DataArray(predicted_array, dims = ['bands', 'y', 'x'], coords = dict(x = coord_x, y = coord_y))
     return XarrayDataCube(predicted_cube)
