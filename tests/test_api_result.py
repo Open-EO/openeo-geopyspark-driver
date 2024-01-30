@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
 import dateutil.parser
+import geopandas as gpd
 import mock
 import numpy
 import numpy as np
@@ -3994,3 +3995,82 @@ class TestEtlApiReporting:
             assert res.json == 8
             assert res.headers["OpenEO-Costs-experimental"] == "88"
             assert get_etl_api_requests_mock_call_counts() == [1, 1, 1]
+
+
+def test_spatiotemporal_vector_cube_to_geoparquet(api110, tmp_path):
+    response = api110.check_result({
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "bands": ["Flat:1", "Flat:2"]
+            }
+        },
+        "aggregatespatial1": {
+            "process_id": "aggregate_spatial",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "geometries": {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "geometry": {
+                                "coordinates": [4.834132470464912, 51.14651864980539],
+                                "type": "Point"
+                            },
+                            "id": "0",
+                            "properties": {"name": "maize"},
+                            "type": "Feature"
+                        },
+                        {
+                            "geometry": {
+                                "coordinates": [4.826795583109673, 51.154775560357045],
+                                "type": "Point"
+                            },
+                            "id": "1",
+                            "properties": {"name": "maize"},
+                            "type": "Feature"
+                        }
+                    ]
+                },
+                "reducer": {
+                    "process_graph": {
+                        "mean1": {
+                            "arguments": {
+                                "data": {
+                                    "from_parameter": "data"
+                                }
+                            },
+                            "process_id": "mean",
+                            "result": True
+                        }
+                    }
+                }
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "aggregatespatial1"},
+                "format": "Parquet"
+            },
+            "result": True
+        }
+    })
+
+    assert response.headers["Content-Type"] == "application/parquet; profile=geo"
+
+    output_file = tmp_path / "out.parquet"
+
+    with output_file.open(mode="wb") as f:
+        f.write(response.data)
+
+    assert gpd.read_parquet(output_file).to_dict('list') == {
+        'date': ['2021-01-05T00:00:00Z', '2021-01-05T00:00:00Z', '2021-01-15T00:00:00Z', '2021-01-15T00:00:00Z', '2021-01-25T00:00:00Z', '2021-01-25T00:00:00Z'],
+        'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045), Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045), Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
+        'feature_index': [0, 1, 0, 1, 0, 1],
+        'band_0': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        'band_1': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+        'name': ['maize', 'maize', 'maize', 'maize', 'maize', 'maize']
+    }
