@@ -2103,8 +2103,10 @@ class GpsBatchJobs(backend.BatchJobs):
         def as_max_soft_errors_ratio_arg() -> str:
             value = job_options.get("soft-errors")
 
-            if value in [None, "false"]:
+            if value == "false":
                 return "0.0"
+            elif value == None:
+                return str(get_backend_config().default_soft_errors)
             elif value == "true":
                 return "1.0"
             elif isinstance(value, bool):

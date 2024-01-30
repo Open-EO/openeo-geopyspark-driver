@@ -12,6 +12,7 @@ without compromising stable operations.
 
 ## Unreleased
 
+- The default for the soft-errors job option is now set to 0.1 and made configurable at backend level. This value better recognizes the fact that many EO archives have corrupt files that otherwise break jobs [#617](https://github.com/Open-EO/openeo-geopyspark-driver/issues/617).
 
 ## 0.24.0
 
