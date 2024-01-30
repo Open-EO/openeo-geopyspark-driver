@@ -555,7 +555,7 @@ class TestBatchJobs:
                 "__pyfiles__/custom_processes.py,foolib.whl", '100'
             ]
             assert batch_job_args[21:23] == [TEST_USER, job_id]
-            assert batch_job_args[23] == '0.0'
+            assert batch_job_args[23] == '0.1'
 
             # Check metadata in zookeeper
             meta_data = zk.get_json_decoded(
@@ -1006,7 +1006,7 @@ class TestBatchJobs:
                 '__pyfiles__/custom_processes.py,foolib.whl', '100'
             ]
             assert batch_job_args[21:23] == [TEST_USER, job_id]
-            assert batch_job_args[23] == '0.0'
+            assert batch_job_args[23] == '0.1'
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],
