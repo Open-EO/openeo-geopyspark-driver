@@ -837,7 +837,9 @@ class GeopysparkDataCube(DriverDataCube):
         pysc = gps.get_spark_context()
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
         if isinstance(reducer, dict):
-            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+            datatype = self.get_max_level().layer_metadata.cell_type
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer, default_input_parameter="data",
+                                                                           default_input_datatype=datatype)
 
         if isinstance(reducer, str):
             #deprecated codepath: only single process reduces
