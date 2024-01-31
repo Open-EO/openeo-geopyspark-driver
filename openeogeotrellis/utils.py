@@ -15,6 +15,7 @@ import resource
 import stat
 import tempfile
 
+import pyproj
 from epsel import on_first_time
 from functools import partial
 from pathlib import Path
@@ -27,11 +28,11 @@ from kazoo.client import KazooClient
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
 from pyproj import CRS
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
+from shapely.geometry import box, GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.util.geometry import GeometryBufferer
+from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
 from openeo_driver.util.logging import (
     get_logging_config,
     setup_logging, BatchJobLoggingFilter,
@@ -41,6 +42,7 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     LOG_HANDLER_FILE_JSON,
 )
+from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -572,3 +574,47 @@ class StatsReporter:
 @functools.lru_cache
 def is_package_available(name: str) -> bool:
     return any(m.name == name for m in pkgutil.iter_modules())
+
+
+def reproject_cellsize(
+        spatial_extent: dict,
+        native_resolution: dict,  # cell_width, cell_height, crs
+        to_crs: str,
+) -> Tuple[float, float]:
+    """
+    :param spatial_extent: Cellsize conversion could be different when done at the poles or the equator
+    :param native_resolution:
+    :param to_crs:
+    """
+    if "crs" not in spatial_extent:
+        spatial_extent = spatial_extent.copy()
+        spatial_extent["crs"] = "EPSG:4326"
+    west, south = spatial_extent["west"], spatial_extent["south"]
+    east, north = spatial_extent["east"], spatial_extent["north"]
+    spatial_extent_shaply = box(west, south, east, north)
+    if to_crs == "Auto42001" or native_resolution["crs"] == "Auto42001":
+        # Find correct UTM zone
+        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
+        if to_crs == "Auto42001":
+            to_crs = utm_zone_crs
+        if native_resolution["crs"] == "Auto42001":
+            native_resolution = native_resolution.copy()
+            native_resolution["crs"] = utm_zone_crs
+
+    p = spatial_extent_shaply.representative_point()
+    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], native_resolution["crs"], always_xy=True)
+    x, y = transformer.transform(p.x, p.y)
+
+    cell_bbox = {
+        "west": x,
+        "east": x + native_resolution["cell_width"],
+        "south": y,
+        "north": y + native_resolution["cell_height"],
+        "crs": native_resolution["crs"]
+    }
+    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
+
+    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
+    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
+
+    return cell_width_reprojected, cell_height_reprojected

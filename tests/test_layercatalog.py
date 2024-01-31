@@ -10,7 +10,8 @@ from openeo_driver.utils import read_json
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
-from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name, reproject_cellsize
+from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name
+from openeogeotrellis.utils import reproject_cellsize
 from openeogeotrellis.vault import Vault
 
 
@@ -231,8 +232,11 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     ]
 
 
-# @pytest.mark.skip("Run manually when changing layercatalog.json files")
+@pytest.mark.skip("Run manually when changing layercatalog.json files")
 def test_layer_catalog_step_resolution(vault):
+
+    # TODO: Move to integrationtests
+
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             "/home/emile/openeo/openeo-deploy/mep/layercatalog.json",
@@ -244,12 +248,18 @@ def test_layer_catalog_step_resolution(vault):
 
     warnings = ""
     for layer in all_metadata:
+        # if layer["id"] in ["MAPEO_WATER_TUR_V1", "SENTINEL1_GRD_SIGMA0", "S1_GRD_SIGMA0_ASCENDING", "S1_GRD_SIGMA0_DESCENDING"]:
+        #     continue
         metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
         print(f"\n{layer['id']=}")
+        if metadata.get("id") == 'WATER_BODIES':
+            print("ha")
+        gsd_in_meter = metadata.get_GSD_in_meters()
+        print(f"{gsd_in_meter=}")
         datasource_type = metadata.get("_vito", "data_source", "type")
         warn_str = layer["id"] + " datasource_type:" + str(datasource_type) + "\n"
 
-        def clean_tuple(tuple_to_clean):
+        def clean_2D_tuple(tuple_to_clean):
             if not tuple_to_clean:
                 return None
             if isinstance(tuple_to_clean, float) or isinstance(tuple_to_clean, int):
@@ -260,18 +270,14 @@ def test_layer_catalog_step_resolution(vault):
                 return tuple_to_clean
             if isinstance(tuple_to_clean, list) and len(tuple_to_clean) == 2:
                 return tuple_to_clean[0], tuple_to_clean[1]
-            raise Exception(f"Could not clean tuple: {tuple_to_clean}")
+            print(f"Could not clean_2D_tuple: {tuple_to_clean}")
+            return None
 
-        dimensions_step = clean_tuple((
+        dimensions_step = clean_2D_tuple((
             metadata.get("cube:dimensions", "x", "step", default=None),
             metadata.get("cube:dimensions", "y", "step", default=None)
         ))
-        json_blob = str(catalog.get_collection_metadata(collection_id=layer["id"])).lower()
-        count_gsd = json_blob.count("gsd") + json_blob.count("resolution")
-        if count_gsd == 0:
-            print("WARNING: no gsd found")
-            continue
-        gsd_layer_wide = clean_tuple(metadata.get("item_assets", "classification", "gsd", default=None))
+        gsd_layer_wide = clean_2D_tuple(metadata.get("item_assets", "classification", "gsd", default=None))
 
         crs = metadata.get("cube:dimensions", "x", "reference_system", default='EPSG:4326')
         if isinstance(crs, int):
@@ -304,14 +310,13 @@ def test_layer_catalog_step_resolution(vault):
                 return
             warn_str += f"validate_step({resolution_to_test=})\n"
             if crs != "EPSG:4326":
-                print("WARNING: crs is not EPSG:4326 and could have inconsitencies")
+                print("WARNING: crs is not EPSG:4326 and could have inconsistencies")
                 return
+            print("validate_step() can be done because it is in EPSG:4326")
             native_resolution = {
                 "cell_width": resolution_to_test[0],
                 "cell_height": resolution_to_test[1],
                 "crs": crs,  # https://github.com/stac-extensions/datacube#dimension-object
-                # "crs": "EPSG:4326",
-                # "crs": "Auto42001",  # GSD seems to be expressed in meters
             }
             reprojected = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
             warn_str += f"Resolution in meters: {reprojected}\n"
@@ -346,12 +351,13 @@ def test_layer_catalog_step_resolution(vault):
             if not band_gsd and "openeo:gsd" in band_metadata:
                 unit = band_metadata["openeo:gsd"]["unit"]
                 if unit and unit != "m":
+                    # A common alternative is in degrees. Probably that means LatLon, but no need to figure that out now
                     print(f"WARNING: {unit=} is not m")
                     continue
                 band_gsd = band_metadata["openeo:gsd"]["value"]
             if not band_gsd:
                 continue
-            band_gsd = clean_tuple(band_gsd)
+            band_gsd = clean_2D_tuple(band_gsd)
             if gsd_layer_wide:
                 if band_gsd != gsd_layer_wide:
                     print(f"WARNING: {band_gsd=} != {gsd_layer_wide=}")
