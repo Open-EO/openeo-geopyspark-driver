@@ -12,7 +12,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.25.0
+
 - The default for the soft-errors job option is now set to 0.1 and made configurable at backend level. This value better recognizes the fact that many EO archives have corrupt files that otherwise break jobs [#617](https://github.com/Open-EO/openeo-geopyspark-driver/issues/617).
+- Support GeoParquet output format for `aggregate_spatial` ([#623](https://github.com/Open-EO/openeo-geopyspark-driver/issues/623))
 
 ## 0.24.0
 
