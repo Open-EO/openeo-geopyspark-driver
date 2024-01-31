@@ -933,6 +933,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                         f["key"]["col"] >= col_start and f["key"]["col"] <= col_end and f["key"][
                                             "row"] >= row_start and f["key"]["row"] <= row_end]
 
+                        if len(tiles_subset) == 0:
+                            continue
+
                         #it is possible that the bounds of subset are smaller than the iteration bounds
                         col_start = min(f["key"]["col"] for f in tiles_subset)
                         col_end   = max(f["key"]["col"] for f in tiles_subset)
