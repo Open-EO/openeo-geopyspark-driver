@@ -50,6 +50,7 @@ def test_file_formats(api100):
     assert "GTiff" in formats["output"]
     assert "CovJSON" in formats["output"]
     assert "netCDF" in formats["output"]
+    assert "Parquet" in formats["output"]
     assert "description" in deep_get(formats, "output", "PNG", "parameters", "colormap")
 
 
