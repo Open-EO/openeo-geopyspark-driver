@@ -1094,44 +1094,6 @@ def check_missing_products(
         return missing
 
 
-def reproject_cellsize(
-        spatial_extent: dict,
-        native_resolution: dict,  # cell_width, cell_height, crs
-        to_crs: str,
-) -> Tuple[float, float]:
-    if "crs" not in spatial_extent:
-        spatial_extent = spatial_extent.copy()
-        spatial_extent["crs"] = "EPSG:4326"
-    west, south = spatial_extent["west"], spatial_extent["south"]
-    east, north = spatial_extent["east"], spatial_extent["north"]
-    spatial_extent_shaply = box(west, south, east, north)
-    if to_crs == "Auto42001" or native_resolution["crs"] == "Auto42001":
-        # Find correct UTM zone
-        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
-        if to_crs == "Auto42001":
-            to_crs = utm_zone_crs
-        if native_resolution["crs"] == "Auto42001":
-            native_resolution = native_resolution.copy()
-            native_resolution["crs"] = utm_zone_crs
-
-    p = spatial_extent_shaply.representative_point()
-    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], native_resolution["crs"], always_xy=True)
-    x, y = transformer.transform(p.x, p.y)
-
-    cell_bbox = {
-        "west": x,
-        "east": x + native_resolution["cell_width"],
-        "south": y,
-        "north": y + native_resolution["cell_height"],
-        "crs": native_resolution["crs"]
-    }
-    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
-
-    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
-    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
-
-    return cell_width_reprojected, cell_height_reprojected
-
 
 def is_layer_too_large(
         spatial_extent: dict,
@@ -1184,6 +1146,9 @@ def is_layer_too_large(
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
+    elif isinstance(srs, dict):
+        if srs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
+            srs = 'Auto42001'
 
     # Resampling process overwrites native_crs and resolution from metadata.
     resample_target_crs = resample_params.get("target_crs", None)
