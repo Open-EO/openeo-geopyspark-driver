@@ -30,7 +30,7 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
 
     import geopyspark as gps
 
-    conf = gps.geopyspark_conf(master="local[*]", appName=__file__)
+    conf = gps.geopyspark_conf(master="local[1]", appName=__file__)
     conf.set('spark.kryo.registrator', 'geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set('spark.driver.extraJavaOptions', "-Dlog4j2.debug=false -Dlog4j2.configurationFile=file:/home/bossie/PycharmProjects/openeo/openeo-python-driver/log4j2.xml")
 
@@ -136,7 +136,7 @@ def _instant_ms_to_hour(instant: int) -> datetime:
     """
     return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))
 
-@ensure_executor_logging
+#@ensure_executor_logging
 def read_product(product, product_type, band_names, tile_size, limit_python_memory):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
     import geopyspark
@@ -160,6 +160,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
     row_min = min(f["key"]["row"] for f in features)
     row_max = max(f["key"]["row"] for f in features)
     rows = row_max - row_min + 1
+    MAX_KEYS=int(2048/tile_size)
     instants = set(f["key"]["instant"] for f in features)
     assert len(instants) == 1, f"Not single instant: {instants}"
     instant = instants.pop()
@@ -168,47 +169,67 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
         f" ({cols}x{rows}={cols * rows} tiles) instant[{instant}]."
     )
 
-    layout_extent = get_total_extent(features)
-
     key_epsgs = set(f["key_epsg"] for f in features)
     assert len(key_epsgs) == 1, f"Multiple key CRSs {key_epsgs}"
     layout_epsg = key_epsgs.pop()
 
-    logger.info(
-        f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
-    )
-
-    orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
-                                [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                 layout_extent['ymax']])
-
-    debug_mode = True
-
-    # Split orfeo output in tiles
-    logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-    if product_type == OLCI_PRODUCT_TYPE:
-        nodata = 65535
-    elif product_type == SYNERGY_PRODUCT_TYPE:
-        nodata = -10000
-    elif product_type == SLSTR_PRODUCT_TYPE:
-        nodata = -32768
-    else:
-        raise ValueError(product_type)
-    cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
     tiles = []
-    for c in range(col_max - col_min + 1):
-        for r in range(row_max - row_min + 1):
-            col = col_min + c
-            row = row_min + r
-            key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_hour(instant))
-            tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
-            if not (tile == nodata).all():
-                if debug_mode:
-                    logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
-                tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
-                tiles.append((key, tile))
 
-    logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
+    for col_start in range(col_min,col_max+1,MAX_KEYS):
+        for row_start in range(row_min, row_max+1, MAX_KEYS):
+            col_end = min(col_start+MAX_KEYS-1,col_max)
+            row_end = min(row_start+MAX_KEYS-1,row_max)
+
+            tiles_subset = [ f for f in features if f["key"]["col"] >= col_start and f["key"]["col"] <= col_end and f["key"]["row"] >= row_start and f["key"]["row"] <= row_end]
+
+            if len(tiles_subset) == 0:
+                continue
+
+            # it is possible that the bounds of subset are smaller than the iteration bounds
+            col_start = min(f["key"]["col"] for f in tiles_subset)
+            col_end = max(f["key"]["col"] for f in tiles_subset)
+            row_start = min(f["key"]["row"] for f in tiles_subset)
+            row_end = max(f["key"]["row"] for f in tiles_subset)
+
+            layout_extent = get_total_extent(tiles_subset)
+
+            logger.info(
+                f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
+            )
+
+            orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
+                                        [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
+                                         layout_extent['ymax']])
+
+            debug_mode = True
+
+            # Split orfeo output in tiles
+            logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
+            if product_type == OLCI_PRODUCT_TYPE:
+                nodata = 65535
+            elif product_type == SYNERGY_PRODUCT_TYPE:
+                nodata = -10000
+            elif product_type == SLSTR_PRODUCT_TYPE:
+                nodata = -32768
+            else:
+                raise ValueError(product_type)
+            cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
+
+            for f in tiles_subset:
+                col = f["key"]["col"]
+                row = f["key"]["row"]
+                c = col - col_start
+                r = row - row_start
+
+                key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_hour(instant))
+                tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
+                if not (tile == nodata).all():
+                    if debug_mode:
+                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                    tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
+                    tiles.append((key, tile))
+
+            logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
 
     return tiles
 
@@ -237,11 +258,11 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile):
 
     geofile = os.path.join(creo_path, geofile)
 
-    bbox_original, source_coordinates = _read_latlonfile(geofile, lat_band, lon_band)
+    bbox_original, source_coordinates,data_mask = _read_latlonfile(geofile, lat_band, lon_band, bbox_tile)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
     reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
-                                              source_coordinates, tile_coordinates)
+                                              source_coordinates, tile_coordinates,data_mask)
 
     return reprojected_data
 
@@ -279,7 +300,7 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 
-def do_reproject(product_type, final_grid_resolution, creo_path, band_names, source_coordinates, target_coordinates):
+def do_reproject(product_type, final_grid_resolution, creo_path, band_names, source_coordinates, target_coordinates,data_mask):
     """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
 
     Parameters
@@ -325,7 +346,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
                 return band_name
             raise ValueError(band_name)
 
-        band_data, band_settings = read_band(in_file, in_band=variable_name(band_name))
+        band_data, band_settings = read_band(in_file, in_band=variable_name(band_name),data_mask=data_mask)
 
         reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
@@ -335,7 +356,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
     return np.array(varOut), is_empty
 
 
-def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude"):
+def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude",bbox = None):
     """Read latlon data from this netcdf file
 
     Parameters
@@ -357,10 +378,18 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude"):
     # getting  geo information
     logger.debug("Reading lat/lon from file %s" % latlon_file)
     lat_lon_ds = xr.open_dataset(latlon_file).astype("float32")
+
+    xmin, ymin, xmax, ymax = bbox
+
+    lat_mask = xr.apply_ufunc(lambda x:(x>=ymin) & (x<=ymax),lat_lon_ds[lat_band])
+    lon_mask = xr.apply_ufunc(lambda x: (x >= xmin) & (x <= xmax), lat_lon_ds[lon_band])
+    data_mask = lat_mask & lon_mask
+
+
     # Create the coordinate arrays for latitude and longitude
     ## Coordinated referring to the CENTER of the pixel
-    lat_orig = lat_lon_ds[lat_band].values
-    lon_orig = lat_lon_ds[lon_band].values
+    lat_orig = lat_lon_ds[lat_band].where(data_mask,drop=True).values
+    lon_orig = lat_lon_ds[lon_band].where(data_mask,drop=True).values
     lat_lon_ds.close()
 
     extreme_right_lon = lon_orig[0,-1] # negative degrees (-170)
@@ -372,8 +401,12 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude"):
     x_min, x_max = np.min(lon_orig), np.max(lon_orig)
     y_min, y_max = np.min(lat_orig), np.max(lat_orig)
     bbox_original = [x_min, y_min, x_max, y_max]
-    source_coordinates = np.column_stack((lon_orig.flatten(), lat_orig.flatten()))
-    return bbox_original, source_coordinates
+    lon_flat = lon_orig.flatten()
+    lat_flat = lat_orig.flatten()
+    lon_flat = lon_flat[~np.isnan(lon_flat)]
+    lat_flat = lat_flat[~np.isnan(lat_flat)]
+    source_coordinates = np.column_stack((lon_flat, lat_flat))
+    return bbox_original, source_coordinates, data_mask
 
 def create_index_LUT(coordinates, target_coordinates, max_distance):
     """Create A LUT containing the reprojection indexes. Find ALL the indices of the nearest neighbors within the maximum distance.
@@ -407,7 +440,7 @@ def create_index_LUT(coordinates, target_coordinates, max_distance):
     return distances, lut_indices
 
 
-def read_band(in_file, in_band, get_data_array=True):
+def read_band(in_file, in_band, get_data_array=True,data_mask=None):
     """get array and settings(metadata) out of the in_file
 
     Parameters
@@ -428,7 +461,7 @@ def read_band(in_file, in_band, get_data_array=True):
         A dict containing the bands metadata (_FillValue, name, dtype, units,...)
     """
     # can be used to get only the band settings or together with the data
-    dataset = xr.open_dataset(in_file, mask_and_scale=False)  # disable autoconvert digital values
+    dataset = xr.open_dataset(in_file, mask_and_scale=False,cache=False)  # disable autoconvert digital values
     settings = dataset[in_band].attrs
     settings['dtype'] = dataset[in_band].dtype.name
     settings['name'] = in_band
@@ -468,7 +501,7 @@ def read_band(in_file, in_band, get_data_array=True):
         settings["dtype"] = 'float32'
 
     if get_data_array:
-        data_array = dataset[in_band].data
+        data_array = dataset[in_band].where(data_mask,drop=True).data
     else:
         data_array = None
     dataset.close()
@@ -494,6 +527,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
         2D-numpy array with the size of a tile containing reprojected values
     """
     data_flat = in_data.flatten()
+    data_flat = data_flat[~np.isnan(data_flat)]
 
     # if nodata is empty, we will just use the max possible value
     if nodata is None:
