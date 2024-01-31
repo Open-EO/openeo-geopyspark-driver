@@ -983,25 +983,26 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                 import rasterio
                                 from rasterio.windows import Window
 
-                                ds = [rasterio.open(filename,driver="GTiff") for filename in orfeo_bands]
-                                for f in tiles_subset:
-                                    col = f["key"]["col"]
-                                    row = f["key"]["row"]
-                                    c = col - col_start
-                                    r = row - row_start
+                                ds = [rasterio.open(filename,driver="GTiff") for filename in orfeo_bands if os.path.exists(filename)]
+                                if len(ds) == len(bands):
+                                    for f in tiles_subset:
+                                        col = f["key"]["col"]
+                                        row = f["key"]["row"]
+                                        c = col - col_start
+                                        r = row - row_start
 
-                                    key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
-                                    numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
-                                                    for band in ds])
-                                    cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
-                                    if not (numpy_tiles==nodata).all():
-                                        if debug_mode:
-                                            logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
-                                        tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
-                                        tiles.append((key, tile))
-                                ds = None
-                                for file in orfeo_bands:
-                                    os.remove(file)
+                                        key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+                                        numpy_tiles = numpy.array([band.read(1,window=Window(c * tile_size,r * tile_size,tile_size,tile_size))
+                                                        for band in ds])
+                                        cell_type = geopyspark.CellType(numpy_tiles[0].dtype.name)
+                                        if not (numpy_tiles==nodata).all():
+                                            if debug_mode:
+                                                logger.info(f"{log_prefix} Create Tile for key {key} from {numpy_tiles.shape}")
+                                            tile = geopyspark.Tile(numpy_tiles, cell_type, no_data_value=nodata)
+                                            tiles.append((key, tile))
+                                    ds = None
+                                    for file in orfeo_bands:
+                                        os.remove(file)
 
                             else:
                                 orfeo_bands = numpy.array(orfeo_bands)
