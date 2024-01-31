@@ -96,11 +96,14 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
 
 class DynamicEtlApiJobCostCalculator(JobCostsCalculator):
     """
-    Like EtlApiJobCostsCalculator but with an ETL API endpoint that is determined based on user or job data
+    Like EtlApiJobCostsCalculator but with an ETL API endpoint that is determined based on user or job data.
+    It basically moves determining the ETL API url (`get_etl_api()`) from constructor time
+    to per-case `calculate_costs()` call time
     """
 
     def __init__(self, cache_ttl: int = 5 * 60):
         self._request_session = requests_with_retry(total=3, backoff_factor=2)
+        # Cache of `EtlApi` instances, used in `get_etl_api()`
         self._etl_cache: Optional[TtlCache] = TtlCache(default_ttl=cache_ttl) if cache_ttl > 0 else None
 
     def calculate_costs(self, details: CostsDetails) -> float:

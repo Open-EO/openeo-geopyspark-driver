@@ -191,10 +191,10 @@ class TestMultipleDates(TestCase):
         numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[2, 4.0 / 3.0], [4.0 / 3.0, 4.0 / 3.0]]])
 
         stitched = cube.reduce_dimension(reducer=reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
-        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[-1, 1.0 / 3.0], [1.0 / 3.0, 1.0 / 3.0]]])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[np.nan, 1.0 / 3.0], [1.0 / 3.0, 1.0 / 3.0]]])
 
         stitched = cube.reduce_dimension(reducer=reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
-        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[-1, 0.5773503], [0.5773503, 0.5773503]]])
+        numpy.testing.assert_allclose(stitched.cells[:, :2, :2], [[[np.nan, 0.5773503], [0.5773503, 0.5773503]]])
 
 
     def test_reduce_all_data(self):
@@ -248,10 +248,10 @@ class TestMultipleDates(TestCase):
         self.assertAlmostEqual(5.0, stitched.cells[0][0][0], delta=0.001)
 
         stitched = imagecollection.reduce_dimension(reducer("variance"), dimension="t", env=env).pyramid.levels[0].stitch()
-        self.assertAlmostEqual(-1.0, stitched.cells[0][0][0], delta=0.001)
+        self.assertTrue(np.isnan(stitched.cells[0][0][0]))
 
         stitched = imagecollection.reduce_dimension(reducer("sd"), dimension="t", env=env).pyramid.levels[0].stitch()
-        self.assertAlmostEqual(-1.0, stitched.cells[0][0][0], delta=0.001)
+        self.assertTrue(np.isnan(stitched.cells[0][0][0]))
 
     def test_reduce_tiles(self):
         print("======")
@@ -360,7 +360,7 @@ class TestMultipleDates(TestCase):
 
         layer = imagecollection.reduce_dimension(reducer('max'), dimension='t', env=EvalEnv()).pyramid.levels[0]
         stitched = layer.stitch()
-        assert 'float32ud-1.0' == layer.layer_metadata.cell_type
+        assert 'float32' == layer.layer_metadata.cell_type
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 

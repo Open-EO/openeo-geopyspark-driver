@@ -12,6 +12,41 @@ without compromising stable operations.
 
 ## Unreleased
 
+- The default for the soft-errors job option is now set to 0.1 and made configurable at backend level. This value better recognizes the fact that many EO archives have corrupt files that otherwise break jobs [#617](https://github.com/Open-EO/openeo-geopyspark-driver/issues/617).
+
+## 0.24.0
+
+- Start using `DynamicEtlApiJobCostCalculator` in job tracker. Effective ETL API selection strategy is to be configured through `EtlApiConfig`
+
+### Bugfix
+
+ - added max_processing_area_pixels custom option to sar_backscatter, avoiding going out of memory when processing too large chunks
+
+
+## 0.23.1
+
+### Bugfix
+
+- Requests towards Job Registry Elastic API are unreliable; reconsider ZK as primary data store.
+
+## 0.23.0
+
+### Added
+
+ - Support disabling ZkJobRegistry ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632))
+
+## 0.22.3
+
+### Bugfix
+
+- Restore batch job result metadata; this reverts the Zookeeper fix introduced in 0.22.2
+
+## 0.22.2
+
+### Bugfix
+
+- Prevent Zookeeper from blocking requests (https://github.com/Open-EO/openeo-geopyspark-driver/pull/639)
+
 ## 0.22.1
 
 ### Bugfix

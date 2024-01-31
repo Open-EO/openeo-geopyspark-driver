@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import sys
+from datetime import datetime
 from functools import partial
 from glob import glob
 from typing import Tuple
@@ -124,10 +125,20 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     return {zoom: merged_tile_layer}
 
+def _instant_ms_to_hour(instant: int) -> datetime:
+    """
+    Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
+    rounded down to hour resolution (UTC time 00:00:00), a convention used in other places
+    of our openEO backend implementation and necessary to follow, for example
+    to ensure that timeseries related data joins work properly.
+
+    Sentinel-3 can have many observations per day, warranting the choice of hourly rather than daily aggregation
+    """
+    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))
 
 @ensure_executor_logging
 def read_product(product, product_type, band_names, tile_size, limit_python_memory):
-    from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent, _instant_ms_to_day
+    from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
     import geopyspark
 
     if limit_python_memory:
@@ -189,7 +200,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
         for r in range(row_max - row_min + 1):
             col = col_min + c
             row = row_min + r
-            key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_day(instant))
+            key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_hour(instant))
             tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
             if not (tile == nodata).all():
                 if debug_mode:

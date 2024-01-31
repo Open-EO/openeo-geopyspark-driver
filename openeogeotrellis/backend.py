@@ -57,7 +57,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters, utm_zone_from_epsg
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
 from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
@@ -86,6 +86,8 @@ from openeogeotrellis.layercatalog import (
     check_missing_products,
     get_layer_catalog,
     is_layer_too_large,
+    LARGE_LAYER_THRESHOLD_IN_PIXELS,
+    reproject_cellsize,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -333,7 +335,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if use_job_registry and not elastic_job_registry:
             # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
-            elastic_job_registry = get_elastic_job_registry()
+            elastic_job_registry = get_elastic_job_registry(requests_session)
 
         # Start persistent workers if configured.
         config_params = ConfigParams()
@@ -1303,10 +1305,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
 
     @classmethod
-    def accept_process_graph(cls, process_graph):
+    def accept_process_graph(cls, process_graph, default_input_parameter = None, default_input_datatype=None):
         if len(process_graph) == 1 and next(iter(process_graph.values())).get('process_id') == 'run_udf':
             return SingleNodeUDFProcessGraphVisitor().accept_process_graph(process_graph)
-        return GeotrellisTileProcessGraphVisitor().accept_process_graph(process_graph)
+
+        return GeotrellisTileProcessGraphVisitor.create(default_input_parameter=default_input_parameter,default_input_datatype=default_input_datatype).accept_process_graph(process_graph)
 
     def summarize_exception(self, error: Exception) -> Union[ErrorSummary, Exception]:
         return self.summarize_exception_static(error, 2000)
@@ -1501,6 +1504,9 @@ class GpsProcessing(ConcreteProcessing):
     ) -> Iterable[dict]:
 
         catalog = env.backend_implementation.catalog
+        allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
+        sync_job = smart_bool(env.get("sync_job", False))
+        large_layer_threshold_in_pixels = int(float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
 
         for source_id, constraints in source_constraints:
             source_id_proc, source_id_args = source_id
@@ -1510,7 +1516,7 @@ class GpsProcessing(ConcreteProcessing):
                 temporal_extent = constraints.get("temporal_extent")
                 spatial_extent = constraints.get("spatial_extent")
 
-                if metadata.get("_vito", "data_source", "check_missing_products", default=None):
+                if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
                     properties = constraints.get("properties", {})
                     if temporal_extent is None:
                         yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
@@ -1532,8 +1538,21 @@ class GpsProcessing(ConcreteProcessing):
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
 
-                cell_width = float(metadata.get("cube:dimensions", "x", "step", default = 10.0))
-                cell_height = float(metadata.get("cube:dimensions", "y", "step", default = 10.0))
+                if collection_id == 'TestCollection-LonLat4x4':
+                    # This layer is always 4x4 pixels, adapt resolution accordingly
+                    bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+                    bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+                    cell_width_latlon = bbox_width / 4
+                    cell_height_latlon = bbox_height / 4
+                    native_resolution = {
+                        "cell_width": cell_width_latlon,
+                        "cell_height": cell_height_latlon,
+                        "crs": "EPSG:4326"
+                    }
+                    cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
+                else:
+                    cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
+                    cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
                 native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)
@@ -1544,13 +1563,42 @@ class GpsProcessing(ConcreteProcessing):
                                                                   f"collection {collection_id!r}"}
                     continue
 
+                # Get temporal extent out of metadata if not found in constraints:
+                # TODO: Could do this for spatial extent as well.
+                if temporal_extent is None or temporal_extent[0] is None or temporal_extent[1] is None:
+                    extents = metadata.get("extent", "temporal", "interval", default=None)
+                    begin = None
+                    end = None
+                    for extent in extents:
+                        if extent[0]:
+                            if begin is None:
+                                begin = extent[0]
+                            else:
+                                begin = min(begin, extent[0])
+                        if extent[1]:
+                            if end is None:
+                                end = extent[1]
+                            else:
+                                end = max(end, extent[1])
+                    if temporal_extent is None:
+                        temporal_extent = [begin, end]
+                    else:
+                        temporal_extent = [
+                            temporal_extent[0] or begin,
+                            temporal_extent[1] or end,
+                        ]
+
                 if spatial_extent and temporal_extent:
-                    # TODO #618 get correct number of bands if none specified by user
-                    nr_bands = len(metadata.get("cube:dimensions", "bands", "values", default = ["default_band"]))
+                    bands = constraints.get(
+                        "bands",
+                        metadata.get("cube:dimensions", "bands", "values",
+                                     default=["_at_least_assume_one_band_"])
+                    )
+                    nr_bands = len(bands)
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
-                    too_large, estimated_pixels, threshold_pixels = is_layer_too_large(
+                    message = is_layer_too_large(
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
@@ -1559,13 +1607,13 @@ class GpsProcessing(ConcreteProcessing):
                         cell_height=cell_height,
                         native_crs=native_crs,
                         resample_params=constraints.get("resample", {}),
+                        threshold_pixels=large_layer_threshold_in_pixels,
+                        sync_job=sync_job,
                     )
-                    if too_large:
+                    if message:
                         yield {
                             "code": "ExtentTooLarge",
-                            "message": f"Requested extent for collection {collection_id!r} is too large to process. "
-                            f"Estimated number of pixels: {estimated_pixels:.2e}, "
-                            f"threshold: {threshold_pixels:.2e}.",
+                            "message": f"collection_id {collection_id!r}: {message}"
                         }
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
@@ -1583,28 +1631,27 @@ class GpsProcessing(ConcreteProcessing):
 
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
-) -> Optional[ElasticJobRegistry]:
+) -> ElasticJobRegistry:
     """Build ElasticJobRegistry instance from config"""
-    with ElasticJobRegistry.just_log_errors(name="get_elastic_job_registry"):
-        config = get_backend_config()
-        job_registry = ElasticJobRegistry(
-            api_url=config.ejr_api,
-            backend_id=config.ejr_backend_id,
-            session=requests_session,
-        )
-        # Get credentials from env (preferably) or vault (as fallback).
-        ejr_creds = get_ejr_credentials_from_env(strict=False)
-        if not ejr_creds:
-            if config.ejr_credentials_vault_path:
-                # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
-                vault = Vault(config.vault_addr, requests_session=requests_session)
-                ejr_creds = vault.get_elastic_job_registry_credentials()
-            else:
-                # Fail harder
-                ejr_creds = get_ejr_credentials_from_env(strict=True)
-        job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
-        job_registry.health_check(log=True)
-        return job_registry
+    config = get_backend_config()
+    job_registry = ElasticJobRegistry(
+        api_url=config.ejr_api,
+        backend_id=config.ejr_backend_id,
+        session=requests_session,
+    )
+    # Get credentials from env (preferably) or vault (as fallback).
+    ejr_creds = get_ejr_credentials_from_env(strict=False)
+    if not ejr_creds:
+        if config.ejr_credentials_vault_path:
+            # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
+            vault = Vault(config.vault_addr, requests_session=requests_session)
+            ejr_creds = vault.get_elastic_job_registry_credentials()
+        else:
+            # Fail harder
+            ejr_creds = get_ejr_credentials_from_env(strict=True)
+    job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
+    job_registry.health_check(log=True)
+    return job_registry
 
 
 class GpsBatchJobs(backend.BatchJobs):
@@ -1987,7 +2034,7 @@ class GpsBatchJobs(backend.BatchJobs):
         else:
             # New style job info (EJR based)
             job_process_graph = job_info["process"]["process_graph"]
-            job_options = job_info.get("job_options", {})
+            job_options = job_info.get("job_options") or {}  # can be None
             job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         job_title = job_info.get('title', '')
@@ -2056,8 +2103,10 @@ class GpsBatchJobs(backend.BatchJobs):
         def as_max_soft_errors_ratio_arg() -> str:
             value = job_options.get("soft-errors")
 
-            if value in [None, "false"]:
+            if value == "false":
                 return "0.0"
+            elif value == None:
+                return str(get_backend_config().default_soft_errors)
             elif value == "true":
                 return "1.0"
             elif isinstance(value, bool):
@@ -2413,28 +2462,28 @@ class GpsBatchJobs(backend.BatchJobs):
                         f.write(job_specification_json)
                     # Generate our own random application id.
                     application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
-                    output_string = f"Application report for application_{application_id} (state: running)"
+                    script_output = f"Application report for application_{application_id} (state: running)"
                 else:
                     try:
                         log.info(f"Submitting job with command {args!r}")
-                        output_string = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                        log.info(f"Submitted job, output was: {output_string}")
+                        script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                        log.info(f"Submitted job, output was: {script_output}")
                     except CalledProcessError as e:
                         log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
                         raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
 
             try:
-                application_id = self._extract_application_id(output_string)
+                application_id = self._extract_application_id(script_output)
                 log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_application_id(job_id, user_id, application_id)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
-            except _BatchJobError as e:
+            except _BatchJobError:
                 traceback.print_exc(file=sys.stderr)
                 # TODO: why reraise as CalledProcessError?
-                raise CalledProcessError(1, str(args), output=output_string)
+                raise CalledProcessError(1, str(args), output=script_output)
 
     def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
@@ -2444,13 +2493,13 @@ class GpsBatchJobs(backend.BatchJobs):
             output_file.write(f"spark.openeo.vault.token={vault_token}\n")
 
     @staticmethod
-    def _extract_application_id(stream) -> str:
+    def _extract_application_id(script_output: str) -> str:
         regex = re.compile(r"^.*Application report for (application_\d{13}_\d+)\s\(state:.*", re.MULTILINE)
-        match = regex.search(stream)
+        match = regex.search(script_output)
         if match:
             return match.group(1)
         else:
-            raise _BatchJobError(stream)
+            raise _BatchJobError(script_output)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist

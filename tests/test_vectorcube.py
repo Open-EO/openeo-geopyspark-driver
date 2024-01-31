@@ -64,7 +64,7 @@ def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
     assert(input_cube.shape == (2,1))
     assert(input_cube.dims == ('geometry', 'properties'))
     assert(input_cube.properties.values.tolist() == ['pop'])
-    output_cube: GeopysparkDataCube = GeoPySparkBackendImplementation().vector_to_raster(
+    output_cube: GeopysparkDataCube = GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
         input_vector_cube = input_vector_cube,
         target_raster_cube = target_raster_cube
     )
@@ -99,7 +99,7 @@ def test_vector_to_raster_no_numeric_bands(imagecollection_with_two_bands_and_on
     target_raster_cube = imagecollection_with_two_bands_and_one_date
     input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = ['id'])
     with pytest.raises(OpenEOApiException):
-        GeoPySparkBackendImplementation().vector_to_raster(
+        GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
             input_vector_cube = input_vector_cube,
             target_raster_cube = target_raster_cube
         )

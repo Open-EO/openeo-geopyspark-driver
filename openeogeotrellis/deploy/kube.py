@@ -49,7 +49,7 @@ def main():
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
-    backend_implementation = GeoPySparkBackendImplementation()
+    backend_implementation = GeoPySparkBackendImplementation(use_job_registry=bool(get_backend_config().ejr_api))
     app = build_app(backend_implementation=backend_implementation)
 
     #https://github.com/Open-EO/openeo-python-driver/issues/242
@@ -88,7 +88,7 @@ def main():
 
     run_gunicorn(
         app,
-        threads=10,
+        threads=30,
         host=host,
         port=port,
         on_started=on_started
