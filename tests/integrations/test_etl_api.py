@@ -1,17 +1,22 @@
+import logging
 from typing import Optional
 
+import dirty_equals
 import pytest
+
 from openeo.rest.auth.testing import OidcMock
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.caching import TtlCache
 from openeogeotrellis.config.config import EtlApiConfig
-
 from openeogeotrellis.integrations.etl_api import (
     ETL_API_STATE,
     EtlApi,
     get_etl_api,
     get_etl_api_credentials_from_env,
+    SimpleEtlApiConfig,
+    MultiEtlApiConfig,
+    EtlApiConfigException,
 )
 from openeogeotrellis.testing import gps_config_overrides
 
@@ -288,3 +293,67 @@ class TestEtlApi:
                                                process_id="load_stac", square_meters=40.0)
 
         assert credits_cost == 8.76
+
+
+class TestSimpleEtlApiConfig:
+    def test_simple_config(self):
+        client_credentials = ClientCredentials(
+            oidc_issuer="https://oidc.test", client_id="client123", client_secret="s3cr3t"
+        )
+        config = SimpleEtlApiConfig(
+            root_url="https://etl.test",
+            client_credentials=client_credentials,
+        )
+        assert config.get_root_url() == "https://etl.test"
+        assert config.get_client_credentials("https://etl.test") is client_credentials
+        with pytest.raises(EtlApiConfigException, match="Invalid ETL API root URL."):
+            _ = config.get_client_credentials("https://etl-alt.test")
+
+
+class TestMultiEtlApiConfig:
+    def test_basic(self, monkeypatch, caplog):
+        caplog.set_level(logging.WARNING)
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS", "john:pw6@https://oidc.test/")
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT", "alt:6lt@https://oidc-alt.test/")
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_BETA", "bob:808@https://boidc.test/")
+
+        config = MultiEtlApiConfig(
+            default_root_url="https://etl.test/",
+            other_etl_apis=[
+                ("alt", "https://etl-alt.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"),
+                ("beta", "https://etl-beta.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_BETA"),
+            ],
+        )
+        assert config.get_root_url() == "https://etl.test/"
+        assert config.get_root_url(job_options={}) == "https://etl.test/"
+        assert config.get_root_url(job_options={"etl_api_id": "alt"}) == "https://etl-alt.test/"
+        assert config.get_root_url(job_options={"etl_api_id": "beta"}) == "https://etl-beta.test/"
+        assert caplog.messages == []
+
+        assert config.get_root_url(job_options={"etl_api_id": "foobar"}) == "https://etl.test/"
+        assert [r.message for r in caplog.records if r.levelname == "WARNING"] == dirty_equals.Contains(
+            dirty_equals.IsStr(regex=".*Invalid.*id 'foobar'.*fall.*back.*default.*")
+        )
+
+        assert config.get_client_credentials("https://etl.test/") == ClientCredentials(
+            oidc_issuer="https://oidc.test/", client_id="john", client_secret="pw6"
+        )
+        assert config.get_client_credentials("https://etl-alt.test/") == ClientCredentials(
+            oidc_issuer="https://oidc-alt.test/", client_id="alt", client_secret="6lt"
+        )
+        assert config.get_client_credentials("https://etl-beta.test/") == ClientCredentials(
+            oidc_issuer="https://boidc.test/", client_id="bob", client_secret="808"
+        )
+        with pytest.raises(LookupError):
+            _ = config.get_client_credentials("https://meh.test/")
+
+    def test_missing_env_vars(self, monkeypatch):
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS", "john:pw6@https://oidc.test/")
+
+        with pytest.raises(EtlApiConfigException, match="Missing.*env var.*OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"):
+            _ = MultiEtlApiConfig(
+                default_root_url="https://etl.test/",
+                other_etl_apis=[
+                    ("alt", "https://etl-alt.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"),
+                ],
+            )

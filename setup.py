@@ -26,6 +26,7 @@ tests_require = [
     "time_machine>=2.8.0",
     "kubernetes",
     "re-assert",
+    "dirty-equals>=0.6",
 ]
 
 setup(

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional, Union, Tuple, List
 
 import requests
 from openeo_driver.config import get_backend_config
@@ -202,6 +202,11 @@ def get_etl_api_credentials_from_env() -> ClientCredentials:
         raise RuntimeError("No ETL API credentials configured")
 
 
+class EtlApiConfigException(Exception):
+    """Base exception for ETL API config and lookup related issues"""
+    pass
+
+
 class SimpleEtlApiConfig(EtlApiConfig):
     """Simple EtlApiConfig: just a single ETL API endpoint."""
 
@@ -216,8 +221,85 @@ class SimpleEtlApiConfig(EtlApiConfig):
         return self._root_url
 
     def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
-        assert root_url == self._root_url
+        if root_url != self._root_url:
+            _log.error(f"EtlApiConfig: given {root_url=} differs from expected {self._root_url!r}")
+            raise EtlApiConfigException("Invalid ETL API root URL.")
         return self._client_credentials
+
+
+class MultiEtlApiConfig(EtlApiConfig):
+    """
+    EtlApiConfig implementation that supports multiple ETL API endpoints:
+    - one default
+    - multiple other ones that can be selected based on a field in job options
+
+    Minimal usage example, with one alternative ETL API
+
+        etl_config = MultiEtlApiConfig(
+            default_root_url="https://etl.test",
+            other_etl_apis=[
+                ("alt", "https://etl-alt.test", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"),
+            ]
+        )
+
+    By default, "https://etl.test" will be used as ETL API
+    (with credentials extracted from the default env var `OPENEO_ETL_OIDC_CLIENT_CREDENTIALS`).
+    If user has `"etl_api_id": "alt"` in job options,
+    "https://etl-alt.test" will be used as ETL API
+    (with credentials from env var `OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT`).
+
+    """
+
+    def __init__(
+        self,
+        *,
+        default_root_url: str,
+        default_credentials_env_var: str = "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS",
+        other_etl_apis: List[Tuple[str, str, str]],
+        job_option_field: str = "etl_api_id",
+    ):
+        """
+        :param default_root_url: default ETL API root URL
+        :param default_credentials_env_var: default env var to extract credentials from
+        :param other_etl_apis: list of tuples (id, url, cred_var) defining other ETL API endpoints:
+            - id: identifier for the ETL API endpoint
+            - url: root URL of the ETL API endpoint
+            - cred_var: env var to extract credentials from
+        :param job_option_field: field in job options for user to select ETL API endpoint
+        """
+        super().__init__()
+        self._default_root_url = default_root_url
+        self._other_root_urls: Dict[str, str] = {id: url for id, url, cred_var in other_etl_apis}
+        try:
+            self._credentials: Dict[str, ClientCredentials] = {
+                self._default_root_url: ClientCredentials.from_credentials_string(
+                    os.environ[default_credentials_env_var]
+                )
+            }
+            self._credentials.update(
+                (url, ClientCredentials.from_credentials_string(os.environ[cred_var]))
+                for id, url, cred_var in other_etl_apis
+            )
+        except KeyError as e:
+            # Log key error details, but raise generic exception to avoid leaking internals to end user.
+            raise EtlApiConfigException(f"Missing ETL API credentials env var: {e!r}") from e
+        self._job_option_field = job_option_field
+
+    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
+        # TODO: also support extraction from user?
+        etl_api_id = job_options and job_options.get(self._job_option_field)
+        if etl_api_id:
+            if etl_api_id in self._other_root_urls:
+                return self._other_root_urls[etl_api_id]
+            else:
+                _log.warning(f"Invalid ETL API id {etl_api_id!r}, falling back on default ETL API")
+        return self._default_root_url
+
+    def get_client_credentials(self, root_url: str) -> Union[ClientCredentials, None]:
+        if root_url not in self._credentials:
+            _log.error(f"EtlApiConfig: given {root_url=} not in {self._credentials.keys()!r}")
+            raise EtlApiConfigException("Invalid ETL API root URL.")
+        return self._credentials[root_url]
 
 
 def get_etl_api(
