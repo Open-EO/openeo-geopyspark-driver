@@ -1797,6 +1797,10 @@ class GpsBatchJobs(backend.BatchJobs):
             """returns URL and (possibly empty) status for this job results dependency"""
             url = job_results_dependency['partial_job_results_url']
 
+            dependency_job_info = extract_own_job_info(url, user_id, batch_jobs=self)
+            if dependency_job_info:
+                return url, dependency_job_info.status
+
             with requests_session.get(url) as resp:
                 resp.raise_for_status()
                 stac_object = resp.json()
