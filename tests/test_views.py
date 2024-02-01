@@ -2229,8 +2229,8 @@ class TestSentinelHubBatchJobs:
     ):
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results?partial=true"
         requests_mock.get(partial_job_results_url, [
-            {'json': {"type": "Collection", "openeo:status": "running"}},
-            {'json': {"type": "Collection", "openeo:status": "finished"}},
+            {'json': {"type": "Collection", "openeo:status": "running"}},  # when starting the job = web app context
+            {'json': {"type": "Collection", "openeo:status": "finished"}},  # when polling the job = async_task context
         ])
 
         time_machine.move_to("2020-04-20T12:01:01Z")

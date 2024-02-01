@@ -769,23 +769,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         user = env['user']
 
-        def extract_own_job_id() -> Optional[str]:
-            path_segments = urlparse(url).path.split('/')
-
-            if len(path_segments) < 3:
-                return None
-
-            jobs_position_segment, job_id, results_position_segment = path_segments[-3:]
-            if jobs_position_segment != "jobs" or results_position_segment != "results":
-                return None
-
-            try:
-                self.batch_jobs.get_job_info(job_id=job_id, user_id=user.user_id)
-            except JobNotFoundException:
-                return None
-
-            return job_id
-
         requested_bbox = BoundingBox.from_dict_or_none(
             load_params.spatial_extent, default_crs="EPSG:4326"
         )
@@ -873,11 +856,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             return True
 
-        job_id = extract_own_job_id()
-        if job_id is not None:
+        dependency_job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=self.batch_jobs)
+        if dependency_job_info:
             intersecting_items = []
 
-            for asset_id, asset in self.batch_jobs.get_result_assets(job_id=job_id, user_id=user.user_id).items():
+            for asset_id, asset in self.batch_jobs.get_result_assets(job_id=dependency_job_info.id,
+                                                                     user_id=user.user_id).items():
                 pystac_item = pystac.Item(id=asset_id, geometry=asset["geometry"], bbox=asset["bbox"],
                                           datetime=rfc3339.parse_datetime(asset["datetime"], with_timezone=True),
                                           properties={"datetime": asset["datetime"]})
@@ -1660,6 +1644,22 @@ def get_elastic_job_registry(
     return job_registry
 
 
+def extract_own_job_info(url: str, user_id: str, batch_jobs: backend.BatchJobs) -> Optional[BatchJobMetadata]:
+    path_segments = urlparse(url).path.split('/')
+
+    if len(path_segments) < 3:
+        return None
+
+    jobs_position_segment, job_id, results_position_segment = path_segments[-3:]
+    if jobs_position_segment != "jobs" or results_position_segment != "results":
+        return None
+
+    try:
+        return batch_jobs.get_job_info(job_id=job_id, user_id=user_id)
+    except JobNotFoundException:
+        return None
+
+
 class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
@@ -1798,11 +1798,16 @@ class GpsBatchJobs(backend.BatchJobs):
             """returns URL and (possibly empty) status for this job results dependency"""
             url = job_results_dependency['partial_job_results_url']
 
-            with requests_session.get(url) as resp:
-                resp.raise_for_status()
-                stac_object = resp.json()
+            dependency_job_info = extract_own_job_info(url, user_id, batch_jobs=self)
+            if dependency_job_info:
+                job_status = dependency_job_info.status
+            else:
+                with requests_session.get(url, timeout=600) as resp:
+                    resp.raise_for_status()
+                    stac_object = resp.json()
+                job_status = stac_object.get('openeo:status')
 
-            return url, stac_object.get('openeo:status')
+            return url, job_status
 
         def fail_job():
             with self._double_job_registry as registry:
@@ -2900,16 +2905,18 @@ class GpsBatchJobs(backend.BatchJobs):
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
                 if url.startswith("http://") or url.startswith("https://"):
-                    with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                        with self._requests_session.get(url, timeout=600) as resp:
-                            resp.raise_for_status()
-                            stac_object = resp.json()
+                    dependency_job_info = extract_own_job_info(url, user_id=user_id, batch_jobs=self)
+                    if dependency_job_info:
+                        job_status = dependency_job_info.status
+                    else:
+                        with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
+                            with self._requests_session.get(url, timeout=600) as resp:
+                                resp.raise_for_status()
+                                stac_object = resp.json()
+                            job_status = stac_object.get('openeo:status')
+                            logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{job_status}"')
 
-                    openeo_status = stac_object.get('openeo:status')
-
-                    logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{openeo_status}"')
-
-                    if openeo_status == 'running':
+                    if job_status == 'running':
                         job_dependencies.append({
                             'partial_job_results_url': url,
                         })
