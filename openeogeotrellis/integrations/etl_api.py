@@ -220,21 +220,6 @@ class SimpleEtlApiConfig(EtlApiConfig):
         return self._client_credentials
 
 
-class DynamicEtlApiConfig(EtlApiConfig):
-    """Minimal base EtlApiConfig implementation supporting dynamic ETL API selection."""
-
-    def __init__(self, urls_and_credentials: Dict[str, ClientCredentials]):
-        self._urls_and_credentials = urls_and_credentials
-
-    def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
-        # TODO: possible to provide some generic logic here?
-        raise NotImplementedError
-
-    def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
-        # TODO: return None on unknown root_url instead of raising KeyError?
-        return self._urls_and_credentials[root_url]
-
-
 def get_etl_api(
     *,
     root_url: Optional[str] = None,

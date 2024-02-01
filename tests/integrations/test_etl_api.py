@@ -5,10 +5,10 @@ from openeo.rest.auth.testing import OidcMock
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.caching import TtlCache
+from openeogeotrellis.config.config import EtlApiConfig
 
 from openeogeotrellis.integrations.etl_api import (
     ETL_API_STATE,
-    DynamicEtlApiConfig,
     EtlApi,
     get_etl_api,
     get_etl_api_credentials_from_env,
@@ -81,11 +81,11 @@ class TestGetEtlApi:
         assert mock.called_once
 
     @pytest.fixture
-    def custom_etl_api_config(self, etl_credentials):
+    def custom_etl_api_config(self, etl_credentials) -> EtlApiConfig:
         ETL_ALT = "https://etl-alt.test"
         ETL_PLANB = "https://etl.planb.test"
 
-        class CustomEtlConfig(DynamicEtlApiConfig):
+        class CustomEtlConfig(EtlApiConfig):
             def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
                 if user:
                     return {"a": ETL_ALT, "b": ETL_PLANB}[user.user_id[:1]]
@@ -94,13 +94,14 @@ class TestGetEtlApi:
                     return {"alt": ETL_ALT, "planb": ETL_PLANB}[id]
                 raise RuntimeError("Don't know which ETL API to use")
 
-        return CustomEtlConfig(
-            urls_and_credentials={
-                # Note using same credentials for all ETL API instances, to keep testing here simple
-                ETL_ALT: etl_credentials,
-                ETL_PLANB: etl_credentials,
-            }
-        )
+            def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
+                return {
+                    # Note using same credentials for all ETL API instances, to keep testing here simple
+                    ETL_ALT: etl_credentials,
+                    ETL_PLANB: etl_credentials,
+                }[root_url]
+
+        return CustomEtlConfig()
 
     def test_default_gives_legacy(self, etl_credentials_in_env, requests_mock, oidc_mock):
         etl_api = get_etl_api()

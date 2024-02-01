@@ -5,8 +5,8 @@ from openeo.rest.auth.testing import OidcMock
 from openeo_driver.testing import DictSubSet
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
+from openeogeotrellis.config.config import EtlApiConfig
 
-from openeogeotrellis.integrations.etl_api import DynamicEtlApiConfig
 from openeogeotrellis.job_costs_calculator import CostsDetails, DynamicEtlApiJobCostCalculator
 from openeogeotrellis.testing import gps_config_overrides
 
@@ -18,18 +18,19 @@ class TestDynamicEtlApiJobCostCalculator:
         return ClientCredentials(oidc_issuer="https://oidc.test", client_id="client123", client_secret="s3cr3t")
 
     @pytest.fixture
-    def custom_etl_api_config(self, etl_credentials):
-        class CustomEtlConfig(DynamicEtlApiConfig):
+    def custom_etl_api_config(self, etl_credentials) -> EtlApiConfig:
+        class CustomEtlConfig(EtlApiConfig):
             def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
                 return {"alt": "https://etl-alt.test", "planb": "https://etl.planb.test"}[job_options["my_etl"]]
 
-        return CustomEtlConfig(
-            urls_and_credentials={
-                # Note using same credentials for all ETL API instances, to keep testing here simple
-                "https://etl-alt.test": etl_credentials,
-                "https://etl.planb.test": etl_credentials,
-            }
-        )
+            def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
+                return {
+                    # Note using same credentials for all ETL API instances, to keep testing here simple
+                    "https://etl-alt.test": etl_credentials,
+                    "https://etl.planb.test": etl_credentials,
+                }[root_url]
+
+        return CustomEtlConfig()
 
     @pytest.fixture(autouse=True)
     def oidc_mock(self, requests_mock, etl_credentials: ClientCredentials) -> OidcMock:
