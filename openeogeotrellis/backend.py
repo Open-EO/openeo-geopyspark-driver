@@ -856,11 +856,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             return True
 
-        job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=self.batch_jobs)
-        if job_info is not None:
+        dependency_job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=self.batch_jobs)
+        if dependency_job_info:
             intersecting_items = []
 
-            for asset_id, asset in self.batch_jobs.get_result_assets(job_id=job_info.id, user_id=user.user_id).items():
+            for asset_id, asset in self.batch_jobs.get_result_assets(job_id=dependency_job_info.id,
+                                                                     user_id=user.user_id).items():
                 pystac_item = pystac.Item(id=asset_id, geometry=asset["geometry"], bbox=asset["bbox"],
                                           datetime=rfc3339.parse_datetime(asset["datetime"], with_timezone=True),
                                           properties={"datetime": asset["datetime"]})
@@ -2903,9 +2904,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 url, _ = arguments  # properties will be taken care of @ process graph evaluation time
 
                 if url.startswith("http://") or url.startswith("https://"):
-                    job_info = extract_own_job_info(url, user_id=user_id, batch_jobs=self)
-                    if job_info is not None:
-                        job_status = job_info.status
+                    dependency_job_info = extract_own_job_info(url, user_id=user_id, batch_jobs=self)
+                    if dependency_job_info:
+                        job_status = dependency_job_info.status
                     else:
                         with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
                             with self._requests_session.get(url, timeout=600) as resp:
