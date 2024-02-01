@@ -482,8 +482,11 @@ class S1BackscatterOrfeo:
 
                     logger.info(f"{log_prefix} Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
                     logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
-                    if not creo_path.exists():
-                       raise OpenEOApiException(f"sar_backscatter: path to SAR product ${str(creo_path)} does not exist on the cluster.")
+                    if not creo_path.exists()
+                        if max_soft_errors_ratio == 0.0:
+                            raise OpenEOApiException(f"sar_backscatter: path to SAR product ${str(creo_path)} does not exist on the cluster.")
+                        else:
+                            logger.warning(f"sar_backscatter: path to SAR product ${str(creo_path)} does not exist on the cluster.")
 
                     msg = f"{log_prefix} Process {creo_path} and load into geopyspark Tile"
                     with TimingLogger(title=msg, logger=logger):
