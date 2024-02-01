@@ -344,7 +344,7 @@ class TestMultiEtlApiConfig:
         assert config.get_client_credentials("https://etl-beta.test/") == ClientCredentials(
             oidc_issuer="https://boidc.test/", client_id="bob", client_secret="808"
         )
-        with pytest.raises(LookupError):
+        with pytest.raises(EtlApiConfigException, match="Invalid ETL API root URL."):
             _ = config.get_client_credentials("https://meh.test/")
 
     def test_missing_env_vars(self, monkeypatch):
