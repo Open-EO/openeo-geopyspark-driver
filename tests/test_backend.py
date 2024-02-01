@@ -139,7 +139,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
     env_source_constraints = [
         (source_id1, {
-            "temporal_extent": ["2019-01-01", "2019-01-09"],
+            "temporal_extent": ["2019-01-01", "2023-01-09"],
             "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929, "crs": "EPSG:32632"},
             "bands": ["HH", "HV", "VV"],
         }),

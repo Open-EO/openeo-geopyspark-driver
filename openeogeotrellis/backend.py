@@ -1581,6 +1581,7 @@ class GpsProcessing(ConcreteProcessing):
                     )
                     nr_bands = len(bands)
 
+                    temporal_step = metadata.get("cube:dimensions", "t", "step", default=None)
 
                     if collection_id == 'TestCollection-LonLat4x4':
                         # This layer is always 4x4 pixels, adapt resolution accordingly
@@ -1601,12 +1602,13 @@ class GpsProcessing(ConcreteProcessing):
                         elif isinstance(gsd_object, tuple):
                             gsd_in_meter_list = [gsd_object] * nr_bands
                         else:
-                            # Resolution should be in CRS of layer. A default resolution seems bold to me.
-                            continue
-                        # gsd_in_meter_list = list(map(lambda x: metadata.get_GSD_in_meters_for_band(x), bands))
-                        px_per_m2_aggregate_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
-                        px_per_m_aggregate_band = pow(px_per_m2_aggregate_band, 0.5)
-                        m_per_px_average_band = 1 / px_per_m_aggregate_band
+                            # The largest GSD I encountered was 25km. Double it as very permissive guess:
+                            gsd_in_meter_list = [(50000, 50000)] * nr_bands
+
+                        # We need to convert GSD to resolution in order to take an average:
+                        px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
+                        px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
+                        m_per_px_average_band = 1 / px_per_m_average_band  # TODO: Assure this is covered by tests
 
                         native_resolution = {
                             "cell_width": m_per_px_average_band,
@@ -1622,6 +1624,7 @@ class GpsProcessing(ConcreteProcessing):
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
+                        temporal_step=temporal_step,
                         nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,
