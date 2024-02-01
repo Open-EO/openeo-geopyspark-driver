@@ -32,12 +32,12 @@ def test_read_single():
     transform = from_bounds(3.1, 50.1, 7.2, 55.2, arr.shape[2], arr.shape[1])
 
 
-    new_dataset = rasterio.open('test1.tif', 'w', driver='GTiff',
-                                height=arr.shape[1], width=arr.shape[2],
-                                count=1, dtype=str(arr.dtype),
-                                crs=CRS.from_epsg(4326),
-                                transform=transform)
-
-    new_dataset.write(arr)
-    new_dataset.close()
+    # new_dataset = rasterio.open('test1.tif', 'w', driver='GTiff',
+    #                             height=arr.shape[1], width=arr.shape[2],
+    #                             count=1, dtype=str(arr.dtype),
+    #                             crs=CRS.from_epsg(4326),
+    #                             transform=transform)
+    #
+    # new_dataset.write(arr)
+    # new_dataset.close()
 
