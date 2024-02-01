@@ -17,6 +17,28 @@ without compromising stable operations.
 - The default for the soft-errors job option is now set to 0.1 and made configurable at backend level. This value better recognizes the fact that many EO archives have corrupt files that otherwise break jobs [#617](https://github.com/Open-EO/openeo-geopyspark-driver/issues/617).
 - Support GeoParquet output format for `aggregate_spatial` ([#623](https://github.com/Open-EO/openeo-geopyspark-driver/issues/623))
 
+### Improved datatype conversion
+
+A rather big improvement in this release is the handling of datatypes.
+OpenEO does not have very explicit rules when it comes to datatypes, and in this implementation, in most
+cases the datatype was simply preserved, like in most programming languages.
+
+For most users, this resulted in unexpected behaviour, for instance when dividing integer dataypes,
+or subtracting two unsigned 8 bit numbers, and expecting to get negative values.
+
+This implementation will now try to use wider datatypes when necessary. For instance by 
+switching to floating point when performing a division. This change makes writing formulas more intuitive, and should
+save time debugging issues.
+
+When there is still a need to get a smaller datatype, users can use the 'linear_scale_range' process. This process
+for instance will convert to 8 bit unsigned integers if the target range uses integer values and fits in the [0,255] range.
+
+Relevant issues:
+- [#225](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/225)
+- [#581](https://github.com/Open-EO/openeo-geopyspark-driver/issues/581)
+- [#601](https://github.com/Open-EO/openeo-geopyspark-driver/issues/601)
+
+
 ## 0.24.0
 
 - Start using `DynamicEtlApiJobCostCalculator` in job tracker. Effective ETL API selection strategy is to be configured through `EtlApiConfig`
