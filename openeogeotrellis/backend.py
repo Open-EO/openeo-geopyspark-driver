@@ -1800,13 +1800,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
             dependency_job_info = extract_own_job_info(url, user_id, batch_jobs=self)
             if dependency_job_info:
-                return url, dependency_job_info.status
+                job_status = dependency_job_info.status
+            else:
+                with requests_session.get(url, timeout=600) as resp:
+                    resp.raise_for_status()
+                    stac_object = resp.json()
+                job_status = stac_object.get('openeo:status')
 
-            with requests_session.get(url) as resp:
-                resp.raise_for_status()
-                stac_object = resp.json()
-
-            return url, stac_object.get('openeo:status')
+            return url, job_status
 
         def fail_job():
             with self._double_job_registry as registry:
@@ -2912,8 +2913,8 @@ class GpsBatchJobs(backend.BatchJobs):
                             with self._requests_session.get(url, timeout=600) as resp:
                                 resp.raise_for_status()
                                 stac_object = resp.json()
-                                job_status = stac_object.get('openeo:status')
-                                logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{job_status}"')
+                            job_status = stac_object.get('openeo:status')
+                            logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{job_status}"')
 
                     if job_status == 'running':
                         job_dependencies.append({
