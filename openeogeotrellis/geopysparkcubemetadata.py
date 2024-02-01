@@ -18,7 +18,7 @@ def clean_2D_tuple(tuple_to_clean):
         return tuple_to_clean
     if isinstance(tuple_to_clean, list) and len(tuple_to_clean) == 2:
         return tuple_to_clean[0], tuple_to_clean[1]
-    print(f"Could not clean_2D_tuple: {tuple_to_clean}")
+    # Not able to parse:
     return None
 
 
@@ -104,8 +104,6 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             return None
 
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
-        if self.get("id") == 'SENTINEL3_SYNERGY_VG10':
-            print("ha")
         bands_metadata = self.get("summaries", "eo:bands",
                                   default=self.get("summaries", "raster:bands", default=[]))
         band_to_gsd = {}

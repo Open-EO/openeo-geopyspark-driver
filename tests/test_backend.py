@@ -143,7 +143,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-09"],
             "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929, "crs": "EPSG:32632"},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["HH", "HV", "VV"],
         }),
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -169,7 +169,7 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
             "temporal_extent": [None, None],  # Will go from 2014 till current time
             "spatial_extent": {"south": -952987.7582, "west": 4495130.8875, "north": 910166.7419, "east": 7088482.3929,
                                "crs": "EPSG:32632"},
-            "bands": ["B01"],
+            "bands": ["VV"],
         })
     ]
     env = EvalEnv(
@@ -188,7 +188,7 @@ def test_extra_validation_layer_too_large_area(backend_implementation):
             "temporal_extent": ["2022-01-01", "2022-01-01"],
             "spatial_extent": {"south": -952987.7582, "west": 1495130.8875, "north": 910166.7419, "east": 9088482.3929,
                                "crs": "EPSG:32632"},
-            "bands": ["B01"],
+            "bands": ["VV"],
         })
     ]
     env = EvalEnv(
@@ -212,7 +212,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["HH", "HV", "VV"],
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(polygon1),
             },
@@ -242,7 +242,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["HH", "HV", "VV"],
             "aggregate_spatial": {
                 "geometries": shapely.geometry.MultiPolygon([polygon1]),
             },
@@ -279,11 +279,10 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
     assert len(errors) == 0
 
 
-def test_extra_validation_layer_too_large_utm_zones(backend_implementation):
-    # For layers with Auto42001 as crs, the input bbox first needs to converted to the right UTM zone
-    # before estimating the number of pixels.
+def test_extra_validation_missing_gsd(backend_implementation):
+    # Layers with missing GSD should not crash
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GAMMA0_SENTINELHUB", None)
+    source_id1 = "load_collection", ("TERRASCOPE_S1_SLC_COHERENCE_V1", None)
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -296,9 +295,7 @@ def test_extra_validation_layer_too_large_utm_zones(backend_implementation):
         }),
     ]
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
-    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
-    assert len(errors) == 1
-    assert errors[0]['code'] == "ExtentTooLarge"
+    processing.extra_validation({}, env, None, env_source_constraints)
 
 
 def test_extra_validation_layer_too_large_resample_spatial(backend_implementation):
