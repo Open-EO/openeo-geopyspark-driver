@@ -44,7 +44,7 @@ from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
-from openeogeotrellis.integrations.etl_api import DynamicEtlApiConfig
+from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
 from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
@@ -3929,19 +3929,18 @@ class TestEtlApiReporting:
         """
 
         # Setup up ETL mapping based on user name: one for Alice, another for Bob
-        class CustomEtlConfig(DynamicEtlApiConfig):
+        class CustomEtlConfig(EtlApiConfig):
             def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
                 return {
                     "a": "https://etl-alt.test",
                     "b": "https://etl.planb.test",
                 }[user.user_id[:1]]
 
-        etl_api_config = CustomEtlConfig(
-            urls_and_credentials={
-                "https://etl-alt.test": etl_client_credentials,
-                "https://etl.planb.test": etl_client_credentials,
-            }
-        )
+            def get_client_credentials(self, root_url: str) -> Union[ClientCredentials, None]:
+                return {
+                    "https://etl-alt.test": etl_client_credentials,
+                    "https://etl.planb.test": etl_client_credentials,
+                }[root_url]
 
         alice = DummyUser(user_id="alice2000")
         bob = DummyUser(user_id="bob7")
@@ -3960,7 +3959,7 @@ class TestEtlApiReporting:
         with gps_config_overrides(
             use_etl_api_on_sync_processing=True,
             etl_dynamic_api_flag=etl_dynamic_api_flag,
-            etl_api_config=etl_api_config,
+            etl_api_config=CustomEtlConfig(),
         ):
             # First request by Alice
             api100.set_auth_bearer_token(alice.bearer_token)

@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.26.0
+
+- Introduce `MultiEtlApiConfig` to support multiple ETL API configurations ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
+
 ## 0.25.0
 
 - The default for the soft-errors job option is now set to 0.1 and made configurable at backend level. This value better recognizes the fact that many EO archives have corrupt files that otherwise break jobs [#617](https://github.com/Open-EO/openeo-geopyspark-driver/issues/617).
@@ -26,7 +31,7 @@ cases the datatype was simply preserved, like in most programming languages.
 For most users, this resulted in unexpected behaviour, for instance when dividing integer dataypes,
 or subtracting two unsigned 8 bit numbers, and expecting to get negative values.
 
-This implementation will now try to use wider datatypes when necessary. For instance by 
+This implementation will now try to use wider datatypes when necessary. For instance by
 switching to floating point when performing a division. This change makes writing formulas more intuitive, and should
 save time debugging issues.
 
