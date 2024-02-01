@@ -87,7 +87,6 @@ from openeogeotrellis.layercatalog import (
     get_layer_catalog,
     is_layer_too_large,
     LARGE_LAYER_THRESHOLD_IN_PIXELS,
-    reproject_cellsize,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -117,6 +116,7 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
+    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
@@ -1538,26 +1538,6 @@ class GpsProcessing(ConcreteProcessing):
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
 
-                if collection_id == 'TestCollection-LonLat4x4':
-                    # This layer is always 4x4 pixels, adapt resolution accordingly
-                    bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
-                    bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-                    cell_width_latlon = bbox_width / 4
-                    cell_height_latlon = bbox_height / 4
-                    native_resolution = {
-                        "cell_width": cell_width_latlon,
-                        "cell_height": cell_height_latlon,
-                        "crs": "EPSG:4326"
-                    }
-                    cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
-                else:
-                    cell_width = metadata.get("cube:dimensions", "x", "step", default=None)
-                    cell_height = metadata.get("cube:dimensions", "y", "step", default=None)
-                    if cell_width is None or cell_height is None:
-                        # Resolution should be in CRS of layer. A default resolution seems bold to me.
-                        continue
-                    cell_width = float(cell_width)
-                    cell_height = float(cell_height)
                 native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)
@@ -1600,6 +1580,41 @@ class GpsProcessing(ConcreteProcessing):
                                      default=["_at_least_assume_one_band_"])
                     )
                     nr_bands = len(bands)
+
+
+                    if collection_id == 'TestCollection-LonLat4x4':
+                        # This layer is always 4x4 pixels, adapt resolution accordingly
+                        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+                        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+                        cell_width_latlon = bbox_width / 4
+                        cell_height_latlon = bbox_height / 4
+                        native_resolution = {
+                            "cell_width": cell_width_latlon,
+                            "cell_height": cell_height_latlon,
+                            "crs": "EPSG:4326"
+                        }
+                        cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
+                    else:
+                        gsd_object = metadata.get_GSD_in_meters()
+                        if isinstance(gsd_object, dict):
+                            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), bands))
+                        elif isinstance(gsd_object, tuple):
+                            gsd_in_meter_list = [gsd_object] * nr_bands
+                        else:
+                            # Resolution should be in CRS of layer. A default resolution seems bold to me.
+                            continue
+                        # gsd_in_meter_list = list(map(lambda x: metadata.get_GSD_in_meters_for_band(x), bands))
+                        px_per_m2_aggregate_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
+                        px_per_m_aggregate_band = pow(px_per_m2_aggregate_band, 0.5)
+                        m_per_px_average_band = 1 / px_per_m_aggregate_band
+
+                        native_resolution = {
+                            "cell_width": m_per_px_average_band,
+                            "cell_height": m_per_px_average_band,
+                            "crs": "Auto42001"  # UTM is in meter
+                        }
+                        cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, native_crs)
+
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
