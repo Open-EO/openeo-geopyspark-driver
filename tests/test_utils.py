@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from openeo_driver.testing import TIFF_DUMMY_DATA
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import (
     dict_merge_recursive,
     describe_path,
@@ -223,7 +224,7 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
     """
     output_file = "foo/bar.tif"
     # mock_s3_bucket sets the ConfigParams().s3_bucket_name to a fake test bucket.
-    out_file_s3_url = f"s3://{ConfigParams().s3_bucket_name}/{output_file}"
+    out_file_s3_url = f"s3://{get_backend_config().s3_bucket_name}/{output_file}"
     mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
 
     bytes_retrieved = get_s3_binary_file_contents(out_file_s3_url)
@@ -256,14 +257,11 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
         ("/foo/bar/file.txt", "/test-bucket/", "s3://test-bucket/foo/bar/file.txt"),
     ],
 )
-def test_to_s3_url(file_or_folder_path, bucket_name, expected_url, monkeypatch):
-    monkeypatch.setenv("SWIFT_BUCKET", "this-should-not-show-up-as-the-bucket")
+def test_to_s3_url(file_or_folder_path, bucket_name, expected_url):
     actual1 = to_s3_url(file_or_folder_path, bucketname=bucket_name)
     assert actual1 == expected_url
 
-    # Check result when bucket_name arg not set => using ConfigParams
-    # ConfigParams gets its value from the env var SWIFT_BUCKET
-    bucket_name = bucket_name or "openeo-fake-bucketname"
-    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
-    actual2 = to_s3_url(file_or_folder_path)
-    assert actual2 == expected_url
+    # Default bucket name goes through config
+    with gps_config_overrides(s3_bucket_name=bucket_name):
+        actual2 = to_s3_url(file_or_folder_path)
+        assert actual2 == expected_url

@@ -41,6 +41,7 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     LOG_HANDLER_FILE_JSON,
 )
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -316,7 +317,8 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
     # TODO: move this to openeogeotrellis.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
-        Bucket=ConfigParams().s3_bucket_name, Key=str(filename).strip("/")
+        Bucket=get_backend_config().s3_bucket_name,
+        Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
     return body.read().decode("utf8")
@@ -344,7 +346,7 @@ def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) 
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: move this to openeogeotrellis.integrations.s3?
 
-    bucketname = bucketname or ConfigParams().s3_bucket_name
+    bucketname = bucketname or get_backend_config().s3_bucket_name
 
     # See also:
     # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html

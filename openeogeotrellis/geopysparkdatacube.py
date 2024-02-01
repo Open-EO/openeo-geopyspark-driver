@@ -40,6 +40,7 @@ from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
@@ -1568,7 +1569,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        bucket = str(ConfigParams().s3_bucket_name)
+        bucket = str(get_backend_config().s3_bucket_name)
         filename = str(filename)
         directory = str(pathlib.Path(filename).parent)
         s3_filename = "s3://{b}{f}".format(b=bucket, f=filename)
