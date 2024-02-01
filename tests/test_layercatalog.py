@@ -1,3 +1,5 @@
+import datetime
+import re
 import unittest.mock as mock
 from pathlib import Path
 from typing import List, Tuple
@@ -252,6 +254,11 @@ def test_layer_catalog_step_resolution(vault):
         #     continue
         metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
         print(f"\n{layer['id']=}")
+
+        temporal_step_str = metadata.get("cube:dimensions", "t", "step", default=None)
+        if temporal_step_str:
+            print(f"{temporal_step_str=}")
+
         if metadata.get("id") == 'WATER_BODIES':
             print("ha")
         gsd_in_meter = metadata.get_GSD_in_meters()

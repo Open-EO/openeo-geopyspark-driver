@@ -43,8 +43,14 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
-    calculate_rough_area
+from openeogeotrellis.utils import (
+    dict_merge_recursive,
+    to_projected_polygons,
+    get_jvm,
+    normalize_temporal_extent,
+    calculate_rough_area,
+    parse_approximate_isoduration,
+)
 from openeogeotrellis.vault import Vault
 
 VAULT_TOKEN = 'vault_token'
@@ -1099,6 +1105,7 @@ def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
         temporal_extent: Tuple[str, str],
+        temporal_step:str,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
@@ -1114,6 +1121,7 @@ def is_layer_too_large(
     :param spatial_extent: Requested spatial extent.
     :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
     :param temporal_extent: Requested temporal extent (in isoformat).
+    :param temporal_step: Requested temporal step size (in isoformat).
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
@@ -1125,8 +1133,16 @@ def is_layer_too_large(
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+    if temporal_step is None:
+        # Raw estimate.
+        # TODO: DEM has only one time sample and no step defined.
+        temporal_step = "P10D"
+
+    # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
+    temporal_step = parse_approximate_isoduration(temporal_step)
+    estimate_days_per_sample = temporal_step.days
+
     from_date, to_date = temporal_extent
-    estimate_days_per_sample = 4  # Some datasets have coverage only once every 4 days. Be less strict here.
     if to_date is None:
         if from_date is None:
             days = 1
@@ -1172,7 +1188,7 @@ def is_layer_too_large(
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-    # TODO #618 estimation assumes there is an observation for every day, which is typically quite an overestimation.
+
     pixels_width = bbox_width / cell_width
     pixels_height = bbox_height / cell_height
     if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:

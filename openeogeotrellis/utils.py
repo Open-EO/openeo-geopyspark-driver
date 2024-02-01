@@ -618,3 +618,41 @@ def reproject_cellsize(
     cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
 
     return cell_width_reprojected, cell_height_reprojected
+
+
+def parse_approximate_isoduration(s):
+    """
+    https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
+    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds
+    Examples: "PT1H30M15.460S", "P5DT4M", "P2WT3H", "P1D"
+    """
+
+    def get_isosplit(s_arg, split):
+        if split in s_arg:
+            n, s_arg = s_arg.split(split, 1)
+        else:
+            n = '0'
+        return float(n.replace(',', '.')), s_arg  # to handle like "P0,5Y"
+
+    s = s.split('P', 1)[-1]  # Remove prefix
+    # s_date0, s_time0 = get_isosplit(s, 'T')
+    if 'T' in s:
+        s_date0, s_time0 = s.split('T', 1)
+    else:
+        s_date0 = s
+        s_time0 = ''
+    s_date, s_time = s_date0, s_time0
+    s_yr, s_date = get_isosplit(s_date, 'Y')  # Step through letter dividers
+    s_mo, s_date = get_isosplit(s_date, 'M')
+    s_wk, s_date = get_isosplit(s_date, 'W')
+    s_dy, s_date = get_isosplit(s_date, 'D')
+    # _, s = get_isosplit(s_time, 'T')
+    s_hr, s_time = get_isosplit(s_time, 'H')
+    s_mi, s_time = get_isosplit(s_time, 'M')
+    s_sc, s_time = get_isosplit(s_time, 'S')
+    n_yr = s_yr * 365  # approx days for year, month, week
+    n_mo = s_mo * 30.4  # Average days per month
+    n_wk = s_wk * 7
+    dt = datetime.timedelta(days=n_yr + n_mo + n_wk + s_dy, hours=s_hr, minutes=s_mi,
+                            seconds=s_sc)
+    return dt

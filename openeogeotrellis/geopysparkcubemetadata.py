@@ -94,14 +94,6 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             "sentinelhub": 5,
         }.get(self.provider_backend(), 0)
 
-    def get_GSD_in_meters_for_band(self, band_name: str) -> Union[tuple, None]:
-        gsd = self.get_GSD_in_meters()
-        if isinstance(gsd, dict):
-            return gsd.get(band_name)
-        elif isinstance(gsd, tuple):
-            return gsd
-        else:
-            return None
 
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
         bands_metadata = self.get("summaries", "eo:bands",
