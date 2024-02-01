@@ -128,3 +128,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_usage_byte_seconds: float = 2 * 1024 * 1024 * 1024 * 3600
 
     default_soft_errors: float = 0.1
+
+    s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")

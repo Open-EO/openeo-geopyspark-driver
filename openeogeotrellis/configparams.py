@@ -49,8 +49,6 @@ class ConfigParams:
         self.pod_namespace = env.get("POD_NAMESPACE", "spark-jobs")
         self.concurrent_pod_limit = int(env.get("CONCURRENT_POD_LIMIT", 0))  # 0 means no limit.
 
-        self.s1backscatter_elev_geoid = env.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
-
         self.batch_job_output_root = Path(
             env.get("OPENEO_BATCH_JOB_OUTPUT_ROOT")
             or (

@@ -29,7 +29,7 @@ from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.utils import smart_bool
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
     ensure_executor_logging
 
@@ -437,7 +437,9 @@ class S1BackscatterOrfeo:
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
 
         # Geoid for orthorectification: get from options, fallback on config.
-        elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
+        elev_geoid = (
+            sar_backscatter_arguments.options.get("elev_geoid") or get_backend_config().s1backscatter_elev_geoid
+        )
         elev_default = sar_backscatter_arguments.options.get("elev_default")
         logger.info(f"elev_geoid: {elev_geoid!r}")
 
@@ -831,7 +833,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         orfeo_memory = sar_backscatter_arguments.options.get("otb_memory", 256)
 
         # Geoid for orthorectification: get from options, fallback on config.
-        elev_geoid = sar_backscatter_arguments.options.get("elev_geoid") or ConfigParams().s1backscatter_elev_geoid
+        elev_geoid = (
+            sar_backscatter_arguments.options.get("elev_geoid") or get_backend_config().s1backscatter_elev_geoid
+        )
         elev_default = sar_backscatter_arguments.options.get("elev_default")
         logger.info(f"elev_geoid: {elev_geoid!r}")
 
