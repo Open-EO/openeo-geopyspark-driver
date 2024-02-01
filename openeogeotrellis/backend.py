@@ -2296,7 +2296,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         status_code=400,
                     )
 
-            bucket = ConfigParams().s3_bucket_name
+            bucket = get_backend_config().s3_bucket_name
             s3_instance = s3_client()
 
             all_buckets = s3_instance.list_buckets()
@@ -3204,7 +3204,7 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.info(f"Kube_deploy: Deleting directory from s3 object storage.")
             prefix = str(self.get_job_output_dir(job_id))[1:]
             self._jvm.org.openeo.geotrellis.creo.CreoS3Utils.deleteCreoSubFolder(
-                config_params.s3_bucket_name, prefix
+                get_backend_config().s3_bucket_name, prefix
             )
 
         with self._double_job_registry as registry:

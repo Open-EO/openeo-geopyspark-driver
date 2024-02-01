@@ -130,3 +130,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_soft_errors: float = 0.1
 
     s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
+
+    s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")

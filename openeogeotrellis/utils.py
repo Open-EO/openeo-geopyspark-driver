@@ -3,46 +3,46 @@ import collections.abc
 import contextlib
 import datetime
 import functools
-import pkgutil
-
 import grp
 import json
 import logging
 import math
 import os
+import pkgutil
 import pwd
 import resource
 import stat
 import tempfile
-
-import pyproj
-from epsel import on_first_time
 from functools import partial
 from pathlib import Path
-from shapely.geometry.base import BaseGeometry
-from typing import Callable, Optional, Tuple, Union, Iterable
+from typing import Callable, Iterable, Optional, Tuple, Union
 
-import pytz
 import dateutil.parser
+import pyproj
+import pytz
+from epsel import on_first_time
 from kazoo.client import KazooClient
-from py4j.clientserver import ClientServer
-from py4j.java_gateway import JVMView
-from pyproj import CRS
-from shapely.geometry import box, GeometryCollection, MultiPolygon, Polygon, Point
-
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
 from openeo_driver.util.logging import (
-    get_logging_config,
-    setup_logging, BatchJobLoggingFilter,
+    LOG_HANDLER_FILE_JSON,
+    LOG_HANDLER_STDERR_JSON,
+    LOGGING_CONTEXT_BATCH_JOB,
+    BatchJobLoggingFilter,
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
-    LOGGING_CONTEXT_BATCH_JOB,
-    LOG_HANDLER_STDERR_JSON,
-    LOG_HANDLER_FILE_JSON,
+    get_logging_config,
+    setup_logging,
 )
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
+from py4j.clientserver import ClientServer
+from py4j.java_gateway import JVMView
+from pyproj import CRS
+from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
+from shapely.geometry.base import BaseGeometry
+
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -278,6 +278,7 @@ def set_max_memory(max_total_memory_in_bytes: int):
 def s3_client():
     # TODO: move this to openeogeotrellis.integrations.s3?
     import boto3
+
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
     aws_access_key_id = os.environ.get("SWIFT_ACCESS_KEY_ID",os.environ.get("AWS_ACCESS_KEY_ID"))
     aws_secret_access_key=os.environ.get("SWIFT_SECRET_ACCESS_KEY",os.environ.get("AWS_SECRET_ACCESS_KEY"))
@@ -318,7 +319,8 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
     # TODO: move this to openeogeotrellis.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
-        Bucket=ConfigParams().s3_bucket_name, Key=str(filename).strip("/")
+        Bucket=get_backend_config().s3_bucket_name,
+        Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
     return body.read().decode("utf8")
@@ -346,7 +348,7 @@ def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) 
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: move this to openeogeotrellis.integrations.s3?
 
-    bucketname = bucketname or ConfigParams().s3_bucket_name
+    bucketname = bucketname or get_backend_config().s3_bucket_name
 
     # See also:
     # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html
