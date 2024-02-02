@@ -12,6 +12,12 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.26.1
+
+### Bugfix
+
+- fix load_stac from unsigned job results URL in batch job ([#644](https://github.com/Open-EO/openeo-geopyspark-driver/issues/644))
+
 ## 0.26.0
 
 - Introduce `MultiEtlApiConfig` to support multiple ETL API configurations ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))

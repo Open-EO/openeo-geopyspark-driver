@@ -50,7 +50,8 @@ from openeo_driver.errors import (
     ProcessParameterUnsupportedException,
     ServiceUnsupportedException,
 )
-from openeo_driver.jobregistry import DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, get_ejr_credentials_from_env
+from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
+                                       get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
@@ -1800,14 +1801,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
             dependency_job_info = extract_own_job_info(url, user_id, batch_jobs=self)
             if dependency_job_info:
-                job_status = dependency_job_info.status
+                partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
             else:
                 with requests_session.get(url, timeout=600) as resp:
                     resp.raise_for_status()
                     stac_object = resp.json()
-                job_status = stac_object.get('openeo:status')
+                partial_job_status = stac_object.get('openeo:status')
 
-            return url, job_status
+            return url, partial_job_status
 
         def fail_job():
             with self._double_job_registry as registry:
@@ -1875,15 +1876,16 @@ class GpsBatchJobs(backend.BatchJobs):
         logger.debug("OpenEO batch job results statuses for batch job {j}: {ss}"
                      .format(j=job_id, ss=job_results_statuses), extra={'job_id': job_id, 'user_id': user_id})
 
-        if any(status in ["error", "canceled"] for status in job_results_statuses.values()):
+        if any(status in [PARTIAL_JOB_STATUS.ERROR,
+                          PARTIAL_JOB_STATUS.CANCELED] for status in job_results_statuses.values()):
             job_results_failures = {url: status for url, status in job_results_statuses.items()
-                                    if status in ["error", "canceled"]}
+                                    if status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]}
 
             logger.error(f"Failing batch job because one or more OpenEO batch jobs failed: "
                          f"{job_results_failures}", extra={'job_id': job_id, 'user_id': user_id})
 
             return fail_job()
-        elif batch_processes_done and all(status in [None, "finished"] for status in job_results_statuses.values()):  # resume batch job with available data
+        elif batch_processes_done and all(status in [None, PARTIAL_JOB_STATUS.FINISHED] for status in job_results_statuses.values()):  # resume batch job with available data
             assembled_location_cache = {}
 
             for dependency in batch_process_dependencies:
@@ -2907,16 +2909,16 @@ class GpsBatchJobs(backend.BatchJobs):
                 if url.startswith("http://") or url.startswith("https://"):
                     dependency_job_info = extract_own_job_info(url, user_id=user_id, batch_jobs=self)
                     if dependency_job_info:
-                        job_status = dependency_job_info.status
+                        partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
                     else:
                         with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
                             with self._requests_session.get(url, timeout=600) as resp:
                                 resp.raise_for_status()
                                 stac_object = resp.json()
-                            job_status = stac_object.get('openeo:status')
-                            logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{job_status}"')
+                            partial_job_status = stac_object.get('openeo:status')
+                            logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{partial_job_status}"')
 
-                    if job_status == 'running':
+                    if partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
                         job_dependencies.append({
                             'partial_job_results_url': url,
                         })
