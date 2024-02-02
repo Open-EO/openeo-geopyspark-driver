@@ -197,15 +197,21 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                 f"{log_prefix} Layout extent {layout_extent} EPSG {layout_epsg}:"
             )
 
+
+            digital_numbers = product_type == OLCI_PRODUCT_TYPE
+
             orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
                                         [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                         layout_extent['ymax']])
+                                         layout_extent['ymax']],digital_numbers=digital_numbers)
 
             debug_mode = True
 
             # Split orfeo output in tiles
             logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
-            if product_type == OLCI_PRODUCT_TYPE:
+            if not digital_numbers:
+                nodata = np.nan
+
+            elif product_type == OLCI_PRODUCT_TYPE:
                 nodata = 65535
             elif product_type == SYNERGY_PRODUCT_TYPE:
                 nodata = -10000
@@ -213,7 +219,11 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                 nodata = -32768
             else:
                 raise ValueError(product_type)
-            cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
+
+            if digital_numbers:
+                cell_type = geopyspark.CellType.create_user_defined_celltype("int32", nodata)  # TODO: check if right
+            else:
+                cell_type = geopyspark.CellType.FLOAT32
 
             for f in tiles_subset:
                 col = f["key"]["col"]
@@ -234,7 +244,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
     return tiles
 
 
-def create_s3_toa(product_type, creo_path, band_names, bbox_tile):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers = True):
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
@@ -262,7 +272,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile):
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
     reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
-                                              source_coordinates, tile_coordinates,data_mask)
+                                              source_coordinates, tile_coordinates,data_mask,digital_numbers)
 
     return reprojected_data
 
@@ -300,7 +310,7 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 
-def do_reproject(product_type, final_grid_resolution, creo_path, band_names, source_coordinates, target_coordinates,data_mask):
+def do_reproject(product_type, final_grid_resolution, creo_path, band_names, source_coordinates, target_coordinates,data_mask,digital_numbers=True):
     """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
 
     Parameters
@@ -350,6 +360,10 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
 
         reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
+        if 'add_offset' in band_settings and 'scale_factor' in band_settings and not digital_numbers:
+            reprojected_data = reprojected_data * band_settings['scale_factor'] + band_settings['add_offset']
+        if '_FillValue' in band_settings and not digital_numbers:
+            reprojected_data[reprojected_data == band_settings['_FillValue']] = np.nan
         varOut.append(reprojected_data)
 
     logger.info(f"Done reprojecting {product_type}")
