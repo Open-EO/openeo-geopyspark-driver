@@ -12,6 +12,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.26.2
+
+- `MultiEtlApiConfig`: don't fail-fast on missing env vars for credentials extraction, just skip with warnings for now
+
 ## 0.26.1
 
 ### Bugfix

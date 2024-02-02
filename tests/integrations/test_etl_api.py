@@ -324,6 +324,7 @@ class TestMultiEtlApiConfig:
                 ("beta", "https://etl-beta.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_BETA"),
             ],
         )
+
         assert config.get_root_url() == "https://etl.test/"
         assert config.get_root_url(job_options={}) == "https://etl.test/"
         assert config.get_root_url(job_options={"etl_api_id": "alt"}) == "https://etl-alt.test/"
@@ -331,8 +332,8 @@ class TestMultiEtlApiConfig:
         assert caplog.messages == []
 
         assert config.get_root_url(job_options={"etl_api_id": "foobar"}) == "https://etl.test/"
-        assert [r.message for r in caplog.records if r.levelname == "WARNING"] == dirty_equals.Contains(
-            dirty_equals.IsStr(regex=".*Invalid.*id 'foobar'.*fall.*back.*default.*")
+        assert [f"{r.levelname}: {r.message}" for r in caplog.records] == dirty_equals.Contains(
+            dirty_equals.IsStr(regex="WARNING:.*Invalid etl_api_id='foobar', using default.*")
         )
 
         assert config.get_client_credentials("https://etl.test/") == ClientCredentials(
@@ -347,13 +348,51 @@ class TestMultiEtlApiConfig:
         with pytest.raises(EtlApiConfigException, match="Invalid ETL API root URL."):
             _ = config.get_client_credentials("https://meh.test/")
 
-    def test_missing_env_vars(self, monkeypatch):
+    def test_missing_env_vars(self, monkeypatch, caplog):
         monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS", "john:pw6@https://oidc.test/")
+        # Missing OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT
+        monkeypatch.setenv("OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_BETA", "bob:808@https://boidc.test/")
 
-        with pytest.raises(EtlApiConfigException, match="Missing.*env var.*OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"):
-            _ = MultiEtlApiConfig(
-                default_root_url="https://etl.test/",
-                other_etl_apis=[
-                    ("alt", "https://etl-alt.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"),
-                ],
+        config = MultiEtlApiConfig(
+            default_root_url="https://etl.test/",
+            other_etl_apis=[
+                ("alt", "https://etl-alt.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_ALT"),
+                ("beta", "https://etl-beta.test/", "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS_BETA"),
+            ],
+        )
+        assert [f"{r.levelname}: {r.message}" for r in caplog.records] == dirty_equals.Contains(
+            dirty_equals.IsStr(regex="WARNING:.*failed to get credentials for.*etl-alt.test.*Skipping.*")
+        )
+
+        # Test get_root_url behavior
+        caplog.clear()
+
+        assert config.get_root_url() == "https://etl.test/"
+        assert config.get_root_url(job_options={}) == "https://etl.test/"
+        # Missing env var, so falls back to default
+        assert config.get_root_url(job_options={"etl_api_id": "alt"}) == "https://etl.test/"
+        # Working env var: picks up the alternative root URL
+        assert config.get_root_url(job_options={"etl_api_id": "beta"}) == "https://etl-beta.test/"
+        assert [f"{r.levelname}: {r.message}" for r in caplog.records] == dirty_equals.Contains(
+            dirty_equals.IsStr(regex="WARNING:.*Invalid etl_api_id='alt', using default.*")
+        )
+
+        # Test get_client_credentials behavior
+        caplog.clear()
+
+        assert config.get_client_credentials("https://etl.test/") == ClientCredentials(
+            oidc_issuer="https://oidc.test/", client_id="john", client_secret="pw6"
+        )
+        # Missing env var -> failure to get credentials
+        with pytest.raises(EtlApiConfigException, match="Invalid ETL API root URL."):
+            _ = config.get_client_credentials("https://etl-alt.test/")
+        # Working env var -> get alternative credentials
+        assert config.get_client_credentials("https://etl-beta.test/") == ClientCredentials(
+            oidc_issuer="https://boidc.test/", client_id="bob", client_secret="808"
+        )
+
+        assert [f"{r.levelname}: {r.message}" for r in caplog.records] == dirty_equals.Contains(
+            dirty_equals.IsStr(
+                regex="ERROR:.*invalid root_url.*https://etl-alt.test/.*not in.*https://etl.test/.*https://etl-beta.test/.*"
             )
+        )

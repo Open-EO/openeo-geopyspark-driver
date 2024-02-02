@@ -257,6 +257,7 @@ class MultiEtlApiConfig(EtlApiConfig):
         default_credentials_env_var: str = "OPENEO_ETL_OIDC_CLIENT_CREDENTIALS",
         other_etl_apis: List[Tuple[str, str, str]],
         job_option_field: str = "etl_api_id",
+        credential_extraction_log_level: int = logging.WARNING,
     ):
         """
         :param default_root_url: default ETL API root URL
@@ -269,21 +270,31 @@ class MultiEtlApiConfig(EtlApiConfig):
         """
         super().__init__()
         self._default_root_url = default_root_url
-        self._other_root_urls: Dict[str, str] = {id: url for id, url, cred_var in other_etl_apis}
-        try:
-            self._credentials: Dict[str, ClientCredentials] = {
-                self._default_root_url: ClientCredentials.from_credentials_string(
-                    os.environ[default_credentials_env_var]
-                )
-            }
-            self._credentials.update(
-                (url, ClientCredentials.from_credentials_string(os.environ[cred_var]))
-                for id, url, cred_var in other_etl_apis
-            )
-        except KeyError as e:
-            # Log key error details, but raise generic exception to avoid leaking internals to end user.
-            raise EtlApiConfigException(f"Missing ETL API credentials env var: {e!r}") from e
         self._job_option_field = job_option_field
+
+        # TODO: option to fail fast on missing env vars instead of ignoring?
+        self._other_root_urls: Dict[str, str] = {}
+        self._credentials: Dict[str, ClientCredentials] = {}
+        try:
+            self._credentials[default_root_url] = ClientCredentials.from_credentials_string(
+                os.environ[default_credentials_env_var]
+            )
+        except Exception as e:
+            _log.log(
+                level=credential_extraction_log_level,
+                msg=f"MultiEtlApiConfig: failed to get credentials for {default_root_url=} from {default_credentials_env_var=}: {e!r}",
+            )
+        for etl_id, etl_url, cred_var in other_etl_apis:
+            try:
+                creds = ClientCredentials.from_credentials_string(os.environ[cred_var])
+            except Exception as e:
+                _log.log(
+                    level=credential_extraction_log_level,
+                    msg=f"MultiEtlApiConfig: failed to get credentials for {etl_url=} ({etl_id=}) from {cred_var=}: {e!r}. Skipping.",
+                )
+            else:
+                self._other_root_urls[etl_id] = etl_url
+                self._credentials[etl_url] = creds
 
     def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
         # TODO: also support extraction from user?
@@ -292,12 +303,12 @@ class MultiEtlApiConfig(EtlApiConfig):
             if etl_api_id in self._other_root_urls:
                 return self._other_root_urls[etl_api_id]
             else:
-                _log.warning(f"Invalid ETL API id {etl_api_id!r}, falling back on default ETL API")
+                _log.warning(f"MultiEtlApiConfig: Invalid {etl_api_id=}, using default.")
         return self._default_root_url
 
     def get_client_credentials(self, root_url: str) -> Union[ClientCredentials, None]:
         if root_url not in self._credentials:
-            _log.error(f"EtlApiConfig: given {root_url=} not in {self._credentials.keys()!r}")
+            _log.error(f"MultiEtlApiConfig: invalid {root_url=}: not in {self._credentials.keys()!r}")
             raise EtlApiConfigException("Invalid ETL API root URL.")
         return self._credentials[root_url]
 
