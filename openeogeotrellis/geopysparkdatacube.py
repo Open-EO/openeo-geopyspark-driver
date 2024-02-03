@@ -255,7 +255,9 @@ class GeopysparkDataCube(DriverDataCube):
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         if isinstance(process, dict):
-            process = GeoPySparkBackendImplementation.accept_process_graph(process)
+            datatype = self.get_max_level().layer_metadata.cell_type
+            process = GeoPySparkBackendImplementation.accept_process_graph(process, default_input_parameter="data",
+                                                                           default_input_datatype=datatype)
 
         if isinstance(process, GeotrellisTileProcessGraphVisitor):
             #apply should leave metadata intact, so can do a simple call?
@@ -681,7 +683,9 @@ class GeopysparkDataCube(DriverDataCube):
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         if isinstance(reducer, dict):
-            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+            datatype = self.get_max_level().layer_metadata.cell_type
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer, default_input_parameter="data",
+                                                                           default_input_datatype=datatype)
 
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
