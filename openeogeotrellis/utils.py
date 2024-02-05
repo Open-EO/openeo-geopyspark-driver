@@ -584,8 +584,8 @@ def reproject_cellsize(
     """
     :param spatial_extent: The spatial extent is needed, because conversion is often
      different when done at the poles compared to the equator.
-     eg: When moving 1meter at the North Pole, it could more than 100degrees in LatLon
-        While 1 meter at the equator
+     eg: When moving 1meter to LatLon at the North Pole, it can be 14% degrees more in LatLon
+     compared to the same conversion at the equator.
     :param native_resolution:
     :param to_crs:
     """
