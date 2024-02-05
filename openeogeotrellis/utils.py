@@ -582,7 +582,10 @@ def reproject_cellsize(
         to_crs: str,
 ) -> Tuple[float, float]:
     """
-    :param spatial_extent: Cellsize conversion could be different when done at the poles or the equator
+    :param spatial_extent: The spatial extent is needed, because conversion is often
+     different when done at the poles compared to the equator.
+     eg: When moving 1meter at the North Pole, it could more than 100degrees in LatLon
+        While 1 meter at the equator
     :param native_resolution:
     :param to_crs:
     """
@@ -622,9 +625,10 @@ def reproject_cellsize(
 
 def parse_approximate_isoduration(s):
     """
-    https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
-    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds
+    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.
+    Approximate, because it does not care about leap years, months with different number of days, etc.
     Examples: "PT1H30M15.460S", "P5DT4M", "P2WT3H", "P1D"
+    Based on: https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
     """
 
     def get_isosplit(s_arg, split):
@@ -635,7 +639,7 @@ def parse_approximate_isoduration(s):
         return float(n.replace(',', '.')), s_arg  # to handle like "P0,5Y"
 
     s = s.split('P', 1)[-1]  # Remove prefix
-    # s_date0, s_time0 = get_isosplit(s, 'T')
+    # M can mean month or minute, so we split the day and time part:
     if 'T' in s:
         s_date0, s_time0 = s.split('T', 1)
     else:
@@ -646,7 +650,7 @@ def parse_approximate_isoduration(s):
     s_mo, s_date = get_isosplit(s_date, 'M')
     s_wk, s_date = get_isosplit(s_date, 'W')
     s_dy, s_date = get_isosplit(s_date, 'D')
-    # _, s = get_isosplit(s_time, 'T')
+
     s_hr, s_time = get_isosplit(s_time, 'H')
     s_mi, s_time = get_isosplit(s_time, 'M')
     s_sc, s_time = get_isosplit(s_time, 'S')
