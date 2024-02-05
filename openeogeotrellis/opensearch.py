@@ -39,7 +39,7 @@ class OpenSearchOscars(OpenSearch):
                     # Or could be because we reached the end of the list.
                     break
                 if "totalResults" in json and json["totalResults"] <= len(cache):
-                    logger.warning("This shortcut seems not available in test environment")  # TODO: Check logs
+                    # This shortcut is not always available in test environment.
                     break
                 start_index += len(features)
 
