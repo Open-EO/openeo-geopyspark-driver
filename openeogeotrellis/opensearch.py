@@ -22,11 +22,29 @@ class OpenSearchOscars(OpenSearch):
 
     def _get_collection(self, collection_id: str) -> dict:
         if not self._cache:
-            url = self.endpoint + "/collections"
-            logger.info(f"Getting collection metadata from {url}")
-            resp = requests.get(url=url)
-            resp.raise_for_status()
-            self._cache = {f["id"]: f for f in resp.json()["features"]}
+            cache = {}
+            start_index = 1
+            while True:
+                url = f"{self.endpoint}/collections?startIndex={start_index}&count=200"
+                logger.info(f"Getting collection metadata from {url}")
+                resp = requests.get(url=url)
+                resp.raise_for_status()
+                json = resp.json()
+                features = json["features"]
+                cache_length_before = len(cache)
+                for f in features:
+                    cache[f["id"]] = f
+                if cache_length_before == len(cache):
+                    # could be because in auto-tests each page contains the same features.
+                    # Or could be because we reached the end of the list.
+                    break
+                if "totalResults" in json and json["totalResults"] <= len(cache):
+                    logger.warning("This shortcut seems not available in test environment")  # TODO: Check logs
+                    break
+                start_index += len(features)
+
+            self._cache = cache
+
         return self._cache[collection_id]
 
     def get_metadata(self, collection_id: str) -> dict:
