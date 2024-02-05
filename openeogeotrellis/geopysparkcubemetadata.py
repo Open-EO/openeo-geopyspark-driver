@@ -8,15 +8,17 @@ _log = logging.getLogger(__name__)
 
 
 def clean_2D_tuple(tuple_to_clean):
+    """
+    Convert input an (x,y) tuple if possible.
+    """
     if not tuple_to_clean:
         return None
     if isinstance(tuple_to_clean, float) or isinstance(tuple_to_clean, int):
         return tuple_to_clean, tuple_to_clean
     if (tuple_to_clean[0] is None) or (tuple_to_clean[1] is None):
         return None
-    if isinstance(tuple_to_clean, tuple):
-        return tuple_to_clean
-    if isinstance(tuple_to_clean, list) and len(tuple_to_clean) == 2:
+    if isinstance(tuple_to_clean, (tuple, list)) and len(tuple_to_clean) == 2:
+        # in case of list, this will make a simple copy
         return tuple_to_clean[0], tuple_to_clean[1]
     # Not able to parse:
     return None
