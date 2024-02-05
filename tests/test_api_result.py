@@ -3783,6 +3783,44 @@ class TestLoadStac:
         assert (ds["band2"] == 2).all()
         assert (ds["band3"] == 3).all()
 
+    def test_load_stac_from_stac_collection_item_start_datetime_zulu(self, api110, urllib_mock, tmp_path):
+        """load_stac from a STAC Collection with an item that has a start_datetime in Zulu time (time zone 'Z')"""
+
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace(
+                    "asset01.tiff",
+                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                )
+            )
+
+        urllib_mock.get("https://stac.test/collection.json",
+                        data=get_test_data_file("stac/issue646_start_datetime_zulu/collection.json").read_text())
+        urllib_mock.get("https://stac.test/item01.json",
+                        data=item_json("stac/issue646_start_datetime_zulu/item01.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collection.json"
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": 1, "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit='h', timezone='UTC').tolist() == ["2022-03-04T00Z"]
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)

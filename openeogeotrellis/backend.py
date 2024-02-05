@@ -21,6 +21,7 @@ from subprocess import CalledProcessError
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
+import dateutil
 import flask
 import geopyspark as gps
 import kazoo.exceptions
@@ -781,7 +782,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         def intersects_spatiotemporally(itm: pystac.Item) -> bool:
             def intersects_temporally() -> bool:
-                nominal_date = itm.datetime or dt.datetime.fromisoformat(itm.properties["start_datetime"])
+                nominal_date = itm.datetime or dateutil.parser.parse(itm.properties["start_datetime"])
                 return from_date <= nominal_date <= to_date
 
             def intersects_spatially() -> bool:
