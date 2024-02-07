@@ -13,6 +13,7 @@ from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level, LOG_HANDLER_STDERR_JSON
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+from openeogeotrellis.config import get_backend_config
 
 
 
@@ -88,7 +89,11 @@ if __name__ == '__main__':
     # which we want to set up just in time
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
-    app = build_app(backend_implementation=GeoPySparkBackendImplementation(use_zookeeper=False))
+    backend_implementation = GeoPySparkBackendImplementation(
+        use_zookeeper=False,
+        use_job_registry=bool(get_backend_config().ejr_api),
+    )
+    app = build_app(backend_implementation=backend_implementation)
 
     show_log_level(logging.getLogger('openeo'))
     show_log_level(logging.getLogger('openeo_driver'))

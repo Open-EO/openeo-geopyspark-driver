@@ -336,7 +336,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if use_job_registry and not elastic_job_registry:
             # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
-            elastic_job_registry = get_elastic_job_registry(requests_session)
+            elastic_job_registry = get_elastic_job_registry(requests_session=requests_session)
 
         # Start persistent workers if configured.
         config_params = ConfigParams()
