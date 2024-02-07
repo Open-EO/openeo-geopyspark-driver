@@ -7,7 +7,7 @@ from openeogeotrellis.utils import reproject_cellsize
 _log = logging.getLogger(__name__)
 
 
-def clean_tuple2(tuple_to_clean):
+def clean_number_pair(tuple_to_clean):
     """
     Convert input an (x,y) tuple if possible.
     """
@@ -110,14 +110,14 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                     # Often degrees. Probably LatLon, but no need to figure that out now
                     continue
                 band_gsd = band_metadata["openeo:gsd"]["value"]
-            band_gsd = clean_tuple2(band_gsd)
+            band_gsd = clean_number_pair(band_gsd)
             if band_gsd:
                 band_to_gsd[band_name] = band_gsd
 
         if len(band_to_gsd) > 0:
             return band_to_gsd
 
-        gsd_layer_wide = clean_tuple2(self.get("item_assets", "classification", "gsd", default=None))
+        gsd_layer_wide = clean_number_pair(self.get("item_assets", "classification", "gsd", default=None))
         if gsd_layer_wide:
             return gsd_layer_wide
 
@@ -131,6 +131,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if crs == "EPSG:4326":
             # step could be expressed in LatLon or layer native crs.
             # Only when the layer native CRS is LatLon, we can use it with safely
+            # https://github.com/stac-extensions/datacube#dimension-object
 
             bboxes = self.get("extent", "spatial", "bbox")
             if bboxes and len(bboxes) > 0:
@@ -139,17 +140,12 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                 spatial_extent = {'west': bbox[0], 'east': bbox[2], 'south': bbox[1], 'north': bbox[3],
                                   'crs': "EPSG:4326"}
 
-                dimensions_step = clean_tuple2((
+                dimensions_step = clean_number_pair((
                     self.get("cube:dimensions", "x", "step", default=None),
                     self.get("cube:dimensions", "y", "step", default=None)
                 ))
 
                 if dimensions_step:
-                    resolution_native = {
-                        "cell_width": dimensions_step[0],
-                        "cell_height": dimensions_step[1],
-                        "crs": crs,  # https://github.com/stac-extensions/datacube#dimension-object
-                    }
-                    resolution_meters = reproject_cellsize(spatial_extent, resolution_native, "Auto42001")
+                    resolution_meters = reproject_cellsize(spatial_extent, dimensions_step, crs, "Auto42001")
                     return resolution_meters
         return None
