@@ -578,15 +578,17 @@ def is_package_available(name: str) -> bool:
 
 def reproject_cellsize(
         spatial_extent: dict,
-        native_resolution: dict,  # cell_width, cell_height, crs
+        input_resolution: tuple,
+        input_crs: str,
         to_crs: str,
 ) -> Tuple[float, float]:
     """
     :param spatial_extent: The spatial extent is needed, because conversion is often
     different when done at the poles compared to the equator.
-    eg: When converting 1meter to degrees (in LatLon) at the North Pole, it can be 14% degrees more in LatLon
+    eg: When converting 1meter to degrees (in LatLon) at the North Pole, it can be way more degrees more in LatLon
     compared to the same conversion at the equator.
-    :param native_resolution:
+    :param input_resolution:
+    :param input_crs:
     :param to_crs:
     """
     if "crs" not in spatial_extent:
@@ -595,25 +597,24 @@ def reproject_cellsize(
     west, south = spatial_extent["west"], spatial_extent["south"]
     east, north = spatial_extent["east"], spatial_extent["north"]
     spatial_extent_shaply = box(west, south, east, north)
-    if to_crs == "Auto42001" or native_resolution["crs"] == "Auto42001":
+    if to_crs == "Auto42001" or input_crs == "Auto42001":
         # Find correct UTM zone
         utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
         if to_crs == "Auto42001":
             to_crs = utm_zone_crs
-        if native_resolution["crs"] == "Auto42001":
-            native_resolution = native_resolution.copy()
-            native_resolution["crs"] = utm_zone_crs
+        if input_crs == "Auto42001":
+            input_crs = utm_zone_crs
 
     p = spatial_extent_shaply.representative_point()
-    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], native_resolution["crs"], always_xy=True)
+    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], input_crs, always_xy=True)
     x, y = transformer.transform(p.x, p.y)
 
     cell_bbox = {
         "west": x,
-        "east": x + native_resolution["cell_width"],
+        "east": x + input_resolution[0],
         "south": y,
-        "north": y + native_resolution["cell_height"],
-        "crs": native_resolution["crs"]
+        "north": y + input_resolution[1],
+        "crs": input_crs
     }
     cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
 

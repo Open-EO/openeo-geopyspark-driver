@@ -278,48 +278,53 @@ spatial_extent_tap = {
 
 
 @pytest.mark.parametrize(
-    ["spatial_extent", "native_resolution", "to_crs", "expected"],
+    ["spatial_extent", "input_resolution", "input_crs", "to_crs", "expected"],
     [
         (
                 {'crs': 'EPSG:4326', 'east': 93.178583, 'north': 71.89922, 'south': -21.567515, 'west': -54.925613},
-                {'cell_height': 8.3333333333e-05, 'cell_width': 8.3333333333e-05, 'crs': 'EPSG:4326'},
+                (8.3333333333e-05, 8.3333333333e-05),
+                'EPSG:4326',
                 'Auto42001',
                 (8.529099359293468, 9.347610141150653),
         ),
         (
                 spatial_extent_tap,
-                {'cell_height': 8.3333333333e-05, 'cell_width': 8.3333333333e-05, 'crs': 'EPSG:4326'},
+                (8.3333333333e-05, 8.3333333333e-05),
+                'EPSG:4326',
                 'Auto42001',
                 (6.080971189774573, 9.430383333005011),
         ),
         (
                 spatial_extent_tap,
-                {'cell_height': 10, 'cell_width': 10, 'crs': 'Auto42001'},
+                (10, 10),
+                'Auto42001',
                 'EPSG:4326',
                 (0.0001471299295632278, 9.240073598704157e-05),
         ),
         (
                 # North of UTM zone:
                 {'east': 0.01, 'north': 83.01, 'south': 83, 'west': 0},
-                {'cell_height': 10, 'cell_width': 10, 'crs': 'EPSG:32632'},
+                (10, 10),
+                'EPSG:32632',
                 'EPSG:4326',
-                # note that here we have 14.6% more degrees for 10m compared to at the equator
+                # note that here we have 9x more degrees in the x-dimension for 10m compared to at the equator
                 (0.0008405907359465923, 0.00010237891864051107),
         ),
         (
                 # At equator:
                 {'east': 0.01, 'north': 0.01, 'south': 0, 'west': 0},
-                {'cell_height': 10, 'cell_width': 10, 'crs': 'EPSG:32632'},
+                (10, 10),
+                'EPSG:32632',
                 'EPSG:4326',
                 (0.0000887560370977725, 0.00008935420776900408)
         ),
     ],
 )
-def test_reproject_cellsize(spatial_extent, native_resolution, to_crs, expected):
-    projected_resolution = reproject_cellsize(spatial_extent, native_resolution, to_crs)
+def test_reproject_cellsize(spatial_extent: dict, input_resolution: tuple, input_crs: str,
+                            to_crs: str, expected: tuple):
+    projected_resolution = reproject_cellsize(spatial_extent, input_resolution, input_crs, to_crs)
     print(projected_resolution)
-    assert abs(projected_resolution[0] - expected[0]) < 1e-7
-    assert abs(projected_resolution[1] - expected[1]) < 1e-7
+    assert projected_resolution == tuple(pytest.approx(x, abs=1e-7) for x in expected)
 
 
 @pytest.mark.parametrize(
