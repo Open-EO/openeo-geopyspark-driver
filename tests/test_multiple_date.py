@@ -360,7 +360,7 @@ class TestMultipleDates(TestCase):
 
         layer = imagecollection.reduce_dimension(reducer('max'), dimension='t', env=EvalEnv()).pyramid.levels[0]
         stitched = layer.stitch()
-        assert 'float32' == layer.layer_metadata.cell_type
+        assert 'float32ud-1.0' == layer.layer_metadata.cell_type
         print(stitched)
         self.assertEqual(2.0, stitched.cells[0][0][0])
 
