@@ -1589,12 +1589,11 @@ class GpsProcessing(ConcreteProcessing):
                         bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
                         cell_width_latlon = bbox_width / 4
                         cell_height_latlon = bbox_height / 4
-                        native_resolution = {
-                            "cell_width": cell_width_latlon,
-                            "cell_height": cell_height_latlon,
-                            "crs": "EPSG:4326"
-                        }
-                        cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
+                        cell_width, cell_height = reproject_cellsize(spatial_extent,
+                                                                     (cell_width_latlon, cell_height_latlon),
+                                                                     "EPSG:4326",
+                                                                     "Auto42001",
+                                                                     )
                     else:
                         gsd_object = metadata.get_GSD_in_meters()
                         if isinstance(gsd_object, dict):
@@ -1610,12 +1609,9 @@ class GpsProcessing(ConcreteProcessing):
                         px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
                         m_per_px_average_band = 1 / px_per_m_average_band
 
-                        native_resolution = {
-                            "cell_width": m_per_px_average_band,
-                            "cell_height": m_per_px_average_band,
-                            "crs": "Auto42001"  # UTM is in meter
-                        }
-                        cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, native_crs)
+                        res = (m_per_px_average_band, m_per_px_average_band)
+                        # Auto42001 is in meter
+                        cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
 
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
