@@ -1600,7 +1600,7 @@ class GpsProcessing(ConcreteProcessing):
                         # We need to convert GSD to resolution in order to take an average:
                         px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
                         px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
-                        m_per_px_average_band = 1 / px_per_m_average_band  # TODO: Assure this is covered by tests
+                        m_per_px_average_band = 1 / px_per_m_average_band
 
                         native_resolution = {
                             "cell_width": m_per_px_average_band,
