@@ -1596,7 +1596,7 @@ class GeopysparkDataCube(DriverDataCube):
         def return_netcdf_assets(asset_paths, bands, nodata):
             assets = {}
             for asset in asset_paths:
-                if isinstance(asset, str):  # TODO: for backwards compatibility, remove eventually
+                if isinstance(asset, str):  # TODO: for backwards compatibility, remove eventually (#646)
                     path = asset
                     extent = None
                 else:
