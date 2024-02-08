@@ -302,6 +302,14 @@ spatial_extent_tap = {
                 (0.0001471299295632278, 9.240073598704157e-05),
         ),
         (
+                # North Pole is outside EPSG:32632, but still interesting:
+                {'east': 0.01, 'north': 89.999999, 'south': 89.999998, 'west': 0},
+                (1000, 1000),
+                'EPSG:32632',
+                'EPSG:4326',
+                (314.99451024025336, 0.012663855310563576),
+        ),
+        (
                 # North of UTM zone:
                 {'east': 0.01, 'north': 83.01, 'south': 83, 'west': 0},
                 (10, 10),

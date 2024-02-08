@@ -130,7 +130,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
         if crs == "EPSG:4326":
             # step could be expressed in LatLon or layer native crs.
-            # Only when the layer native CRS is LatLon, we can use it with safely
+            # Only when the layer native CRS is LatLon, we can trust it
             # https://github.com/stac-extensions/datacube#dimension-object
 
             bboxes = self.get("extent", "spatial", "bbox")
