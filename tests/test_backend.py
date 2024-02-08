@@ -146,7 +146,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["DEM"],
             "aggregate_spatial": {
                 "geometries": DriverVectorCube.from_geojson(polygon),
             },
@@ -218,7 +218,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["DEM"],
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(geom_coll),
             },
@@ -248,7 +248,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["DEM"],
             "aggregate_spatial": {
                 "geometries": shapely.geometry.GeometryCollection([polygon1, polygon2]),
             },
@@ -307,7 +307,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0, 'crs': 'EPSG:4326'},
-            "bands": ["B01", "B02", "B03", "B04", "B05"],
+            "bands": ['VV', 'VH', 'HV', 'HH'],
             "resample": {
                 "target_crs": "EPSG:4326",
                 "resolution": [10.0, 10.0],
@@ -317,7 +317,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
         (source_id2, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0, 'crs': 'EPSG:4326'},
-            "bands": ["VV", "VH"],
+            "bands": ["DEM"],
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(polygon),
             },
@@ -341,7 +341,7 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 60.0, 'crs': 'EPSG:4326'},
-            "bands": ["B01", "B02", "B03"],
+            "bands": ["DEM"],
             "resample": {
                 "target_crs": {
                     "id": {

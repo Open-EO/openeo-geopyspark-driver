@@ -1574,12 +1574,14 @@ class GpsProcessing(ConcreteProcessing):
                         ]
 
                 if spatial_extent and temporal_extent:
-                    bands = constraints.get(
-                        "bands",
-                        metadata.get("cube:dimensions", "bands", "values",
-                                     default=["_at_least_assume_one_band_"])
-                    )
-                    nr_bands = len(bands)
+                    band_names = constraints.get("bands")
+                    if band_names:
+                        # Will convert aliases:
+                        band_names = metadata.filter_bands(band_names).band_names
+                    else:
+                        band_names = metadata.get("cube:dimensions", "bands", "values",
+                                                  default=["_at_least_assume_one_band_"])
+                    nr_bands = len(band_names)
 
                     temporal_step = metadata.get("cube:dimensions", "t", "step", default=None)
 
@@ -1597,7 +1599,8 @@ class GpsProcessing(ConcreteProcessing):
                     else:
                         gsd_object = metadata.get_GSD_in_meters()
                         if isinstance(gsd_object, dict):
-                            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), bands))
+                            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
+                            gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
                         elif isinstance(gsd_object, tuple):
                             gsd_in_meter_list = [gsd_object] * nr_bands
                         else:
