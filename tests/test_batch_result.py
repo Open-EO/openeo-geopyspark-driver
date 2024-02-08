@@ -3,7 +3,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
 from openeo.metadata import Band
 
@@ -438,3 +438,90 @@ def test_spatial_geoparquet(tmp_path):
         'avg_band_0_': [1.0, 1.0],
         'avg_band_1_': [2.0, 2.0],
     }
+
+
+def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
+    job_spec = {"process_graph": {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-04", "2021-01-06"],
+                "bands": ["Flat:2"]
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "mean1": {
+                            "arguments": {
+                                "data": {
+                                    "from_parameter": "data"
+                                }
+                            },
+                            "process_id": "mean",
+                            "result": True
+                        }
+                    }
+                }
+            }
+        },
+        "filterspatial1": {
+            "process_id": "filter_spatial",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "geometries":  {
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+                    }, {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[0.725, -0.516], [2.99, -1.29], [2.279, 1.724], [0.725, -0.18],
+                                             [0.725, -0.516]]]
+                        }
+                    }]
+                }
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "filterspatial1"},
+                "format": "netCDF",
+                "options": {"sample_by_feature": True}
+            },
+            "result": True
+        }
+    }}
+
+    metadata_file = tmp_path / "metadata.json"
+    run_job(job_spec, output_file=tmp_path / "out", metadata_file=metadata_file,
+            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    assert metadata["bbox"] == [0.1, -1.29, 2.99, 1.8]
+
+    # expected: 2 assets with bboxes that correspond to the input features
+    assets = metadata["assets"]
+    assert len(assets) == 2
+
+    assert assets["openEO_0.nc"]["bbox"] == [0.1, 0.1, 1.8, 1.8]
+    assert (shape(assets["openEO_0.nc"]["geometry"]).normalize()
+            .almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize()))
+
+    assert assets["openEO_1.nc"]["bbox"] == [0.725, -1.29, 2.99, 1.724]
+    assert (shape(assets["openEO_1.nc"]["geometry"]).normalize()
+            .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))

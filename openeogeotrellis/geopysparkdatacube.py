@@ -1593,6 +1593,28 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
+        def return_netcdf_assets(asset_paths, bands, nodata):
+            assets = {}
+            for asset in asset_paths:
+                if isinstance(asset, str):  # TODO: for backwards compatibility, remove eventually
+                    path = asset
+                    extent = None
+                else:
+                    path = asset._1()
+                    extent = asset._2()
+                name = os.path.basename(path)
+                assets[name] = {
+                    "href": str(path),
+                    "type": "application/x-netcdf",
+                    "roles": ["data"],
+                    "bbox": to_latlng_bbox(extent) if extent else None,
+                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None,
+                    "nodata": nodata,
+                }
+                if bands is not None:
+                    assets[name]["bands"] = bands
+            return assets
+
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
             crs = bbox.get("crs") or "EPSG:4326"
@@ -1842,7 +1864,7 @@ class GeopysparkDataCube(DriverDataCube):
                         filename_prefix,
                     )
 
-                return self.return_netcdf_assets(asset_paths, bands, nodata)
+                return return_netcdf_assets(asset_paths, bands, nodata)
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = "openEO.nc" if originalName.name == "out" else originalName.name
@@ -1873,7 +1895,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 band_names,
                                 dim_names, global_metadata, zlevel
                                 )
-                    return self.return_netcdf_assets(asset_paths, bands, nodata)
+                    return return_netcdf_assets(asset_paths, bands, nodata)
 
                 else:
                     if not tiled:
@@ -1911,20 +1933,6 @@ class GeopysparkDataCube(DriverDataCube):
                 code="FormatUnsupported", status_code=400
             )
         return {str(os.path.basename(filename)):{"href":filename}}
-
-    def return_netcdf_assets(self, asset_paths, bands, nodata):
-        assets = {}
-        for p in asset_paths:
-            name = os.path.basename(p)
-            assets[name] = {
-                "href": str(p),
-                "type": "application/x-netcdf",
-                "roles": ["data"],
-                "nodata": nodata,
-            }
-            if bands is not None:
-                assets[name]["bands"] = bands
-        return assets
 
     def get_labels(self, geometries):
         if isinstance(geometries,DelayedVector):
