@@ -25,7 +25,7 @@ class OpenSearchOscars(OpenSearch):
             cache = {}
             start_index = 1
             while True:
-                url = f"{self.endpoint}/collections?startIndex={start_index}&count=200"
+                url = f"{self.endpoint}/collections?startIndex={start_index}&count=200&sortKeys=start"
                 logger.info(f"Getting collection metadata from {url}")
                 resp = requests.get(url=url)
                 resp.raise_for_status()
