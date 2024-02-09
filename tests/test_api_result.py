@@ -3821,6 +3821,51 @@ class TestLoadStac:
         assert ds.dims == {"t": 1, "x": 10, "y": 10}
         assert numpy.datetime_as_string(ds.coords["t"].values, unit='h', timezone='UTC').tolist() == ["2022-03-04T00Z"]
 
+    def test_load_stac_from_spatial_netcdf_job_results(self, api110, urllib_mock, tmp_path):
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace("asset01.nc",
+                         f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}")
+                .replace("asset02.nc",
+                         f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}")
+            )
+
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results",
+                        data=get_test_data_file("stac/issue646_spatial_netcdf/collection.json").read_text())
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
+                        data=item_json("stac/issue646_spatial_netcdf/item01.json"))
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_1.nc",
+                        data=item_json("stac/issue646_spatial_netcdf/item02.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results"}
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "netCDF"},
+                "result": True
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+
+        ds = xarray.load_dataset(res_path)
+
+        assert ds.dims["x"] == 13010
+        assert ds.dims["y"] == 773
+        # TODO: there's a "t" dimension that corresponds to the start_datetime of the two items; is this right?
+        assert list(ds.data_vars.keys())[1:] == ["B04", "B03", "B02"]
+        assert ds.coords["x"].values.min() == pytest.approx(572400.000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(5618660.000, abs=10)
+        assert ds.coords["x"].values.max() == pytest.approx(702500.000, abs=10)
+        assert ds.coords["y"].values.max() == pytest.approx(5626390.000, abs=10)
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
