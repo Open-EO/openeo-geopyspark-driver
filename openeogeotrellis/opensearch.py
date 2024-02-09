@@ -30,18 +30,18 @@ class OpenSearchOscars(OpenSearch):
                 resp = requests.get(url=url)
                 resp.raise_for_status()
                 json = resp.json()
-                features = json["features"]
+                collection = json["features"]
                 cache_length_before = len(cache)
-                for f in features:
+                for f in collection:
                     cache[f["id"]] = f
-                if cache_length_before == len(cache):
+
+                # If nothing got added, we're done.
+                if len(cache) == cache_length_before:
                     # could be because in auto-tests each page contains the same features.
                     # Or could be because we reached the end of the list.
                     break
-                if "totalResults" in json and json["totalResults"] <= len(cache):
-                    # This shortcut is not always available in test environment.
-                    break
-                start_index += len(features)
+                # We can't break the loop early using 'totalResults' as has shown to be unreliable.
+                start_index += len(collection)
 
             self._cache = cache
 
