@@ -1597,15 +1597,18 @@ class GpsProcessing(ConcreteProcessing):
                                                                      "Auto42001",
                                                                      )
                     else:
+                        # The largest GSD I encountered was 25km. Double it as very permissive guess:
+                        default_gsd = (50000, 50000)
                         gsd_object = metadata.get_GSD_in_meters()
                         if isinstance(gsd_object, dict):
                             gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
                             gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
+                            if not gsd_in_meter_list:
+                                gsd_in_meter_list = [default_gsd] * nr_bands
                         elif isinstance(gsd_object, tuple):
                             gsd_in_meter_list = [gsd_object] * nr_bands
                         else:
-                            # The largest GSD I encountered was 25km. Double it as very permissive guess:
-                            gsd_in_meter_list = [(50000, 50000)] * nr_bands
+                            gsd_in_meter_list = [default_gsd] * nr_bands
 
                         # We need to convert GSD to resolution in order to take an average:
                         px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
