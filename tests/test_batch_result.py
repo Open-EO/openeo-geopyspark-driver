@@ -518,14 +518,6 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assets = metadata["assets"]
     assert len(assets) == 2
 
-    assert "bbox" in assets["openEO_0.nc"]
-    assert "geometry" in assets["openEO_0.nc"]
-
-    assert "bbox" in assets["openEO_1.nc"]
-    assert "geometry" in assets["openEO_1.nc"]
-
-    return  # TODO: remove once openeo-geotrellis is updated to return extents (#646)
-
     assert assets["openEO_0.nc"]["bbox"] == [0.1, 0.1, 1.8, 1.8]
     assert (shape(assets["openEO_0.nc"]["geometry"]).normalize()
             .almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize()))
