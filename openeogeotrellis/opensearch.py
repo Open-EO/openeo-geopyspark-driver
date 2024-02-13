@@ -40,6 +40,9 @@ class OpenSearchOscars(OpenSearch):
                     # could be because in auto-tests each page contains the same features.
                     # Or could be because we reached the end of the list.
                     break
+                if len(cache) != cache_length_before + len(collection):
+                    raise Exception(
+                        f"Expected {len(collection)} features to be added for this page, but got {len(cache) - cache_length_before}")
                 # We can't break the loop early using 'totalResults' as has shown to be unreliable.
                 start_index += len(collection)
 
