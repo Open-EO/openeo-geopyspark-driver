@@ -2375,6 +2375,13 @@ class GpsBatchJobs(backend.BatchJobs):
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
             )
+            persistentvolume_batch_job_results_dict_ = k8s_render_manifest_template(
+                "persistentvolume_batch_job_results.yaml.j2",
+                job_name=spark_app_id,
+                job_namespace=pod_namespace,
+                output_dir=output_dir,
+                swift_bucket=bucket,
+            )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:
                 persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
