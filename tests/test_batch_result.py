@@ -512,7 +512,12 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
 
+    # the envelope of the input features
     assert metadata["bbox"] == [0.1, -1.29, 2.99, 1.8]
+
+    # analogous to GTiff
+    assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
+    assert metadata["end_datetime"] == "2021-01-06T00:00:00Z"
 
     # expected: 2 assets with bboxes that correspond to the input features
     assets = metadata["assets"]
