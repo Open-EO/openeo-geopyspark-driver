@@ -75,7 +75,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api, get_etl_api_credentials_from_env
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s
+from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s, k8s_render_manifest_template
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -2219,8 +2219,6 @@ class GpsBatchJobs(backend.BatchJobs):
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
             # TODO: eliminate these local imports
-            import yaml
-            from jinja2 import Environment, FileSystemLoader
             from kubernetes.client.rest import ApiException
 
             api_instance = kube_client()
@@ -2289,17 +2287,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
-            jinja_path = pkg_resources.resource_filename(
-                "openeogeotrellis.deploy", "sparkapplication.yaml.j2"
-            )
-            jinja_dir = os.path.dirname(jinja_path)
-            jinja_template = Environment(
-                loader=FileSystemLoader(jinja_dir)
-            ).from_string(open(jinja_path).read())
-
             spark_app_id = k8s_job_name()
 
-            rendered = jinja_template.render(
+            sparkapplication_dict_ = k8s_render_manifest_template(
+                "sparkapplication.yaml.j2",
                 job_name=spark_app_id,
                 job_namespace=pod_namespace,
                 job_specification=job_specification_file,
@@ -2346,12 +2337,30 @@ class GpsBatchJobs(backend.BatchJobs):
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
             )
+            persistentvolume_batch_job_results_dict_ = k8s_render_manifest_template(
+                "persistentvolume_batch_job_results.yaml.j2",
+                job_name=spark_app_id,
+                job_namespace=pod_namespace,
+                output_dir=output_dir,
+                swift_bucket=bucket,
+            )
 
-            dict_ = yaml.safe_load(rendered)
+            persistentvolumeclaim_batch_job_results_dict_ = k8s_render_manifest_template(
+                "persistentvolumeclaim_batch_job_results.yaml.j2",
+                job_name=spark_app_id,
+            )
 
             with self._double_job_registry as dbl_registry:
                 try:
-                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
+                    api_instance.create_persistent_volume(persistentvolume_batch_job_results_dict_, pretty=True)
+                except ApiException as e:
+                    print("Exception when calling CoreV1Api->create_persistent_volume: %s\n" % e)
+                try:
+                    api_instance.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict_, pretty=True)
+                except ApiException as e:
+                    print("Exception when calling CoreV1Api->create_namespaced_persistent_volume_claim: %s\n" % e)
+                try:
+                    submit_response_sparkapplication = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict_, pretty=True)
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}

@@ -2,7 +2,11 @@
 Utilities, helpers, adapters for integration with Kubernetes (K8s)
 """
 import logging
+import os
+import pkg_resources
+import yaml
 
+from jinja2 import Environment, FileSystemLoader
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.utils import generate_unique_id
 
@@ -66,3 +70,17 @@ def k8s_state_to_openeo_job_status(state: str) -> str:
         job_status = JOB_STATUS.QUEUED
     # TODO: is there a kubernetes state for canceled apps?
     return job_status
+
+def k8s_render_manifest_template(template, **kwargs) -> dict:
+    """ Load and render a provided kubernetes manifest jinja template with the passed kwargs """
+    jinja_path = pkg_resources.resource_filename(
+        "openeogeotrellis.deploy", template
+    )
+    jinja_dir = os.path.dirname(jinja_path)
+    jinja_template = Environment(
+        loader=FileSystemLoader(jinja_dir)
+    ).from_string(open(jinja_path).read())
+
+    rendered = jinja_template.render(**kwargs)
+
+    return yaml.safe_load(rendered)
