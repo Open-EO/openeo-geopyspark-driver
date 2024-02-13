@@ -25,6 +25,8 @@ class OpenSearchOscars(OpenSearch):
             cache = {}
             start_index = 1
             while True:
+                # When no sortKeys is specified default should be 'id'
+                # https://git.vito.be/projects/BIGGEO/repos/oscars/browse/src/main/java/be/vito/opensearch/elasticsearch/SearchOperation.java#85
                 url = f"{self.endpoint}/collections?startIndex={start_index}&count=200"
                 logger.info(f"Getting collection metadata from {url}")
                 resp = requests.get(url=url)
