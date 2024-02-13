@@ -32,21 +32,21 @@ class OpenSearchOscars(OpenSearch):
                 resp = requests.get(url=url)
                 resp.raise_for_status()
                 json = resp.json()
-                collection = json["features"]
+                collections = json["features"]
                 cache_length_before = len(cache)
-                for f in collection:
-                    cache[f["id"]] = f
+                for collection in collections:
+                    cache[collection["id"]] = collection
 
                 # If nothing got added, we're done.
                 if len(cache) == cache_length_before:
                     # could be because in auto-tests each page contains the same features.
                     # Or could be because we reached the end of the list.
                     break
-                if len(cache) != cache_length_before + len(collection):
+                if len(cache) != cache_length_before + len(collections):
                     logger.warning(
-                        f"Expected {len(collection)} features to be added for this page, but got {len(cache) - cache_length_before}")
+                        f"Expected {len(collections)} features to be added for this page, but got {len(cache) - cache_length_before}")
                 # We can't break the loop early using 'totalResults' as has shown to be unreliable.
-                start_index += len(collection)
+                start_index += len(collections)
 
             self._cache = cache
 
