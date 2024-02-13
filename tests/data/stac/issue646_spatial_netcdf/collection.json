@@ -1,0 +1,1033 @@
+{
+    "assets": {
+        "openEO_0.nc": {
+            "eo:bands": [
+                {
+                    "center_wavelength": 0.6646,
+                    "name": "B04"
+                },
+                {
+                    "center_wavelength": 0.5598,
+                    "name": "B03"
+                },
+                {
+                    "center_wavelength": 0.4924,
+                    "name": "B02"
+                }
+            ],
+            "file:nodata": [
+                "nan"
+            ],
+            "file:size": 119015,
+            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2402094545c945c09e1307503aa58a3a/results/assets/.../openEO_0.nc?expires=1708348433",
+            "proj:bbox": [
+                701040.0,
+                5625050.0,
+                702330.0,
+                5626340.0
+            ],
+            "proj:epsg": 32631,
+            "proj:shape": [
+                129,
+                129
+            ],
+            "raster:bands": [
+                {
+                    "name": "B04",
+                    "statistics": {
+                        "maximum": 4756.181640625,
+                        "mean": 3963.8233204942,
+                        "minimum": 3433.9167480469,
+                        "stddev": 224.14451082989,
+                        "valid_percent": 77.17
+                    }
+                },
+                {
+                    "name": "B03",
+                    "statistics": {
+                        "maximum": 4821.75,
+                        "mean": 4137.2229702374,
+                        "minimum": 3595.9167480469,
+                        "stddev": 208.33114849268,
+                        "valid_percent": 77.17
+                    }
+                },
+                {
+                    "name": "B02",
+                    "statistics": {
+                        "maximum": 5116.3334960938,
+                        "mean": 4453.3180043236,
+                        "minimum": 3936.8332519531,
+                        "stddev": 218.03089377868,
+                        "valid_percent": 77.17
+                    }
+                }
+            ],
+            "roles": [
+                "data"
+            ],
+            "title": "openEO_0.nc",
+            "type": "application/x-netcdf"
+        },
+        "openEO_1.nc": {
+            "eo:bands": [
+                {
+                    "center_wavelength": 0.6646,
+                    "name": "B04"
+                },
+                {
+                    "center_wavelength": 0.5598,
+                    "name": "B03"
+                },
+                {
+                    "center_wavelength": 0.4924,
+                    "name": "B02"
+                }
+            ],
+            "file:nodata": [
+                "nan"
+            ],
+            "file:size": 120941,
+            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2402094545c945c09e1307503aa58a3a/results/assets/.../openEO_1.nc?expires=1708348433",
+            "proj:bbox": [
+                572460.0,
+                5618670.0,
+                573750.0,
+                5619960.0
+            ],
+            "proj:epsg": 32631,
+            "proj:shape": [
+                129,
+                129
+            ],
+            "raster:bands": [
+                {
+                    "name": "B04",
+                    "statistics": {
+                        "maximum": 5320.0,
+                        "mean": 3962.5161938258,
+                        "minimum": 2788.1667480469,
+                        "stddev": 475.18372412026,
+                        "valid_percent": 77.25
+                    }
+                },
+                {
+                    "name": "B03",
+                    "statistics": {
+                        "maximum": 5492.5,
+                        "mean": 4144.9265398237,
+                        "minimum": 3009.5,
+                        "stddev": 455.46939308863,
+                        "valid_percent": 77.25
+                    }
+                },
+                {
+                    "name": "B02",
+                    "statistics": {
+                        "maximum": 6149.0,
+                        "mean": 4522.1923474686,
+                        "minimum": 3288.0,
+                        "stddev": 472.53337439154,
+                        "valid_percent": 77.25
+                    }
+                }
+            ],
+            "roles": [
+                "data"
+            ],
+            "title": "openEO_1.nc",
+            "type": "application/x-netcdf"
+        }
+    },
+    "description": "Results for batch job j-2402094545c945c09e1307503aa58a3a",
+    "extent": {
+        "spatial": {
+            "bbox": [
+                [
+                    4.026520777150446,
+                    50.715311366250276,
+                    5.86814159932794,
+                    50.75369694864856
+                ]
+            ]
+        },
+        "temporal": {
+            "interval": [
+                [
+                    "2022-01-01T00:00:00Z",
+                    "2022-02-01T00:00:00Z"
+                ]
+            ]
+        }
+    },
+    "id": "j-2402094545c945c09e1307503aa58a3a",
+    "license": "proprietary",
+    "links": [
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220127T104321_N0400_R008_T31UFS_20220127T151103",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220127T104321_N0400_R008_T31UFS_20220127T151103",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220102T104339_N0301_R008_T31UGS_20220102T122433",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220102T104339_N0301_R008_T31UGS_20220102T122433",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220115T105309_N0301_R051_T31UES_20220115T123714",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220115T105309_N0301_R051_T31UES_20220115T123714",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220127T104321_N0400_R008_T31UGS_20220127T151103",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220127T104321_N0400_R008_T31UGS_20220127T151103",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220125T105229_N0400_R051_T31UGS_20220125T151458",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220125T105229_N0400_R051_T31UGS_20220125T151458",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220120T105351_N0301_R051_T31UGS_20220120T153331",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220120T105351_N0301_R051_T31UGS_20220120T153331",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220107T104431_N0301_R008_T31UFS_20220107T133719",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220107T104431_N0301_R008_T31UFS_20220107T133719",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220130T105301_N0400_R051_T31UES_20220130T155707",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220130T105301_N0400_R051_T31UES_20220130T155707",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220112T104319_N0301_R008_T31UGS_20220112T123824",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220112T104319_N0301_R008_T31UGS_20220112T123824",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220110T105421_N0301_R051_T31UES_20220110T134921",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220110T105421_N0301_R051_T31UES_20220110T134921",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220105T105339_N0301_R051_T31UES_20220105T134509",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220105T105339_N0301_R051_T31UES_20220105T134509",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220115T105309_N0301_R051_T31UGS_20220115T123714",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220115T105309_N0301_R051_T31UGS_20220115T123714",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220105T105339_N0301_R051_T31UFS_20220105T134509",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220105T105339_N0301_R051_T31UFS_20220105T134509",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220105T105339_N0301_R051_T31UGS_20220105T134509",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220105T105339_N0301_R051_T31UGS_20220105T134509",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220125T105229_N0400_R051_T31UES_20220125T151458",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220125T105229_N0400_R051_T31UES_20220125T151458",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220110T105421_N0301_R051_T31UFS_20220110T134921",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220110T105421_N0301_R051_T31UFS_20220110T134921",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220115T105309_N0301_R051_T31UFS_20220115T123714",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220115T105309_N0301_R051_T31UFS_20220115T123714",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220122T104239_N0301_R008_T31UGS_20220122T121827",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220122T104239_N0301_R008_T31UGS_20220122T121827",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220117T104401_N0301_R008_T31UFS_20220117T133951",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220117T104401_N0301_R008_T31UFS_20220117T133951",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220125T105229_N0400_R051_T31UFS_20220125T151458",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220125T105229_N0400_R051_T31UFS_20220125T151458",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220117T104401_N0301_R008_T31UGS_20220117T133951",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220117T104401_N0301_R008_T31UGS_20220117T133951",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220112T104319_N0301_R008_T31UFS_20220112T123824",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220112T104319_N0301_R008_T31UFS_20220112T123824",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220102T104339_N0301_R008_T31UFS_20220102T122433",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220102T104339_N0301_R008_T31UFS_20220102T122433",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2B_MSIL2A_20220122T104239_N0301_R008_T31UFS_20220122T121827",
+            "rel": "derived_from",
+            "title": "Derived from S2B_MSIL2A_20220122T104239_N0301_R008_T31UFS_20220122T121827",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220130T105301_N0400_R051_T31UGS_20220130T155707",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220130T105301_N0400_R051_T31UGS_20220130T155707",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220107T104431_N0301_R008_T31UGS_20220107T133719",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220107T104431_N0301_R008_T31UGS_20220107T133719",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220110T105421_N0301_R051_T31UGS_20220110T134921",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220110T105421_N0301_R051_T31UGS_20220110T134921",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220120T105351_N0301_R051_T31UES_20220120T153331",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220120T105351_N0301_R051_T31UES_20220120T153331",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220120T105351_N0301_R051_T31UFS_20220120T153331",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220120T105351_N0301_R051_T31UFS_20220120T153331",
+            "type": "application/json"
+        },
+        {
+            "href": "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/collections/sentinel-2-l2a/items/S2A_MSIL2A_20220130T105301_N0400_R051_T31UFS_20220130T155707",
+            "rel": "derived_from",
+            "title": "Derived from S2A_MSIL2A_20220130T105301_N0400_R051_T31UFS_20220130T155707",
+            "type": "application/json"
+        },
+        {
+            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2402094545c945c09e1307503aa58a3a/results",
+            "rel": "self",
+            "type": "application/json"
+        },
+        {
+            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2402094545c945c09e1307503aa58a3a/results/...?expires=1708348433",
+            "rel": "canonical",
+            "type": "application/json"
+        },
+        {
+            "href": "http://ceos.org/ard/files/PFS/SR/v5.0/CARD4L_Product_Family_Specification_Surface_Reflectance-v5.0.pdf",
+            "rel": "card4l-document",
+            "type": "application/pdf"
+        },
+        {
+            "href": "results/items/openEO_0.nc",
+            "rel": "item",
+            "type": "application/geo+json"
+        },
+        {
+            "href": "results/items/openEO_1.nc",
+            "rel": "item",
+            "type": "application/geo+json"
+        }
+    ],
+    "openeo:status": "finished",
+    "providers": [
+        {
+            "description": "This data was processed on an openEO backend maintained by VITO.",
+            "name": "VITO",
+            "processing:expression": [
+                {
+                    "expression": {
+                        "filterspatial1": {
+                            "arguments": {
+                                "data": {
+                                    "from_node": "reducedimension1"
+                                },
+                                "geometries": {
+                                    "bbox": [
+                                        3.7640862009953504,
+                                        50.71140778609438,
+                                        5.868736586345964,
+                                        50.98781846363584
+                                    ],
+                                    "features": [
+                                        {
+                                            "bbox": [
+                                                5.850020813527247,
+                                                50.742200392309854,
+                                                5.86814159932794,
+                                                50.75369694864856
+                                            ],
+                                            "geometry": {
+                                                "coordinates": [
+                                                    [
+                                                        [
+                                                            5.86814159932794,
+                                                            50.74772601618261
+                                                        ],
+                                                        [
+                                                            5.868063519227742,
+                                                            50.74716366462137
+                                                        ],
+                                                        [
+                                                            5.867898939827394,
+                                                            50.746608876205926
+                                                        ],
+                                                        [
+                                                            5.867649449011399,
+                                                            50.74606699344444
+                                                        ],
+                                                        [
+                                                            5.867317452114388,
+                                                            50.74554323438837
+                                                        ],
+                                                        [
+                                                            5.86690614865651,
+                                                            50.745042642401955
+                                                        ],
+                                                        [
+                                                            5.866419501445479,
+                                                            50.744570037619525
+                                                        ],
+                                                        [
+                                                            5.865862198346145,
+                                                            50.74412997055737
+                                                        ],
+                                                        [
+                                                            5.865239607088253,
+                                                            50.743726678325245
+                                                        ],
+                                                        [
+                                                            5.864557723549439,
+                                                            50.74336404385837
+                                                        ],
+                                                        [
+                                                            5.863823114012297,
+                                                            50.74304555856046
+                                                        ],
+                                                        [
+                                                            5.863042851951726,
+                                                            50.74277428871682
+                                                        ],
+                                                        [
+                                                            5.862224449960218,
+                                                            50.742552845998866
+                                                        ],
+                                                        [
+                                                            5.8613757874650485,
+                                                            50.742383362343304
+                                                        ],
+                                                        [
+                                                            5.860505034930811,
+                                                            50.74226746944644
+                                                        ],
+                                                        [
+                                                            5.85962057527398,
+                                                            50.74220628307012
+                                                        ],
+                                                        [
+                                                            5.858730923242478,
+                                                            50.742200392309854
+                                                        ],
+                                                        [
+                                                            5.85784464353239,
+                                                            50.74224985392766
+                                                        ],
+                                                        [
+                                                            5.8569702684258385,
+                                                            50.742354191804324
+                                                        ],
+                                                        [
+                                                            5.856116215738561,
+                                                            50.742512401516066
+                                                        ],
+                                                        [
+                                                            5.85529070786296,
+                                                            50.742722959992065
+                                                        ],
+                                                        [
+                                                            5.854501692681889,
+                                                            50.742983840160356
+                                                        ],
+                                                        [
+                                                            5.85375676711108,
+                                                            50.743292530442
+                                                        ],
+                                                        [
+                                                            5.853063104003238,
+                                                            50.74364605890664
+                                                        ],
+                                                        [
+                                                            5.852427383115201,
+                                                            50.7440410218583
+                                                        ],
+                                                        [
+                                                            5.851855726801246,
+                                                            50.74447361657734
+                                                        ],
+                                                        [
+                                                            5.851353641050959,
+                                                            50.744939677904675
+                                                        ],
+                                                        [
+                                                            5.850925962439498,
+                                                            50.745434718317505
+                                                        ],
+                                                        [
+                                                            5.850576811502134,
+                                                            50.745953971111895
+                                                        ],
+                                                        [
+                                                            5.850309552983783,
+                                                            50.74649243627785
+                                                        ],
+                                                        [
+                                                            5.850126763349029,
+                                                            50.74704492862601
+                                                        ],
+                                                        [
+                                                            5.85003020586876,
+                                                            50.74760612770366
+                                                        ],
+                                                        [
+                                                            5.850020813527247,
+                                                            50.74817062902018
+                                                        ],
+                                                        [
+                                                            5.850098679918526,
+                                                            50.7487329960889
+                                                        ],
+                                                        [
+                                                            5.850263058224354,
+                                                            50.74928781278463
+                                                        ],
+                                                        [
+                                                            5.850512368288179,
+                                                            50.7498297355124
+                                                        ],
+                                                        [
+                                                            5.85084421172157,
+                                                            50.75035354468489
+                                                        ],
+                                                        [
+                                                            5.851255394901903,
+                                                            50.750854195011925
+                                                        ],
+                                                        [
+                                                            5.85174195964366,
+                                                            50.75132686411714
+                                                        ],
+                                                        [
+                                                            5.852299221251242,
+                                                            50.7517669990124
+                                                        ],
+                                                        [
+                                                            5.852921813589404,
+                                                            50.752170359981115
+                                                        ],
+                                                        [
+                                                            5.853603740739004,
+                                                            50.752533061446584
+                                                        ],
+                                                        [
+                                                            5.854338434741502,
+                                                            50.75285160943037
+                                                        ],
+                                                        [
+                                                            5.855118818876051,
+                                                            50.75312293523819
+                                                        ],
+                                                        [
+                                                            5.855937375858921,
+                                                            50.75334442504794
+                                                        ],
+                                                        [
+                                                            5.856786220306605,
+                                                            50.753513945113205
+                                                        ],
+                                                        [
+                                                            5.857657174762175,
+                                                            50.75362986233849
+                                                        ],
+                                                        [
+                                                            5.858541848549437,
+                                                            50.75369106002703
+                                                        ],
+                                                        [
+                                                            5.859431718691553,
+                                                            50.75369694864856
+                                                        ],
+                                                        [
+                                                            5.860318212110568,
+                                                            50.75364747152327
+                                                        ],
+                                                        [
+                                                            5.861192788311647,
+                                                            50.753543105366305
+                                                        ],
+                                                        [
+                                                            5.862047021751097,
+                                                            50.753384855688275
+                                                        ],
+                                                        [
+                                                            5.862872683090319,
+                                                            50.753174247095856
+                                                        ],
+                                                        [
+                                                            5.863661818548933,
+                                                            50.75291330858694
+                                                        ],
+                                                        [
+                                                            5.864406826589008,
+                                                            50.7526045539825
+                                                        ],
+                                                        [
+                                                            5.865100531188594,
+                                                            50.75225095768478
+                                                        ],
+                                                        [
+                                                            5.865736250996348,
+                                                            50.75185592599652
+                                                        ],
+                                                        [
+                                                            5.866307863699511,
+                                                            50.7514232642789
+                                                        ],
+                                                        [
+                                                            5.8668098649844325,
+                                                            50.75095714026568
+                                                        ],
+                                                        [
+                                                            5.867237421521911,
+                                                            50.75046204388868
+                                                        ],
+                                                        [
+                                                            5.867586417467913,
+                                                            50.74994274400249
+                                                        ],
+                                                        [
+                                                            5.867853494033754,
+                                                            50.749404242426806
+                                                        ],
+                                                        [
+                                                            5.8680360817471815,
+                                                            50.74885172575023
+                                                        ],
+                                                        [
+                                                            5.86813242509703,
+                                                            50.748290515360395
+                                                        ],
+                                                        [
+                                                            5.86814159932794,
+                                                            50.74772601618261
+                                                        ]
+                                                    ]
+                                                ],
+                                                "type": "Polygon"
+                                            },
+                                            "id": "75",
+                                            "properties": {},
+                                            "type": "Feature"
+                                        },
+                                        {
+                                            "bbox": [
+                                                4.026520777150446,
+                                                50.715311366250276,
+                                                4.044650824268634,
+                                                50.726820437589055
+                                            ],
+                                            "geometry": {
+                                                "coordinates": [
+                                                    [
+                                                        [
+                                                            4.044650824268634,
+                                                            50.720985032675905
+                                                        ],
+                                                        [
+                                                            4.044594633192789,
+                                                            50.720421382233596
+                                                        ],
+                                                        [
+                                                            4.0444516860431765,
+                                                            50.71986394207335
+                                                        ],
+                                                        [
+                                                            4.044223362442262,
+                                                            50.719318080317734
+                                                        ],
+                                                        [
+                                                            4.043911863977855,
+                                                            50.71878905340787
+                                                        ],
+                                                        [
+                                                            4.043520192896647,
+                                                            50.7182819555005
+                                                        ],
+                                                        [
+                                                            4.0430521231008285,
+                                                            50.717801669433946
+                                                        ],
+                                                        [
+                                                            4.042512163730565,
+                                                            50.717352819734025
+                                                        ],
+                                                        [
+                                                            4.041905515685845,
+                                                            50.71693972811177
+                                                        ],
+                                                        [
+                                                            4.041238021508441,
+                                                            50.716566371879594
+                                                        ],
+                                                        [
+                                                            4.040516109107794,
+                                                            50.716236345685545
+                                                        ],
+                                                        [
+                                                            4.039746729873098,
+                                                            50.71595282693242
+                                                        ],
+                                                        [
+                                                            4.0389372917668895,
+                                                            50.71571854521328
+                                                        ],
+                                                        [
+                                                            4.038095588043053,
+                                                            50.71553575605656
+                                                        ],
+                                                        [
+                                                            4.037229722273341,
+                                                            50.71540621923228
+                                                        ],
+                                                        [
+                                                            4.036348030401404,
+                                                            50.71533118182704
+                                                        ],
+                                                        [
+                                                            4.0354590005713025,
+                                                            50.715311366250276
+                                                        ],
+                                                        [
+                                                            4.034571191498449,
+                                                            50.71534696328623
+                                                        ],
+                                                        [
+                                                            4.033693150164635,
+                                                            50.715437630258634
+                                                        ],
+                                                        [
+                                                            4.032833329625177,
+                                                            50.71558249432537
+                                                        ],
+                                                        [
+                                                            4.032000007715174,
+                                                            50.71578016087168
+                                                        ],
+                                                        [
+                                                            4.031201207433409,
+                                                            50.7160287269217
+                                                        ],
+                                                        [
+                                                            4.030444619766625,
+                                                            50.7163257994398
+                                                        ],
+                                                        [
+                                                            4.029737529694001,
+                                                            50.716668518346374
+                                                        ],
+                                                        [
+                                                            4.029086746081618,
+                                                            50.71705358402776
+                                                        ],
+                                                        [
+                                                            4.028498536140032,
+                                                            50.71747728907659
+                                                        ],
+                                                        [
+                                                            4.027978565075017,
+                                                            50.71793555395831
+                                                        ],
+                                                        [
+                                                            4.027531841512345,
+                                                            50.71842396626174
+                                                        ],
+                                                        [
+                                                            4.0271626692228475,
+                                                            50.71893782315731
+                                                        ],
+                                                        [
+                                                            4.0268746056141405,
+                                                            50.71947217665527
+                                                        ],
+                                                        [
+                                                            4.0266704273911,
+                                                            50.720021881229464
+                                                        ],
+                                                        [
+                                                            4.026552103718859,
+                                                            50.72058164334865
+                                                        ],
+                                                        [
+                                                            4.026520777150446,
+                                                            50.72114607244
+                                                        ],
+                                                        [
+                                                            4.0265767525069025,
+                                                            50.721709732793805
+                                                        ],
+                                                        [
+                                                            4.026719493821454,
+                                                            50.722267195910426
+                                                        ],
+                                                        [
+                                                            4.026947629381756,
+                                                            50.7228130927851
+                                                        ],
+                                                        [
+                                                            4.027258964826299,
+                                                            50.7233421656271
+                                                        ],
+                                                        [
+                                                            4.027650504173149,
+                                                            50.723849318514524
+                                                        ],
+                                                        [
+                                                            4.028118478582597,
+                                                            50.72432966649624
+                                                        ],
+                                                        [
+                                                            4.028658382580118,
+                                                            50.72477858266701
+                                                        ],
+                                                        [
+                                                            4.029265017393671,
+                                                            50.72519174276139
+                                                        ],
+                                                        [
+                                                            4.02993254098995,
+                                                            50.72556516683562
+                                                        ],
+                                                        [
+                                                            4.030654524328963,
+                                                            50.72589525763451
+                                                        ],
+                                                        [
+                                                            4.0314240132953945,
+                                                            50.72617883527256
+                                                        ],
+                                                        [
+                                                            4.032233595709779,
+                                                            50.72641316789379
+                                                        ],
+                                                        [
+                                                            4.033075472772551,
+                                                            50.72659599801358
+                                                        ],
+                                                        [
+                                                            4.03394153425064,
+                                                            50.726725564287776
+                                                        ],
+                                                        [
+                                                            4.034823436679431,
+                                                            50.72680061849801
+                                                        ],
+                                                        [
+                                                            4.035712683823281,
+                                                            50.726820437589055
+                                                        ],
+                                                        [
+                                                            4.0366007086155316,
+                                                            50.72678483064161
+                                                        ],
+                                                        [
+                                                            4.037478955784415,
+                                                            50.72669414071282
+                                                        ],
+                                                        [
+                                                            4.03833896436449,
+                                                            50.726549241527024
+                                                        ],
+                                                        [
+                                                            4.039172449294358,
+                                                            50.72635152904858
+                                                        ],
+                                                        [
+                                                            4.039971381310479,
+                                                            50.72610290801849
+                                                        ],
+                                                        [
+                                                            4.040728064363629,
+                                                            50.725805773585236
+                                                        ],
+                                                        [
+                                                            4.041435209808985,
+                                                            50.725462988207816
+                                                        ],
+                                                        [
+                                                            4.042086006652524,
+                                                            50.72507785405431
+                                                        ],
+                                                        [
+                                                            4.042674187175226,
+                                                            50.724654081163436
+                                                        ],
+                                                        [
+                                                            4.043194087301867,
+                                                            50.72419575167685
+                                                        ],
+                                                        [
+                                                            4.043640701132799,
+                                                            50.723707280488505
+                                                        ],
+                                                        [
+                                                            4.0440097291141175,
+                                                            50.72319337269088
+                                                        ],
+                                                        [
+                                                            4.044297619383893,
+                                                            50.722658978229795
+                                                        ],
+                                                        [
+                                                            4.044501601898563,
+                                                            50.72210924420572
+                                                        ],
+                                                        [
+                                                            4.044619715013959,
+                                                            50.721549465281534
+                                                        ],
+                                                        [
+                                                            4.044650824268634,
+                                                            50.720985032675905
+                                                        ]
+                                                    ]
+                                                ],
+                                                "type": "Polygon"
+                                            },
+                                            "id": "76",
+                                            "properties": {},
+                                            "type": "Feature"
+                                        }
+                                    ],
+                                    "type": "FeatureCollection"
+                                }
+                            },
+                            "process_id": "filter_spatial"
+                        },
+                        "loadcollection1": {
+                            "arguments": {
+                                "bands": [
+                                    "B04",
+                                    "B03",
+                                    "B02"
+                                ],
+                                "id": "SENTINEL2_L2A",
+                                "spatial_extent": null,
+                                "temporal_extent": [
+                                    "2022-01-01",
+                                    "2022-02-01"
+                                ]
+                            },
+                            "process_id": "load_collection"
+                        },
+                        "reducedimension1": {
+                            "arguments": {
+                                "data": {
+                                    "from_node": "loadcollection1"
+                                },
+                                "dimension": "t",
+                                "reducer": {
+                                    "process_graph": {
+                                        "mean1": {
+                                            "arguments": {
+                                                "data": {
+                                                    "from_parameter": "data"
+                                                }
+                                            },
+                                            "process_id": "mean",
+                                            "result": true
+                                        }
+                                    }
+                                }
+                            },
+                            "process_id": "reduce_dimension"
+                        },
+                        "saveresult1": {
+                            "arguments": {
+                                "data": {
+                                    "from_node": "filterspatial1"
+                                },
+                                "format": "netCDF",
+                                "options": {
+                                    "sample_by_feature": true
+                                }
+                            },
+                            "process_id": "save_result",
+                            "result": true
+                        }
+                    },
+                    "format": "openeo"
+                }
+            ],
+            "processing:facility": "openEO Geotrellis backend",
+            "processing:software": {
+                "Geotrellis backend": "0.27.0a1"
+            },
+            "roles": [
+                "processor"
+            ]
+        }
+    ],
+    "stac_extensions": [
+        "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+        "https://stac-extensions.github.io/processing/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/projection/v1.1.0/schema.json"
+    ],
+    "stac_version": "1.0.0",
+    "summaries": {
+        "instruments": [
+            "msi"
+        ]
+    },
+    "title": "check if netCDF assets carry proper \"bbox\" and \"geometry\"",
+    "type": "Collection"
+}
