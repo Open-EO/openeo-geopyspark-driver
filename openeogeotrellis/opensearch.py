@@ -25,7 +25,7 @@ class OpenSearchOscars(OpenSearch):
             cache = {}
             start_index = 1
             while True:
-                url = f"{self.endpoint}/collections?startIndex={start_index}&count=200&sortKeys=start"
+                url = f"{self.endpoint}/collections?startIndex={start_index}&count=200"
                 logger.info(f"Getting collection metadata from {url}")
                 resp = requests.get(url=url)
                 resp.raise_for_status()
@@ -41,7 +41,7 @@ class OpenSearchOscars(OpenSearch):
                     # Or could be because we reached the end of the list.
                     break
                 if len(cache) != cache_length_before + len(collection):
-                    raise Exception(
+                    logger.warning(
                         f"Expected {len(collection)} features to be added for this page, but got {len(cache) - cache_length_before}")
                 # We can't break the loop early using 'totalResults' as has shown to be unreliable.
                 start_index += len(collection)
