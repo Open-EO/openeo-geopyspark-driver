@@ -2221,7 +2221,8 @@ class GpsBatchJobs(backend.BatchJobs):
             # TODO: eliminate these local imports
             from kubernetes.client.rest import ApiException
 
-            api_instance = kube_client()
+            api_instance_custom_object = kube_client("CustomObject")
+            api_instance_core = kube_client("Core")
             pod_namespace = ConfigParams().pod_namespace
 
             # Check concurrent_pod_limit constraints.
@@ -2238,7 +2239,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if concurrent_pod_limit != 0:
                 label_selector = f"user={user_id}"
                 try:
-                    result = api_instance.list_namespaced_custom_object(
+                    result = api_instance_custom_object.list_namespaced_custom_object(
                         "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
                         label_selector = label_selector
                     )
@@ -2352,15 +2353,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
             with self._double_job_registry as dbl_registry:
                 try:
-                    api_instance.create_persistent_volume(persistentvolume_batch_job_results_dict_, pretty=True)
+                    api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict_, pretty=True)
                 except ApiException as e:
                     print("Exception when calling CoreV1Api->create_persistent_volume: %s\n" % e)
                 try:
-                    api_instance.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict_, pretty=True)
+                    api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict_, pretty=True)
                 except ApiException as e:
                     print("Exception when calling CoreV1Api->create_namespaced_persistent_volume_claim: %s\n" % e)
                 try:
-                    submit_response_sparkapplication = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict_, pretty=True)
+                    submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict_, pretty=True)
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
@@ -2369,7 +2370,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         retry+=1
                         time.sleep(10)
                         try:
-                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                            status_response = api_instance_custom_object.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
                                                                                         spark_app_id)
                         except ApiException as e:
                             log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
@@ -3093,14 +3094,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
-                api_instance = kube_client()
+                api_instance_custom_object = kube_client("CustomObject")
                 group = "sparkoperator.k8s.io"
                 version = "v1beta2"
                 namespace = ConfigParams().pod_namespace
                 plural = "sparkapplications"
                 name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
-                delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
+                delete_response = api_instance_custom_object.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(
                     f"Killed corresponding Spark job {application_id} with kubernetes API call "
                     f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",

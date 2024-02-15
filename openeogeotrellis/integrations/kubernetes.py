@@ -12,13 +12,17 @@ from openeo_driver.utils import generate_unique_id
 
 _log = logging.getLogger(__name__)
 
-def kube_client():
+def kube_client(api_type):
     from kubernetes import client, config
 
     config.load_incluster_config()
-    api_instance = client.CustomObjectsApi()
-    return api_instance
 
+    if api_type == "CustomObject":
+        api_instance = client.CustomObjectsApi()
+    elif api_type == "Core":
+        api_instance = client.CoreV1Api()
+
+    return api_instance
 
 def truncate_job_id_k8s(job_id: str) -> str:
     if job_id.startswith("j-"):
