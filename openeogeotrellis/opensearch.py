@@ -22,11 +22,34 @@ class OpenSearchOscars(OpenSearch):
 
     def _get_collection(self, collection_id: str) -> dict:
         if not self._cache:
-            url = self.endpoint + "/collections"
-            logger.info(f"Getting collection metadata from {url}")
-            resp = requests.get(url=url)
-            resp.raise_for_status()
-            self._cache = {f["id"]: f for f in resp.json()["features"]}
+            cache = {}
+            start_index = 1
+            while True:
+                # When no sortKeys is specified default should be 'id'
+                # https://git.vito.be/projects/BIGGEO/repos/oscars/browse/src/main/java/be/vito/opensearch/elasticsearch/SearchOperation.java#85
+                url = f"{self.endpoint}/collections?startIndex={start_index}&count=200"
+                logger.info(f"Getting collection metadata from {url}")
+                resp = requests.get(url=url)
+                resp.raise_for_status()
+                json = resp.json()
+                collections = json["features"]
+                cache_length_before = len(cache)
+                for collection in collections:
+                    cache[collection["id"]] = collection
+
+                # If nothing got added, we're done.
+                if len(cache) == cache_length_before:
+                    # could be because in auto-tests each page contains the same features.
+                    # Or could be because we reached the end of the list.
+                    break
+                if len(cache) != cache_length_before + len(collections):
+                    logger.warning(
+                        f"Expected {len(collections)} features to be added for this page, but got {len(cache) - cache_length_before}")
+                # We can't break the loop early using 'totalResults' as has shown to be unreliable.
+                start_index += len(collections)
+
+            self._cache = cache
+
         return self._cache[collection_id]
 
     def get_metadata(self, collection_id: str) -> dict:
