@@ -633,7 +633,7 @@ class CliApp:
                         ),
                     )
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(kube_client(), Prometheus(config.prometheus_api))
+                    app_state_getter = K8sStatusGetter(kube_client("CustomObject"), Prometheus(config.prometheus_api))
                 else:
                     raise ValueError(app_cluster)
 
