@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Export to JSON is now more robust, supports datetime objects returned by dimension_labels, and will default to the string representation.
+
 ## 0.26.2
 
 - `MultiEtlApiConfig`: don't fail-fast on missing env vars for credentials extraction, just skip with warnings for now
