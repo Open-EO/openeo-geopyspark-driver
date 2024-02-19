@@ -115,6 +115,10 @@ spec:
     - name: "http-credentials-configmap"
       configMap:
         name: "http-credentials"
+    - name: "batch-job-results"
+      persistentVolumeClaim:
+        claimName: {{ job_name }}
+        readOnly: false
 {%- endblock %}
   driver:
 {%- block driver_options %}
@@ -229,6 +233,8 @@ spec:
         subPath: "http_credentials.json"
       - name: "backend-config-configmap"
         mountPath: "/opt/backend_config/"
+      - name: "batch-job-results"
+        mountPath: /batch_jobs/{{ job_id_short }}
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
