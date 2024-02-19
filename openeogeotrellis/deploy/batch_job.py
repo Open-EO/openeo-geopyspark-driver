@@ -952,15 +952,6 @@ def main(argv: List[str]) -> None:
     logger.info("Using temp dir {t}".format(t=temp_dir))
     os.environ["TMPDIR"] = str(temp_dir)
 
-    if ConfigParams().is_kube_deploy:
-        from openeogeotrellis.utils import s3_client
-
-        bucket = os.environ.get('SWIFT_BUCKET')
-        s3_instance = s3_client()
-
-        s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
-
-
     job_specification = _parse(job_specification_file)
     load_custom_processes()
 
@@ -1203,20 +1194,6 @@ def run_job(
         add_permissions(metadata_file, stat.S_IWGRP)
 
         logger.info("wrote metadata to %s" % metadata_file)
-
-        if ConfigParams().is_kube_deploy:
-            from openeogeotrellis.utils import s3_client
-
-            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
-
-            bucket = os.environ.get('SWIFT_BUCKET')
-            s3_instance = s3_client()
-
-            logger.info("Writing results to object storage")
-            for file in os.listdir(job_dir):
-                full_path = str(job_dir) + "/" + file
-                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
-
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
     """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
