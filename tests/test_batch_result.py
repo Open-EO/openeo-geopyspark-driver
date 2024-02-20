@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import geopandas as gpd
@@ -530,3 +531,42 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert assets["openEO_1.nc"]["bbox"] == [0.725, -1.29, 2.99, 1.724]
     assert (shape(assets["openEO_1.nc"]["geometry"]).normalize()
             .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))
+
+
+def test_multiple_image_collection_results(tmp_path):
+    job_spec = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                    "bands": ["Flat:2"]
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                },
+            },
+            "saveresult2": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "saveresult1"},
+                    "format": "netCDF",
+                },
+                "result": True,
+            },
+        }
+    }
+
+    run_job(job_spec, output_file=tmp_path / "out", metadata_file=tmp_path / "job_metadata.json",
+            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+
+    output_files = os.listdir(tmp_path)
+
+    assert "openEO_2021-01-05Z.tif" in output_files
+    assert "openEO.nc" in output_files
