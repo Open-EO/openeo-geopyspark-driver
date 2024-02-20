@@ -1082,50 +1082,39 @@ def run_job(
             format_options["batch_mode"] = True
             result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
 
-        if not isinstance(result, SaveResult) and not isinstance(result,List):  # Assume generic JSON result
-            result = JSONResult(result)
-
-        result_list = result
-        if not isinstance(result,List):
-            result_list = [result]
+        results = result if isinstance(result, List) else [result]
+        results = [result if isinstance(result, SaveResult) else JSONResult(result) for result in results]
 
         global_metadata_attributes = {
-            "title" : job_specification.get("title",""),
+            "title": job_specification.get("title", ""),
             "description": job_specification.get("description", ""),
             "institution": "openEO platform - Geotrellis backend: " + __version__
         }
 
         assets_metadata = {}
         ml_model_metadata = None
-        for result in result_list:
-            if('write_assets' in dir(result)):
-                result.options["batch_mode"] = True
-                result.options["file_metadata"] = global_metadata_attributes
-                if( result.options.get("sample_by_feature")):
-                    geoms = tracer.get_last_geometry("filter_spatial")
-                    if geoms == None:
-                        logger.warning("sample_by_feature enabled, but no geometries found. They can be specified using filter_spatial.")
-                    else:
-                        result.options["geometries"] = geoms
-                    if(result.options["geometries"] == None):
-                        logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. Make sure to provide geometries.")
-                the_assets_metadata = result.write_assets(str(output_file))
-                if isinstance(result, MlModelResult):
-                    ml_model_metadata = result.get_model_metadata(str(output_file))
-                    logger.info("Extracted ml model metadata from %s" % output_file)
-                for name,asset in the_assets_metadata.items():
-                    add_permissions(Path(asset["href"]), stat.S_IWGRP)
-                logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-                assets_metadata = {**assets_metadata,**the_assets_metadata}
-            elif isinstance(result, ImageCollectionResult):
-                result.options["batch_mode"] = True
-                result.save_result(filename=str(output_file))
-                add_permissions(output_file, stat.S_IWGRP)
-                logger.info("wrote image collection to %s" % output_file)
-            elif isinstance(result, NullResult):
-                logger.info("skipping output file %s" % output_file)
-            else:
-                raise NotImplementedError("unsupported result type {r}".format(r=type(result)))
+
+        for result in results:
+            result.options["batch_mode"] = True
+            result.options["file_metadata"] = global_metadata_attributes
+            if result.options.get("sample_by_feature"):
+                geoms = tracer.get_last_geometry("filter_spatial")
+                if geoms is None:
+                    logger.warning("sample_by_feature enabled, but no geometries found. "
+                                   "They can be specified using filter_spatial.")
+                else:
+                    result.options["geometries"] = geoms
+                if result.options["geometries"] is None:
+                    logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. "
+                                 "Make sure to provide geometries.")
+            the_assets_metadata = result.write_assets(str(output_file))
+            if isinstance(result, MlModelResult):
+                ml_model_metadata = result.get_model_metadata(str(output_file))
+                logger.info("Extracted ml model metadata from %s" % output_file)
+            for name, asset in the_assets_metadata.items():
+                add_permissions(Path(asset["href"]), stat.S_IWGRP)
+            logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
+            assets_metadata = {**assets_metadata, **the_assets_metadata}
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
