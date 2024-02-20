@@ -12,6 +12,66 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Export to JSON is now more robust, supports datetime objects returned by dimension_labels, and will default to the string representation.
+- GDAL upgraded to 3.8.4 and Orfeo Toolbox to 8.1.2. This mainly reduces the volume of bytes read from object storage by GDAL. ([#571](https://github.com/Open-EO/openeo-geopyspark-driver/issues/571))
+
+## 0.26.2
+
+- `MultiEtlApiConfig`: don't fail-fast on missing env vars for credentials extraction, just skip with warnings for now
+
+## 0.26.1
+
+### Bugfix
+
+- fix load_stac from unsigned job results URL in batch job ([#644](https://github.com/Open-EO/openeo-geopyspark-driver/issues/644))
+
+## 0.26.0
+
+- Introduce `MultiEtlApiConfig` to support multiple ETL API configurations ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531))
+
+
+## 0.25.0
+
+- The default for the soft-errors job option is now set to 0.1 and made configurable at backend level. This value better recognizes the fact that many EO archives have corrupt files that otherwise break jobs [#617](https://github.com/Open-EO/openeo-geopyspark-driver/issues/617).
+- Support GeoParquet output format for `aggregate_spatial` ([#623](https://github.com/Open-EO/openeo-geopyspark-driver/issues/623))
+
+### Improved datatype conversion
+
+A rather big improvement in this release is the handling of datatypes.
+OpenEO does not have very explicit rules when it comes to datatypes, and in this implementation, in most
+cases the datatype was simply preserved, like in most programming languages.
+
+For most users, this resulted in unexpected behaviour, for instance when dividing integer dataypes,
+or subtracting two unsigned 8 bit numbers, and expecting to get negative values.
+
+This implementation will now try to use wider datatypes when necessary. For instance by
+switching to floating point when performing a division. This change makes writing formulas more intuitive, and should
+save time debugging issues.
+
+When there is still a need to get a smaller datatype, users can use the 'linear_scale_range' process. This process
+for instance will convert to 8 bit unsigned integers if the target range uses integer values and fits in the [0,255] range.
+
+Relevant issues:
+- [#225](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/225)
+- [#581](https://github.com/Open-EO/openeo-geopyspark-driver/issues/581)
+- [#601](https://github.com/Open-EO/openeo-geopyspark-driver/issues/601)
+
+
+## 0.24.0
+
+- Start using `DynamicEtlApiJobCostCalculator` in job tracker. Effective ETL API selection strategy is to be configured through `EtlApiConfig`
+
+### Bugfix
+
+ - added max_processing_area_pixels custom option to sar_backscatter, avoiding going out of memory when processing too large chunks
+
+
+## 0.23.1
+
+### Bugfix
+
+- Requests towards Job Registry Elastic API are unreliable; reconsider ZK as primary data store.
+
 ## 0.23.0
 
 ### Added

@@ -180,7 +180,9 @@ class GeopysparkDataCube(DriverDataCube):
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         if isinstance(process, dict):
-            process = GeoPySparkBackendImplementation.accept_process_graph(process)
+            datatype = self.get_max_level().layer_metadata.cell_type
+            process = GeoPySparkBackendImplementation.accept_process_graph(process, default_input_parameter="data",
+                                                                           default_input_datatype=datatype)
 
         if isinstance(process, GeotrellisTileProcessGraphVisitor):
             #apply should leave metadata intact, so can do a simple call?
@@ -455,7 +457,7 @@ class GeopysparkDataCube(DriverDataCube):
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
-    def apply_tiles_spatiotemporal(self, udf_code: str, udf_context: Optional[dict] = None, runtime: str = "Python") -> "GeopysparkDataCube":
+    def apply_tiles_spatiotemporal(self, udf_code: str, udf_context: Optional[dict] = None, runtime: str = "Python", overlap_x: int = 0, overlap_y: int = 0) -> "GeopysparkDataCube":
         """
         Group tiles by SpatialKey, then apply a Python function to every group of tiles.
         :param udf_code: A string containing a Python function that handles groups of tiles, each labeled by date.
@@ -473,7 +475,7 @@ class GeopysparkDataCube(DriverDataCube):
             def rdd_function(rdd, _zoom):
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
-                return udf.runUserCode(udf_code, rdd, band_names, udf_context)
+                return udf.runUserCodeSpatioTemporal(udf_code, rdd, band_names, udf_context, overlap_x, overlap_y)
 
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             return float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
@@ -606,7 +608,9 @@ class GeopysparkDataCube(DriverDataCube):
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
         if isinstance(reducer, dict):
-            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+            datatype = self.get_max_level().layer_metadata.cell_type
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer, default_input_parameter="data",
+                                                                           default_input_datatype=datatype)
 
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
@@ -641,7 +645,7 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
-    def apply_tiles(self, udf_code: str, context={}, runtime="python") -> 'GeopysparkDataCube':
+    def apply_tiles(self, udf_code: str, context={}, runtime="python", overlap_x: int = 0, overlap_y: int = 0) -> 'GeopysparkDataCube':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
 
@@ -655,7 +659,7 @@ class GeopysparkDataCube(DriverDataCube):
             def rdd_function(rdd, _zoom):
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
-                return udf.runUserCode(udf_code, rdd, band_names, context)
+                return udf.runUserCode(udf_code, rdd, band_names, context, overlap_x, overlap_y)
 
             # All JEP implementation work with the float datatype.
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
@@ -762,7 +766,9 @@ class GeopysparkDataCube(DriverDataCube):
         pysc = gps.get_spark_context()
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
         if isinstance(reducer, dict):
-            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
+            datatype = self.get_max_level().layer_metadata.cell_type
+            reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer, default_input_parameter="data",
+                                                                           default_input_datatype=datatype)
 
         if isinstance(reducer, str):
             #deprecated codepath: only single process reduces
@@ -1036,17 +1042,21 @@ class GeopysparkDataCube(DriverDataCube):
         sizeX = int(size_dict[x.name]['value'])
         sizeY = int(size_dict[y.name]['value'])
 
-        overlap_x = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
-        overlap_y = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
-        if overlap_x.get('unit', None) != 'px' or overlap_y.get('unit', None) != 'px':
+        overlap_x_dict = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
+        overlap_y_dict = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
+        if overlap_x_dict.get('unit', None) != 'px' or overlap_y_dict.get('unit', None) != 'px':
             raise OpenEOApiException(message="apply_neighborhood: overlap sizes for the spatial dimensions"
                                              " of this datacube should be specified, in pixels."
                                              " This was provided: %s" % str(overlap))
         jvm = get_jvm()
-        overlap_x_value = int(overlap_x['value'])
-        overlap_y_value = int(overlap_y['value'])
+        overlap_x = int(overlap_x_dict['value'])
+        overlap_y = int(overlap_y_dict['value'])
+        # TODO: Retile only accepts SpaceTimeKeys
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x_value, overlap_y_value))
+            lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x, overlap_y))
+
+        retiled_metadata: Metadata = retiled_collection.pyramid.levels[retiled_collection.pyramid.max_zoom].layer_metadata
+        retiled_tile_layout = retiled_metadata.tile_layout
 
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
@@ -1069,21 +1079,36 @@ class GeopysparkDataCube(DriverDataCube):
                 #full time dimension has to be provided
                 if not self.metadata.has_temporal_dimension():
                     raise OpenEOApiException(
-                        message="apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
-                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code=udf, udf_context=udf_context, runtime=runtime)
+                        message = "apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
+                result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code = udf,
+                    udf_context = udf_context, runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
-                result_collection = retiled_collection.apply_tiles(udf_code=udf, context=udf_context, runtime=runtime)
+                result_collection = retiled_collection.apply_tiles(udf_code = udf, context = udf_context,
+                    runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
                 raise OpenEOApiException(
                     message="apply_neighborhood: for temporal dimension,"
                             " either process all values, or only single date is supported for now!")
+            if overlap_x > 0 or overlap_y > 0:
+                # Check if the resolution of result_collection changed (UDF feature).
+                result_metadata: Metadata = result_collection.pyramid.levels[
+                    result_collection.pyramid.max_zoom].layer_metadata
+                result_tile_layout = result_metadata.tile_layout
+                # Change size and overlap if #pixels per tile changed.
+                if result_tile_layout.tileCols != retiled_tile_layout.tileCols or result_tile_layout.tileRows != retiled_tile_layout.tileRows:
+                    ratio_x = result_tile_layout.tileCols / retiled_tile_layout.tileCols
+                    ratio_y = result_tile_layout.tileRows / retiled_tile_layout.tileRows
+                    sizeX = int(sizeX * ratio_x)
+                    sizeY = int(sizeY * ratio_y)
+                    overlap_x = int(overlap_x * ratio_x)
+                    overlap_y = int(overlap_y * ratio_y)
 
         elif isinstance(process, GeotrellisTileProcessGraphVisitor):
             if temporal_size is None or temporal_size.get('value', None) is None:
                 raise OpenEOApiException(message="apply_neighborhood: only supporting complex callbacks on bands")
             elif temporal_size.get('value', None) == 'P1D' and temporal_overlap is None:
                 result_collection = self._apply_bands_dimension(process)
-            elif temporal_size.get('value', None) != None and temporal_overlap is None and sizeX==1 and sizeY==1 and overlap_x_value==0 and overlap_y_value==0:
+            elif temporal_size.get('value', None) != None and temporal_overlap is None and sizeX==1 and sizeY==1 and overlap_x==0 and overlap_y==0:
                 if(not self.metadata.has_temporal_dimension()):
                     raise OpenEOApiException(message=f"apply_neighborhood: no time dimension on cube, cannot chunk on time with value {temporal_size}")
                 temporal_extent = self.metadata.temporal_dimension.extent
@@ -1096,12 +1121,11 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise OpenEOApiException(message="apply_neighborhood: only supporting callbacks with a single UDF.")
 
-        if overlap_x_value > 0 or overlap_y_value > 0:
-
+        if overlap_x > 0 or overlap_y > 0:
             result_collection = result_collection._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().remove_overlap(rdd, sizeX, sizeY,
-                                                                                      overlap_x_value,
-                                                                                      overlap_y_value))
+                                                                                      overlap_x,
+                                                                                      overlap_y))
 
         return result_collection
 
@@ -1494,6 +1518,28 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
+        def return_netcdf_assets(asset_paths, bands, nodata):
+            assets = {}
+            for asset in asset_paths:
+                if isinstance(asset, str):  # TODO: for backwards compatibility, remove eventually (#646)
+                    path = asset
+                    extent = None
+                else:
+                    path = asset._1()
+                    extent = asset._2()
+                name = os.path.basename(path)
+                assets[name] = {
+                    "href": str(path),
+                    "type": "application/x-netcdf",
+                    "roles": ["data"],
+                    "bbox": to_latlng_bbox(extent) if extent else None,
+                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None,
+                    "nodata": nodata,
+                }
+                if bands is not None:
+                    assets[name]["bands"] = bands
+            return assets
+
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
             crs = bbox.get("crs") or "EPSG:4326"
@@ -1743,7 +1789,7 @@ class GeopysparkDataCube(DriverDataCube):
                         filename_prefix,
                     )
 
-                return self.return_netcdf_assets(asset_paths, bands, nodata)
+                return return_netcdf_assets(asset_paths, bands, nodata)
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = "openEO.nc" if originalName.name == "out" else originalName.name
@@ -1774,7 +1820,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 band_names,
                                 dim_names, global_metadata, zlevel
                                 )
-                    return self.return_netcdf_assets(asset_paths, bands, nodata)
+                    return return_netcdf_assets(asset_paths, bands, nodata)
 
                 else:
                     if not tiled:
@@ -1812,20 +1858,6 @@ class GeopysparkDataCube(DriverDataCube):
                 code="FormatUnsupported", status_code=400
             )
         return {str(os.path.basename(filename)):{"href":filename}}
-
-    def return_netcdf_assets(self, asset_paths, bands, nodata):
-        assets = {}
-        for p in asset_paths:
-            name = os.path.basename(p)
-            assets[name] = {
-                "href": str(p),
-                "type": "application/x-netcdf",
-                "roles": ["data"],
-                "nodata": nodata,
-            }
-            if bands is not None:
-                assets[name]["bands"] = bands
-        return assets
 
     def get_labels(self, geometries):
         if isinstance(geometries,DelayedVector):

@@ -18,7 +18,7 @@ version = __version__
 tests_require = [
     'pytest',
     'mock',
-    'moto',
+    'moto[s3]>=5.0.0',
     'schema',
     'scipy>=1.3.0',
     'requests-mock>=1.8.0',
@@ -26,6 +26,7 @@ tests_require = [
     "time_machine>=2.8.0",
     "kubernetes",
     "re-assert",
+    "dirty-equals>=0.6",
 ]
 
 setup(
@@ -53,7 +54,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.15.0",
-        "openeo_driver>=0.82.0.dev",
+        "openeo_driver>=0.85.0.dev",
         'pyspark==3.3.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
@@ -79,7 +80,6 @@ setup(
         'numbagg==0.1',
         "Bottleneck~=1.3.2",
         'python-json-logger',
-        'rlguard-lib>=0.0.6',  # TODO this currently depends on custom packaging, see https://github.com/sentinel-hub/rate-limiting-guard/issues/5 and https://jira.vito.be/browse/EP-4001
         'jep==4.1.1',
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',

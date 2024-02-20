@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
 import dateutil.parser
+import geopandas as gpd
 import mock
 import numpy
 import numpy as np
@@ -43,7 +44,7 @@ from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
-from openeogeotrellis.integrations.etl_api import DynamicEtlApiConfig
+from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
 from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
@@ -3782,6 +3783,89 @@ class TestLoadStac:
         assert (ds["band2"] == 2).all()
         assert (ds["band3"] == 3).all()
 
+    def test_load_stac_from_stac_collection_item_start_datetime_zulu(self, api110, urllib_mock, tmp_path):
+        """load_stac from a STAC Collection with an item that has a start_datetime in Zulu time (time zone 'Z')"""
+
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace(
+                    "asset01.tiff",
+                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                )
+            )
+
+        urllib_mock.get("https://stac.test/collection.json",
+                        data=get_test_data_file("stac/issue646_start_datetime_zulu/collection.json").read_text())
+        urllib_mock.get("https://stac.test/item01.json",
+                        data=item_json("stac/issue646_start_datetime_zulu/item01.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collection.json"
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": 1, "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit='h', timezone='UTC').tolist() == ["2022-03-04T00Z"]
+
+    def test_load_stac_from_spatial_netcdf_job_results(self, api110, urllib_mock, tmp_path):
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace("asset01.nc",
+                         f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}")
+                .replace("asset02.nc",
+                         f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}")
+            )
+
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results",
+                        data=get_test_data_file("stac/issue646_spatial_netcdf/collection.json").read_text())
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
+                        data=item_json("stac/issue646_spatial_netcdf/item01.json"))
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_1.nc",
+                        data=item_json("stac/issue646_spatial_netcdf/item02.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results"}
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "netCDF"},
+                "result": True
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+
+        ds = xarray.load_dataset(res_path)
+
+        assert ds.dims["x"] == 13010
+        assert ds.dims["y"] == 773
+        # TODO: there's a "t" dimension that corresponds to the start_datetime of the two items; is this right?
+        assert list(ds.data_vars.keys())[1:] == ["B04", "B03", "B02"]
+        assert ds.coords["x"].values.min() == pytest.approx(572400.000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(5618660.000, abs=10)
+        assert ds.coords["x"].values.max() == pytest.approx(702500.000, abs=10)
+        assert ds.coords["y"].values.max() == pytest.approx(5626390.000, abs=10)
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
@@ -3928,19 +4012,18 @@ class TestEtlApiReporting:
         """
 
         # Setup up ETL mapping based on user name: one for Alice, another for Bob
-        class CustomEtlConfig(DynamicEtlApiConfig):
+        class CustomEtlConfig(EtlApiConfig):
             def get_root_url(self, *, user: Optional[User] = None, job_options: Optional[dict] = None) -> str:
                 return {
                     "a": "https://etl-alt.test",
                     "b": "https://etl.planb.test",
                 }[user.user_id[:1]]
 
-        etl_api_config = CustomEtlConfig(
-            urls_and_credentials={
-                "https://etl-alt.test": etl_client_credentials,
-                "https://etl.planb.test": etl_client_credentials,
-            }
-        )
+            def get_client_credentials(self, root_url: str) -> Union[ClientCredentials, None]:
+                return {
+                    "https://etl-alt.test": etl_client_credentials,
+                    "https://etl.planb.test": etl_client_credentials,
+                }[root_url]
 
         alice = DummyUser(user_id="alice2000")
         bob = DummyUser(user_id="bob7")
@@ -3959,7 +4042,7 @@ class TestEtlApiReporting:
         with gps_config_overrides(
             use_etl_api_on_sync_processing=True,
             etl_dynamic_api_flag=etl_dynamic_api_flag,
-            etl_api_config=etl_api_config,
+            etl_api_config=CustomEtlConfig(),
         ):
             # First request by Alice
             api100.set_auth_bearer_token(alice.bearer_token)
@@ -3994,3 +4077,82 @@ class TestEtlApiReporting:
             assert res.json == 8
             assert res.headers["OpenEO-Costs-experimental"] == "88"
             assert get_etl_api_requests_mock_call_counts() == [1, 1, 1]
+
+
+def test_spatiotemporal_vector_cube_to_geoparquet(api110, tmp_path):
+    response = api110.check_result({
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "bands": ["Flat:1", "Flat:2"]
+            }
+        },
+        "aggregatespatial1": {
+            "process_id": "aggregate_spatial",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "geometries": {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "geometry": {
+                                "coordinates": [4.834132470464912, 51.14651864980539],
+                                "type": "Point"
+                            },
+                            "id": "0",
+                            "properties": {"name": "maize"},
+                            "type": "Feature"
+                        },
+                        {
+                            "geometry": {
+                                "coordinates": [4.826795583109673, 51.154775560357045],
+                                "type": "Point"
+                            },
+                            "id": "1",
+                            "properties": {"name": "maize"},
+                            "type": "Feature"
+                        }
+                    ]
+                },
+                "reducer": {
+                    "process_graph": {
+                        "mean1": {
+                            "arguments": {
+                                "data": {
+                                    "from_parameter": "data"
+                                }
+                            },
+                            "process_id": "mean",
+                            "result": True
+                        }
+                    }
+                }
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "aggregatespatial1"},
+                "format": "Parquet"
+            },
+            "result": True
+        }
+    })
+
+    assert response.headers["Content-Type"] == "application/parquet; profile=geo"
+
+    output_file = tmp_path / "out.parquet"
+
+    with output_file.open(mode="wb") as f:
+        f.write(response.data)
+
+    assert gpd.read_parquet(output_file).to_dict('list') == {
+        'date': ['2021-01-05T00:00:00Z', '2021-01-05T00:00:00Z', '2021-01-15T00:00:00Z', '2021-01-15T00:00:00Z', '2021-01-25T00:00:00Z', '2021-01-25T00:00:00Z'],
+        'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045), Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045), Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
+        'feature_index': [0, 1, 0, 1, 0, 1],
+        'band_0': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        'band_1': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+        'name': ['maize', 'maize', 'maize', 'maize', 'maize', 'maize']
+    }

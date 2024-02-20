@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
@@ -35,6 +35,12 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
     Being a simple string, instead of a complex object (e.g. an `EtlApi` instance), it does not raise
     serialization challenges when there is need to pass it from the web app context to the batch job tracker context.
 
+    The ETL API selection strategy is to be implemented in `get_root_url()`,
+    which can use the provided user object or job options to pick the appropriate ETL API root URL.
+    Note that there is no guarantee that either of these inputs is available.
+    Typically, the job options will be provided in a job tracker context
+    and the user object will be provided in a synchronous processing request context.
+
     Additional dependencies to (re)construct an operational `EtlApi` instance can be obtained with dedicated methods
     using the ETL API root URL identifier, e.g. client credentials with `get_client_credentials(root_url)`.
     """
@@ -44,7 +50,7 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
         """Get root URL of the ETL API"""
         ...
 
-    def get_client_credentials(self, root_url: str) -> Optional[ClientCredentials]:
+    def get_client_credentials(self, root_url: str) -> Union[ClientCredentials, None]:
         """Get client credentials corresponding to root URL."""
         return None
 
@@ -105,12 +111,13 @@ class GpsBackendConfig(OpenEoBackendConfig):
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
 
     # TODO: eliminate hardcoded Terrascope references
+    # TODO #531 eliminate this config favor of etl_api_config strategy below
     etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
-    etl_dynamic_api_flag: Optional[str] = None  # TODO eliminate this temporary feature flag?
+    etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag?
 
-    # TODO: this config is meant to replace `etl_api` from above
+    # TODO #531 this config is meant to replace `etl_api` from above
     etl_api_config: Optional[EtlApiConfig] = None
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
@@ -119,3 +126,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     default_usage_cpu_seconds: float = 1 * 3600
     default_usage_byte_seconds: float = 2 * 1024 * 1024 * 1024 * 3600
+
+    default_soft_errors: float = 0.1
+
+    s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")

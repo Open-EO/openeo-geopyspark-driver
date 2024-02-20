@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
+import geopandas as gpd
 import pytest
+from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
 from openeo.metadata import Band
 
@@ -340,3 +342,191 @@ def test_aggregate_spatial_area_result_delayed_vector(backend_implementation):
     metadata = extract_result_metadata(dry_run_tracer)
     assert metadata["area"]["value"] == pytest.approx(187056.07523286293, abs=0.001)
     assert metadata["area"]["unit"] == "square meter"
+
+
+def test_spatial_geoparquet(tmp_path):
+    job_specification = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-05", "2021-01-06"],
+                    "bands": ["Flat:1", "Flat:2"]
+                }
+            },
+            "reducedimension1": {
+                "process_id": "reduce_dimension",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "dimension": "t",
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    }
+                                },
+                                "process_id": "mean",
+                                "result": True
+                            }
+                        }
+                    }
+                }
+            },
+            "aggregatespatial1": {
+                "process_id": "aggregate_spatial",
+                "arguments": {
+                    "data": {"from_node": "reducedimension1"},
+                    "geometries": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "geometry": {
+                                    "coordinates": [4.834132470464912, 51.14651864980539],
+                                    "type": "Point"
+                                },
+                                "id": "0",
+                                "properties": {"name": "maize"},
+                                "type": "Feature"
+                            },
+                            {
+                                "geometry": {
+                                    "coordinates": [4.826795583109673, 51.154775560357045],
+                                    "type": "Point"
+                                },
+                                "id": "1",
+                                "properties": {"name": "maize"},
+                                "type": "Feature"
+                            }
+                        ]
+                    },
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    }
+                                },
+                                "process_id": "mean",
+                                "result": True
+                            }
+                        }
+                    }
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "aggregatespatial1"},
+                    "format": "Parquet"
+                },
+                "result": True
+            }
+        }
+    }
+
+    run_job(job_specification, output_file=tmp_path / "out", metadata_file=tmp_path / "metadata.json",
+            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+
+    assert gpd.read_parquet(tmp_path / "timeseries.parquet").to_dict('list') == {
+        'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
+        'feature_index': [0, 1],
+        'name': ['maize', 'maize'],
+        'avg_band_0_': [1.0, 1.0],
+        'avg_band_1_': [2.0, 2.0],
+    }
+
+
+def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
+    job_spec = {"process_graph": {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-04", "2021-01-06"],
+                "bands": ["Flat:2"]
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "mean1": {
+                            "arguments": {
+                                "data": {
+                                    "from_parameter": "data"
+                                }
+                            },
+                            "process_id": "mean",
+                            "result": True
+                        }
+                    }
+                }
+            }
+        },
+        "filterspatial1": {
+            "process_id": "filter_spatial",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "geometries":  {
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+                    }, {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[0.725, -0.516], [2.99, -1.29], [2.279, 1.724], [0.725, -0.18],
+                                             [0.725, -0.516]]]
+                        }
+                    }]
+                }
+            }
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "filterspatial1"},
+                "format": "netCDF",
+                "options": {"sample_by_feature": True}
+            },
+            "result": True
+        }
+    }}
+
+    metadata_file = tmp_path / "metadata.json"
+    run_job(job_spec, output_file=tmp_path / "out", metadata_file=metadata_file,
+            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    # the envelope of the input features
+    assert metadata["bbox"] == [0.1, -1.29, 2.99, 1.8]
+
+    # analogous to GTiff
+    assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
+    assert metadata["end_datetime"] == "2021-01-06T00:00:00Z"
+
+    # expected: 2 assets with bboxes that correspond to the input features
+    assets = metadata["assets"]
+    assert len(assets) == 2
+
+    assert assets["openEO_0.nc"]["bbox"] == [0.1, 0.1, 1.8, 1.8]
+    assert (shape(assets["openEO_0.nc"]["geometry"]).normalize()
+            .almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize()))
+
+    assert assets["openEO_1.nc"]["bbox"] == [0.725, -1.29, 2.99, 1.724]
+    assert (shape(assets["openEO_1.nc"]["geometry"]).normalize()
+            .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))

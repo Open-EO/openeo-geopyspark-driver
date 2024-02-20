@@ -140,7 +140,6 @@ services:
     command: [
       "pip-compile", "-o", "/src/docker/requirements-docker.txt",
       "--verbose",
-      "-P", "rlguard-lib@git+https://github.com/sentinel-hub/rate-limiting-guard.git@master#subdirectory=lib",
       "--extra-index-url", "https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple",
       "setup.py"
     ]

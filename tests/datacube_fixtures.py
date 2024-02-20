@@ -263,3 +263,59 @@ def imagecollection_with_two_bands_spatial_only(request):
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_three_dates = datacube
     return datacube
+
+
+def layer_with_two_bands_and_one_date_multiple_values():
+    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis.constants import LayerType
+    from geopyspark.geotrellis.layer import TiledRasterLayer
+    from pyspark import SparkContext
+
+    tilesize = 256
+    matrix1 = np.zeros((1, tilesize, tilesize))
+    for i in range(32):
+        matrix1[0, i, :] = i
+    matrix2 = np.zeros((1, tilesize, tilesize))
+    for i in range(tilesize):
+        matrix2[0, i, :] = i + tilesize
+
+    bands = np.array([matrix1, matrix2], dtype='int')
+    tile = Tile.from_numpy_array(bands, -1)
+
+    date1 = datetime.datetime.strptime("2017-09-25T11:37:00Z", '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+
+    layer = [(SpaceTimeKey(0, 0, date1), tile),
+             (SpaceTimeKey(1, 0, date1), tile),
+             (SpaceTimeKey(0, 1, date1), tile),
+             (SpaceTimeKey(1, 1, date1), tile)]
+
+    rdd = SparkContext.getOrCreate().parallelize(layer)
+
+    metadata = {
+        'cellType': 'int32ud-1',
+        'extent': extent,
+        'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+        'bounds': {
+            'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(date1)},
+            'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(date1)}
+        },
+        'layoutDefinition': {
+            'extent': extent,
+            'tileLayout': {'layoutCols': 1, 'layoutRows': 1, 'tileCols': tilesize, 'tileRows': tilesize}
+        }
+    }
+
+    return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata) \
+        .convert_data_type('int32', no_data_value=-1)
+
+
+@pytest.fixture
+def imagecollection_with_two_bands_and_one_date_multiple_values(request):
+    import geopyspark as gps
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+    geopyspark_layer = layer_with_two_bands_and_one_date_multiple_values()
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
+
+    if request.instance:
+        request.instance.imagecollection_with_two_bands_and_one_date_multiple_values = datacube
+    return datacube
