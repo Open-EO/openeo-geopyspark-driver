@@ -37,9 +37,9 @@ EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
 EXPECTED_PROVIDERS = [{'description': 'This data was processed on an openEO backend ' \
                                'maintained by VITO.',
                 'name': 'VITO',
-                'processing:expression': [{'expression': {'nop': {'process_id': 'discard_result',
+                'processing:expression': {'expression': {'nop': {'process_id': 'discard_result',
                                                                    'result': True}},
-                                            'format': 'openeo'}],
+                                            'format': 'openeo'},
                 'processing:facility': 'openEO Geotrellis backend',
                 'processing:software': {'Geotrellis backend': __version__},
                 'roles': ['processor']}]
