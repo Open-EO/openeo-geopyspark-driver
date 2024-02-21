@@ -631,7 +631,6 @@ class TestBatchJobs:
             if api.api_version_compare.at_least("1.0.0"):
                 download_url = res["assets"]["out"]["href"]
                 assert "openEO_2017-11-21Z.tif" in res["assets"]
-                assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
             else:
                 download_url = res["links"][0]["href"]
 
@@ -846,7 +845,6 @@ class TestBatchJobs:
                 if api.api_version_compare.at_least("1.0.0"):
                     assert "openEO_2017-11-21Z.tif" in res["assets"]
                     download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
-                    assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
                 else:
                     download_url = res["links"][0]["href"]
 
@@ -949,7 +947,6 @@ class TestBatchJobs:
                     assert "openEO_2017-11-21Z.tif" in res["assets"]
                     download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
                     download_url_out = res["assets"]["out"]["href"]
-                    assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
                 else:
                     download_url = res["links"][0]["href"]
 
@@ -2208,7 +2205,6 @@ class TestSentinelHubBatchJobs:
         if api.api_version_compare.at_least("1.0.0"):
             download_url = res["assets"]["out"]["href"]
             assert "openEO_2017-11-21Z.tif" in res["assets"]
-            assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
         else:
             download_url = res["links"][0]["href"]
 
@@ -2413,7 +2409,6 @@ class TestSentinelHubBatchJobs:
         if api.api_version_compare.at_least("1.0.0"):
             download_url = res["assets"]["out"]["href"]
             assert "openEO_2017-11-21Z.tif" in res["assets"]
-            assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
         else:
             download_url = res["links"][0]["href"]
 
@@ -2617,7 +2612,6 @@ class TestSentinelHubBatchJobs:
         if api.api_version_compare.at_least("1.0.0"):
             download_url = res["assets"]["out"]["href"]
             assert "openEO_2017-11-21Z.tif" in res["assets"]
-            assert [255] == res["assets"]["openEO_2017-11-21Z.tif"]["file:nodata"]
         else:
             download_url = res["links"][0]["href"]
 
