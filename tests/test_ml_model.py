@@ -145,7 +145,6 @@ def test_fit_class_catboost_batch_job_metadata(write_assets, get_job_output_dir,
     assert res == {
         'assets': {
             'catboost_model.cbm': {
-                'file:nodata': [None],
                 'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/catboost_model.cbm', 'roles': ['data'],
                 'title': 'catboost_model.cbm', 'type': 'application/octet-stream'
             }
@@ -331,7 +330,6 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     assert res['assets'] == DictSubSet({
         'randomforest.model.tar.gz': {
             'file:size': size,
-            'file:nodata': [None],
             'href': 'http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/randomforest.model.tar.gz',
             'roles': ['data'], 'title': 'randomforest.model.tar.gz', 'type': 'application/octet-stream'
         }
