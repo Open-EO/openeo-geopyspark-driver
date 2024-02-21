@@ -1125,6 +1125,9 @@ def run_job(
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata = {**assets_metadata, **the_assets_metadata}
 
+            source_files = [Path(asset["href"]) for asset in the_assets_metadata.values()]
+            result.export_workspace(source_files, default_merge=OPENEO_BATCH_JOB_ID)
+
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
 

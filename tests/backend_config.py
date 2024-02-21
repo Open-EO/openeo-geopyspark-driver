@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from openeo_driver.users.oidc import OidcProvider
+from openeo_driver.workspace import DiskWorkspace
 
 from openeogeotrellis.config import GpsBackendConfig
 
@@ -20,6 +23,10 @@ oidc_providers = [
     ),
 ]
 
+workspaces = {
+    "tmp": DiskWorkspace(root_directory=Path("/tmp"))
+}
+
 
 config = GpsBackendConfig(
     id="gps-test-dummy",
@@ -36,4 +43,5 @@ config = GpsBackendConfig(
     vault_addr="https://vault.test",
     enable_basic_auth=True,
     valid_basic_auth=lambda u, p: p == f"{u}123",
+    workspaces=workspaces,
 )

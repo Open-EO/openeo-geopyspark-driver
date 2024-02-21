@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import uuid
 from pathlib import Path
 
 import geopandas as gpd
@@ -533,7 +535,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
             .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))
 
 
-def skip_multiple_time_series_results(tmp_path):  # https://github.com/Open-EO/openeo-python-driver/issues/261
+def test_multiple_time_series_results(tmp_path):
     job_spec = {
         "process_graph": {
             "loadcollection1": {
@@ -630,3 +632,53 @@ def test_multiple_image_collection_results(tmp_path):
 
     assert "openEO_2021-01-05Z.tif" in output_files
     assert "openEO.nc" in output_files
+
+
+def test_export_workspace(tmp_path):
+    workspace_id = "tmp"
+    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"]
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff"
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
+            "result": True
+        }
+    }
+
+    process = {"process_graph": process_graph}
+
+    workspace_dir = Path(f"/tmp/{merge}")
+    workspace_dir.mkdir()
+    try:
+        run_job(process, output_file=tmp_path / "out.tif", metadata_file=tmp_path / "job_metadata.json",
+                api_version="2.0.0", job_dir=Path("./"), dependencies=[])
+
+        output_files = os.listdir(tmp_path)
+        assert "openEO_2021-01-05Z.tif" in output_files
+
+        workspace_files = os.listdir(workspace_dir)
+
+        assert workspace_files == ["openEO_2021-01-05Z.tif"]
+    finally:
+        shutil.rmtree(workspace_dir)
