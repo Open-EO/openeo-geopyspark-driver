@@ -5,7 +5,9 @@ import uuid
 from pathlib import Path
 
 import geopandas as gpd
+import pystac
 import pytest
+from openeo_driver.testing import DictSubSet
 from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
 from openeo.metadata import Band
@@ -678,7 +680,41 @@ def test_export_workspace(tmp_path):
         assert "openEO_2021-01-05Z.tif" in output_files
 
         workspace_files = os.listdir(workspace_dir)
+        assert set(workspace_files) == {
+            "collection.json",
+            "openEO_2021-01-05Z.tif",
+            "openEO_2021-01-05Z.tif.json"
+        }
 
-        assert workspace_files == ["openEO_2021-01-05Z.tif"]
+        with open(workspace_dir / "collection.json") as f:
+            stac_collection = json.load(f)
+        print(json.dumps(stac_collection, indent=2))
+
+        stac_collection = pystac.Collection.from_dict(stac_collection)
+        stac_collection.validate_all()
+
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 1
+        item_link = item_links[0]
+
+        assert item_link.media_type == "application/geo+json"
+        assert item_link.href == "./openEO_2021-01-05Z.tif.json"
+
+        items = list(stac_collection.get_items())
+        assert len(items) == 1
+
+        item = items[0]
+        assert item.id == "openEO_2021-01-05Z.tif"
+        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
+        assert (shape(item.geometry).normalize()
+                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+
+        geotiff_asset = item.get_assets()["openEO_2021-01-05Z.tif"]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
+
+        # TODO: check other things e.g. proj:
     finally:
         shutil.rmtree(workspace_dir)

@@ -1125,8 +1125,8 @@ def run_job(
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata = {**assets_metadata, **the_assets_metadata}
 
-            source_files = [Path(asset["href"]) for asset in the_assets_metadata.values()]
-            result.export_workspace(source_files, default_merge=OPENEO_BATCH_JOB_ID)
+            asset_paths = [Path(asset["href"]) for asset in the_assets_metadata.values()]
+            result.export_workspace(source_files=asset_paths, default_merge=OPENEO_BATCH_JOB_ID)
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
@@ -1163,6 +1163,8 @@ def run_job(
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
+        # this is subtle: result now points to the last of possibly several results (#295); it corresponds to
+        # the terminal save_result node of the process graph
         if "file_metadata" in result.options:
             result.options["file_metadata"]["providers"] = [
                 {
@@ -1186,6 +1188,9 @@ def run_job(
                                                     unique_process_ids=unique_process_ids,
                                                     asset_metadata=assets_metadata,
                                                     ml_model_metadata=ml_model_metadata)
+
+        result.export_workspace(source_files=_write_exported_stac_collection(job_dir, result_metadata),
+                                default_merge=OPENEO_BATCH_JOB_ID)
     finally:
         metadata = {**result_metadata, **_get_tracker_metadata("")}
 
@@ -1208,6 +1213,68 @@ def run_job(
             for file in os.listdir(job_dir):
                 full_path = str(job_dir) + "/" + file
                 s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+
+
+def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> List[Path]:  # TODO: change to Set?
+    def write_stac_item_file(asset_id: str, asset: dict) -> Path:
+        item_file = job_dir / f"{asset_id}.json"
+
+        stac_item = {
+            "type": "Feature",
+            "stac_version": "1.0.0",
+            "id": asset_id,
+            "geometry": asset.get("geometry"),
+            "bbox": asset.get("bbox"),
+            "properties": {
+                "datetime": asset.get("datetime"),
+            },
+            "links": [],  # TODO
+            "assets": {
+                asset_id: dict_no_none(**{
+                    "href": f"./{Path(asset['href']).name}",
+                    "roles": asset.get("roles"),
+                    "type": asset.get("type"),
+                    "eo:bands": asset.get("bands"),
+                })
+            },
+        }
+
+        with open(item_file, "wt") as fi:
+            json.dump(stac_item, fi)
+
+        return item_file
+
+    item_files = [write_stac_item_file(asset_id, asset) for asset_id, asset in result_metadata["assets"].items()]
+
+    def item_link(item_file: Path) -> dict:
+        return {
+            "href": f"./{item_file.name}",
+            "rel": "item",
+            "type": "application/geo+json",
+        }
+
+    stac_collection = {
+        "type": "Collection",
+        "stac_version": "1.0.0",
+        "id": OPENEO_BATCH_JOB_ID,
+        "description": "TODO",  # TODO
+        "license": "TODO",  # TODO
+        "extent": {
+            "spatial": {"bbox": [[-180, -90, 180, 90]]},  # TODO
+            "temporal": {"interval": [[None, None]]}  # TODO
+        },
+        "links": [item_link(item_file) for item_file in item_files] + [{
+            "href": "./collection.json",
+            "rel": "self",
+            "type": "application/geo+json",
+        }],
+    }
+
+    collection_file = job_dir / "collection.json"
+    with open(collection_file, "wt") as fc:
+        json.dump(stac_collection, fc)
+
+    return item_files + [collection_file]
 
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):

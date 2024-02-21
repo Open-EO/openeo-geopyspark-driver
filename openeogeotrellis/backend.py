@@ -999,7 +999,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         band_names.append(asset_band_name)
 
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
-                links.append([asset.href, asset_id] + asset_band_names)
+                links.append([asset.get_absolute_href(), asset_id] + asset_band_names)
 
             opensearch_client.add_feature(
                 itm.id,
