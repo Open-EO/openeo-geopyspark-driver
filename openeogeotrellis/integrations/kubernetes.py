@@ -21,6 +21,8 @@ def kube_client(api_type):
         api_instance = client.CustomObjectsApi()
     elif api_type == "Core":
         api_instance = client.CoreV1Api()
+    else:
+        raise ValueError(api_type)
 
     return api_instance
 
