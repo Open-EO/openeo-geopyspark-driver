@@ -234,7 +234,7 @@ spec:
       - name: "backend-config-configmap"
         mountPath: "/opt/backend_config/"
       - name: "batch-job-results"
-        mountPath: /batch_jobs/{{ job_id_short }}
+        mountPath: /batch_jobs/{{ job_id_full }}
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
