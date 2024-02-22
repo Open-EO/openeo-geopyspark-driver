@@ -1289,7 +1289,16 @@ class GeopysparkDataCube(DriverDataCube):
             if newLayout == None:
                 return self
 
-            logging.info(f"Reprojecting datacube to new layout {newLayout} and {projection}")
+            partitioner = max_level.srdd.rdd().partitioner()
+            b = max_level.layer_metadata.bounds
+            rows = b.maxKey.row - b.minKey.row + 1
+            spatialPartitions = (b.maxKey.col - b.minKey.col + 1) * (rows)
+
+            logging.info(f"Reprojecting datacube with partitioner {partitioner} to new layout {newLayout} and {projection}")
+            if(max_level.getNumPartitions() <= spatialPartitions and max_level.layer_type == gps.LayerType.SPACETIME):
+                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {spatialPartitions*10} before resample_spatial.")
+                max_level = max_level.repartition(spatialPartitions*10)
+
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
             else:
