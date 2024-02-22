@@ -6,7 +6,7 @@ metadata:
 spec:
   storageClassName: csi-s3
   capacity:
-    storage: 10Gi
+    storage: 50Gi
   accessModes:
     - ReadWriteOnce
   claimRef:
@@ -24,7 +24,7 @@ spec:
       name: csi-s3-secret
       namespace: csi-s3
     volumeAttributes:
-      capacity: 10Gi
+      capacity: 50Gi
       mounter: s3fs
-      options: "-o uid=18585 -o gid=18585 -o allow_other -o use_path_request_style"
+      options: "-o uid=18585 -o gid=18585 -o compat_dir"
     volumeHandle: {{ swift_bucket }}{{output_dir}}
