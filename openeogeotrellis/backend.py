@@ -2355,11 +2355,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 try:
                     api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
                 except ApiException as e:
-                    print("Exception when calling CoreV1Api->create_persistent_volume: %s\n" % e)
+                    log.exception(f"CoreV1Api->create_persistent_volume failed: {e}")
                 try:
                     api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
                 except ApiException as e:
-                    print("Exception when calling CoreV1Api->create_namespaced_persistent_volume_claim: %s\n" % e)
+                    log.exception(f"CoreV1Api->create_namespaced_persistent_volume_claim failed: {e}")
                 try:
                     submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
