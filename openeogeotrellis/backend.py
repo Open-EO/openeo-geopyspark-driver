@@ -1530,7 +1530,7 @@ class GpsProcessing(ConcreteProcessing):
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
 
-                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
+                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)
                 if isinstance(native_crs, int):
@@ -1632,6 +1632,17 @@ class GpsProcessing(ConcreteProcessing):
                             "code": "ExtentTooLarge",
                             "message": f"collection_id {collection_id!r}: {message}"
                         }
+
+    def verify_for_synchronous_processing(self, process_graph: dict, env: EvalEnv = None) -> Iterable[str]:
+        env_validate = env.push({
+            "allow_check_missing_products": False,
+            "sync_job": True,
+        })
+        errors = self.validate(process_graph=process_graph, env=env_validate)
+
+        # Only care for certain errors and make list of strings:
+        errors = [e["message"] for e in errors if e["code"] == "ExtentTooLarge"]
+        return errors
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
