@@ -43,8 +43,14 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.utils import dict_merge_recursive, to_projected_polygons, get_jvm, normalize_temporal_extent, \
-    calculate_rough_area
+from openeogeotrellis.utils import (
+    dict_merge_recursive,
+    to_projected_polygons,
+    get_jvm,
+    normalize_temporal_extent,
+    calculate_rough_area,
+    parse_approximate_isoduration,
+)
 from openeogeotrellis.vault import Vault
 
 VAULT_TOKEN = 'vault_token'
@@ -1094,49 +1100,12 @@ def check_missing_products(
         return missing
 
 
-def reproject_cellsize(
-        spatial_extent: dict,
-        native_resolution: dict,  # cell_width, cell_height, crs
-        to_crs: str,
-) -> Tuple[float, float]:
-    if "crs" not in spatial_extent:
-        spatial_extent = spatial_extent.copy()
-        spatial_extent["crs"] = "EPSG:4326"
-    west, south = spatial_extent["west"], spatial_extent["south"]
-    east, north = spatial_extent["east"], spatial_extent["north"]
-    spatial_extent_shaply = box(west, south, east, north)
-    if to_crs == "Auto42001" or native_resolution["crs"] == "Auto42001":
-        # Find correct UTM zone
-        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
-        if to_crs == "Auto42001":
-            to_crs = utm_zone_crs
-        if native_resolution["crs"] == "Auto42001":
-            native_resolution = native_resolution.copy()
-            native_resolution["crs"] = utm_zone_crs
-
-    p = spatial_extent_shaply.representative_point()
-    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], native_resolution["crs"], always_xy=True)
-    x, y = transformer.transform(p.x, p.y)
-
-    cell_bbox = {
-        "west": x,
-        "east": x + native_resolution["cell_width"],
-        "south": y,
-        "north": y + native_resolution["cell_height"],
-        "crs": native_resolution["crs"]
-    }
-    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
-
-    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
-    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
-
-    return cell_width_reprojected, cell_height_reprojected
-
 
 def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
         temporal_extent: Tuple[str, str],
+        temporal_step:str,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
@@ -1152,6 +1121,7 @@ def is_layer_too_large(
     :param spatial_extent: Requested spatial extent.
     :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
     :param temporal_extent: Requested temporal extent (in isoformat).
+    :param temporal_step: Requested temporal step size (in isoformat).
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
@@ -1163,6 +1133,15 @@ def is_layer_too_large(
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+    if temporal_step is None:
+        # Raw estimate.
+        # TODO: DEM has only one time sample and no step defined.
+        temporal_step = "P10D"
+
+    # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
+    temporal_step = parse_approximate_isoduration(temporal_step)
+    estimate_days_per_sample = temporal_step.days
+
     from_date, to_date = temporal_extent
     if to_date is None:
         if from_date is None:
@@ -1174,15 +1153,18 @@ def is_layer_too_large(
             logger.warning(
                 f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
             )
-            to_date = datetime.now().isoformat()
-            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+            from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
+            to_date_now = datetime.now().replace(tzinfo=None)
+            days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
     else:
-        # Some datasets have coverage only once every 4 days. Be less strict here:
-        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / 4
+        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / estimate_days_per_sample
     days = max(int(days), 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
+    elif isinstance(srs, dict):
+        if srs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
+            srs = 'Auto42001'
 
     # Resampling process overwrites native_crs and resolution from metadata.
     resample_target_crs = resample_params.get("target_crs", None)
@@ -1206,7 +1188,7 @@ def is_layer_too_large(
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-    # TODO #618 estimation assumes there is an observation for every day, which is typically quite an overestimation.
+
     pixels_width = bbox_width / cell_width
     pixels_height = bbox_height / cell_height
     if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:

@@ -15,6 +15,7 @@ import resource
 import stat
 import tempfile
 
+import pyproj
 from epsel import on_first_time
 from functools import partial
 from pathlib import Path
@@ -27,11 +28,11 @@ from kazoo.client import KazooClient
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
 from pyproj import CRS
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point
+from shapely.geometry import box, GeometryCollection, MultiPolygon, Polygon, Point
 
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.util.geometry import GeometryBufferer
+from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
 from openeo_driver.util.logging import (
     get_logging_config,
     setup_logging, BatchJobLoggingFilter,
@@ -41,6 +42,7 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     LOG_HANDLER_FILE_JSON,
 )
+from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -572,3 +574,90 @@ class StatsReporter:
 @functools.lru_cache
 def is_package_available(name: str) -> bool:
     return any(m.name == name for m in pkgutil.iter_modules())
+
+
+def reproject_cellsize(
+        spatial_extent: dict,
+        input_resolution: tuple,
+        input_crs: str,
+        to_crs: str,
+) -> Tuple[float, float]:
+    """
+    :param spatial_extent: The spatial extent is needed, because conversion is often
+    different when done at the poles compared to the equator.
+    eg: When converting 1meter to degrees (in LatLon) at the North Pole, it can be way more degrees more in LatLon
+    compared to the same conversion at the equator.
+    :param input_resolution:
+    :param input_crs:
+    :param to_crs:
+    """
+    if "crs" not in spatial_extent:
+        spatial_extent = spatial_extent.copy()
+        spatial_extent["crs"] = "EPSG:4326"
+    west, south = spatial_extent["west"], spatial_extent["south"]
+    east, north = spatial_extent["east"], spatial_extent["north"]
+    spatial_extent_shaply = box(west, south, east, north)
+    if to_crs == "Auto42001" or input_crs == "Auto42001":
+        # Find correct UTM zone
+        utm_zone_crs = auto_utm_epsg_for_geometry(spatial_extent_shaply, spatial_extent["crs"])
+        if to_crs == "Auto42001":
+            to_crs = utm_zone_crs
+        if input_crs == "Auto42001":
+            input_crs = utm_zone_crs
+
+    p = spatial_extent_shaply.representative_point()
+    transformer = pyproj.Transformer.from_crs(spatial_extent["crs"], input_crs, always_xy=True)
+    x, y = transformer.transform(p.x, p.y)
+
+    cell_bbox = {
+        "west": x,
+        "east": x + input_resolution[0],
+        "south": y,
+        "north": y + input_resolution[1],
+        "crs": input_crs
+    }
+    cell_bbox_reprojected = reproject_bounding_box(cell_bbox, from_crs=cell_bbox["crs"], to_crs=to_crs)
+
+    cell_width_reprojected = abs(cell_bbox_reprojected["east"] - cell_bbox_reprojected["west"])
+    cell_height_reprojected = abs(cell_bbox_reprojected["north"] - cell_bbox_reprojected["south"])
+
+    return cell_width_reprojected, cell_height_reprojected
+
+
+def parse_approximate_isoduration(s):
+    """
+    Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.
+    Approximate, because it does not care about leap years, months with different number of days, etc.
+    Examples: "PT1H30M15.460S", "P5DT4M", "P2WT3H", "P1D"
+    Based on: https://stackoverflow.com/questions/36976138/is-there-an-easy-way-to-convert-iso-8601-duration-to-timedelta
+    """
+
+    def get_isosplit(s_arg, split):
+        if split in s_arg:
+            n, s_arg = s_arg.split(split, 1)
+        else:
+            n = '0'
+        return float(n.replace(',', '.')), s_arg  # to handle like "P0,5Y"
+
+    s = s.split('P', 1)[-1]  # Remove prefix
+    # M can mean month or minute, so we split the day and time part:
+    if 'T' in s:
+        s_date0, s_time0 = s.split('T', 1)
+    else:
+        s_date0 = s
+        s_time0 = ''
+    s_date, s_time = s_date0, s_time0
+    s_yr, s_date = get_isosplit(s_date, 'Y')  # Step through letter dividers
+    s_mo, s_date = get_isosplit(s_date, 'M')
+    s_wk, s_date = get_isosplit(s_date, 'W')
+    s_dy, s_date = get_isosplit(s_date, 'D')
+
+    s_hr, s_time = get_isosplit(s_time, 'H')
+    s_mi, s_time = get_isosplit(s_time, 'M')
+    s_sc, s_time = get_isosplit(s_time, 'S')
+    n_yr = s_yr * 365  # approx days for year, month, week
+    n_mo = s_mo * 30.4  # Average days per month
+    n_wk = s_wk * 7
+    dt = datetime.timedelta(days=n_yr + n_mo + n_wk + s_dy, hours=s_hr, minutes=s_mi,
+                            seconds=s_sc)
+    return dt
