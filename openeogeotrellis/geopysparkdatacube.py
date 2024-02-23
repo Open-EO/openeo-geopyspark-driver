@@ -1295,7 +1295,7 @@ class GeopysparkDataCube(DriverDataCube):
             spatialPartitions = (b.maxKey.col - b.minKey.col + 1) * (rows)
 
             logging.info(f"Reprojecting datacube with partitioner {partitioner} to new layout {newLayout} and {projection}")
-            if(max_level.getNumPartitions() <= spatialPartitions and max_level.layer_type == gps.LayerType.SPACETIME):
+            if(max_level.getNumPartitions() <= spatialPartitions and max_level.layer_type == gps.LayerType.SPACETIME and resolution < 0.5*self.get_cellsize_x()):
                 logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {spatialPartitions*10} before resample_spatial.")
                 max_level = max_level.repartition(spatialPartitions*10)
 
@@ -1308,6 +1308,14 @@ class GeopysparkDataCube(DriverDataCube):
             return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
+
+    def get_cellsize_x(self):
+        max_level = self.get_max_level()
+        extent = max_level.layer_metadata.layout_definition.extent
+        currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
+
+        currentResolutionX = (extent.xmax - extent.xmin) / (currentTileLayout.tileCols * currentTileLayout.layoutCols)
+        return currentResolutionX
 
     @staticmethod
     def _layout_for_resolution(extent, currentTileLayout, projection, target_resolution):
