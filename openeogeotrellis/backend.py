@@ -890,6 +890,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 if "eo:bands" in item.properties:
                     eo_bands_location = item.properties
                 elif item.get_collection() is not None:
+                    collection = item.get_collection()
                     eo_bands_location = item.get_collection().summaries.lists
                 else:
                     # TODO: band order is not "stable" here, see https://github.com/Open-EO/openeo-processes/issues/488
@@ -924,6 +925,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                 if load_params.properties:
                     raise properties_unsupported_exception
+
+                if isinstance(catalog, pystac.Collection):
+                    collection = catalog
 
                 band_names = [b["name"] for b in (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
                                                   else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])]
@@ -987,11 +991,21 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         proj_bbox = None
         proj_shape = None
 
+        if collection is not None:
+            #we found some collection level metadata
+            item_assets = collection.extra_fields.get("item_assets", {})
+            dimensions = [[v.get("dimensions") for v in i.get("cube:variables",{}).values()] for i in item_assets.values() if "cube:variables" in i]
+
+
         for itm in intersecting_items:
             band_assets = {asset_id: asset for asset_id, asset
                            in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
 
-            links = []
+            builder = jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+
+            builder = builder.withId(itm.id).withBBox( itm.bbox[0],itm.bbox[1],itm.bbox[2],itm.bbox[3]) \
+                .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
+
             for asset_id, asset in band_assets.items():
                 asset_band_names = get_band_names(itm, asset)
                 for asset_band_name in asset_band_names:
@@ -999,14 +1013,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         band_names.append(asset_band_name)
 
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
-                links.append([asset.href, asset_id] + asset_band_names)
 
-            opensearch_client.add_feature(
-                itm.id,
-                jvm.geotrellis.vector.Extent(*map(float, itm.bbox)),
-                itm.properties.get("datetime") or itm.properties["start_datetime"],
-                links
-            )
+                builder = builder.addLink(asset.href, asset_id, asset_band_names)
+
+            builder = builder.withCRS(f"EPSG:{proj_epsg}").withRasterExtent(*proj_bbox)
+
+            if proj_bbox and proj_shape:
+                cell_width, cell_height = self.compute_cellsize(proj_bbox, proj_shape)
+                builder = builder.withResolution(cell_width)
+
+            f = builder.build()
+            opensearch_client.addFeature(f)
 
             item_bbox = BoundingBox.from_wsen_tuple(
                 itm.bbox, crs="EPSG:4326"
@@ -1025,10 +1042,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         if proj_epsg and proj_bbox and proj_shape:  # exact resolution
             target_epsg = proj_epsg
-            xmin, ymin, xmax, ymax = proj_bbox
-            rows, cols = proj_shape
-            cell_width = (xmax - xmin) / cols
-            cell_height = (ymax - ymin) / rows
+            cell_width, cell_height = self.compute_cellsize(proj_bbox, proj_shape)
         elif proj_epsg:  # about 10m in given CRS
             target_epsg = proj_epsg
             try:
@@ -1122,6 +1136,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                   range(0, pyramid.size())}
 
         return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+    def compute_cellsize(self, proj_bbox, proj_shape):
+        xmin, ymin, xmax, ymax = proj_bbox
+        rows, cols = proj_shape
+        cell_width = (xmax - xmin) / cols
+        cell_height = (ymax - ymin) / rows
+        return cell_width,cell_height
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
