@@ -587,13 +587,15 @@ class CliApp:
 
         args = self.parse_cli_args(args=args)
 
+        rotating_log = args.rotating_log
+
+        if not rotating_log and not ConfigParams().is_kube_deploy and Path("logs").is_dir():
+            # TODO: eliminate this temporary fallback
+            rotating_log = f"logs/job_tracker_python.log"
+
         self.setup_logging(
             basic_logging=args.basic_logging,
-            rotating_file=(
-                "logs/job_tracker_python.log"
-                if not ConfigParams().is_kube_deploy and Path("logs").is_dir()
-                else None
-            ),
+            rotating_file=rotating_log,
         )
 
         _log.info(f"job_tracker_v2 cli {args=}")
@@ -676,7 +678,12 @@ class CliApp:
         )
         parser.add_argument(
             "--app-cluster",
-            choices=["yarn", "k8s", "auto"],
+            choices=[
+                "yarn",
+                "k8s",
+                "auto",
+                "broken-dummy",  # Just for testing purposes
+            ],
             default="auto",
             help="Application cluster to get job/app status from.",
         )
@@ -684,6 +691,12 @@ class CliApp:
             "--basic-logging",
             action="store_true",
             help="Use basic logging on stderr instead of JSON formatted logs.",
+        )
+        parser.add_argument(
+            "--rotating-log",
+            default=None,
+            dest="rotating_log",
+            help="Rotating log file (path).",
         )
         parser.add_argument(
             "--zk-job-registry-root-path",

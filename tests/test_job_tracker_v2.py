@@ -1662,3 +1662,25 @@ class TestCliApp:
         assert run_result.ret == pytest.ExitCode.INTERRUPTED
         assert run_result.outlines == []
         assert "unrecognized arguments: --foobar" in run_result.stderr.str()
+
+    def test_run_rotating_log(self, pytester, tmp_path):
+        rotating_log = tmp_path / "tracker.log"
+        assert not rotating_log.exists()
+        command = [
+            sys.executable,
+            "-m",
+            "openeogeotrellis.job_tracker_v2",
+            "--app-cluster",
+            "broken-dummy",
+            "--rotating-log",
+            str(rotating_log),
+        ]
+        run_result = pytester.run(*command)
+        assert run_result.ret == 1
+        assert rotating_log.exists()
+        # Some basic checks that we got logs in JSON Lines format
+        logs = [n for n in rotating_log.read_text().split("\n") if n.strip()]
+        assert len(logs) > 5
+        for log in logs:
+            log = json.loads(log)
+            assert {"levelname", "name", "message"}.issubset(log.keys())
