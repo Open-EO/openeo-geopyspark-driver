@@ -674,10 +674,10 @@ def test_export_workspace(tmp_path):
     workspace_dir.mkdir()
     try:
         run_job(process, output_file=tmp_path / "out.tif", metadata_file=tmp_path / "job_metadata.json",
-                api_version="2.0.0", job_dir=Path("./"), dependencies=[])
+                api_version="2.0.0", job_dir=tmp_path, dependencies=[])
 
-        output_files = os.listdir(tmp_path)
-        assert "openEO_2021-01-05Z.tif" in output_files
+        output_file = tmp_path / "openEO_2021-01-05Z.tif"
+        assert output_file.exists()
 
         workspace_files = os.listdir(workspace_dir)
         assert set(workspace_files) == {
@@ -686,11 +686,7 @@ def test_export_workspace(tmp_path):
             "openEO_2021-01-05Z.tif.json"
         }
 
-        with open(workspace_dir / "collection.json") as f:
-            stac_collection = json.load(f)
-        print(json.dumps(stac_collection, indent=2))
-
-        stac_collection = pystac.Collection.from_dict(stac_collection)
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
@@ -714,6 +710,10 @@ def test_export_workspace(tmp_path):
         assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
         assert geotiff_asset.media_type == "image/tiff; application=geotiff"
         assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
+
+        geotiff_asset_file = tmp_path / "openEO_2021-01-05Z_copy.tif"
+        geotiff_asset.copy(str(geotiff_asset_file))  # downloads the asset file
+        assert geotiff_asset_file.exists()
 
         # TODO: check other things e.g. proj:
     finally:

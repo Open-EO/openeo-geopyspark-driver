@@ -1125,9 +1125,6 @@ def run_job(
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata = {**assets_metadata, **the_assets_metadata}
 
-            asset_paths = [Path(asset["href"]) for asset in the_assets_metadata.values()]
-            result.export_workspace(source_files=asset_paths, default_merge=OPENEO_BATCH_JOB_ID)
-
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
 
@@ -1189,8 +1186,7 @@ def run_job(
                                                     asset_metadata=assets_metadata,
                                                     ml_model_metadata=ml_model_metadata)
 
-        result.export_workspace(source_files=_write_exported_stac_collection(job_dir, result_metadata),
-                                default_merge=OPENEO_BATCH_JOB_ID)
+        _export_workspace(result, result_metadata, stac_metadata_dir=job_dir)
     finally:
         metadata = {**result_metadata, **_get_tracker_metadata("")}
 
@@ -1213,6 +1209,14 @@ def run_job(
             for file in os.listdir(job_dir):
                 full_path = str(job_dir) + "/" + file
                 s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+
+
+def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):
+    asset_paths = [Path(asset["href"]) for asset in result_metadata["assets"].values()]
+    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata)
+    result.export_workspace(get_workspace=get_backend_config().workspaces.__getitem__,
+                            files=asset_paths + stac_paths,
+                            default_merge=OPENEO_BATCH_JOB_ID)
 
 
 def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> List[Path]:  # TODO: change to Set?
@@ -1263,11 +1267,7 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
             "spatial": {"bbox": [[-180, -90, 180, 90]]},  # TODO
             "temporal": {"interval": [[None, None]]}  # TODO
         },
-        "links": [item_link(item_file) for item_file in item_files] + [{
-            "href": "./collection.json",
-            "rel": "self",
-            "type": "application/geo+json",
-        }],
+        "links": [item_link(item_file) for item_file in item_files],
     }
 
     collection_file = job_dir / "collection.json"
