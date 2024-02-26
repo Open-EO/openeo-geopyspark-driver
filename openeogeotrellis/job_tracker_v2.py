@@ -43,7 +43,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_state_to_openeo_job_status,
     kube_client,
 )
-from openeogeotrellis.integrations.etl_api import ETL_API_STATE, get_etl_api
+from openeogeotrellis.integrations.etl_api import ETL_API_STATE
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status, YARN_STATE
 from openeogeotrellis.job_costs_calculator import (
     JobCostsCalculator,
