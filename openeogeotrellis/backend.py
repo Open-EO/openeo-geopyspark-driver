@@ -991,10 +991,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         proj_bbox = None
         proj_shape = None
 
+        netcdf_with_time_dimension = False
         if collection is not None:
             #we found some collection level metadata
             item_assets = collection.extra_fields.get("item_assets", {})
-            dimensions = [[v.get("dimensions") for v in i.get("cube:variables",{}).values()] for i in item_assets.values() if "cube:variables" in i]
+            dimensions = set([tuple(v.get("dimensions")) for i in item_assets.values() if "cube:variables" in i for v in i.get("cube:variables",{}).values() ])
+            #this is one way to determine if a time dimension is used, but it does depend on the use of item_assets and datacube extension.
+            netcdf_with_time_dimension = len(dimensions) == 1 and "time" in dimensions.pop()
 
 
         for itm in intersecting_items:
@@ -1068,14 +1071,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         band_names = metadata.band_names
 
-        pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
-            opensearch_client,
-            url,  # openSearchCollectionId, not important
-            band_names,  # openSearchLinkTitles
-            None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-            False  # experimental
-        )
+        if(netcdf_with_time_dimension):
+            pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
+        else:
+
+            pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
+                opensearch_client,
+                url,  # openSearchCollectionId, not important
+                band_names,  # openSearchLinkTitles
+                None,  # rootPath, not important
+                jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+                False  # experimental
+            )
 
         extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
         extent_crs = target_bbox.crs
@@ -1101,7 +1108,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
-        if single_level:
+        if netcdf_with_time_dimension:
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
+                                                   metadata_properties, correlation_id, data_cube_parameters, opensearch_client)
+        elif single_level:
             pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
                                                    metadata_properties, correlation_id, data_cube_parameters)
         else:
