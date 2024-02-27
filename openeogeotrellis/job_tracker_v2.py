@@ -636,6 +636,8 @@ class CliApp:
                     )
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter(kube_client("CustomObject"), Prometheus(config.prometheus_api))
+                elif app_cluster == "broken-dummy":
+                    raise RuntimeError("Broken dummy")
                 else:
                     raise ValueError(app_cluster)
 

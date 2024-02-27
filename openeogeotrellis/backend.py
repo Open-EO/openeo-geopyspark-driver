@@ -2373,24 +2373,28 @@ class GpsBatchJobs(backend.BatchJobs):
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
-            )
-            persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
-                "persistentvolume_batch_job_results.yaml.j2",
-                job_name=spark_app_id,
-                job_namespace=pod_namespace,
-                output_dir=output_dir,
-                swift_bucket=bucket,
+                fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
             )
 
-            persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
-                "persistentvolumeclaim_batch_job_results.yaml.j2",
-                job_name=spark_app_id,
-            )
+            if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
+                    "persistentvolume_batch_job_results.yaml.j2",
+                    job_name=spark_app_id,
+                    job_namespace=pod_namespace,
+                    output_dir=output_dir,
+                    swift_bucket=bucket,
+                )
+
+                persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
+                    "persistentvolumeclaim_batch_job_results.yaml.j2",
+                    job_name=spark_app_id,
+                )
 
             with self._double_job_registry as dbl_registry:
                 try:
-                    api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
-                    api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
+                    if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                        api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
+                        api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
                     submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
