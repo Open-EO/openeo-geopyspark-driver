@@ -859,6 +859,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return True
 
         dependency_job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=self.batch_jobs)
+        collection = None
         if dependency_job_info:
             intersecting_items = []
 
@@ -1019,7 +1020,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                 builder = builder.addLink(asset.href, asset_id, asset_band_names)
 
-            builder = builder.withCRS(f"EPSG:{proj_epsg}").withRasterExtent(*proj_bbox)
+            if proj_epsg:
+                builder = builder.withCRS(f"EPSG:{proj_epsg}")
+            if proj_bbox:
+                builder = builder.withRasterExtent(*proj_bbox)
 
             if proj_bbox and proj_shape:
                 cell_width, cell_height = self.compute_cellsize(proj_bbox, proj_shape)
