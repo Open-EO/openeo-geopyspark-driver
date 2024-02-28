@@ -59,8 +59,6 @@ class ConfigParams:
             )
         )
 
-        self.s3_bucket_name = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
-
         # TODO: this param is now also available in GpsBackendConfig
         self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
 

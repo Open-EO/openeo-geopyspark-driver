@@ -1175,11 +1175,10 @@ def run_job(
                     "processing:software": {
                         "Geotrellis backend": __version__
                     },
-                    "processing:expression": [
-                        {
-                            "format": "openeo",
-                            "expression": pg_copy
-                        }]
+                    "processing:expression": {
+                        "format": "openeo",
+                        "expression": pg_copy
+                    }
                 }]
 
         result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,

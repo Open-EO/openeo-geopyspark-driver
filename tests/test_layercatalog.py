@@ -8,7 +8,6 @@ import schema
 from openeo.util import deep_get
 from openeo_driver.utils import read_json
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name
 from openeogeotrellis.vault import Vault
@@ -229,6 +228,35 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
         {"id": "BAR", "description": "bar",  "links": ["example.com/bar"]},
         {"id": "BZZ"}
     ]
+
+
+def test_layer_catalog_step_resolution(vault):
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            str(Path(__file__).parent / "layercatalog.json"),
+        ]
+        catalog = get_layer_catalog(vault, opensearch_enrich=True)
+        all_metadata = catalog.get_all_metadata()
+
+    warnings = ""
+    for layer in all_metadata:
+        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
+        warn_str = f"\n{layer['id']=}\n"
+
+        gsd_in_meter = metadata.get_GSD_in_meters()
+        warn_str += f"{gsd_in_meter=}\n"
+        if gsd_in_meter is None:
+            continue
+        if isinstance(gsd_in_meter, tuple):
+            gsd_in_meter = {"general": gsd_in_meter}
+
+        for band, resolution in gsd_in_meter.items():
+            # Example layer with low resolution: SEA_ICE_INDEX (25km)
+            if (not 0.1 < resolution[0] < 50000) or (not 0.1 < resolution[1] < 50000):
+                warn_str += "WARNING: gsd is not in expected range: " + str(resolution[0]) + "m\n"
+                warnings += warn_str + "\n"
+                break
+    assert warnings == ""
 
 
 def test_merge_layers_with_common_name_nothing():

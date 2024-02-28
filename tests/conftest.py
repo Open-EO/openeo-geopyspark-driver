@@ -15,7 +15,9 @@ from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
 from openeo_driver.testing import ApiTester
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_registry import InMemoryJobRegistry
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
@@ -283,14 +285,12 @@ def mock_s3_client(aws_credentials):
 
 
 @pytest.fixture(scope="function")
-def mock_s3_bucket(mock_s3_resource, monkeypatch):
-    # TODO: bucket_name: there could be a mismatch with ConfigParams().s3_bucket_name if any ConfigParams instances were created earlier in the test setup.
+def mock_s3_bucket(mock_s3_resource):
     bucket_name = "openeo-fake-bucketname"
-    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
-    from openeogeotrellis.configparams import ConfigParams
 
-    assert ConfigParams().s3_bucket_name == bucket_name
+    with gps_config_overrides(s3_bucket_name=bucket_name):
+        assert get_backend_config().s3_bucket_name == bucket_name
 
-    bucket = mock_s3_resource.Bucket(bucket_name)
-    bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
-    yield bucket
+        bucket = mock_s3_resource.Bucket(bucket_name)
+        bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
+        yield bucket
