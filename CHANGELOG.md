@@ -14,6 +14,8 @@ without compromising stable operations.
 
 - Export to JSON is now more robust, supports datetime objects returned by dimension_labels, and will default to the string representation.
 - GDAL upgraded to 3.8.4 and Orfeo Toolbox to 8.1.2. This mainly reduces the volume of bytes read from object storage by GDAL. ([#571](https://github.com/Open-EO/openeo-geopyspark-driver/issues/571))
+- Add timeout to requests towards ETL API to unblock JobTracker ([#690](https://github.com/Open-EO/openeo-geopyspark-driver/issues/690)).
+- Size of incoming requests is now limited to 2MB by default ([Open-EO/openeo-python-driver#254](https://github.com/Open-EO/openeo-python-driver/issues/254))
 - load_stac: support loading netCDF multiple netCDF items with a time dimension, as produced with 'sample_by_feature' option
 
 ## 0.26.2

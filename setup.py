@@ -54,13 +54,13 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.15.0",
-        "openeo_driver>=0.85.0.dev",
+        "openeo_driver>=0.90.1.dev",
         'pyspark==3.4.2; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        'rasterio~=1.1.8',
+        'rasterio~=1.2.0',
         'py4j',
         'numpy==1.22.4',
         'pandas>=1.4.0,<2.0.0',

@@ -10,6 +10,7 @@ fi
 # Example values: "/openeo/jobs" (for prod), "/openeo/dev/jobs" (for dev), ...
 batch_jobs_zookeeper_root_path=$1
 # Example values: "prod", "dev", "integrationtests"
+deploy_env=$2
 async_task_handler_env=$2
 # Note: this `./openeo.keytab` is expected to be mounted in docker container by NiFi processor.
 keytab="openeo.keytab"
@@ -23,4 +24,5 @@ export PYARROW_IGNORE_TIMEZONE=1
 /opt/venv/bin/python -m openeogeotrellis.job_tracker_v2 \
   --app-cluster yarn \
   --zk-job-registry-root-path=$batch_jobs_zookeeper_root_path \
-  --keytab "$keytab"
+  --keytab "$keytab" \
+  --rotating-log logs/job_tracker_python_${deploy_env}.log

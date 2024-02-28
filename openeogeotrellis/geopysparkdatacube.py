@@ -1,6 +1,5 @@
 import collections
 import collections.abc
-import json
 import logging
 import math
 import os
@@ -18,16 +17,15 @@ import pyproj
 import pytz
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
-from geopyspark.geotrellis import Extent, ResampleMethod, crs_to_proj4
+from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType
 from pandas import Series
-from py4j.java_gateway import JVMView
 from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import CollectionMetadata, Band, Dimension
+from openeo.metadata import Band
 from openeo.udf import UdfData
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none, str_truncate
@@ -35,12 +33,14 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import ResolutionMergeArgs
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, InternalException, \
+from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, \
     ProcessParameterInvalidException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import (
@@ -56,80 +56,6 @@ from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
 
 
 _log = logging.getLogger(__name__)
-
-
-class GeopysparkCubeMetadata(CollectionMetadata):
-    """
-    GeoPySpark Cube metadata (additional tracking of spatial and temporal extent
-    """
-    # TODO move to python driver?
-
-    def __init__(
-            self, metadata: dict, dimensions: List[Dimension] = None,
-            spatial_extent: dict = None, temporal_extent: tuple = None
-    ):
-        super().__init__(metadata=metadata, dimensions=dimensions)
-        self._spatial_extent = spatial_extent
-        self._temporal_extent = temporal_extent
-        if(self.has_temporal_dimension() and temporal_extent is not None):
-            self.temporal_dimension.extent = temporal_extent
-
-
-    def _clone_and_update(
-            self, metadata: dict = None, dimensions: List[Dimension] = None,
-            spatial_extent: dict = None, temporal_extent: tuple = None, **kwargs
-    ) -> 'GeopysparkCubeMetadata':
-        # noinspection PyTypeChecker
-        return super()._clone_and_update(
-            metadata=metadata, dimensions=dimensions,
-            spatial_extent=spatial_extent or self._spatial_extent,
-            temporal_extent=temporal_extent or self._temporal_extent,
-            **kwargs
-        )
-
-    def filter_bbox(self, west, south, east, north, crs) -> 'GeopysparkCubeMetadata':
-        """Create new metadata instance with spatial extent"""
-        # TODO take intersection with existing extent
-        return self._clone_and_update(
-            spatial_extent={"west": west, "south": south, "east": east, "north": north, "crs": crs}
-        )
-
-    @property
-    def spatial_extent(self) -> dict:
-        return self._spatial_extent
-
-    def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
-        """Create new metadata instance with temporal extent"""
-        # TODO take intersection with existing extent
-        return self._clone_and_update(temporal_extent=(start, end))
-
-    @property
-    def temporal_extent(self) -> tuple:
-        return self._temporal_extent
-
-    @property
-    def opensearch_link_titles(self) -> List[str]:
-        """Get opensearch_link_titles from band dimension"""
-        names_with_aliases = zip(self.band_dimension.band_names, self.band_dimension.band_aliases)
-        return [n[1][0] if n[1] else n[0] for n in names_with_aliases]
-
-    def provider_backend(self) -> Union[str, None]:
-        return self.get("_vito", "data_source", "provider:backend", default=None)
-
-    def auto_polarization(self) -> Union[str, None]:
-        return self.get("_vito", "data_source", "auto_polarization", default=False)
-
-    def common_name_priority(self) -> int:
-        priority = self.get("_vito", "data_source", "common_name_priority", default=None)
-        if priority is not None:
-            return priority
-        # fallback based on provider:backend property (if any)
-        return {
-            None: 0,
-            "terrascope": 10,
-            "sentinelhub": 5,
-        }.get(self.provider_backend(), 0)
-
 
 SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
 
@@ -1585,7 +1511,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        bucket = str(ConfigParams().s3_bucket_name)
+        bucket = str(get_backend_config().s3_bucket_name)
         filename = str(filename)
         directory = str(pathlib.Path(filename).parent)
         s3_filename = "s3://{b}{f}".format(b=bucket, f=filename)

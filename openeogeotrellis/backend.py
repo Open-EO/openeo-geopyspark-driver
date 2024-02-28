@@ -89,7 +89,6 @@ from openeogeotrellis.layercatalog import (
     get_layer_catalog,
     is_layer_too_large,
     LARGE_LAYER_THRESHOLD_IN_PIXELS,
-    reproject_cellsize,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -119,6 +118,7 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
+    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
@@ -1565,22 +1565,7 @@ class GpsProcessing(ConcreteProcessing):
                                 "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                             }
 
-                if collection_id == 'TestCollection-LonLat4x4':
-                    # This layer is always 4x4 pixels, adapt resolution accordingly
-                    bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
-                    bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-                    cell_width_latlon = bbox_width / 4
-                    cell_height_latlon = bbox_height / 4
-                    native_resolution = {
-                        "cell_width": cell_width_latlon,
-                        "cell_height": cell_height_latlon,
-                        "crs": "EPSG:4326"
-                    }
-                    cell_width, cell_height = reproject_cellsize(spatial_extent, native_resolution, "Auto42001")
-                else:
-                    cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
-                    cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
-                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default = "EPSG:4326")
+                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
                 if isinstance(native_crs, dict):
                     native_crs = native_crs.get("id", {}).get("code", None)
                 if isinstance(native_crs, int):
@@ -1616,12 +1601,51 @@ class GpsProcessing(ConcreteProcessing):
                         ]
 
                 if spatial_extent and temporal_extent:
-                    bands = constraints.get(
-                        "bands",
-                        metadata.get("cube:dimensions", "bands", "values",
-                                     default=["_at_least_assume_one_band_"])
-                    )
-                    nr_bands = len(bands)
+                    band_names = constraints.get("bands")
+                    if band_names:
+                        # Will convert aliases:
+                        band_names = metadata.filter_bands(band_names).band_names
+                    else:
+                        band_names = metadata.get("cube:dimensions", "bands", "values",
+                                                  default=["_at_least_assume_one_band_"])
+                    nr_bands = len(band_names)
+
+                    temporal_step = metadata.get("cube:dimensions", "t", "step", default=None)
+
+                    if collection_id == 'TestCollection-LonLat4x4':
+                        # This layer is always 4x4 pixels, adapt resolution accordingly
+                        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+                        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+                        cell_width_latlon = bbox_width / 4
+                        cell_height_latlon = bbox_height / 4
+                        cell_width, cell_height = reproject_cellsize(spatial_extent,
+                                                                     (cell_width_latlon, cell_height_latlon),
+                                                                     "EPSG:4326",
+                                                                     "Auto42001",
+                                                                     )
+                    else:
+                        # The largest GSD I encountered was 25km. Double it as very permissive guess:
+                        default_gsd = (50000, 50000)
+                        gsd_object = metadata.get_GSD_in_meters()
+                        if isinstance(gsd_object, dict):
+                            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
+                            gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
+                            if not gsd_in_meter_list:
+                                gsd_in_meter_list = [default_gsd] * nr_bands
+                        elif isinstance(gsd_object, tuple):
+                            gsd_in_meter_list = [gsd_object] * nr_bands
+                        else:
+                            gsd_in_meter_list = [default_gsd] * nr_bands
+
+                        # We need to convert GSD to resolution in order to take an average:
+                        px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
+                        px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
+                        m_per_px_average_band = 1 / px_per_m_average_band
+
+                        res = (m_per_px_average_band, m_per_px_average_band)
+                        # Auto42001 is in meter
+                        cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
+
                     geometries = constraints.get("aggregate_spatial", {}).get("geometries")
                     if geometries is None:
                         geometries = constraints.get("filter_spatial", {}).get("geometries")
@@ -1629,6 +1653,7 @@ class GpsProcessing(ConcreteProcessing):
                         spatial_extent=spatial_extent,
                         geometries=geometries,
                         temporal_extent=temporal_extent,
+                        temporal_step=temporal_step,
                         nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,
@@ -1642,6 +1667,17 @@ class GpsProcessing(ConcreteProcessing):
                             "code": "ExtentTooLarge",
                             "message": f"collection_id {collection_id!r}: {message}"
                         }
+
+    def verify_for_synchronous_processing(self, process_graph: dict, env: EvalEnv = None) -> Iterable[str]:
+        env_validate = env.push({
+            "allow_check_missing_products": False,
+            "sync_job": True,
+        })
+        errors = self.validate(process_graph=process_graph, env=env_validate)
+
+        # Only care for certain errors and make list of strings:
+        errors = [e["message"] for e in errors if e["code"] == "ExtentTooLarge"]
+        return errors
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
@@ -2295,7 +2331,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         status_code=400,
                     )
 
-            bucket = ConfigParams().s3_bucket_name
+            bucket = get_backend_config().s3_bucket_name
             s3_instance = s3_client()
 
             all_buckets = s3_instance.list_buckets()
@@ -3203,7 +3239,7 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.info(f"Kube_deploy: Deleting directory from s3 object storage.")
             prefix = str(self.get_job_output_dir(job_id))[1:]
             self._jvm.org.openeo.geotrellis.creo.CreoS3Utils.deleteCreoSubFolder(
-                config_params.s3_bucket_name, prefix
+                get_backend_config().s3_bucket_name, prefix
             )
 
         with self._double_job_registry as registry:

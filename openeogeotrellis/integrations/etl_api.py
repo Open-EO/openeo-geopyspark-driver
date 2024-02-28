@@ -12,6 +12,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.config import EtlApiConfig
 
 ORCHESTRATOR = "openeo"
+REQUESTS_TIMEOUT_SECONDS = 60
 
 _log = logging.getLogger(__name__)
 
@@ -76,7 +77,8 @@ class EtlApi:
         # will work regardless of ability to log resources
         access_token = access_token or self._access_token_helper.get_access_token()
         with self._session.get(f"{self._endpoint}/user/permissions",
-                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+                               headers={'Authorization': f"Bearer {access_token}"},
+                               timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
             _log.debug(resp.text)
             resp.raise_for_status()  # value of "execution" is unrelated
 
@@ -84,7 +86,8 @@ class EtlApi:
         # will also work if able to log resources
         access_token = access_token or self._access_token_helper.get_access_token()
         with self._session.get(f"{self._endpoint}/validate/auth",
-                               headers={'Authorization': f"Bearer {access_token}"}) as resp:
+                               headers={'Authorization': f"Bearer {access_token}"},
+                               timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
             _log.debug(resp.text)
             resp.raise_for_status()
 
@@ -128,7 +131,7 @@ class EtlApi:
 
         access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
-                                json=data) as resp:
+                                json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
             if not resp.ok:
                 log.warning(
                     f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
@@ -171,7 +174,7 @@ class EtlApi:
 
         access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
-                                json=data) as resp:
+                                json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
             if not resp.ok:
                 log.warning(
                     f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
