@@ -1018,7 +1018,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
-                builder = builder.addLink(asset.href, asset_id, asset_band_names)
+                builder = builder.addLink(asset.get_absolute_href(), asset_id, asset_band_names)
 
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
