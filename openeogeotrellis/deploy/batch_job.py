@@ -689,7 +689,7 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
         see: https://github.com/stac-extensions/projection
 
         - "proj:epsg"  The EPSG code of the CRS, if available.
-        - "proj:shape" The pixel size of the asset, if available.
+        - "proj:shape" The pixel size of the asset, if available, in Y,X order.
         - "proj:bbox"  The bounding box expressed in the asset CRS, if available.
 
         When a field can not be found in the metadata that gdal.Info extracted,
@@ -702,7 +702,7 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
 
     # Size of the pixels
     if shape := gdal_info.get("size"):
-        proj_metadata["proj:shape"] = shape
+        proj_metadata["proj:shape"] = list(shape.__reversed__())
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
