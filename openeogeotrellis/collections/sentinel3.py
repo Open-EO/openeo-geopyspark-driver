@@ -360,10 +360,11 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
 
         reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
-        if 'add_offset' in band_settings and 'scale_factor' in band_settings and not digital_numbers:
-            reprojected_data = reprojected_data * band_settings['scale_factor'] + band_settings['add_offset']
         if '_FillValue' in band_settings and not digital_numbers:
             reprojected_data[reprojected_data == band_settings['_FillValue']] = np.nan
+        if 'add_offset' in band_settings and 'scale_factor' in band_settings and not digital_numbers:
+            reprojected_data = reprojected_data.astype("float32") * band_settings['scale_factor'] + band_settings['add_offset']
+
         varOut.append(reprojected_data)
 
     logger.info(f"Done reprojecting {product_type}")
