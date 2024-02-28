@@ -1205,6 +1205,8 @@ def run_job(
                 full_path = str(job_dir) + "/" + file
                 s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
+        get_jvm().com.azavea.gdal.GDALWarp.deinit()
+
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
     """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
