@@ -16,6 +16,7 @@ without compromising stable operations.
 - GDAL upgraded to 3.8.4 and Orfeo Toolbox to 8.1.2. This mainly reduces the volume of bytes read from object storage by GDAL. ([#571](https://github.com/Open-EO/openeo-geopyspark-driver/issues/571))
 - Add timeout to requests towards ETL API to unblock JobTracker ([#690](https://github.com/Open-EO/openeo-geopyspark-driver/issues/690)).
 - Size of incoming requests is now limited to 2MB by default ([Open-EO/openeo-python-driver#254](https://github.com/Open-EO/openeo-python-driver/issues/254))
+- Copy batch job output assets to a workspace with the `export_workspace` process ([#676](https://github.com/Open-EO/openeo-geopyspark-driver/issues/676)).
 
 ## 0.26.2
 
