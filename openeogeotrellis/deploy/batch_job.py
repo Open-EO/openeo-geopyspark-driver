@@ -14,6 +14,7 @@ from copy import deepcopy
 from math import isfinite
 
 import pyproj
+from openeo_driver.workspacerepository import BackendConfigWorkspaceRepository, backend_config_workspace_repository
 from osgeo import gdal
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext, SparkConf
@@ -1214,7 +1215,7 @@ def run_job(
 def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):
     asset_paths = [Path(asset["href"]) for asset in result_metadata["assets"].values()]
     stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata)
-    result.export_workspace(get_workspace=get_backend_config().workspaces.__getitem__,
+    result.export_workspace(workspace_repository=backend_config_workspace_repository,
                             files=asset_paths + stac_paths,
                             default_merge=OPENEO_BATCH_JOB_ID)
 
