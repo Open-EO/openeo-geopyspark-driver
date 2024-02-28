@@ -453,7 +453,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
                 "roles": "data",
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
-                "proj:shape": [720, 1188],
+                "proj:shape": [1188, 720],
                 "raster:bands": [
                     {
                         "name": "1",
@@ -627,7 +627,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
         "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
         "epsg": 4326,
-        "proj:shape": [720, 1188],
+        "proj:shape": [1188, 720],
         "end_datetime": None,
         "geometry": None,
         "area": None,
@@ -753,7 +753,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     assert metadata_result["bbox"] == approx([5.3926158, 49.996947, 5.7092465, 50.333217])
     assert metadata_result["epsg"] == 3812
     assert metadata_result["proj:bbox"] == approx([723413.644, 577049.010, 745443.909, 614102.693])
-    assert metadata_result["proj:shape"] == [720, 1188]
+    assert metadata_result["proj:shape"] == [1188, 720]
 
     assert metadata_result["assets"] == {
         first_asset_name: {
@@ -877,7 +877,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "roles": "data",
                 "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                 "proj:epsg": 4326,
-                "proj:shape": [720, 1188],
+                "proj:shape": [1188, 720],
                 "raster:bands": [
                     {
                         "name": "1",
@@ -896,7 +896,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
                 "roles": "data",
                 "proj:bbox": [723413.644, 577049.010, 745443.909, 614102.693],
                 "proj:epsg": 3812,
-                "proj:shape": [720, 1188],
+                "proj:shape": [1188, 720],
                 "raster:bands": [
                     {
                         "name": "1",
@@ -1032,7 +1032,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
                     "roles": "data",
                     "proj:bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
                     "proj:epsg": 4326,
-                    "proj:shape": [720, 1188],
+                    "proj:shape": [1188, 720],
                     "raster:bands": [
                         {
                             "name": "1",
@@ -1175,7 +1175,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
             },
             "bbox": [5.3997917, 50.0001389, 5.6997917, 50.3301389],
             "epsg": 4326,
-            "proj:shape": [720, 1188],
+            "proj:shape": [1188, 720],
         }
     )
 
@@ -1267,7 +1267,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
                         "roles": "data",
                         "proj:bbox": pytest.approx([5.3997917, 50.0001389, 5.6997917, 50.3301389]),
                         "proj:epsg": 4326,
-                        "proj:shape": [720, 1188],
+                        "proj:shape": [1188, 720],
                     }
                 ),
                 second_asset_name: DictSubSet(
@@ -1276,7 +1276,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
                         "roles": "data",
                         "proj:bbox": pytest.approx([723413.644, 577049.010, 745443.909, 614102.693]),
                         "proj:epsg": 3812,
-                        "proj:shape": [720, 1188],
+                        "proj:shape": [1188, 720],
                     }
                 ),
             },
@@ -1295,12 +1295,12 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
             {
                 "proj:epsg": 4326,
                 "proj:bbox": [-30.000496, -34.999504, 59.999504, 45.000496],
-                "proj:shape": [90720, 80640],
+                "proj:shape": [80640, 90720],
             },
         ),
         (
             "gdalinfo-output/z_cams_c_ecmf_20230308120000_prod_fc_sfc_021_aod550.nc.json",
-            {"proj:bbox": [-0.2, -90.2, 359.8, 90.2], "proj:shape": [900, 451]},
+            {"proj:bbox": [-0.2, -90.2, 359.8, 90.2], "proj:shape": [451, 900]},
         ),
     ],
 )
@@ -1343,7 +1343,7 @@ def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     expected_metadata = {
         "proj:epsg": 32631,
         "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
-        "proj:shape": [357, 233],
+        "proj:shape": [233, 357],
     }
     assert raster_metadata.projection == expected_metadata
 
@@ -1358,7 +1358,7 @@ def test_read_gdal_raster_metadata_from_multiband_netcdf_file():
     assert raster_metadata.to_dict() == {
         "proj:epsg": 32631,
         "proj:bbox": [643120.0, 5675170.0, 646690.0, 5677500.0],
-        "proj:shape": [357, 233],
+        "proj:shape": [233, 357],
         "raster:bands": [
             {
                 "name": "B01",
@@ -1473,7 +1473,7 @@ def test_read_gdal_raster_metadata_from_singleband_netcdf_file():
     assert raster_metadata.to_dict() == DictSubSet(
         {
             "proj:bbox": [-0.2, -90.2, 359.8, 90.2],
-            "proj:shape": [900, 451],
+            "proj:shape": [451, 900],
             "raster:bands": [
                 {
                     "name": "Total Aerosol Optical Depth at 550nm",
@@ -1547,7 +1547,7 @@ def test_read_gdal_raster_stats_with_subdatasets_in_netcdf():
         # Would expect this proj:bbox value with the normal order of the corners:
         # "proj:bbox": approx([0.0, 0.0, 49.0, 3.O]),
         "proj:bbox": approx([0.0, 3.0, 49.0, 0.0]),
-        "proj:shape": [49, 3],
+        "proj:shape": [3, 49],
     }
 
 
@@ -1570,7 +1570,7 @@ def test_read_gdal_raster_metadata_from_multiband_tif_file():
         {
             "proj:epsg": 32631,
             "proj:bbox": approx([471270.000, 5657500.000, 492670.000, 5674440.000]),
-            "proj:shape": [2140, 1694],
+            "proj:shape": [1694, 2140],
             "raster:bands": [
                 DictSubSet(
                     {
