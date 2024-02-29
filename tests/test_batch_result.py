@@ -7,6 +7,8 @@ from pathlib import Path
 import geopandas as gpd
 import pystac
 import pytest
+
+from openeo.util import ensure_dir
 from openeo_driver.testing import DictSubSet
 from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
@@ -40,8 +42,15 @@ def test_png_export(tmp_path):
         }
     }}
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file= "/tmp/out.png" , metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out.png",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
@@ -71,8 +80,15 @@ def test_simple_math(tmp_path):
         "process_graph":simple_compute
     }
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file= Path("/tmp/out.json") , metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out.json",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
 
@@ -127,8 +143,15 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         }
     }}
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file= "/tmp/out.nc" , metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out.nc",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-01T00:00:00Z"
@@ -192,8 +215,15 @@ def test_ep3874_filter_spatial(prefix, tmp_path):
         }
     }}
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file=tmp_path /"out", metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
@@ -286,8 +316,15 @@ def test_aggregate_spatial_area_result(tmp_path):
         }
     }
     metadata_file = tmp_path / "metadata.json"
-    run_job(pg, output_file=tmp_path / "out", metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        pg,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["area"]["value"] == 10155.607958197594
@@ -433,8 +470,15 @@ def test_spatial_geoparquet(tmp_path):
         }
     }
 
-    run_job(job_specification, output_file=tmp_path / "out", metadata_file=tmp_path / "metadata.json",
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_specification,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     assert gpd.read_parquet(tmp_path / "timeseries.parquet").to_dict('list') == {
         'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
@@ -511,8 +555,15 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     }}
 
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file=tmp_path / "out", metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     with metadata_file.open() as f:
         metadata = json.load(f)
@@ -588,8 +639,15 @@ def test_multiple_time_series_results(tmp_path):
         }
     }
 
-    run_job(job_spec, output_file=tmp_path / "out", metadata_file=tmp_path / "job_metadata.json",
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     output_files = os.listdir(tmp_path)
 
@@ -627,8 +685,15 @@ def test_multiple_image_collection_results(tmp_path):
         }
     }
 
-    run_job(job_spec, output_file=tmp_path / "out", metadata_file=tmp_path / "job_metadata.json",
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     output_files = os.listdir(tmp_path)
 
@@ -670,11 +735,18 @@ def test_export_workspace(tmp_path):
 
     process = {"process_graph": process_graph}
 
+    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture
     workspace_dir = Path(f"/tmp/{merge}")
     workspace_dir.mkdir()
     try:
-        run_job(process, output_file=tmp_path / "out.tif", metadata_file=tmp_path / "job_metadata.json",
-                api_version="2.0.0", job_dir=tmp_path, dependencies=[])
+        run_job(
+            process,
+            output_file=tmp_path / "out.tif",
+            metadata_file=tmp_path / "job_metadata.json",
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
 
         output_file = tmp_path / "openEO_2021-01-05Z.tif"
         assert output_file.exists()
