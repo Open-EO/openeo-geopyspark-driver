@@ -12,12 +12,15 @@ from openeo.util import ensure_dir
 from openeo_driver.testing import DictSubSet
 from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
+
 from openeo.metadata import Band
 
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job, extract_result_metadata
+from .data import TEST_DATA_ROOT
 
 
 def test_png_export(tmp_path):
@@ -171,7 +174,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
 
 
 @pytest.mark.parametrize("prefix", [None, "prefixTest"])
-def test_ep3874_filter_spatial(prefix, tmp_path):
+def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path):
     print("tmp_path: ", tmp_path)
     job_spec = {"process_graph":{
         "lc": {
@@ -243,6 +246,79 @@ def test_ep3874_filter_spatial(prefix, tmp_path):
         da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
         assert 'Flat:2' in da
         print(da['Flat:2'])
+
+
+def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
+    """
+    sample_by_feature with vector cube loaded through load_url
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/700
+    """
+    with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
+        job_spec = {
+            "process_graph": {
+                "lc": {
+                    "process_id": "load_collection",
+                    "arguments": {
+                        "id": "TestCollection-LonLat4x4",
+                        "temporal_extent": ["2021-01-04", "2021-01-06"],
+                        "bands": ["Longitude"],
+                    },
+                },
+                "geometry": {
+                    "process_id": "load_url",
+                    "arguments": {
+                        "url": f"{fileserver_root}/geometries/FeatureCollection03.geoparquet",
+                        "format": "Parquet",
+                    },
+                },
+                "filterspatial1": {
+                    "process_id": "filter_spatial",
+                    "arguments": {
+                        "data": {"from_node": "lc"},
+                        "geometries": {"from_node": "geometry"},
+                    },
+                },
+                "save": {
+                    "process_id": "save_result",
+                    "arguments": {
+                        "data": {"from_node": "filterspatial1"},
+                        "format": "netCDF",
+                        "options": {"sample_by_feature": True},
+                    },
+                    "result": True,
+                },
+            }
+        }
+        metadata_file = tmp_path / "metadata.json"
+        run_job(
+            job_spec,
+            output_file=tmp_path / "out",
+            metadata_file=metadata_file,
+            api_version="1.0.0",
+            job_dir=ensure_dir(tmp_path / "job_dir"),
+            dependencies={},
+            user_id="jenkins",
+        )
+
+    # Check result metadata
+    with metadata_file.open() as f:
+        result_metadata = json.load(f)
+    assets = result_metadata["assets"]
+    assert len(assets) == 4
+
+    # Check asset contents
+    asset_minima = {}
+    for name, asset_metadata in assets.items():
+        assert asset_metadata["bands"] == [{"name": "Longitude"}]
+        ds = xarray.open_dataset(asset_metadata["href"])
+        asset_minima[name] = ds["Longitude"].min().item()
+
+    assert asset_minima == {
+        "openEO_0.nc": 1.0,
+        "openEO_1.nc": 4.0,
+        "openEO_2.nc": 2.0,
+        "openEO_3.nc": 5.0,
+    }
 
 
 def test_aggregate_spatial_area_result(tmp_path):
