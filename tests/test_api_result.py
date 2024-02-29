@@ -16,6 +16,7 @@ import geopandas as gpd
 import mock
 import numpy
 import numpy as np
+import pandas
 import pytest
 import rasterio
 import xarray
@@ -3865,6 +3866,69 @@ class TestLoadStac:
         assert ds.coords["y"].values.min() == pytest.approx(5618660.000, abs=10)
         assert ds.coords["x"].values.max() == pytest.approx(702500.000, abs=10)
         assert ds.coords["y"].values.max() == pytest.approx(5626390.000, abs=10)
+
+    def test_load_stac_from_spatiotemporal_netcdf_job_results(self, api110, urllib_mock, tmp_path):
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json"))}
+            },
+            "aggregatespatial1": {
+                "process_id": "aggregate_spatial",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "geometries": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "geometry": {
+                                    "coordinates": [27.1385676752,57.34267002],
+                                    "type": "Point"
+                                },
+                                "id": "0",
+                                "properties": {"name": "maize"},
+                                "type": "Feature"
+                            },
+                            {
+                                "geometry": {
+                                    "coordinates": [27.0837739,57.38799],
+                                    "type": "Point"
+                                },
+                                "id": "1",
+                                "properties": {"name": "maize"},
+                                "type": "Feature"
+                            }
+                        ]
+                    },
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    }
+                                },
+                                "process_id": "mean",
+                                "result": True
+                            }
+                        }
+                    }
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "aggregatespatial1"}, "format": "CSV"},
+                "result": True
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        print(res.text)
+        parsed = pandas.read_csv(io.StringIO(res.text))
+        print(parsed)
+
+
 
 
 class TestEtlApiReporting:
