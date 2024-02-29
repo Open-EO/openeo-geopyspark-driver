@@ -12,7 +12,6 @@ from unittest import mock
 
 import kubernetes
 import pytest
-import re_assert
 import requests_mock
 from openeo.util import rfc3339, url_join
 from openeo_driver.testing import DictSubSet
@@ -30,7 +29,7 @@ from openeogeotrellis.job_tracker_v2 import (
     YarnAppReportParseException,
     YarnStatusGetter,
 )
-from openeogeotrellis.testing import KazooClientMock
+from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
 from openeogeotrellis.utils import json_write
 from openeogeotrellis.configparams import ConfigParams
 
@@ -1425,6 +1424,7 @@ class TestK8sJobTracker:
             (K8S_SPARK_APP_STATE.FAILING, "FAILED", "error"),
         ],
     )
+    @pytest.mark.parametrize("report_usage_sentinelhub_pus", [True, False])
     def test_k8s_zookeeper_job_cost(
         self,
         zk_job_registry,
@@ -1438,68 +1438,70 @@ class TestK8sJobTracker:
         k8s_app_state,
         expected_etl_state,
         expected_job_status,
+        report_usage_sentinelhub_pus,
     ):
-        caplog.set_level(logging.WARNING)
-        time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
+        with gps_config_overrides(report_usage_sentinelhub_pus=report_usage_sentinelhub_pus):
+            caplog.set_level(logging.WARNING)
+            time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
 
-        user_id = "john"
-        job_id = "job-123"
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.2.3",
-            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
-        )
-        elastic_job_registry.create_job(
-            job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
-        )
+            user_id = "john"
+            job_id = "job-123"
+            zk_job_registry.register(
+                job_id=job_id,
+                user_id=user_id,
+                api_version="1.2.3",
+                specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
+            )
+            elastic_job_registry.create_job(
+                job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
+            )
 
-        # Submit Kubernetes app and set running
-        time_machine.coordinates.shift(70)
-        app_id = k8s_job_name()
-        kube_app = k8s_mock.submit(app_id=app_id)
-        zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=app_id)
-        kube_app.set_submitted()
-        kube_app.set_running()
-        job_tracker.update_statuses()
+            # Submit Kubernetes app and set running
+            time_machine.coordinates.shift(70)
+            app_id = k8s_job_name()
+            kube_app = k8s_mock.submit(app_id=app_id)
+            zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=app_id)
+            kube_app.set_submitted()
+            kube_app.set_running()
+            job_tracker.update_statuses()
 
-        # Set COMPLETED IN Kubernetes
-        time_machine.coordinates.shift(70)
-        kube_app.set_state(k8s_app_state)
-        kube_app.set_finish_time()
-        json_write(
-            path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
-            data={
-                "usage": {
-                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
-                }
-            },
-        )
-        job_tracker.update_statuses()
+            # Set COMPLETED IN Kubernetes
+            time_machine.coordinates.shift(70)
+            kube_app.set_state(k8s_app_state)
+            kube_app.set_finish_time()
+            json_write(
+                path=job_tracker._batch_jobs.get_results_metadata_path(job_id=job_id),
+                data={
+                    "usage": {
+                        "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                        "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                    }
+                },
+            )
+            job_tracker.update_statuses()
 
-        calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
-        assert len(calculate_costs_calls) == 1
-        (costs_details,), _ = calculate_costs_calls[0]
+            calculate_costs_calls = job_costs_calculator.calculate_costs.call_args_list
+            assert len(calculate_costs_calls) == 1
+            (costs_details,), _ = calculate_costs_calls[0]
 
-        assert costs_details == CostsDetails(
-            job_id=job_id,
-            user_id=user_id,
-            execution_id=kube_app.app_id,
-            app_state_etl_api_deprecated=expected_etl_state,
-            job_status=expected_job_status,
-            area_square_meters=None,
-            job_title=None,
-            start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
-            finish_time=dt.datetime(2022, 12, 14, 12, 2, 20),
-            cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
-            mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
-            sentinelhub_processing_units=1.25,
-            unique_process_ids=[],
-            job_options=job_options,
-        )
+            assert costs_details == CostsDetails(
+                job_id=job_id,
+                user_id=user_id,
+                execution_id=kube_app.app_id,
+                app_state_etl_api_deprecated=expected_etl_state,
+                job_status=expected_job_status,
+                area_square_meters=None,
+                job_title=None,
+                start_time=dt.datetime(2022, 12, 14, 12, 1, 10),
+                finish_time=dt.datetime(2022, 12, 14, 12, 2, 20),
+                cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
+                mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
+                sentinelhub_processing_units=1.25 if report_usage_sentinelhub_pus else None,
+                unique_process_ids=[],
+                job_options=job_options,
+            )
 
-        assert caplog.record_tuples == []
+            assert caplog.record_tuples == []
 
     def test_k8s_no_zookeeper(self, k8s_mock, prometheus_mock, job_costs_calculator, batch_job_output_root,
                               elastic_job_registry, caplog, time_machine):
