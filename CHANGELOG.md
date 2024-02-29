@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.28.0
+
 - Export to JSON is now more robust, supports datetime objects returned by dimension_labels, and will default to the string representation.
 - GDAL upgraded to 3.8.4 and Orfeo Toolbox to 8.1.2. This mainly reduces the volume of bytes read from object storage by GDAL. ([#571](https://github.com/Open-EO/openeo-geopyspark-driver/issues/571))
 - Add timeout to requests towards ETL API to unblock JobTracker ([#690](https://github.com/Open-EO/openeo-geopyspark-driver/issues/690)).
