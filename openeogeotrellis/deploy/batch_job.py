@@ -1214,7 +1214,7 @@ def run_job(
 
 
 def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in result_metadata["assets"].values()]
+    asset_paths = [Path(asset["href"]) for asset in result_metadata.get("assets", {}).values()]
     stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata)
     result.export_workspace(workspace_repository=backend_config_workspace_repository,
                             files=asset_paths + stac_paths,
