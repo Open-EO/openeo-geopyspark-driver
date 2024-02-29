@@ -1878,14 +1878,16 @@ class GeopysparkDataCube(DriverDataCube):
         return {str(os.path.basename(filename)):{"href":filename}}
 
     def get_labels(self, geometries):
-        if isinstance(geometries,DelayedVector):
-            geometries = list(geometries.geometries)
-
-        if isinstance(geometries, collections.abc.Sized):
+        # TODO: return more descriptive labels/ids than these autoincrement strings (when possible)?
+        if isinstance(geometries, DelayedVector):
+            return [str(i) for i, _ in enumerate(geometries.geometries)]
+        elif isinstance(geometries, DriverVectorCube):
+            return [str(i) for i in range(geometries.geometry_count())]
+        elif isinstance(geometries, collections.abc.Sized):
             return [str(x) for x in range(len(geometries))]
         else:
+            _log.warning(f"get_labels: unhandled geometries type {type(geometries)}")
             return ["0"]
-
 
     def _collect_as_xarray(self, rdd, crop_bounds=None, crop_dates=None):
         # windows/dims are tuples of (xmin/mincol,ymin/minrow,width/cols,height/rows)

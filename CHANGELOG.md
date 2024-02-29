@@ -19,6 +19,7 @@ without compromising stable operations.
 - load_stac: support loading netCDF multiple netCDF items with a time dimension, as produced with 'sample_by_feature' option
 - In batch result STAC metadata proj:shape is fixed to be in Y-X order, as prescribed by the standard. ([#693](https://github.com/Open-EO/openeo-geopyspark-driver/issues/693))
 - Copy batch job output assets to a workspace with the `export_workspace` process ([#676](https://github.com/Open-EO/openeo-geopyspark-driver/issues/676)).
+- Support vector cubes loaded from `load_url` in "sample_by_feature" feature ([#700](https://github.com/Open-EO/openeo-geopyspark-driver/issues/700))
 
 ## 0.26.2
 
