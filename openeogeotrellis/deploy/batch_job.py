@@ -689,7 +689,7 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
         see: https://github.com/stac-extensions/projection
 
         - "proj:epsg"  The EPSG code of the CRS, if available.
-        - "proj:shape" The pixel size of the asset, if available.
+        - "proj:shape" The pixel size of the asset, if available, in Y,X order.
         - "proj:bbox"  The bounding box expressed in the asset CRS, if available.
 
         When a field can not be found in the metadata that gdal.Info extracted,
@@ -702,7 +702,7 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
 
     # Size of the pixels
     if shape := gdal_info.get("size"):
-        proj_metadata["proj:shape"] = shape
+        proj_metadata["proj:shape"] = list(shape.__reversed__())
 
     # Extract the EPSG code from the WKT string
     crs_as_wkt = gdal_info.get("coordinateSystem", {}).get("wkt")
@@ -1205,6 +1205,8 @@ def run_job(
                 for file in os.listdir(job_dir):
                     full_path = str(job_dir) + "/" + file
                     s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+        get_jvm().com.azavea.gdal.GDALWarp.deinit()
+
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
     """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
