@@ -351,7 +351,10 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
             if product_type == OLCI_PRODUCT_TYPE:
                 return band_name
             if product_type == SYNERGY_PRODUCT_TYPE:
-                return f"SDR_{band_name.split('_')[1]}"
+                if band_name.endswith("_flags"):
+                    return band_name
+                else:
+                    return f"SDR_{band_name.split('_')[1]}"
             if product_type == SLSTR_PRODUCT_TYPE:
                 return band_name
             raise ValueError(band_name)

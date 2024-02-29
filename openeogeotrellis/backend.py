@@ -1000,7 +1000,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             #this is one way to determine if a time dimension is used, but it does depend on the use of item_assets and datacube extension.
             netcdf_with_time_dimension = len(dimensions) == 1 and "time" in dimensions.pop()
 
-
         for itm in intersecting_items:
             band_assets = {asset_id: asset for asset_id, asset
                            in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}

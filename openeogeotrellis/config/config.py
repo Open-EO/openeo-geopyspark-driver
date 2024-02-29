@@ -9,6 +9,7 @@ from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
 from openeo_driver.users import User
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.util.auth import ClientCredentials
+from openeo_driver.utils import smart_bool
 
 from openeogeotrellis import get_backend_version
 from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
@@ -77,7 +78,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     allow_run_udf_in_driver: bool = False
 
     # TODO: avoid KUBE env var and just default to False in general
-    setup_kerberos_auth: bool = not os.environ.get("KUBE", False)
+    setup_kerberos_auth: bool = not smart_bool(os.environ.get("KUBE", False))
 
     # TODO: possible to disable enrichment by default?
     opensearch_enrich: bool = True

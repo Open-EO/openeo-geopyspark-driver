@@ -1,17 +1,26 @@
 import json
 import os
+import shutil
+import uuid
 from pathlib import Path
 
 import geopandas as gpd
+import pystac
 import pytest
+
+from openeo.util import ensure_dir
+from openeo_driver.testing import DictSubSet
 from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
+
 from openeo.metadata import Band
 
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job, extract_result_metadata
+from .data import TEST_DATA_ROOT
 
 
 def test_png_export(tmp_path):
@@ -36,8 +45,15 @@ def test_png_export(tmp_path):
         }
     }}
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file= "/tmp/out.png" , metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out.png",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
@@ -67,8 +83,15 @@ def test_simple_math(tmp_path):
         "process_graph":simple_compute
     }
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file= Path("/tmp/out.json") , metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out.json",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
 
@@ -123,8 +146,15 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         }
     }}
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file= "/tmp/out.nc" , metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out.nc",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-01T00:00:00Z"
@@ -144,7 +174,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
 
 
 @pytest.mark.parametrize("prefix", [None, "prefixTest"])
-def test_ep3874_filter_spatial(prefix, tmp_path):
+def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path):
     print("tmp_path: ", tmp_path)
     job_spec = {"process_graph":{
         "lc": {
@@ -188,8 +218,15 @@ def test_ep3874_filter_spatial(prefix, tmp_path):
         }
     }}
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file=tmp_path /"out", metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
@@ -209,6 +246,79 @@ def test_ep3874_filter_spatial(prefix, tmp_path):
         da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
         assert 'Flat:2' in da
         print(da['Flat:2'])
+
+
+def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
+    """
+    sample_by_feature with vector cube loaded through load_url
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/700
+    """
+    with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
+        job_spec = {
+            "process_graph": {
+                "lc": {
+                    "process_id": "load_collection",
+                    "arguments": {
+                        "id": "TestCollection-LonLat4x4",
+                        "temporal_extent": ["2021-01-04", "2021-01-06"],
+                        "bands": ["Longitude"],
+                    },
+                },
+                "geometry": {
+                    "process_id": "load_url",
+                    "arguments": {
+                        "url": f"{fileserver_root}/geometries/FeatureCollection03.geoparquet",
+                        "format": "Parquet",
+                    },
+                },
+                "filterspatial1": {
+                    "process_id": "filter_spatial",
+                    "arguments": {
+                        "data": {"from_node": "lc"},
+                        "geometries": {"from_node": "geometry"},
+                    },
+                },
+                "save": {
+                    "process_id": "save_result",
+                    "arguments": {
+                        "data": {"from_node": "filterspatial1"},
+                        "format": "netCDF",
+                        "options": {"sample_by_feature": True},
+                    },
+                    "result": True,
+                },
+            }
+        }
+        metadata_file = tmp_path / "metadata.json"
+        run_job(
+            job_spec,
+            output_file=tmp_path / "out",
+            metadata_file=metadata_file,
+            api_version="1.0.0",
+            job_dir=ensure_dir(tmp_path / "job_dir"),
+            dependencies={},
+            user_id="jenkins",
+        )
+
+    # Check result metadata
+    with metadata_file.open() as f:
+        result_metadata = json.load(f)
+    assets = result_metadata["assets"]
+    assert len(assets) == 4
+
+    # Check asset contents
+    asset_minima = {}
+    for name, asset_metadata in assets.items():
+        assert asset_metadata["bands"] == [{"name": "Longitude"}]
+        ds = xarray.open_dataset(asset_metadata["href"])
+        asset_minima[name] = ds["Longitude"].min().item()
+
+    assert asset_minima == {
+        "openEO_0.nc": 1.0,
+        "openEO_1.nc": 4.0,
+        "openEO_2.nc": 2.0,
+        "openEO_3.nc": 5.0,
+    }
 
 
 def test_aggregate_spatial_area_result(tmp_path):
@@ -282,8 +392,15 @@ def test_aggregate_spatial_area_result(tmp_path):
         }
     }
     metadata_file = tmp_path / "metadata.json"
-    run_job(pg, output_file=tmp_path / "out", metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies={}, user_id="jenkins")
+    run_job(
+        pg,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies={},
+        user_id="jenkins",
+    )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["area"]["value"] == 10155.607958197594
@@ -429,8 +546,15 @@ def test_spatial_geoparquet(tmp_path):
         }
     }
 
-    run_job(job_specification, output_file=tmp_path / "out", metadata_file=tmp_path / "metadata.json",
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_specification,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     assert gpd.read_parquet(tmp_path / "timeseries.parquet").to_dict('list') == {
         'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
@@ -507,8 +631,15 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     }}
 
     metadata_file = tmp_path / "metadata.json"
-    run_job(job_spec, output_file=tmp_path / "out", metadata_file=metadata_file,
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     with metadata_file.open() as f:
         metadata = json.load(f)
@@ -533,7 +664,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
             .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))
 
 
-def skip_multiple_time_series_results(tmp_path):  # https://github.com/Open-EO/openeo-python-driver/issues/261
+def test_multiple_time_series_results(tmp_path):
     job_spec = {
         "process_graph": {
             "loadcollection1": {
@@ -584,8 +715,15 @@ def skip_multiple_time_series_results(tmp_path):  # https://github.com/Open-EO/o
         }
     }
 
-    run_job(job_spec, output_file=tmp_path / "out", metadata_file=tmp_path / "job_metadata.json",
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     output_files = os.listdir(tmp_path)
 
@@ -623,10 +761,108 @@ def test_multiple_image_collection_results(tmp_path):
         }
     }
 
-    run_job(job_spec, output_file=tmp_path / "out", metadata_file=tmp_path / "job_metadata.json",
-            api_version="1.0.0", job_dir="./", dependencies=[], user_id="jenkins")
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
 
     output_files = os.listdir(tmp_path)
 
     assert "openEO_2021-01-05Z.tif" in output_files
     assert "openEO.nc" in output_files
+
+
+def test_export_workspace(tmp_path):
+    workspace_id = "tmp"
+    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"]
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff"
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
+            "result": True
+        }
+    }
+
+    process = {"process_graph": process_graph}
+
+    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture
+    workspace_dir = Path(f"/tmp/{merge}")
+    workspace_dir.mkdir()
+    try:
+        run_job(
+            process,
+            output_file=tmp_path / "out.tif",
+            metadata_file=tmp_path / "job_metadata.json",
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        output_file = tmp_path / "openEO_2021-01-05Z.tif"
+        assert output_file.exists()
+
+        workspace_files = os.listdir(workspace_dir)
+        assert set(workspace_files) == {
+            "collection.json",
+            "openEO_2021-01-05Z.tif",
+            "openEO_2021-01-05Z.tif.json"
+        }
+
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+        stac_collection.validate_all()
+
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 1
+        item_link = item_links[0]
+
+        assert item_link.media_type == "application/geo+json"
+        assert item_link.href == "./openEO_2021-01-05Z.tif.json"
+
+        items = list(stac_collection.get_items())
+        assert len(items) == 1
+
+        item = items[0]
+        assert item.id == "openEO_2021-01-05Z.tif"
+        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
+        assert (shape(item.geometry).normalize()
+                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+
+        geotiff_asset = item.get_assets()["openEO_2021-01-05Z.tif"]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
+
+        geotiff_asset_file = tmp_path / "openEO_2021-01-05Z_copy.tif"
+        geotiff_asset.copy(str(geotiff_asset_file))  # downloads the asset file
+        assert geotiff_asset_file.exists()
+
+        # TODO: check other things e.g. proj:
+    finally:
+        shutil.rmtree(workspace_dir)
