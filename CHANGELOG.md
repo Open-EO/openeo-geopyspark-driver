@@ -18,7 +18,7 @@ without compromising stable operations.
 - Size of incoming requests is now limited to 2MB by default ([Open-EO/openeo-python-driver#254](https://github.com/Open-EO/openeo-python-driver/issues/254))
 - load_stac: support loading netCDF multiple netCDF items with a time dimension, as produced with 'sample_by_feature' option
 - In batch result STAC metadata proj:shape is fixed to be in Y-X order, as prescribed by the standard. ([#693](https://github.com/Open-EO/openeo-geopyspark-driver/issues/693))
-
+- Copy batch job output assets to a workspace with the `export_workspace` process ([#676](https://github.com/Open-EO/openeo-geopyspark-driver/issues/676)).
 
 ## 0.26.2
 

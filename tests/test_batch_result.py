@@ -1,9 +1,13 @@
 import json
 import os
+import shutil
+import uuid
 from pathlib import Path
 
 import geopandas as gpd
+import pystac
 import pytest
+from openeo_driver.testing import DictSubSet
 from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
 from openeo.metadata import Band
@@ -533,7 +537,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
             .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))
 
 
-def skip_multiple_time_series_results(tmp_path):  # https://github.com/Open-EO/openeo-python-driver/issues/261
+def test_multiple_time_series_results(tmp_path):
     job_spec = {
         "process_graph": {
             "loadcollection1": {
@@ -630,3 +634,87 @@ def test_multiple_image_collection_results(tmp_path):
 
     assert "openEO_2021-01-05Z.tif" in output_files
     assert "openEO.nc" in output_files
+
+
+def test_export_workspace(tmp_path):
+    workspace_id = "tmp"
+    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"]
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff"
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
+            "result": True
+        }
+    }
+
+    process = {"process_graph": process_graph}
+
+    workspace_dir = Path(f"/tmp/{merge}")
+    workspace_dir.mkdir()
+    try:
+        run_job(process, output_file=tmp_path / "out.tif", metadata_file=tmp_path / "job_metadata.json",
+                api_version="2.0.0", job_dir=tmp_path, dependencies=[])
+
+        output_file = tmp_path / "openEO_2021-01-05Z.tif"
+        assert output_file.exists()
+
+        workspace_files = os.listdir(workspace_dir)
+        assert set(workspace_files) == {
+            "collection.json",
+            "openEO_2021-01-05Z.tif",
+            "openEO_2021-01-05Z.tif.json"
+        }
+
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+        stac_collection.validate_all()
+
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 1
+        item_link = item_links[0]
+
+        assert item_link.media_type == "application/geo+json"
+        assert item_link.href == "./openEO_2021-01-05Z.tif.json"
+
+        items = list(stac_collection.get_items())
+        assert len(items) == 1
+
+        item = items[0]
+        assert item.id == "openEO_2021-01-05Z.tif"
+        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
+        assert (shape(item.geometry).normalize()
+                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+
+        geotiff_asset = item.get_assets()["openEO_2021-01-05Z.tif"]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
+
+        geotiff_asset_file = tmp_path / "openEO_2021-01-05Z_copy.tif"
+        geotiff_asset.copy(str(geotiff_asset_file))  # downloads the asset file
+        assert geotiff_asset_file.exists()
+
+        # TODO: check other things e.g. proj:
+    finally:
+        shutil.rmtree(workspace_dir)

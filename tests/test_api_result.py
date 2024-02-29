@@ -3391,7 +3391,7 @@ class TestLoadStac:
                             "proj:epsg": 3035,
                             "proj:bbox": [4309000, 3014000, 4310000, 3015000],
                             "proj:shape": [100, 100]},
-                assets={"result": Asset(href=f"file:{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
+                assets={"result": Asset(href=f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
                                         extra_fields={"eo:bands": [{"name": "class"}]})})]
 
         with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
