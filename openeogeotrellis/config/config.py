@@ -134,4 +134,4 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
-    fuse_mount_batchjob_s3_bucket: bool = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False)
+    fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
