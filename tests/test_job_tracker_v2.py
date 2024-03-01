@@ -1424,7 +1424,7 @@ class TestK8sJobTracker:
             (K8S_SPARK_APP_STATE.FAILING, "FAILED", "error"),
         ],
     )
-    @pytest.mark.parametrize("report_usage_sentinelhub_pus", [True, False])
+    @pytest.mark.parametrize("report_usage_sentinelhub_pus", [True, False], ids=["include_shpu", "exclude_shpu"])
     def test_k8s_zookeeper_job_cost(
         self,
         zk_job_registry,

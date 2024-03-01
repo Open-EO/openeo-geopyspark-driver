@@ -3939,7 +3939,7 @@ class TestEtlApiReporting:
         ):
             yield
 
-    @pytest.fixture(params=[True, False], ids=["report_shpu", "skip_reporting_shpu"])
+    @pytest.fixture(params=[True, False], ids=["include_shpu", "exclude_shpu"])
     def report_usage_sentinelhub_pus(self, request):
         with gps_config_overrides(
             report_usage_sentinelhub_pus=request.param,
