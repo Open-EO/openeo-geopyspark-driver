@@ -3939,6 +3939,13 @@ class TestEtlApiReporting:
         ):
             yield
 
+    @pytest.fixture(params=[True, False], ids=["report_shpu", "skip_reporting_shpu"])
+    def report_usage_sentinelhub_pus(self, request):
+        with gps_config_overrides(
+            report_usage_sentinelhub_pus=request.param,
+        ):
+            yield request.param
+
     @pytest.fixture(autouse=True)
     def mock_metadata_tracker(self):
         """
@@ -4000,7 +4007,7 @@ class TestEtlApiReporting:
         yield
 
     @pytest.fixture(autouse=True)
-    def etl_api_requests(self, requests_mock) -> dict:
+    def etl_api_requests(self, requests_mock, report_usage_sentinelhub_pus) -> dict:
         """Setup up request mock for ETL API `/resources`, ..."""
 
         def get_post_resources_handler(data: dict):
@@ -4028,7 +4035,6 @@ class TestEtlApiReporting:
                 "expected_data": {
                     "userId": TEST_USER,
                     "metrics": {
-                        "processing": {"unit": "shpu", "value": 123},
                         "cpu": {"unit": "cpu-seconds", "value": 3600},
                         "memory": {"unit": "mb-seconds", "value": 7372800.0},
                     },
@@ -4039,6 +4045,9 @@ class TestEtlApiReporting:
                 },
                 "response": [{"cost": 33}, {"cost": 55}],
             }
+            if report_usage_sentinelhub_pus:
+                mock_data[url]["expected_data"]["metrics"]["processing"] = {"unit": "shpu", "value": 123}
+
             # Add request mock too
             mock_data[url]["request_mock"] = requests_mock.post(
                 url, json=get_post_resources_handler(data=mock_data[url])
