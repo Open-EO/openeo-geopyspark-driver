@@ -1513,7 +1513,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 cpu_seconds=cpu_seconds,
                 mb_seconds=mb_seconds,
                 duration_ms=None,
-                sentinel_hub_processing_units=sentinel_hub_processing_units,
+                sentinel_hub_processing_units=(sentinel_hub_processing_units
+                                               if backend_config.report_usage_sentinelhub_pus else None),
             )
 
             logger.info(

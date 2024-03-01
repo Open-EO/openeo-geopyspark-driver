@@ -512,14 +512,21 @@ class JobTracker:
 
             area = deep_get(result_metadata, 'area', 'value', default=None)
 
-            # TODO: make this usage report handling/logging more generic?
-            sentinelhub_processing_units = (
-                result_metadata.get("usage", {})
-                .get("sentinelhub", {})
-                .get("value", 0.0)
-            )
+            if get_backend_config().report_usage_sentinelhub_pus:
+                # TODO: make this usage report handling/logging more generic?
+                sentinelhub_processing_units = (
+                    result_metadata.get("usage", {})
+                    .get("sentinelhub", {})
+                    .get("value", 0.0)
+                )
 
-            sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info) or Decimal("0.0"))
+                sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info)
+                                                           or Decimal("0.0"))
+
+                sentinelhub_processing_units_to_report = (sentinelhub_processing_units +
+                                                          sentinelhub_batch_processing_units) or None
+            else:
+                sentinelhub_processing_units_to_report = None
 
             costs_details = CostsDetails(
                 job_id=job_info["job_id"],
@@ -534,8 +541,7 @@ class JobTracker:
                 finish_time=job_metadata.finish_time,
                 cpu_seconds=job_metadata.usage.cpu_seconds,
                 mb_seconds=job_metadata.usage.mb_seconds,
-                sentinelhub_processing_units=(sentinelhub_processing_units + sentinelhub_batch_processing_units)
-                or None,
+                sentinelhub_processing_units=sentinelhub_processing_units_to_report,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
                 job_options=job_info.get("job_options"),
             )

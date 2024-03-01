@@ -127,6 +127,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     default_usage_cpu_seconds: float = 1 * 3600
     default_usage_byte_seconds: float = 2 * 1024 * 1024 * 1024 * 3600
+    report_usage_sentinelhub_pus: bool = True
 
     default_soft_errors: float = 0.1
 

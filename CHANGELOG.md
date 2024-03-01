@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Support excluding Sentinel Hub processing units from usage reporting ([openeo-cdse-infra#37](https://github.com/eu-cdse/openeo-cdse-infra/issues/37)).
+
 ## 0.28.0
 
 - Export to JSON is now more robust, supports datetime objects returned by dimension_labels, and will default to the string representation.
