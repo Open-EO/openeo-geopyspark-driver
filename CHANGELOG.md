@@ -23,6 +23,7 @@ without compromising stable operations.
 - In batch result STAC metadata proj:shape is fixed to be in Y-X order, as prescribed by the standard. ([#693](https://github.com/Open-EO/openeo-geopyspark-driver/issues/693))
 - Copy batch job output assets to a workspace with the `export_workspace` process ([#676](https://github.com/Open-EO/openeo-geopyspark-driver/issues/676)).
 - Support vector cubes loaded from `load_url` in "sample_by_feature" feature ([#700](https://github.com/Open-EO/openeo-geopyspark-driver/issues/700))
+- Keep polygons and multipolygons sorted when calling `aggregate_spatial` ([#60](https://github.com/eu-cdse/openeo-cdse-infra/issues/60))
 
 ## 0.27.1
 
