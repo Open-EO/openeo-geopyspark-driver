@@ -1,8 +1,5 @@
 import json
 import os
-import shutil
-import uuid
-from pathlib import Path
 
 import geopandas as gpd
 import pystac
@@ -10,7 +7,8 @@ import pytest
 
 from openeo.util import ensure_dir
 from openeo_driver.testing import DictSubSet
-from shapely.geometry import Point, Polygon, mapping, shape
+from openeo_driver.workspace import DiskWorkspace
+from shapely.geometry import Point, Polygon, shape
 import xarray
 
 from openeo.metadata import Band
@@ -20,6 +18,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job, extract_result_metadata
+from openeogeotrellis.testing import gps_config_overrides
 from .data import TEST_DATA_ROOT
 
 
@@ -778,8 +777,8 @@ def test_multiple_image_collection_results(tmp_path):
 
 
 def test_export_workspace(tmp_path):
-    workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    workspace_id = "some-workspace"
+    merge = "some-subdirectory"
 
     process_graph = {
         "loadcollection1": {
@@ -811,10 +810,11 @@ def test_export_workspace(tmp_path):
 
     process = {"process_graph": process_graph}
 
-    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture
-    workspace_dir = Path(f"/tmp/{merge}")
-    workspace_dir.mkdir()
-    try:
+    workspace_dir = ensure_dir(tmp_path / workspace_id)
+
+    with gps_config_overrides(
+            workspaces={workspace_id: DiskWorkspace(root_directory=workspace_dir)}
+    ):
         run_job(
             process,
             output_file=tmp_path / "out.tif",
@@ -864,5 +864,3 @@ def test_export_workspace(tmp_path):
         assert geotiff_asset_file.exists()
 
         # TODO: check other things e.g. proj:
-    finally:
-        shutil.rmtree(workspace_dir)
