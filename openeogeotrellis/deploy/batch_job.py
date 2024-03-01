@@ -14,9 +14,9 @@ from copy import deepcopy
 from math import isfinite
 
 import pyproj
-from openeo_driver.workspacerepository import BackendConfigWorkspaceRepository, backend_config_workspace_repository
+from openeo_driver.workspacerepository import backend_config_workspace_repository
 from osgeo import gdal
-from py4j.protocol import Py4JJavaError
+from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping, Polygon
@@ -1210,11 +1210,17 @@ def run_job(
                 full_path = str(job_dir) + "/" + file
                 s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
-        get_jvm().com.azavea.gdal.GDALWarp.deinit()
+        try:
+            get_jvm().com.azavea.gdal.GDALWarp.deinit()
+        except Py4JError as e:
+            if str(e) == "com.azavea.gdal.GDALWarp does not exist in the JVM":
+                logger.debug(f"intentionally swallowing exception {e}", exc_info=True)
+            else:
+                raise
 
 
 def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in result_metadata["assets"].values()]
+    asset_paths = [Path(asset["href"]) for asset in result_metadata.get("assets", {}).values()]
     stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata)
     result.export_workspace(workspace_repository=backend_config_workspace_repository,
                             files=asset_paths + stac_paths,
