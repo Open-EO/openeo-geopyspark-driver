@@ -43,14 +43,9 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.errors import (
-    InternalException,
-    JobNotFinishedException,
-    JobNotFoundException,
-    OpenEOApiException,
-    ProcessParameterUnsupportedException,
-    ServiceUnsupportedException,
-)
+from openeo_driver.errors import (InternalException, JobNotFinishedException, JobNotFoundException, OpenEOApiException,
+                                  ProcessParameterUnsupportedException, ServiceUnsupportedException,
+                                  ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
@@ -1222,6 +1217,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         :param target_raster_cube: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
         :return: DriverDataCube with the rasterized bands.
         """
+        if not isinstance(input_vector_cube, DriverVectorCube):
+            if hasattr(input_vector_cube, 'to_driver_vector_cube'):
+                input_vector_cube = input_vector_cube.to_driver_vector_cube()
+            else:
+                raise ProcessParameterInvalidException(
+                    parameter='target_data_cube', process='vector_to_raster',
+                    reason=f"Input vector cube {input_vector_cube} is not a DriverVectorCube."
+                )
+
         if not isinstance(target_raster_cube, GeopysparkDataCube):
             raise OpenEOApiException(
                 message=f"Target raster cube {target_raster_cube} is not a GeopysparkDataCube.",
