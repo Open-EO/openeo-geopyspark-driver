@@ -1268,7 +1268,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             time_extent = (cube[t_dim].min().values.tolist(), cube[t_dim].max().values.tolist())
             time_dim = TemporalDimension(name="t", extent=time_extent)
 
-        input_vector_cube = input_vector_cube.with_cube(float_cube)
+        if not np.issubdtype(cube.dtype, np.number):
+            raise ProcessParameterInvalidException(
+                parameter = 'data', process = 'vector_to_raster',
+                reason = f'Input vector cube {input_vector_cube} is not fully numeric. Actual data type: {cube.dtype}.'
+            )
+        if cube.dtype != np.float:
+            input_vector_cube = input_vector_cube.with_cube(cube.astype(np.float))
 
         # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
         file_name = "input_vector_cube.geojson"
