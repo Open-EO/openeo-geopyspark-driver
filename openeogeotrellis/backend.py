@@ -1227,13 +1227,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 )
 
         if not isinstance(target_raster_cube, GeopysparkDataCube):
-            raise OpenEOApiException(
-                message=f"Target raster cube {target_raster_cube} is not a GeopysparkDataCube.",
-                status_code=400)
+            raise ProcessParameterInvalidException(
+                parameter='target_data_cube', process='vector_to_raster',
+                reason=f"Target raster cube {target_raster_cube} is not a GeopysparkDataCube."
+            )
         if len(target_raster_cube.pyramid.levels) == 0:
-            raise OpenEOApiException(
-                message=f"Target raster cube {target_raster_cube} does not contain any data.",
-                status_code=400)
+            raise ProcessParameterInvalidException(
+                parameter='target_data_cube', process='vector_to_raster',
+                reason=f"Target raster cube {target_raster_cube} does not contain any data."
+            )
         top_layer = target_raster_cube.pyramid.levels[0].srdd.rdd()
         cube: DataArray = input_vector_cube.get_cube()
 
