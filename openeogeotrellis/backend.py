@@ -1295,24 +1295,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         pyramid: Pyramid = Pyramid({0: raster_layer})
 
         # Create metadata.
-        dimensions: List[Dimension] = [
-            SpatialDimension(name = "x", extent = []),
-            SpatialDimension(name = "y", extent = []),
-            BandDimension(name="bands",  bands = [Band(b, b, None, None, None) for b in selected_bands]),
-        ]
-        # TODO: Get spatial extent from target_raster_cube if present.
-        bounding_box = input_vector_cube.get_bounding_box()
-        spatial_extent = {
-            "west": bounding_box[0],
-            "east": bounding_box[2],
-            "north": bounding_box[3],
-            "south": bounding_box[1],
-        }
+        dimensions: List[Dimension] = target_raster_cube.metadata.spatial_dimensions
+        if bands_dim:
+            dimensions.append(bands_dim)
+        if time_dim:
+            dimensions.append(time_dim)
+
         metadata: GeopysparkCubeMetadata = GeopysparkCubeMetadata(
             metadata={},
             dimensions=dimensions,
-            spatial_extent=spatial_extent,
-            temporal_extent=None,
+            spatial_extent=target_raster_cube.metadata.spatial_extent,
+            temporal_extent=time_dim.extent if time_dim else None,
         )
         return GeopysparkDataCube(pyramid, metadata)
 
