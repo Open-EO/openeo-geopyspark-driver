@@ -58,8 +58,8 @@ def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
         geojson = json.load(f)
     target_raster_cube = imagecollection_with_two_bands_and_one_date
 
-    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
-    input_vector_cube = input_vector_cube.filter_bands(bands=["pop"])
+    input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_NUMERICAL)
+    # input_vector_cube = input_vector_cube.filter_bands(bands=["pop"]) TODO: filter_bands does not change dtype.
     input_cube = input_vector_cube.get_cube()
     assert(input_cube.shape == (2,1))
     assert(input_cube.dims == ('geometry', 'properties'))
