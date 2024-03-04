@@ -1238,6 +1238,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             )
         top_layer = target_raster_cube.pyramid.levels[0].srdd.rdd()
         cube: DataArray = input_vector_cube.get_cube()
+        if cube is None:
+            raise ProcessParameterInvalidException(
+                parameter='data', process='vector_to_raster',
+                reason=f'Input vector cube {input_vector_cube} does not contain any data.'
+            )
 
         # Remove all non-numeric bands and convert to float.
         band_dim = str(cube.dims[1])
