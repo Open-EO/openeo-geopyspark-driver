@@ -866,3 +866,38 @@ def test_export_workspace(tmp_path):
         # TODO: check other things e.g. proj:
     finally:
         shutil.rmtree(workspace_dir)
+
+
+def test_discard_result(tmp_path):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"]
+            }
+        },
+        "discardresult1": {
+            "process_id": "discard_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+            },
+            "result": True,
+        },
+    }
+
+    process = {"process_graph": process_graph}
+
+    run_job(
+        process,
+        output_file=tmp_path / "out.tif",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    # runs to completion without output assets
+    assert set(os.listdir(tmp_path)) == {"job_metadata.json", "collection.json"}

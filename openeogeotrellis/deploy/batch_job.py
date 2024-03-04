@@ -1257,7 +1257,8 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
 
         return item_file
 
-    item_files = [write_stac_item_file(asset_id, asset) for asset_id, asset in result_metadata["assets"].items()]
+    item_files = [write_stac_item_file(asset_id, asset)
+                  for asset_id, asset in result_metadata.get("assets", {}).items()]
 
     def item_link(item_file: Path) -> dict:
         return {
