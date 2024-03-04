@@ -63,6 +63,7 @@ from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
 from shapely.geometry import Polygon
 from xarray import DataArray
+import numpy as np
 
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
@@ -1244,28 +1245,28 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 reason=f'Input vector cube {input_vector_cube} does not contain any data.'
             )
 
-        # Remove all non-numeric bands and convert to float.
-        band_dim = str(cube.dims[1])
-        selected_bands = []
-        contains_int = False
-        for band in cube[band_dim].values:
-            coord_data: list = cube.sel({band_dim: band}).values.tolist()
-            if len(coord_data) == 0:
-                continue
-            if isinstance(coord_data[0], (int, float)):
-                contains_int = contains_int or isinstance(coord_data[0], int)
-                selected_bands.append(band)
-        if len(selected_bands) == 0:
-            raise OpenEOApiException(
-                message=f"vector_to_raster: Input vector cube {input_vector_cube} does not contain any numeric bands.",
-                status_code=400)
-        if len(selected_bands) != 1:
-            raise OpenEOApiException(
-                message = f"vector_to_raster: Input vector cube {input_vector_cube} contains multiple numeric bands. Currently only one band is supported. Please use filter_bands first.",
-                status_code = 400)
-        float_cube = cube.sel({band_dim: selected_bands})
-        if contains_int:
-            float_cube = float_cube.astype(float)
+        # We only support these cases of dimensions.
+        t_dim = DriverVectorCube.DIM_TIME
+        allowed_dims = [
+            [DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_BANDS],
+            [DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_BANDS],
+            [DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_PROPERTIES],
+            [DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_PROPERTIES],
+            [DriverVectorCube.DIM_GEOMETRY, t_dim],
+            [DriverVectorCube.DIM_GEOMETRY]
+        ]
+        if list(cube.dims) not in allowed_dims:
+            raise ProcessParameterInvalidException(
+                parameter='data', process='vector_to_raster',
+                reason=f'Input vector cube {input_vector_cube} with dimensions {cube.dims} is not supported.'
+            )
+        bands_dim, time_dim = None, None
+        if len(cube.dims) > 1 and str(cube.dims[-1]) != t_dim:
+            bands = cube[str(cube.dims[-1])].values
+            bands_dim = BandDimension(name="bands",  bands = [Band(b, b, None, None, None) for b in bands])
+        if t_dim in cube.dims:
+            time_extent = (cube[t_dim].min().values.tolist(), cube[t_dim].max().values.tolist())
+            time_dim = TemporalDimension(name="t", extent=time_extent)
 
         input_vector_cube = input_vector_cube.with_cube(float_cube)
 
