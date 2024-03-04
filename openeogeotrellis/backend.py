@@ -3176,16 +3176,17 @@ class GpsBatchJobs(backend.BatchJobs):
                     f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
                     extra = {'job_id': job_id, 'API response': delete_response_sparkapplication}
                 )
-                delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
-                logger.debug(
-                    f"Removed PV {application_id} with kubernetes API call",
-                    extra = {'job_id': job_id, 'API response': delete_response_pv}
-                )
-                delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
-                logger.debug(
-                    f"Removed PVC {application_id} with kubernetes API call",
-                    extra = {'job_id': job_id, 'API response': delete_response_pvc}
-                )
+                if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                    delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
+                    logger.debug(
+                        f"Removed PV {application_id} with kubernetes API call",
+                        extra = {'job_id': job_id, 'API response': delete_response_pv}
+                    )
+                    delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
+                    logger.debug(
+                        f"Removed PVC {application_id} with kubernetes API call",
+                        extra = {'job_id': job_id, 'API response': delete_response_pvc}
+                    )
                 with self._double_job_registry:
                     registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:
