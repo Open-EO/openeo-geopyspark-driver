@@ -1480,6 +1480,7 @@ class GeopysparkDataCube(DriverDataCube):
             if projected_polygons:
                 # TODO also add dumping results first to temp json file like with "mean"
                 if func == 'histogram':
+                    # TODO: This code path is likely never used.
                     stats = self._compute_stats_geotrellis().compute_histograms_time_series_from_datacube(
                         scala_data_cube, projected_polygons, from_date.isoformat(), to_date.isoformat(), 0
                     )
@@ -1488,6 +1489,7 @@ class GeopysparkDataCube(DriverDataCube):
                     temp_dir = temp_csv_dir(
                         message=f"{type(self).__name__}.zonal_statistics (projected_polygons)"
                     )
+                    # TODO: We lose band names while these can be useful in for example "vector_to_raster".
                     self._compute_stats_geotrellis().compute_generic_timeseries_from_datacube(
                         func,
                         wrapped,
