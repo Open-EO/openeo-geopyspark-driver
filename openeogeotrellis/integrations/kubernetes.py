@@ -2,19 +2,29 @@
 Utilities, helpers, adapters for integration with Kubernetes (K8s)
 """
 import logging
+import os
+import pkg_resources
+import yaml
 
+from jinja2 import Environment, FileSystemLoader
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.utils import generate_unique_id
 
 _log = logging.getLogger(__name__)
 
-def kube_client():
+def kube_client(api_type):
     from kubernetes import client, config
 
     config.load_incluster_config()
-    api_instance = client.CustomObjectsApi()
-    return api_instance
 
+    if api_type == "CustomObject":
+        api_instance = client.CustomObjectsApi()
+    elif api_type == "Core":
+        api_instance = client.CoreV1Api()
+    else:
+        raise ValueError(api_type)
+
+    return api_instance
 
 def truncate_job_id_k8s(job_id: str) -> str:
     if job_id.startswith("j-"):
@@ -66,3 +76,17 @@ def k8s_state_to_openeo_job_status(state: str) -> str:
         job_status = JOB_STATUS.QUEUED
     # TODO: is there a kubernetes state for canceled apps?
     return job_status
+
+def k8s_render_manifest_template(template, **kwargs) -> dict:
+    """ Load and render a provided kubernetes manifest jinja template with the passed kwargs """
+    jinja_path = pkg_resources.resource_filename(
+        "openeogeotrellis.deploy", template
+    )
+    jinja_dir = os.path.dirname(jinja_path)
+    jinja_template = Environment(
+        loader=FileSystemLoader(jinja_dir)
+    ).from_string(open(jinja_path).read())
+
+    rendered = jinja_template.render(**kwargs)
+
+    return yaml.safe_load(rendered)

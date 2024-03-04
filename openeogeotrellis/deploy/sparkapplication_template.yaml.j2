@@ -115,6 +115,12 @@ spec:
     - name: "http-credentials-configmap"
       configMap:
         name: "http-credentials"
+{%- if fuse_mount_batchjob_s3_bucket == 'True' %}
+    - name: "batch-job-results"
+      persistentVolumeClaim:
+        claimName: {{ job_name }}
+        readOnly: false
+{%- endif %}
 {%- endblock %}
   driver:
 {%- block driver_options %}
@@ -207,6 +213,8 @@ spec:
         value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/"
       - name: VSI_CACHE
         value: "TRUE"
+      - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
+        value: "{{fuse_mount_batchjob_s3_bucket}}"
 {%- endblock %}
     labels:
 {%- block driver_labels %}
@@ -229,6 +237,10 @@ spec:
         subPath: "http_credentials.json"
       - name: "backend-config-configmap"
         mountPath: "/opt/backend_config/"
+{%- if fuse_mount_batchjob_s3_bucket == 'True' %}
+      - name: "batch-job-results"
+        mountPath: /batch_jobs/{{ job_id_full }}
+{%- endif %}
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"

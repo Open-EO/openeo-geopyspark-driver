@@ -954,13 +954,13 @@ def main(argv: List[str]) -> None:
     os.environ["TMPDIR"] = str(temp_dir)
 
     if ConfigParams().is_kube_deploy:
-        from openeogeotrellis.utils import s3_client
+        if not get_backend_config().fuse_mount_batchjob_s3_bucket:
+            from openeogeotrellis.utils import s3_client
 
-        bucket = os.environ.get('SWIFT_BUCKET')
-        s3_instance = s3_client()
+            bucket = os.environ.get('SWIFT_BUCKET')
+            s3_instance = s3_client()
 
-        s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
-
+            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
 
     job_specification = _parse(job_specification_file)
     load_custom_processes()
@@ -1198,17 +1198,18 @@ def run_job(
         logger.info("wrote metadata to %s" % metadata_file)
 
         if ConfigParams().is_kube_deploy:
-            from openeogeotrellis.utils import s3_client
+            if not get_backend_config().fuse_mount_batchjob_s3_bucket:
+                from openeogeotrellis.utils import s3_client
 
-            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+                _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
-            bucket = os.environ.get('SWIFT_BUCKET')
-            s3_instance = s3_client()
+                bucket = os.environ.get('SWIFT_BUCKET')
+                s3_instance = s3_client()
 
-            logger.info("Writing results to object storage")
-            for file in os.listdir(job_dir):
-                full_path = str(job_dir) + "/" + file
-                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+                logger.info("Writing results to object storage")
+                for file in os.listdir(job_dir):
+                    full_path = str(job_dir) + "/" + file
+                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
 
         try:
             get_jvm().com.azavea.gdal.GDALWarp.deinit()

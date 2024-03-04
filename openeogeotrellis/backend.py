@@ -75,7 +75,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import EtlApi, get_etl_api, get_etl_api_credentials_from_env
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s
+from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s, k8s_render_manifest_template
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -2290,11 +2290,10 @@ class GpsBatchJobs(backend.BatchJobs):
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
             # TODO: eliminate these local imports
-            import yaml
-            from jinja2 import Environment, FileSystemLoader
             from kubernetes.client.rest import ApiException
 
-            api_instance = kube_client()
+            api_instance_custom_object = kube_client("CustomObject")
+            api_instance_core = kube_client("Core")
             pod_namespace = ConfigParams().pod_namespace
 
             # Check concurrent_pod_limit constraints.
@@ -2311,7 +2310,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if concurrent_pod_limit != 0:
                 label_selector = f"user={user_id}"
                 try:
-                    result = api_instance.list_namespaced_custom_object(
+                    result = api_instance_custom_object.list_namespaced_custom_object(
                         "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
                         label_selector = label_selector
                     )
@@ -2360,17 +2359,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
-            jinja_path = pkg_resources.resource_filename(
-                "openeogeotrellis.deploy", "sparkapplication.yaml.j2"
-            )
-            jinja_dir = os.path.dirname(jinja_path)
-            jinja_template = Environment(
-                loader=FileSystemLoader(jinja_dir)
-            ).from_string(open(jinja_path).read())
-
             spark_app_id = k8s_job_name()
 
-            rendered = jinja_template.render(
+            sparkapplication_dict = k8s_render_manifest_template(
+                "sparkapplication.yaml.j2",
                 job_name=spark_app_id,
                 job_namespace=pod_namespace,
                 job_specification=job_specification_file,
@@ -2416,13 +2408,29 @@ class GpsBatchJobs(backend.BatchJobs):
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
+                fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
             )
 
-            dict_ = yaml.safe_load(rendered)
+            if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
+                    "persistentvolume_batch_job_results.yaml.j2",
+                    job_name=spark_app_id,
+                    job_namespace=pod_namespace,
+                    output_dir=output_dir,
+                    swift_bucket=bucket,
+                )
+
+                persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
+                    "persistentvolumeclaim_batch_job_results.yaml.j2",
+                    job_name=spark_app_id,
+                )
 
             with self._double_job_registry as dbl_registry:
                 try:
-                    submit_response = api_instance.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", dict_, pretty=True)
+                    if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                        api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
+                        api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
+                    submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
@@ -2431,7 +2439,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         retry+=1
                         time.sleep(10)
                         try:
-                            status_response = api_instance.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
+                            status_response = api_instance_custom_object.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
                                                                                         spark_app_id)
                         except ApiException as e:
                             log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
@@ -3155,19 +3163,31 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
-                api_instance = kube_client()
+                api_instance_custom_object = kube_client("CustomObject")
+                api_instance_core = kube_client("Core")
                 group = "sparkoperator.k8s.io"
                 version = "v1beta2"
                 namespace = ConfigParams().pod_namespace
                 plural = "sparkapplications"
                 name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
-                delete_response = api_instance.delete_namespaced_custom_object(group, version, namespace, plural, name)
+                delete_response_sparkapplication = api_instance_custom_object.delete_namespaced_custom_object(group, version, namespace, plural, name)
                 logger.debug(
                     f"Killed corresponding Spark job {application_id} with kubernetes API call "
                     f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
-                    extra = {'job_id': job_id, 'API response': delete_response}
+                    extra = {'job_id': job_id, 'API response': delete_response_sparkapplication}
                 )
+                if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                    delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
+                    logger.debug(
+                        f"Removed PV {application_id} with kubernetes API call",
+                        extra = {'job_id': job_id, 'API response': delete_response_pv}
+                    )
+                    delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
+                    logger.debug(
+                        f"Removed PVC {application_id} with kubernetes API call",
+                        extra = {'job_id': job_id, 'API response': delete_response_pvc}
+                    )
                 with self._double_job_registry:
                     registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:
