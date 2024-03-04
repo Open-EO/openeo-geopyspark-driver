@@ -241,7 +241,7 @@ def imagecollection_with_two_bands_spatial_only(request):
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
     metadata = {
-        'cellType': 'int32ud-1',
+        'cellType': 'float64ud-1.0',
         'extent': extent,
         'crs': '+proj=longlat +datum=WGS84 +no_defs ',
         'bounds': {
