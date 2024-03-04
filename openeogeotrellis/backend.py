@@ -1282,11 +1282,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             file_path = Path(tmp_dir) / file_name
             with open(str(file_path), 'w') as f:
                 json.dump(input_vector_cube.to_geojson(include_properties = False), f)
-            vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRaster
+            vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRasterSpatial
+            tiled_raster_layer = get_jvm().geopyspark.geotrellis.SpatialTiledRasterLayer
+            layer_type = LayerType.SPATIAL
+            if time_dim:
+                vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRasterTemporal
+                tiled_raster_layer = get_jvm().geopyspark.geotrellis.TemporalTiledRasterLayer
+                layer_type = LayerType.SPACETIME
             layer = vector_to_raster(str(file_path), top_layer)
-        spatial_tiled_raster_layer = get_jvm().geopyspark.geotrellis.SpatialTiledRasterLayer
 
-        raster_layer = gps.TiledRasterLayer(LayerType.SPATIAL, spatial_tiled_raster_layer.apply(0, layer))
+        raster_layer = gps.TiledRasterLayer(layer_type, tiled_raster_layer.apply(0, layer))
         pyramid: Pyramid = Pyramid({0: raster_layer})
 
         # Create metadata.
