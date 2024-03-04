@@ -1,6 +1,9 @@
+import datetime
 import geopyspark.geotrellis
 import json
+import xarray
 from geopyspark import TiledRasterLayer, LayerType, Bounds
+from openeogeotrellis.ml import AggregateSpatialVectorCube
 from openeo_driver.errors import OpenEOApiException
 
 from unittest.mock import MagicMock
@@ -10,9 +13,11 @@ from openeo_driver.datacube import DriverVectorCube, DriverDataCube
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import to_projected_polygons
+from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
 from tests.data import get_test_data_file
 import numpy as np
 import numpy.testing as npt
+import geopandas as gpd
 
 
 @pytest.mark.parametrize(
@@ -103,3 +108,136 @@ def test_vector_to_raster_no_numeric_bands(imagecollection_with_two_bands_and_on
             input_vector_cube = input_vector_cube,
             target_raster_cube = target_raster_cube
         )
+
+
+def test_aggregatespatialvectorcube_to_vectorcube(imagecollection_with_two_bands_spatial_only):
+    with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
+        geojson = json.load(f)
+    input_vector_cube: DriverVectorCube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
+    # input_shapely: GeometryCollection = GeometryCollection(to_shapely(input_vector_cube.get_geometries().values).tolist())
+    aggregate_result: AggregateSpatialVectorCube = imagecollection_with_two_bands_spatial_only.aggregate_spatial(
+        input_vector_cube,
+        {
+            "mean1": {
+                "process_id": "mean",
+                "arguments": {
+                    "data": {
+                        "from_parameter": "data"
+                    }
+                },
+                "result": True
+            }
+        }
+    )
+    # Convert the result to vector cube.
+    output_vector_cube: DriverVectorCube = aggregate_result.to_driver_vector_cube()
+    input_data: gpd.GeoDataFrame = aggregate_result.get_data()
+    num_geometries = input_data.shape[0]
+    assert input_data.shape == (num_geometries, 5)
+    assert input_data.columns.tolist() == ['geometry', 'id', 'pop', 'avg_band_0_', 'avg_band_1_']
+
+    # Check geometries.
+    input_regions: gpd.GeoSeries = input_data.geometry
+    output_regions: gpd.GeoSeries = output_vector_cube.get_geometries()
+    assert len(input_regions) == input_data.shape[0]
+    for i in range(len(input_regions)):
+        assert input_regions[i] == output_regions[i]
+
+    # Check data.
+    cube: xarray.DataArray = output_vector_cube.get_cube()
+    assert cube.dims == ('geometry', 'bands')
+    assert cube.shape == (num_geometries, 3)
+    assert cube['bands'].values.tolist() == ['pop', 'avg_band_0_', 'avg_band_1_']  # Only numeric bands, ids are strings.
+    assert cube.isel(geometry=0).values.tolist() == input_data.values[0,2:].tolist()
+
+
+def test_aggregatespatialresultcsv_to_vectorcube(imagecollection_with_two_bands_and_one_date):
+    with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
+        geojson = json.load(f)
+    input_vector_cube: DriverVectorCube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
+    # input_shapely: GeometryCollection = GeometryCollection(to_shapely(input_vector_cube.get_geometries().values).tolist())
+    aggregate_result: AggregateSpatialResultCSV = imagecollection_with_two_bands_and_one_date.aggregate_spatial(
+        input_vector_cube,
+        {
+            "mean1": {
+                "process_id": "mean",
+                "arguments": {
+                    "data": {
+                        "from_parameter": "data"
+                    }
+                },
+                "result": True
+            }
+        }
+    )
+
+    # Convert the result to vector cube.
+    output_vector_cube: DriverVectorCube = aggregate_result.to_driver_vector_cube()
+    input_data: dict[str, list[list[float]]] = aggregate_result.get_data()  # Shape (1,2,2) (t,geometry,bands)
+    first_date = list(input_data.keys())[0]
+    num_dates = len(input_data)
+    num_geometries = len(input_data[first_date])
+    num_bands = len(input_data[first_date][0])
+
+    # Check geometries.
+    input_regions = aggregate_result._regions.get_geometries()
+    output_regions = output_vector_cube.get_geometries()
+    assert len(input_regions) == num_geometries
+    for i in range(num_geometries):
+        assert input_regions[i] == output_regions[i]
+
+    # Check data.
+    cube: xarray.DataArray = output_vector_cube.get_cube()
+    assert cube.dims == ('geometry', 't', 'bands')
+    assert cube.shape == (num_geometries, num_dates, num_bands)  # (2, 1, 2)
+    # Mean for band 1 and 2.
+    assert cube.isel(geometry=0, t=0).values.tolist() == input_data[first_date][0]
+
+
+def test_aggregatespatialresultcsv_vector_to_raster(imagecollection_with_two_bands_and_three_dates):
+    with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
+        geojson = json.load(f)
+    target_raster_cube = imagecollection_with_two_bands_and_three_dates
+    input_vector_cube: DriverVectorCube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
+    aggregate_result: AggregateSpatialResultCSV = imagecollection_with_two_bands_and_three_dates.aggregate_spatial(
+        input_vector_cube,
+        {
+            "mean1": {
+                "process_id": "mean",
+                "arguments": {
+                    "data": {
+                        "from_parameter": "data"
+                    }
+                },
+                "result": True
+            }
+        }
+    )
+    output_cube: DriverDataCube = GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
+        input_vector_cube = aggregate_result,
+        target_raster_cube = target_raster_cube
+    )
+    assert len(output_cube.metadata.band_dimension.bands) == 2
+    assert output_cube.metadata.temporal_dimension.extent == ('2017-09-25T11:37:00Z', '2017-10-25T11:37:00Z')
+
+    output_cube_np = output_cube.pyramid.levels[0].to_numpy_rdd().collect()
+    assert len(output_cube_np) == 3
+    expected_values = {
+        geopyspark.SpaceTimeKey(col = 0, row = 0, instant = datetime.datetime(2017, 10, 25, 11, 37)): [2.0, 1.0],
+        geopyspark.SpaceTimeKey(col = 0, row = 0, instant = datetime.datetime(2017, 9, 25, 11, 37)): [1.0, 2.0],
+        geopyspark.SpaceTimeKey(col = 0, row = 0, instant = datetime.datetime(2017, 9, 30, 0, 37)): []
+    }
+    for i in range(3):
+        space_time_key = output_cube_np[i][0]
+        tile: geopyspark.Tile = output_cube_np[i][1]
+        assert space_time_key in expected_values.keys()
+        assert tile.cells.shape == (2, 4, 4)
+        mean_band0 = np.unique(tile.cells[0]).tolist()
+        mean_band1 = np.unique(tile.cells[1]).tolist()
+        expected_band_values = expected_values[space_time_key]
+        if len(expected_band_values) == 0:
+            np.isnan(tile.cells[0]).all()
+            np.isnan(tile.cells[1]).all()
+        else:
+            assert mean_band0[0] == expected_band_values[0] and np.isnan(mean_band0[1])
+            assert mean_band1[0] == expected_band_values[1] and np.isnan(mean_band1[1])
