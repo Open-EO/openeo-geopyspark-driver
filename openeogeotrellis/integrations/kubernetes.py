@@ -4,7 +4,6 @@ Utilities, helpers, adapters for integration with Kubernetes (K8s)
 import logging
 import os
 import pkg_resources
-import yaml
 
 from jinja2 import Environment, FileSystemLoader
 from openeo_driver.jobregistry import JOB_STATUS
@@ -78,6 +77,7 @@ def k8s_state_to_openeo_job_status(state: str) -> str:
     return job_status
 
 def k8s_render_manifest_template(template, **kwargs) -> dict:
+    import yaml
     """ Load and render a provided kubernetes manifest jinja template with the passed kwargs """
     jinja_path = pkg_resources.resource_filename(
         "openeogeotrellis.deploy", template

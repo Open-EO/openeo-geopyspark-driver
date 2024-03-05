@@ -94,6 +94,7 @@ setup(
         "dev": tests_require,
         "k8s": [
             "kubernetes",
+            "PyYAML",
         ],
         "yarn": [
             "requests-gssapi>=1.2.3",  # For Kerberos authentication
