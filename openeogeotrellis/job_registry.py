@@ -612,16 +612,17 @@ class InMemoryJobRegistry(JobRegistryInterface):
         }
         return self.db[job_id]
 
-    def get_job(self, job_id: str) -> JobDict:
-        if job_id not in self.db:
-            raise JobNotFoundException(job_id=job_id)
-        return self.db[job_id]
+    def get_job(self, job_id: str, user_id: Optional[str] = None) -> JobDict:
+        job = self.db.get(job_id)
 
-    def delete_job(self, job_id: str) -> None:
-        if job_id in self.db:
-            del self.db[job_id]
-        else:
+        if not job or (user_id is not None and job['user_id'] != user_id):
             raise JobNotFoundException(job_id=job_id)
+
+        return job
+
+    def delete_job(self, job_id: str, user_id: Optional[str] = None) -> None:
+        self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
+        del self.db[job_id]
 
     def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
@@ -747,11 +748,13 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self._lock.release()
 
     def _just_log_errors(
-        self, name: str, job_id: Optional[str] = None, extra: Optional[dict] = None
+        self, name: str, job_id: Optional[str] = None, user_id: Optional[str] = None, extra: Optional[dict] = None
     ):
         """Context manager to just log exceptions"""
         if job_id:
             extra = dict(extra or {}, job_id=job_id)
+        if user_id:
+            extra = dict(extra, user_id=user_id)
         return just_log_exceptions(
             log=self._log.warning, name=f"DoubleJobRegistry.{name}", extra=extra
         )
@@ -802,9 +805,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             with contextlib.suppress(JobNotFoundException):
                 zk_job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job", job_id=job_id):
+            with self._just_log_errors("get_job", job_id=job_id, user_id=user_id):
                 with contextlib.suppress(JobNotFoundException):
-                    ejr_job = self.elastic_job_registry.get_job(job_id=job_id)
+                    ejr_job = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job, ejr_job_info=ejr_job)
         return zk_job or ejr_job
@@ -817,10 +820,10 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 with contextlib.suppress(JobNotFoundException):
                     zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job_metadata", job_id=job_id):
+            with self._just_log_errors("get_job_metadata", job_id=job_id, user_id=user_id):
                 with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
                     with contextlib.suppress(JobNotFoundException):
-                        ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id)
+                        ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
         job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
@@ -851,8 +854,8 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("delete", job_id=job_id):
-                self.elastic_job_registry.delete_job(job_id=job_id)
+            with self._just_log_errors("delete", job_id=job_id, user_id=user_id):
+                self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
 
     # Legacy alias
     delete = delete_job

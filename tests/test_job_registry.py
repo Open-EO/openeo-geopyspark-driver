@@ -307,6 +307,22 @@ class TestDoubleJobRegistry:
                 _ = double_jr.get_job_metadata("j-nope", user_id="john")
         assert caplog.messages == []
 
+    def test_get_their_job_no_zk(self, double_jr_no_zk):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+            double_jr_no_zk.get_job("j-123", user_id="john")
+            double_jr_no_zk.get_job_metadata("j-123", user_id="john")
+            with pytest.raises(JobNotFoundException):
+                double_jr_no_zk.get_job("j-123", user_id="paul")
+            with pytest.raises(JobNotFoundException):
+                double_jr_no_zk.get_job_metadata("j-123", user_id="paul")
+
     def test_get_job_mismatch(self, double_jr, memory_jr, caplog):
         with double_jr:
             double_jr.create_job(
@@ -469,6 +485,23 @@ class TestDoubleJobRegistry:
             assert "j-123" not in memory_jr.db
 
         assert caplog.messages == []
+
+    def test_delete_job_no_zk(self, double_jr_no_zk, memory_jr):
+        with double_jr_no_zk:
+            double_jr_no_zk.create_job(
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+            assert "j-123" in memory_jr.db
+
+            double_jr_no_zk.delete_job(job_id="j-123", user_id="paul")
+            assert "j-123" in memory_jr.db
+
+            double_jr_no_zk.delete_job(job_id="j-123", user_id="john")
+            assert "j-123" not in memory_jr.db
 
     def test_set_status_no_zk(self, double_jr_no_zk, zk_client, memory_jr, time_machine):
         with double_jr_no_zk:
