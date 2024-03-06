@@ -1223,26 +1223,26 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 input_vector_cube = input_vector_cube.to_driver_vector_cube()
             else:
                 raise ProcessParameterInvalidException(
-                    parameter='target_data_cube', process='vector_to_raster',
-                    reason=f"Input vector cube {input_vector_cube} is not a DriverVectorCube."
+                    parameter='data', process='vector_to_raster',
+                    reason=f"Invalid vector cube {type(input_vector_cube)}."
                 )
 
         if not isinstance(target_raster_cube, GeopysparkDataCube):
             raise ProcessParameterInvalidException(
-                parameter='target_data_cube', process='vector_to_raster',
-                reason=f"Target raster cube {target_raster_cube} is not a GeopysparkDataCube."
+                parameter='target', process='vector_to_raster',
+                reason=f"Invalid target cube {type(target_raster_cube)}."
             )
         if len(target_raster_cube.pyramid.levels) == 0:
             raise ProcessParameterInvalidException(
-                parameter='target_data_cube', process='vector_to_raster',
-                reason=f"Target raster cube {target_raster_cube} does not contain any data."
+                parameter='target', process='vector_to_raster',
+                reason=f"Target cube {type(target_raster_cube)} does not contain any data."
             )
         top_layer = target_raster_cube.pyramid.levels[0].srdd.rdd()
         cube: DataArray = input_vector_cube.get_cube()
         if cube is None:
             raise ProcessParameterInvalidException(
                 parameter='data', process='vector_to_raster',
-                reason=f'Input vector cube {input_vector_cube} does not contain any data.'
+                reason=f'Support for input vector cubes without data is not supported.'
             )
 
         # We only support these cases of dimensions.
