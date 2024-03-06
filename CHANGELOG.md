@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.28.1
+
 - Support excluding Sentinel Hub processing units from usage reporting ([openeo-cdse-infra#37](https://github.com/eu-cdse/openeo-cdse-infra/issues/37)).
 
 ## 0.28.0
