@@ -1247,15 +1247,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         # We only support these cases of dimensions.
         t_dim = DriverVectorCube.DIM_TIME
-        allowed_dims = [
-            [DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_BANDS],
-            [DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_BANDS],
-            [DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_PROPERTIES],
-            [DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_PROPERTIES],
-            [DriverVectorCube.DIM_GEOMETRY, t_dim],
-            [DriverVectorCube.DIM_GEOMETRY]
-        ]
-        if list(cube.dims) not in allowed_dims:
+        allowed_dims = {
+            (DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_BANDS),
+            (DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_BANDS),
+            (DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_PROPERTIES),
+            (DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_PROPERTIES),
+            (DriverVectorCube.DIM_GEOMETRY, t_dim),
+            (DriverVectorCube.DIM_GEOMETRY,)
+        }
+        if cube.dims not in allowed_dims:
             raise ProcessParameterInvalidException(
                 parameter='data', process='vector_to_raster',
                 reason=f'Input vector cube {input_vector_cube} with dimensions {cube.dims} is not supported.'
