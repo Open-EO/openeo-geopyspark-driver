@@ -23,7 +23,6 @@ from openeo_driver.jobregistry import (
     JobRegistryInterface,
     JobDict,
 )
-from openeo_driver.util.logging import just_log_exceptions
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.testing import KazooClientMock
@@ -747,18 +746,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.zk_job_registry = None
             self._lock.release()
 
-    def _just_log_errors(
-        self, name: str, job_id: Optional[str] = None, user_id: Optional[str] = None, extra: Optional[dict] = None
-    ):
-        """Context manager to just log exceptions"""
-        if job_id:
-            extra = dict(extra or {}, job_id=job_id)
-        if user_id:
-            extra = dict(extra, user_id=user_id)
-        return just_log_exceptions(
-            log=self._log.warning, name=f"DoubleJobRegistry.{name}", extra=extra
-        )
-
     def create_job(
         self,
         job_id: str,
@@ -784,16 +771,15 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 description=description,
             )
         if self.elastic_job_registry:
-            with self._just_log_errors("create_job", job_id=job_id):
-                ejr_job_info = self.elastic_job_registry.create_job(
-                    process=process,
-                    user_id=user_id,
-                    job_id=job_id,
-                    title=title,
-                    description=description,
-                    api_version=api_version,
-                    job_options=job_options,
-                )
+            ejr_job_info = self.elastic_job_registry.create_job(
+                process=process,
+                user_id=user_id,
+                job_id=job_id,
+                title=title,
+                description=description,
+                api_version=api_version,
+                job_options=job_options,
+            )
         if zk_job_info is None and ejr_job_info is None:
             raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
         return zk_job_info or ejr_job_info
@@ -805,9 +791,8 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             with contextlib.suppress(JobNotFoundException):
                 zk_job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job", job_id=job_id, user_id=user_id):
-                with contextlib.suppress(JobNotFoundException):
-                    ejr_job = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
+            with contextlib.suppress(JobNotFoundException):
+                ejr_job = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job, ejr_job_info=ejr_job)
         return zk_job or ejr_job
@@ -820,10 +805,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 with contextlib.suppress(JobNotFoundException):
                     zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("get_job_metadata", job_id=job_id, user_id=user_id):
-                with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
-                    with contextlib.suppress(JobNotFoundException):
-                        ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
+            with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
+                with contextlib.suppress(JobNotFoundException):
+                    ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
         job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
@@ -847,15 +831,13 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
                                             finished=finished)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_status", job_id=job_id):
-                self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
+            self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
 
     def delete_job(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("delete", job_id=job_id, user_id=user_id):
-                self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
+            self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
 
     # Legacy alias
     delete = delete_job
@@ -866,17 +848,15 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependencies", job_id=job_id):
-                self.elastic_job_registry.set_dependencies(
-                    job_id=job_id, dependencies=dependencies
-                )
+            self.elastic_job_registry.set_dependencies(
+                job_id=job_id, dependencies=dependencies
+            )
 
     def remove_dependencies(self, job_id: str, user_id: str):
         if self.zk_job_registry:
             self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("remove_dependencies", job_id=job_id):
-                self.elastic_job_registry.remove_dependencies(job_id=job_id)
+            self.elastic_job_registry.remove_dependencies(job_id=job_id)
 
     def set_dependency_status(
         self, job_id: str, user_id: str, dependency_status: str
@@ -886,10 +866,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, user_id=user_id, dependency_status=dependency_status
             )
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_status", job_id=job_id):
-                self.elastic_job_registry.set_dependency_status(
-                    job_id=job_id, dependency_status=dependency_status
-                )
+            self.elastic_job_registry.set_dependency_status(
+                job_id=job_id, dependency_status=dependency_status
+            )
 
     def set_dependency_usage(
         self, job_id: str, user_id: str, dependency_usage: Decimal
@@ -897,20 +876,18 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             self.zk_job_registry.set_dependency_usage(job_id=job_id, user_id=user_id, processing_units=dependency_usage)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_dependency_usage", job_id=job_id):
-                self.elastic_job_registry.set_dependency_usage(
-                    job_id=job_id, dependency_usage=dependency_usage
-                )
+            self.elastic_job_registry.set_dependency_usage(
+                job_id=job_id, dependency_usage=dependency_usage
+            )
 
     def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
         # TODO: add dedicated method
         if self.zk_job_registry:
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_proxy_user", job_id=job_id):
-                self.elastic_job_registry.set_proxy_user(
-                    job_id=job_id, proxy_user=proxy_user
-                )
+            self.elastic_job_registry.set_proxy_user(
+                job_id=job_id, proxy_user=proxy_user
+            )
 
     def set_application_id(
         self, job_id: str, user_id: str, application_id: str
@@ -918,10 +895,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
-            with self._just_log_errors("set_application_id", job_id=job_id):
-                self.elastic_job_registry.set_application_id(
-                    job_id=job_id, application_id=application_id
-                )
+            self.elastic_job_registry.set_application_id(
+                job_id=job_id, application_id=application_id
+            )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
@@ -935,11 +911,10 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             zk_jobs = [zk_job_info_to_metadata(j) for j in self.zk_job_registry.get_user_jobs(user_id)]
         if self.elastic_job_registry:
-            with self._just_log_errors("get_user_jobs"):
-                ejr_jobs = [
-                    ejr_job_info_to_metadata(j)
-                    for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
-                ]
+            ejr_jobs = [
+                ejr_job_info_to_metadata(j)
+                for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
+            ]
 
         # TODO: more insightful comparison? (e.g. only consider recent jobs)
         self._log.log(
@@ -972,20 +947,13 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         return jobs
 
     def get_active_jobs(self) -> Iterator[Dict]:
-        zk_jobs = None
-        ejr_jobs = None
-
         if self.zk_job_registry:
-            zk_jobs = list(self.zk_job_registry.get_running_jobs(parse_specification=True))
-
-        if self.elastic_job_registry:
-            with self._just_log_errors("get_active_jobs"):
-                ejr_jobs = self.elastic_job_registry.list_trackable_jobs(fields=[
-                    "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
-                    "dependency_usage",
-                ])
-
-        yield from (zk_jobs or ejr_jobs or [])
+            yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
+        elif self.elastic_job_registry:
+            yield from self.elastic_job_registry.list_trackable_jobs(fields=[
+                "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
+                "dependency_usage",
+            ])
 
     def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]):
@@ -994,6 +962,5 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                                        **dict(results_metadata, costs=costs, usage=usage))
 
         if self.elastic_job_registry:
-            with self._just_log_errors("set_results_metadata"):
-                self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
-                                                               results_metadata=results_metadata)
+            self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
+                                                           results_metadata=results_metadata)
