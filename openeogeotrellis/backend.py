@@ -43,14 +43,9 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.errors import (
-    InternalException,
-    JobNotFinishedException,
-    JobNotFoundException,
-    OpenEOApiException,
-    ProcessParameterUnsupportedException,
-    ServiceUnsupportedException,
-)
+from openeo_driver.errors import (InternalException, JobNotFinishedException, JobNotFoundException, OpenEOApiException,
+                                  ProcessParameterUnsupportedException, ServiceUnsupportedException,
+                                  ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
@@ -68,6 +63,7 @@ from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
 from shapely.geometry import Polygon
 from xarray import DataArray
+import numpy as np
 
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
@@ -1256,41 +1252,63 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         :param target_raster_cube: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
         :return: DriverDataCube with the rasterized bands.
         """
+        if not isinstance(input_vector_cube, DriverVectorCube):
+            if hasattr(input_vector_cube, 'to_driver_vector_cube'):
+                input_vector_cube = input_vector_cube.to_driver_vector_cube()
+            else:
+                raise ProcessParameterInvalidException(
+                    parameter='data', process='vector_to_raster',
+                    reason=f"Invalid vector cube {type(input_vector_cube)}."
+                )
+
         if not isinstance(target_raster_cube, GeopysparkDataCube):
-            raise OpenEOApiException(
-                message=f"Target raster cube {target_raster_cube} is not a GeopysparkDataCube.",
-                status_code=400)
+            raise ProcessParameterInvalidException(
+                parameter='target', process='vector_to_raster',
+                reason=f"Invalid target cube {type(target_raster_cube)}."
+            )
         if len(target_raster_cube.pyramid.levels) == 0:
-            raise OpenEOApiException(
-                message=f"Target raster cube {target_raster_cube} does not contain any data.",
-                status_code=400)
+            raise ProcessParameterInvalidException(
+                parameter='target', process='vector_to_raster',
+                reason=f"Target cube {type(target_raster_cube)} does not contain any data."
+            )
         top_layer = target_raster_cube.pyramid.levels[0].srdd.rdd()
         cube: DataArray = input_vector_cube.get_cube()
+        if cube is None:
+            raise ProcessParameterInvalidException(
+                parameter='data', process='vector_to_raster',
+                reason=f'Support for input vector cubes without data is not supported.'
+            )
 
-        # Remove all non-numeric bands and convert to float.
-        band_dim = str(cube.dims[1])
-        selected_bands = []
-        contains_int = False
-        for band in cube[band_dim].values:
-            coord_data: list = cube.sel({band_dim: band}).values.tolist()
-            if len(coord_data) == 0:
-                continue
-            if isinstance(coord_data[0], (int, float)):
-                contains_int = contains_int or isinstance(coord_data[0], int)
-                selected_bands.append(band)
-        if len(selected_bands) == 0:
-            raise OpenEOApiException(
-                message=f"vector_to_raster: Input vector cube {input_vector_cube} does not contain any numeric bands.",
-                status_code=400)
-        if len(selected_bands) != 1:
-            raise OpenEOApiException(
-                message = f"vector_to_raster: Input vector cube {input_vector_cube} contains multiple numeric bands. Currently only one band is supported. Please use filter_bands first.",
-                status_code = 400)
-        float_cube = cube.sel({band_dim: selected_bands})
-        if contains_int:
-            float_cube = float_cube.astype(float)
+        # We only support these cases of dimensions.
+        t_dim = DriverVectorCube.DIM_TIME
+        allowed_dims = {
+            (DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_BANDS),
+            (DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_BANDS),
+            (DriverVectorCube.DIM_GEOMETRY, t_dim, DriverVectorCube.DIM_PROPERTIES),
+            (DriverVectorCube.DIM_GEOMETRY, DriverVectorCube.DIM_PROPERTIES),
+            (DriverVectorCube.DIM_GEOMETRY, t_dim),
+            (DriverVectorCube.DIM_GEOMETRY,)
+        }
+        if cube.dims not in allowed_dims:
+            raise ProcessParameterInvalidException(
+                parameter='data', process='vector_to_raster',
+                reason=f'Input vector cube {input_vector_cube} with dimensions {cube.dims} is not supported.'
+            )
+        bands_dim, time_dim = None, None
+        if len(cube.dims) > 1 and str(cube.dims[-1]) != t_dim:
+            bands = cube[str(cube.dims[-1])].values
+            bands_dim = BandDimension(name="bands",  bands = [Band(b, b, None, None, None) for b in bands])
+        if t_dim in cube.dims:
+            time_extent = (cube[t_dim].min().values.tolist(), cube[t_dim].max().values.tolist())
+            time_dim = TemporalDimension(name="t", extent=time_extent)
 
-        input_vector_cube = input_vector_cube.with_cube(float_cube)
+        if not np.issubdtype(cube.dtype, np.number):
+            raise ProcessParameterInvalidException(
+                parameter = 'data', process = 'vector_to_raster',
+                reason = f'Input vector cube {input_vector_cube} is not fully numeric. Actual data type: {cube.dtype}.'
+            )
+        if cube.dtype != np.float:
+            input_vector_cube = input_vector_cube.with_cube(cube.astype(np.float))
 
         # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
         file_name = "input_vector_cube.geojson"
@@ -1298,32 +1316,30 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             file_path = Path(tmp_dir) / file_name
             with open(str(file_path), 'w') as f:
                 json.dump(input_vector_cube.to_geojson(include_properties = False), f)
-            vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRaster
+            vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRasterSpatial
+            tiled_raster_layer = get_jvm().geopyspark.geotrellis.SpatialTiledRasterLayer
+            layer_type = LayerType.SPATIAL
+            if time_dim:
+                vector_to_raster = get_jvm().org.openeo.geotrellis.vector.VectorCubeMethods.vectorToRasterTemporal
+                tiled_raster_layer = get_jvm().geopyspark.geotrellis.TemporalTiledRasterLayer
+                layer_type = LayerType.SPACETIME
             layer = vector_to_raster(str(file_path), top_layer)
-        spatial_tiled_raster_layer = get_jvm().geopyspark.geotrellis.SpatialTiledRasterLayer
 
-        raster_layer = gps.TiledRasterLayer(LayerType.SPATIAL, spatial_tiled_raster_layer.apply(0, layer))
+        raster_layer = gps.TiledRasterLayer(layer_type, tiled_raster_layer.apply(0, layer))
         pyramid: Pyramid = Pyramid({0: raster_layer})
 
         # Create metadata.
-        dimensions: List[Dimension] = [
-            SpatialDimension(name = "x", extent = []),
-            SpatialDimension(name = "y", extent = []),
-            BandDimension(name="bands",  bands = [Band(b, b, None, None, None) for b in selected_bands]),
-        ]
-        # TODO: Get spatial extent from target_raster_cube if present.
-        bounding_box = input_vector_cube.get_bounding_box()
-        spatial_extent = {
-            "west": bounding_box[0],
-            "east": bounding_box[2],
-            "north": bounding_box[3],
-            "south": bounding_box[1],
-        }
+        dimensions: List[Dimension] = target_raster_cube.metadata.spatial_dimensions
+        if bands_dim:
+            dimensions.append(bands_dim)
+        if time_dim:
+            dimensions.append(time_dim)
+
         metadata: GeopysparkCubeMetadata = GeopysparkCubeMetadata(
             metadata={},
             dimensions=dimensions,
-            spatial_extent=spatial_extent,
-            temporal_extent=None,
+            spatial_extent=target_raster_cube.metadata.spatial_extent,
+            temporal_extent=time_dim.extent if time_dim else None,
         )
         return GeopysparkDataCube(pyramid, metadata)
 

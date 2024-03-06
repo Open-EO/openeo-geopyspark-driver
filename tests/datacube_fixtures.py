@@ -118,7 +118,7 @@ def imagecollection_with_two_bands_and_one_date(request):
     import geopyspark as gps
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
     geopyspark_layer = layer_with_two_bands_and_one_date()
-    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
+    datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=GeopysparkCubeMetadata(openeo_metadata))
 
     if request.instance:
         request.instance.imagecollection_with_two_bands_and_one_date = datacube
@@ -241,7 +241,7 @@ def imagecollection_with_two_bands_spatial_only(request):
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
     metadata = {
-        'cellType': 'int32ud-1',
+        'cellType': 'float64ud-1.0',
         'extent': extent,
         'crs': '+proj=longlat +datum=WGS84 +no_defs ',
         'bounds': {
