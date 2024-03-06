@@ -82,7 +82,8 @@ fi
 main_py_file="/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py"
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
- -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/$(date +%s).hprof\
+ -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/${batchJobId}\
+ -XX:ErrorFile=/data/projects/OpenEO/${batchJobId}/hs_err_pid%p.log\
  -Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
