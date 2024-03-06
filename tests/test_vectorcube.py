@@ -129,6 +129,8 @@ def test_aggregatespatialvectorcube_to_vectorcube(imagecollection_with_two_bands
             }
         }
     )
+    assert isinstance(aggregate_result, AggregateSpatialVectorCube)
+
     # Convert the result to vector cube.
     output_vector_cube: DriverVectorCube = aggregate_result.to_driver_vector_cube()
     input_data: gpd.GeoDataFrame = aggregate_result.get_data()
@@ -170,7 +172,7 @@ def test_aggregatespatialresultcsv_to_vectorcube(imagecollection_with_two_bands_
             }
         }
     )
-
+    assert isinstance(aggregate_result, AggregateSpatialResultCSV)
     # Convert the result to vector cube.
     output_vector_cube: DriverVectorCube = aggregate_result.to_driver_vector_cube()
     input_data: dict[str, list[list[float]]] = aggregate_result.get_data()  # Shape (1,2,2) (t,geometry,bands)
@@ -213,6 +215,7 @@ def test_aggregatespatialresultcsv_vector_to_raster(imagecollection_with_two_ban
             }
         }
     )
+    assert isinstance(aggregate_result, AggregateSpatialResultCSV)
     output_cube: DriverDataCube = GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
         input_vector_cube = aggregate_result,
         target_raster_cube = target_raster_cube
