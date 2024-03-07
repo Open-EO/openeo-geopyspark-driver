@@ -765,7 +765,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                                          code="NoDataAvailable", status_code=400)
         properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
 
-        user = env['user']
+        user: Union[User, None] = env["user"]
 
         requested_bbox = BoundingBox.from_dict_or_none(
             load_params.spatial_extent, default_crs="EPSG:4326"
@@ -854,6 +854,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             return True
 
+        # TODO: `user` might be None
         dependency_job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=self.batch_jobs)
         collection = None
         if dependency_job_info:

@@ -95,6 +95,11 @@ class EtlApi:
                            started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
                            cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
                            sentinel_hub_processing_units: Optional[float]) -> float:
+        """
+        :param user_id: user identifier expected by ETL API: must be "sub" field from (verified) access token
+
+        :return: costs (in credits)
+        """
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
         metrics = {}
@@ -138,6 +143,8 @@ class EtlApi:
 
             resp.raise_for_status()
 
+            # TODO: is cost guaranteed to be in credits?
+            #       Or, vice versa, is it unnecessary to assume anything about the cost unit here?
             total_credits = sum(resource['cost'] for resource in resp.json())
             return total_credits
 
