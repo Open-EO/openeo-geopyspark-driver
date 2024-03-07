@@ -673,6 +673,9 @@ class GeopysparkDataCube(DriverDataCube):
                 nonlocal new_bands_repr
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
+                # Can get error here when using dc.max_time():
+                # class geotrellis.layer.SpatialKey cannot be cast to class geotrellis.layer.SpaceTimeKey
+                logging.info("Got here: apply_tiles>rdd_function>runUserCodeWithBands")
                 tup = udf.runUserCodeWithBands(udf_code, rdd, band_names, context, overlap_x, overlap_y)
                 if new_bands_repr:
                     assert new_bands_repr == list(tup._2())
