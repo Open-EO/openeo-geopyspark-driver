@@ -1,9 +1,12 @@
+from shapely.geometry.base import BaseGeometry
+from typing import Sequence
+
 import datetime
 import geopyspark.geotrellis
 import json
 import xarray
 from geopyspark import TiledRasterLayer, LayerType, Bounds
-from openeogeotrellis.ml import AggregateSpatialVectorCube
+from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
 from openeo_driver.errors import OpenEOApiException
 
 from unittest.mock import MagicMock
@@ -133,14 +136,14 @@ def test_aggregatespatialvectorcube_to_vectorcube(imagecollection_with_two_bands
 
     # Convert the result to vector cube.
     output_vector_cube: DriverVectorCube = aggregate_result.to_driver_vector_cube()
-    input_data: gpd.GeoDataFrame = aggregate_result.get_data()
+    input_data: gpd.GeoDataFrame = aggregate_result._get_geodataframe()
     num_geometries = input_data.shape[0]
-    assert input_data.shape == (num_geometries, 5)
-    assert input_data.columns.tolist() == ['geometry', 'id', 'pop', 'avg_band_0_', 'avg_band_1_']
+    assert input_data.shape == (num_geometries, 3)
+    assert input_data.columns.tolist() == ['geometry', 'avg_band_0_', 'avg_band_1_']
 
     # Check geometries.
     input_regions: gpd.GeoSeries = input_data.geometry
-    output_regions: gpd.GeoSeries = output_vector_cube.get_geometries()
+    output_regions: Sequence[BaseGeometry] = output_vector_cube.get_geometries()
     assert len(input_regions) == input_data.shape[0]
     for i in range(len(input_regions)):
         assert input_regions[i] == output_regions[i]
@@ -148,9 +151,9 @@ def test_aggregatespatialvectorcube_to_vectorcube(imagecollection_with_two_bands
     # Check data.
     cube: xarray.DataArray = output_vector_cube.get_cube()
     assert cube.dims == ('geometry', 'bands')
-    assert cube.shape == (num_geometries, 3)
-    assert cube['bands'].values.tolist() == ['pop', 'avg_band_0_', 'avg_band_1_']  # Only numeric bands, ids are strings.
-    assert cube.isel(geometry=0).values.tolist() == input_data.values[0,2:].tolist()
+    assert cube.shape == (num_geometries, 2)
+    assert cube['bands'].values.tolist() == ['avg_band_0_', 'avg_band_1_']  # Only numeric bands, ids are strings.
+    assert cube.isel(geometry=0).values.tolist() == input_data.values[0,1:].tolist()
 
 
 def test_aggregatespatialresultcsv_to_vectorcube(imagecollection_with_two_bands_and_one_date):
