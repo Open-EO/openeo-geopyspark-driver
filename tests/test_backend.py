@@ -448,11 +448,12 @@ FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1
     assert summarized is None
 
 
-@pytest.mark.parametrize("success, shpu, state, status",
+@pytest.mark.parametrize("success, state, status",
                          [
-                             (True, 123.0, "FINISHED", "SUCCEEDED"),
-                             (False, 0.0, "FAILED", "FAILED"),
+                             (True, "FINISHED", "SUCCEEDED"),
+                             (False, "FAILED", "FAILED"),
                          ])
+@pytest.mark.parametrize("shpu", [123.0, 0.0])
 @gps_config_overrides(use_etl_api_on_sync_processing=True)
 @mock.patch("openeogeotrellis.integrations.etl_api.get_etl_api_credentials_from_env")
 def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation, success, shpu, state, status):
@@ -483,7 +484,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             cpu_seconds=3600,
             mb_seconds=7372800,
             duration_ms=None,
-            sentinel_hub_processing_units=shpu
+            sentinel_hub_processing_units=shpu if shpu else None
         )
 
         assert credit_cost == 6
