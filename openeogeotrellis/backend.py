@@ -1106,6 +1106,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
+        feature_flags = load_params.get("featureflags", {})
+        tilesize = feature_flags.get("tilesize", None)
+        if tilesize:
+            getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
         single_level = env.get('pyramid_levels', 'all') != 'all'
 
         if netcdf_with_time_dimension:
