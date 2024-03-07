@@ -488,7 +488,6 @@ class GeopysparkDataCube(DriverDataCube):
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             ret = float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
             if new_bands_repr:
-                # Could write custom serialisation/deserialisation, but repr/eval is safe enough here
                 self.metadata.band_dimension.bands = [Band(b) for b in new_bands_repr]
             return ret
 
@@ -683,7 +682,6 @@ class GeopysparkDataCube(DriverDataCube):
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             ret = float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
             if new_bands_repr:
-                # Could write custom serialisation/deserialisation, but repr/eval is safe enough here
                 self.metadata.band_dimension.bands = [Band(b) for b in new_bands_repr]
 
             return ret
