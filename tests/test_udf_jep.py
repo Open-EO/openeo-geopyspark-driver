@@ -13,7 +13,7 @@ def _get_udf_code(filename: str):
 
 
 def test_run_udf_jep_with_apply_metadata(api100):
-    output_dir = Path("tmp")
+    output_dir = Path(__file__).parent / "tmp"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     spatial_extent = {"west": 0, "south": 0, "east": 8, "north": 8}
@@ -32,8 +32,9 @@ def test_run_udf_jep_with_apply_metadata(api100):
     )
     result = api100.check_result(datacube)
 
-    with open(output_dir / "test_run_udf_jep_with_apply_metadata.tiff", mode="wb") as f:
+    output_file = output_dir / "test_run_udf_jep_with_apply_metadata.tiff"
+    with open(output_file, mode="wb") as f:
         f.write(result.data)
 
-    data_gdalinfo = gdal.Info(str(output_dir / "test_run_udf_jep_code.tiff"))
+    data_gdalinfo = gdal.Info(str(output_file))
     assert "Longitude_RENAMED" in data_gdalinfo
