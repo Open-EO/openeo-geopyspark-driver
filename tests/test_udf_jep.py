@@ -35,5 +35,5 @@ def test_run_udf_jep_with_apply_metadata(api100):
     with open(output_dir / "test_run_udf_jep_with_apply_metadata.tiff", mode="wb") as f:
         f.write(result.data)
 
-    data_gdalinfo = gdal.Info("tmp/test_run_udf_jep_code.tiff")
+    data_gdalinfo = gdal.Info(str(output_dir / "test_run_udf_jep_code.tiff"))
     assert "Longitude_RENAMED" in data_gdalinfo
