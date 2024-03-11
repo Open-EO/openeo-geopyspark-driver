@@ -497,7 +497,8 @@ class TestDoubleJobRegistry:
             )
             assert "j-123" in memory_jr.db
 
-            double_jr_no_zk.delete_job(job_id="j-123", user_id="paul")
+            with pytest.raises(JobNotFoundException):
+                double_jr_no_zk.delete_job(job_id="j-123", user_id="paul")
             assert "j-123" in memory_jr.db
 
             double_jr_no_zk.delete_job(job_id="j-123", user_id="john")
@@ -748,5 +749,5 @@ class TestDoubleJobRegistry:
         with other_double_jr:
             active_jobs = list(other_double_jr.get_active_jobs())
 
-        assert len(active_jobs) == 1
-        assert active_jobs[0]["job_id"] == "j-456"
+        active_job_ids = set(job["job_id"] for job in active_jobs)
+        assert active_job_ids == {"j-456"}
