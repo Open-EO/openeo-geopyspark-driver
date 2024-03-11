@@ -473,22 +473,22 @@ class GeopysparkDataCube(DriverDataCube):
             band_names = []
             if self.metadata.has_band_dimension():
                 band_names = self.metadata.band_dimension.band_names
-            new_bands_repr: Optional[str] = None
+            new_bands: Optional[str] = None
 
             def rdd_function(rdd, _zoom):
-                nonlocal new_bands_repr
+                nonlocal new_bands  # TODO: Get rid of nonlocal usage
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
                 tup = udf.runUserCodeSpatioTemporalWithBands(udf_code, rdd, band_names, udf_context, overlap_x, overlap_y)
-                if new_bands_repr:
-                    assert new_bands_repr == list(tup._2())
-                new_bands_repr = list(tup._2())
+                if new_bands:
+                    assert new_bands == list(tup._2())
+                new_bands = list(tup._2())
                 return tup._1()
 
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             ret = float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
-            if new_bands_repr:
-                self.metadata.band_dimension.bands = [Band(b) for b in new_bands_repr]
+            if new_bands:
+                self.metadata.band_dimension.bands = [Band(b) for b in new_bands]
             return ret
 
         @ensure_executor_logging
@@ -666,23 +666,23 @@ class GeopysparkDataCube(DriverDataCube):
 
         if runtime == 'Python-Jep':
             band_names = self.metadata.band_dimension.band_names
-            new_bands_repr: Optional[str] = None
+            new_bands: Optional[str] = None
 
             def rdd_function(rdd, _zoom):
-                nonlocal new_bands_repr
+                nonlocal new_bands  # TODO: Get rid of nonlocal usage
                 jvm = gps.get_spark_context()._jvm
                 udf = jvm.org.openeo.geotrellis.udf.Udf
                 tup = udf.runUserCodeWithBands(udf_code, rdd, band_names, context, overlap_x, overlap_y)
-                if new_bands_repr:
-                    assert new_bands_repr == list(tup._2())
-                new_bands_repr = list(tup._2())
+                if new_bands:
+                    assert new_bands == list(tup._2())
+                new_bands = list(tup._2())
                 return tup._1()
 
             # All JEP implementation work with the float datatype.
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             ret = float_cube._apply_to_levels_geotrellis_rdd(rdd_function, self.metadata, gps.LayerType.SPACETIME)
-            if new_bands_repr:
-                self.metadata.band_dimension.bands = [Band(b) for b in new_bands_repr]
+            if new_bands:
+                self.metadata.band_dimension.bands = [Band(b) for b in new_bands]
 
             return ret
         else:
