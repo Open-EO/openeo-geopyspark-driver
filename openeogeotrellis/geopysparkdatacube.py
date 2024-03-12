@@ -960,20 +960,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def mask(self, mask: 'GeopysparkDataCube',
              replacement=None) -> 'GeopysparkDataCube':
-        # mask needs to be the same layout as this layer
-        try:
-            mask_pyramid_levels = {
-                k: l.tile_to_layout(layout=self.pyramid.levels[k])
-                for k, l in mask.pyramid.levels.items()
-            }
-        except ValueError:
-            _log.error(
-                f"Failed to retile mask: %r != %r",
-                {k: l.layer_metadata.crs for k, l in self.pyramid.levels.items()},
-                {k: l.layer_metadata.crs for k, l in mask.pyramid.levels.items()},
-                exc_info=True,
-            )
-            raise
+
         replacement = float(replacement) if replacement is not None else None
         if self._is_spatial() and mask._is_spatial():
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
@@ -983,7 +970,7 @@ class GeopysparkDataCube(DriverDataCube):
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
 
         return self._apply_to_levels_geotrellis_rdd(
-            lambda rdd, level: rasterMask(rdd, mask_pyramid_levels[level].srdd.rdd(), replacement)
+            lambda rdd, level: rasterMask(rdd, mask.pyramid.levels[level].srdd.rdd(), replacement)
         )
 
     def to_scl_dilation_mask(
