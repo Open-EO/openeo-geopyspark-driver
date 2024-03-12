@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Mask process now also works when the mask is in a different projection, so resample_cube_spatial is needed in fewer cases.
+
 ## 0.28.1
 
 - Support excluding Sentinel Hub processing units from usage reporting ([openeo-cdse-infra#37](https://github.com/eu-cdse/openeo-cdse-infra/issues/37)).
