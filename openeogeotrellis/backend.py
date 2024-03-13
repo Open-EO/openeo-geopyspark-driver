@@ -1302,7 +1302,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         bands_dim, time_dim = None, None
         if len(cube.dims) > 1 and str(cube.dims[-1]) != t_dim:
             bands = cube[str(cube.dims[-1])].values
-            bands_dim = BandDimension(name="bands",  bands = [Band(b, b, None, None, None) for b in bands])
+            bands_dim = BandDimension(name="bands",  bands = [Band(str(b), str(b), None, None, None) for b in bands])
         if t_dim in cube.dims:
             time_extent = (cube[t_dim].min().values.tolist(), cube[t_dim].max().values.tolist())
             time_dim = TemporalDimension(name="t", extent=time_extent)
