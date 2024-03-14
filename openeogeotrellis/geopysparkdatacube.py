@@ -1698,7 +1698,7 @@ class GeopysparkDataCube(DriverDataCube):
                             if isinstance(geometries, MultiPolygon):
                                 geometries = GeometryCollection(geometries.geoms)
                             projected_polygons = to_projected_polygons(get_jvm(), geometries)
-                            labels = self.get_labels(geometries)
+                            labels = self.get_labels(geometries,format_options.get("feature_id_property", None))
                             timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
                                 max_level.srdd.rdd(), save_directory, projected_polygons, labels, compression,
                                 filename_prefix)
@@ -1886,11 +1886,16 @@ class GeopysparkDataCube(DriverDataCube):
             )
         return {str(os.path.basename(filename)):{"href":filename}}
 
-    def get_labels(self, geometries):
+    def get_labels(self, geometries, feature_id_property=None):
         # TODO: return more descriptive labels/ids than these autoincrement strings (when possible)?
         if isinstance(geometries, DelayedVector):
             return [str(i) for i, _ in enumerate(geometries.geometries)]
         elif isinstance(geometries, DriverVectorCube):
+            if feature_id_property is not None:
+                values = geometries.get_band_values(feature_id_property)
+                if values is not None:
+                    return [str(v) for v in values]
+
             return [str(i) for i in range(geometries.geometry_count())]
         elif isinstance(geometries, collections.abc.Sized):
             return [str(x) for x in range(len(geometries))]
