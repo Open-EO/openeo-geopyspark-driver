@@ -62,6 +62,7 @@ from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
 from pyspark.version import __version__ as pysparkversion
 from shapely.geometry import Polygon
+from urllib3 import Retry
 from xarray import DataArray
 import numpy as np
 
@@ -1505,7 +1506,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 request_id, sc._jsc.sc()
             )
             sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
-            requests_session = requests_with_retry(total=3, backoff_factor=2)
+            requests_session = requests_with_retry(total=3, backoff_factor=2,
+                                                   allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}))
 
             cpu_seconds = backend_config.default_usage_cpu_seconds
             mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
