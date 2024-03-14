@@ -15,7 +15,7 @@ without compromising stable operations.
 ## 0.28.2
 
 - Mask process now also works when the mask is in a different projection, so resample_cube_spatial is needed in fewer cases.
-- Retry ETL API requests ([#720](https://github.com/Open-EO/openeo-geopyspark-driver/issues/720)).
+- Improve resilience by retrying ETL API requests ([#720](https://github.com/Open-EO/openeo-geopyspark-driver/issues/720)).
 
 ## 0.28.1
 
