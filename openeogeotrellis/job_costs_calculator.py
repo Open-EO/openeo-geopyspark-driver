@@ -5,6 +5,7 @@ from typing import List, NamedTuple, Optional
 
 from openeo_driver.util.caching import TtlCache
 from openeo_driver.util.http import requests_with_retry
+from urllib3 import Retry
 
 from openeogeotrellis.integrations.etl_api import ETL_API_STATUS, EtlApi, get_etl_api
 
@@ -102,7 +103,8 @@ class DynamicEtlApiJobCostCalculator(JobCostsCalculator):
     """
 
     def __init__(self, cache_ttl: int = 5 * 60):
-        self._request_session = requests_with_retry(total=3, backoff_factor=2)
+        self._request_session = requests_with_retry(total=3, backoff_factor=2,
+                                                    allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}))
         # Cache of `EtlApi` instances, used in `get_etl_api()`
         self._etl_cache: Optional[TtlCache] = TtlCache(default_ttl=cache_ttl) if cache_ttl > 0 else None
 
