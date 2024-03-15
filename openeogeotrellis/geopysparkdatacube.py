@@ -1237,18 +1237,20 @@ class GeopysparkDataCube(DriverDataCube):
             pixel_area_after = resolution[0] * resolution[1]
 
             estimated_size_in_pixels_tup = self.estimate_layer_size_in_pixels()
-            print(estimated_size_in_pixels_tup)
 
-            resolution_increase_factor = int(pixel_area_before / pixel_area_after)
+            resolution_factor = (
+                cellsize_before[0] / resolution[0],
+                cellsize_before[1] / resolution[1]
+            )
+            pixel_volume_factor = int(pixel_area_before / pixel_area_after)
             estimated_partitions_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_increase_factor / 1024,  # TODO make not hardcoded
-                estimated_size_in_pixels_tup[1] * resolution_increase_factor / 1024
+                estimated_size_in_pixels_tup[0] * resolution_factor[0] / 256,  # TODO make not hardcoded
+                estimated_size_in_pixels_tup[1] * resolution_factor[1] / 256
             )
             estimated_partitions = int(estimated_partitions_tup[0] * estimated_partitions_tup[1])
-            print(estimated_partitions)
             if (max_level.getNumPartitions() <= estimated_partitions
                     and max_level.layer_type == gps.LayerType.SPACETIME
-                    and resolution_increase_factor > 2):
+                    and pixel_volume_factor > 4):
                 logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {estimated_partitions} before resample_spatial.")
                 max_level = max_level.repartition(estimated_partitions)
 
