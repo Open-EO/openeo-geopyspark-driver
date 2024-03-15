@@ -1241,16 +1241,16 @@ class GeopysparkDataCube(DriverDataCube):
 
             resolution_increase_factor = int(pixel_area_before / pixel_area_after)
             estimated_partitions_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_increase_factor / 256,  # TODO make not hardcoded
-                estimated_size_in_pixels_tup[1] * resolution_increase_factor / 256
+                estimated_size_in_pixels_tup[0] * resolution_increase_factor / 1024,  # TODO make not hardcoded
+                estimated_size_in_pixels_tup[1] * resolution_increase_factor / 1024
             )
             estimated_partitions = int(estimated_partitions_tup[0] * estimated_partitions_tup[1])
             print(estimated_partitions)
-            # if (max_level.getNumPartitions() <= estimated_partitions
-            #         and max_level.layer_type == gps.LayerType.SPACETIME
-            #         and resolution_increase_factor > 2):
-            #     logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {estimated_partitions} before resample_spatial.")
-            #     max_level = max_level.repartition(estimated_partitions)
+            if (max_level.getNumPartitions() <= estimated_partitions
+                    and max_level.layer_type == gps.LayerType.SPACETIME
+                    and resolution_increase_factor > 2):
+                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {estimated_partitions} before resample_spatial.")
+                max_level = max_level.repartition(estimated_partitions)
 
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
