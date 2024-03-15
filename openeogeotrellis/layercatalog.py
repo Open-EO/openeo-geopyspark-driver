@@ -254,7 +254,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             target_epsg_code = int(native_crs.split(":")[-1])
 
 
-        if (load_params.target_resolution is not None):
+        if (load_params.target_resolution is not None ):
             cell_width = float(load_params.target_resolution[0])
             cell_height = float(load_params.target_resolution[1])
         if (load_params.target_crs is not None ):
@@ -263,7 +263,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             elif isinstance(load_params.target_crs,dict) and load_params.target_crs.get("id",{}).get("code") == 'Auto42001':
                 target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
             else:
-                pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
+                target_epsg_code = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
