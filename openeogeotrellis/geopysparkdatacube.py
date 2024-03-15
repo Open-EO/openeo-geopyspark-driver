@@ -799,10 +799,18 @@ class GeopysparkDataCube(DriverDataCube):
             reducer = self._normalize_temporal_reducer(dimension, reducer)
             return mapped_keys.apply_to_levels(lambda rdd: rdd.aggregate_by_cell(reducer))
         elif isinstance(reducer, GeotrellisTileProcessGraphVisitor):
-            return self._apply_to_levels_geotrellis_rdd(
-                lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().aggregateTemporal(rdd,
-                                                                                                          intervals_iso,
-                                                                                                          labels_iso,reducer.builder,context if isinstance(context,dict) else {},reduce))
+            def aggregate(rdd,level):
+                pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
+                band_names = []
+                if self.metadata.has_band_dimension():
+                    band_names = self.metadata.band_names
+                else:
+                    band_names = ["band_unnamed"]
+                wrapped = pr.wrapCube(rdd)
+                wrapped.openEOMetadata().setBandNames(band_names)
+                return pr.aggregateTemporal(wrapped, intervals_iso, labels_iso, reducer.builder, context if isinstance(context, dict) else {}, reduce)
+
+            return self._apply_to_levels_geotrellis_rdd(aggregate)
         else:
             raise FeatureUnsupportedException("Unsupported type of reducer in aggregate_temporal: " + str(reducer))
 

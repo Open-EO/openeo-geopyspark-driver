@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- aggregate_temporal(_period) Performance improvement to use number of bands in metadata rather than computing the band count.
+
 ## 0.28.2
 
 - Mask process now also works when the mask is in a different projection, so resample_cube_spatial is needed in fewer cases.
