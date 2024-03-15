@@ -1222,19 +1222,9 @@ class GeopysparkDataCube(DriverDataCube):
             if newLayout == None:
                 return self
 
-            partitioner = max_level.srdd.rdd().partitioner()
-            b = max_level.layer_metadata.bounds
-            rows = b.maxKey.row - b.minKey.row + 1
-            cols = b.maxKey.col - b.minKey.col + 1
-            spatialPartitions = cols * rows
-
-            logging.info(f"Reprojecting datacube with partitioner {partitioner} to new layout {newLayout} and {projection=}")
             cellsize_before = self.get_cellsize()
-            pixel_area_before = cellsize_before[0] * cellsize_before[1]
             if not isinstance(resolution, tuple):
                 resolution = (resolution, resolution)
-
-            pixel_area_after = resolution[0] * resolution[1]
 
             estimated_size_in_pixels_tup = self.estimate_layer_size_in_pixels()
 
@@ -1242,17 +1232,21 @@ class GeopysparkDataCube(DriverDataCube):
                 cellsize_before[0] / resolution[0],
                 cellsize_before[1] / resolution[1]
             )
-            pixel_volume_factor = int(pixel_area_before / pixel_area_after)
-            estimated_partitions_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_factor[0] / 256,  # TODO make not hardcoded
-                estimated_size_in_pixels_tup[1] * resolution_factor[1] / 256
+
+            # If the layer had a smaller tileSize specified, there will probably be enough partitions and this logic won't have effect
+            # If the user has a larger tileSize specified, it will probably be max 1024, then we would make more partitions
+            # Anyway, specifying tileSize is an undocumented feature, so we can assume default tileSize
+            default_tile_size = 256
+            proposed_partition_count_tup = (
+                estimated_size_in_pixels_tup[0] * resolution_factor[0] / default_tile_size,
+                estimated_size_in_pixels_tup[1] * resolution_factor[1] / default_tile_size
             )
-            estimated_partitions = int(estimated_partitions_tup[0] * estimated_partitions_tup[1])
-            if (max_level.getNumPartitions() <= estimated_partitions
-                    and max_level.layer_type == gps.LayerType.SPACETIME
-                    and pixel_volume_factor > 4):
-                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {estimated_partitions} before resample_spatial.")
-                max_level = max_level.repartition(estimated_partitions)
+            proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
+            if (  # Only repartition when there would be significantly more
+                    max_level.getNumPartitions() * 2 <= proposed_partition_count
+                    and max_level.layer_type == gps.LayerType.SPACETIME):
+                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial.")
+                max_level = max_level.repartition(proposed_partition_count)
 
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
@@ -1276,24 +1270,11 @@ class GeopysparkDataCube(DriverDataCube):
     def estimate_layer_size_in_pixels(self):
         layout_cellsize = self.get_cellsize()
         max_level = self.get_max_level()
-
-        # currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
-
         layer_extent = max_level.layer_metadata.extent
-        # layout_extent = max_level.layer_metadata.layout_definition.extent  # bigger than layer_extent
-
         layer_metadata_size = (
             layer_extent.xmax - layer_extent.xmin,
             layer_extent.ymax - layer_extent.ymin
         )
-        # layout_size = (
-        #     layout_extent.xmax - layout_extent.xmin,
-        #     layout_extent.ymax - layout_extent.ymin
-        # )
-        # layout_size_in_pixels = (
-        #     (currentTileLayout.tileCols * currentTileLayout.layoutCols),
-        #     (currentTileLayout.tileRows * currentTileLayout.layoutRows)
-        # )
         layer_size_in_pixels = (
             layer_metadata_size[0] / layout_cellsize[0],
             layer_metadata_size[1] / layout_cellsize[1]
