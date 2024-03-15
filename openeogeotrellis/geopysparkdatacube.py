@@ -1241,8 +1241,8 @@ class GeopysparkDataCube(DriverDataCube):
 
             resolution_increase_factor = int(pixel_area_before / pixel_area_after)
             estimated_partitions_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_increase_factor / currentTileLayout.tileCols,
-                estimated_size_in_pixels_tup[1] * resolution_increase_factor / currentTileLayout.tileRows
+                estimated_size_in_pixels_tup[0] * resolution_increase_factor / 256,  # TODO make not hardcoded
+                estimated_size_in_pixels_tup[1] * resolution_increase_factor / 256
             )
             estimated_partitions = int(estimated_partitions_tup[0] * estimated_partitions_tup[1])
             print(estimated_partitions)

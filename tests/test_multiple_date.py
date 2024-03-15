@@ -74,7 +74,7 @@ class TestMultipleDates(TestCase):
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
-    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 254, 'tileRows': 254}
+    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 5, 'tileRows': 5}
     metadata = {'cellType': 'float32ud-1.0',
                 'extent': extent,
                 'crs': '+proj=longlat +datum=WGS84 +no_defs ',
