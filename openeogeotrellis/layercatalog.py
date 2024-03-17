@@ -240,7 +240,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
         geometries = load_params.aggregate_spatial_geometries
-
+        empty_geometries = isinstance(geometries, DriverVectorCube) and len(geometries.get_geometries()) == 0
+        geometries = None if empty_geometries else geometries  # TODO: ensure that driver vector cube can not have empty geometries.
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
         else:
