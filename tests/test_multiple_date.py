@@ -36,20 +36,31 @@ def reducer(operation: str):
         },
     }
 
+def double_size_2d_array(input_array):
+    original_shape = input_array.shape
+    new_shape = (original_shape[0] * 2, original_shape[1] * 2)
+    new_array = np.zeros(new_shape, dtype=input_array.dtype)
+    new_array[::2, ::2] = input_array
+    new_array[1::2, ::2] = input_array
+    new_array[::2, 1::2] = input_array
+    new_array[1::2, 1::2] = input_array
+    return new_array
+
 class TestMultipleDates(TestCase):
-    band1 = np.array([
+
+    band1 = double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(np.array([
         [-1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0, 1.0]])
+        [1.0, 1.0, 1.0, 1.0, 1.0]]))))))
 
-    band2 = np.array([
+    band2 = double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(np.array([
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, -1.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
-        [2.0, 2.0, 2.0, 2.0, 2.0]])
+        [2.0, 2.0, 2.0, 2.0, 2.0]]))))))
 
     tile = Tile.from_numpy_array(band1,no_data_value=-1.0)
     tile2 = Tile.from_numpy_array(band2,no_data_value=-1.0)
@@ -74,7 +85,7 @@ class TestMultipleDates(TestCase):
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
-    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 5, 'tileRows': 5}
+    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': len(band1[0]), 'tileRows': len(band1)}
     metadata = {'cellType': 'float32ud-1.0',
                 'extent': extent,
                 'crs': '+proj=longlat +datum=WGS84 +no_defs ',
