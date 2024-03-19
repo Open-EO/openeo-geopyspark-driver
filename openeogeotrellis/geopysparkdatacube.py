@@ -1233,13 +1233,9 @@ class GeopysparkDataCube(DriverDataCube):
                 cellsize_before[1] / resolution[1]
             )
 
-            # If the layer had a smaller tileSize specified, there will probably be enough partitions and this logic won't have effect
-            # If the user has a larger tileSize specified, it will probably be max 1024, then we would make more partitions
-            # Anyway, specifying tileSize is an undocumented feature, so we can assume default tileSize
-            default_tile_size = 256
             proposed_partition_count_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_factor[0] / default_tile_size,
-                estimated_size_in_pixels_tup[1] * resolution_factor[1] / default_tile_size
+                estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
+                estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
             )
             proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
             if (  # Only repartition when there would be significantly more
