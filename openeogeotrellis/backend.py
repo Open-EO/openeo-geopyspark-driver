@@ -911,7 +911,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     collections=collection_id,
                     bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                     limit=20,
-                    datetime=f"{from_date.isoformat()}/{to_date.isoformat()}",  # inclusive
+                    datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/{to_date.isoformat().replace('+00:00', 'Z')}",  # inclusive
                 )
 
                 logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
