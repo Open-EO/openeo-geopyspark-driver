@@ -193,12 +193,12 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
                     "type": "FeatureCollection",
                     "features": [{
                         "type": "Feature",
-                        "properties": {},
+                        "properties": {"id":22},
                         "geometry": {"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
                     },
                         {
                             "type": "Feature",
-                            "properties": {},
+                            "properties": {"id":"myTextId"},
                             "geometry": {
                                 "type": "Polygon",
                                 "coordinates": [[[0.725, -0.516],[2.99,-1.29],[2.279,1.724],[0.725,-0.18],[0.725,-0.516]]]
@@ -212,7 +212,8 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
             "process_id": "save_result",
             "arguments": {"data": {"from_node": "filterspatial1"}, "format": "netCDF","options":{
                 "filename_prefix": prefix,
-                "sample_by_feature":True
+                "sample_by_feature":True,
+                "feature_id_property": "id"
             }},
             "result": True,
         }
@@ -233,11 +234,11 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
     assets = metadata["assets"]
     assert len(assets) == 2
     if prefix:
-        assert assets[prefix + "_0.nc"]
-        assert assets[prefix + "_1.nc"]
+        assert assets[prefix + "_22.nc"]
+        assert assets[prefix + "_myTextId.nc"]
     else:
-        assert assets["openEO_0.nc"]
-        assert assets["openEO_1.nc"]
+        assert assets["openEO_22.nc"]
+        assert assets["openEO_myTextId.nc"]
 
     for asset in assets:
         theAsset = assets[asset]

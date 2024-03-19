@@ -1603,7 +1603,7 @@ class GeopysparkDataCube(DriverDataCube):
         catalog = format_options.get("parameters", {}).get("catalog", False)
         tile_grid = format_options.get("tile_grid", None)
         sample_by_feature = format_options.get("sample_by_feature", False)
-        # feature_id_property = format_options.get("feature_id_property", False)
+        feature_id_property = format_options.get("feature_id_property", None)
         batch_mode = format_options.get("batch_mode", False)
         overviews = format_options.get("overviews", "AUTO")
         overview_resample = format_options.get("overview_method", "near")
@@ -1706,7 +1706,7 @@ class GeopysparkDataCube(DriverDataCube):
                             if isinstance(geometries, MultiPolygon):
                                 geometries = GeometryCollection(geometries.geoms)
                             projected_polygons = to_projected_polygons(get_jvm(), geometries)
-                            labels = self.get_labels(geometries,format_options.get("feature_id_property", None))
+                            labels = self.get_labels(geometries,feature_id_property)
                             timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
                                 max_level.srdd.rdd(), save_directory, projected_polygons, labels, compression,
                                 filename_prefix)
@@ -1799,7 +1799,7 @@ class GeopysparkDataCube(DriverDataCube):
                 if isinstance(geometries, MultiPolygon):
                     geometries = GeometryCollection(geometries.geoms)
                 projected_polygons = to_projected_polygons(get_jvm(), geometries)
-                labels = self.get_labels(geometries)
+                labels = self.get_labels(geometries,feature_id_property)
                 if(max_level.layer_type != gps.LayerType.SPATIAL):
                     print(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
@@ -1903,6 +1903,8 @@ class GeopysparkDataCube(DriverDataCube):
                 values = geometries.get_band_values(feature_id_property)
                 if values is not None:
                     return [str(v) for v in values]
+                else:
+                    _log.warning(f"save_result: a feature_id_property '{feature_id_property}' was specified, but could not find  labels in the vector cube: {geometries}.")
 
             return [str(i) for i in range(geometries.geometry_count())]
         elif isinstance(geometries, collections.abc.Sized):
