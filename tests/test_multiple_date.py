@@ -36,6 +36,13 @@ def reducer(operation: str):
         },
     }
 
+
+def double_size_2d_array_repeat(arr, repeats=1):
+    for _ in range(repeats):
+        arr = double_size_2d_array(arr)
+    return arr
+
+
 def double_size_2d_array(input_array):
     original_shape = input_array.shape
     new_shape = (original_shape[0] * 2, original_shape[1] * 2)
@@ -46,21 +53,22 @@ def double_size_2d_array(input_array):
     new_array[1::2, 1::2] = input_array
     return new_array
 
+
 class TestMultipleDates(TestCase):
 
-    band1 = double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(np.array([
+    band1 = np.array([
         [-1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0, 1.0]]))))))
+        [1.0, 1.0, 1.0, 1.0, 1.0]])
 
-    band2 = double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(double_size_2d_array(np.array([
+    band2 = np.array([
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
         [2.0, 2.0, -1.0, 2.0, 2.0],
         [2.0, 2.0, 2.0, 2.0, 2.0],
-        [2.0, 2.0, 2.0, 2.0, 2.0]]))))))
+        [2.0, 2.0, 2.0, 2.0, 2.0]])
 
     tile = Tile.from_numpy_array(band1,no_data_value=-1.0)
     tile2 = Tile.from_numpy_array(band2,no_data_value=-1.0)
@@ -311,6 +319,47 @@ class TestMultipleDates(TestCase):
 
         return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
+    def get_test_layer(self):
+        band1 = double_size_2d_array_repeat(self.band1, 5)
+        band2 = double_size_2d_array_repeat(self.band2, 5)
+
+        tile1 = Tile.from_numpy_array(band1, no_data_value=-1.0)
+        tile2 = Tile.from_numpy_array(band2, no_data_value=-1.0)
+        time_1 = datetime.datetime.strptime("2016-08-24T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+        time_2 = datetime.datetime.strptime("2017-08-24T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+        time_3 = datetime.datetime.strptime("2017-10-17T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+
+        layer = [(SpaceTimeKey(0, 0, time_1), tile1),
+                 (SpaceTimeKey(1, 0, time_1), tile2),
+                 (SpaceTimeKey(0, 1, time_1), tile1),
+                 (SpaceTimeKey(1, 1, time_1), tile1),
+                 (SpaceTimeKey(0, 0, time_2), tile2),
+                 (SpaceTimeKey(1, 0, time_2), tile2),
+                 (SpaceTimeKey(0, 1, time_2), tile2),
+                 (SpaceTimeKey(1, 1, time_2), tile2),
+                 (SpaceTimeKey(0, 0, time_3), tile1),
+                 (SpaceTimeKey(1, 0, time_3), tile2),
+                 (SpaceTimeKey(0, 1, time_3), tile1),
+                 (SpaceTimeKey(1, 1, time_3), tile1)
+                 ]
+
+        rdd = SparkContext.getOrCreate().parallelize(layer)
+
+        extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
+        layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': len(band1[0]), 'tileRows': len(band1)}
+        metadata = {'cellType': 'float32ud-1.0',
+                    'extent': extent,
+                    'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+                    'bounds': {
+                        'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(time_1)},
+                        'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(time_3)}},
+                    'layoutDefinition': {
+                        'extent': extent,
+                        'tileLayout': layout.copy()}}
+
+        tiled_raster_rdd = TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
+        return tiled_raster_rdd
+
     def test_reduce_nontemporal(self):
         input = Pyramid({0: self.tiled_raster_rdd})
 
@@ -523,7 +572,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         assert stitched.cells[0][1][1] == 10.0
 
     def test_resample_spatial(self):
-        input = Pyramid({0: self.tiled_raster_rdd})
+        input = Pyramid({0: self.get_test_layer()})
 
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
