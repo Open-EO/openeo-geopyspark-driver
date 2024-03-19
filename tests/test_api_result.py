@@ -3724,7 +3724,7 @@ class TestLoadStac:
         """load_stac from a STAC API with two items that have different timestamps"""
 
         def feature_collection(request, _) -> dict:
-            datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].split("/"))
+            datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].upper().split("/"))
 
             def item(path) -> dict:
                 return json.loads(
