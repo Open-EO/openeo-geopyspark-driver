@@ -1237,6 +1237,9 @@ class GeopysparkDataCube(DriverDataCube):
                 estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
                 estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
             )
+            # Could also use "currentTileLayout.layoutCols * resolution_factor[0]", but that would be less accurate.
+            # The repartitioning only considers the resolution change. It considers that the partitioning took
+            # already into account band count and the pixel type, sparse/not, ...
             proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
             if (  # Only repartition when there would be significantly more
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
