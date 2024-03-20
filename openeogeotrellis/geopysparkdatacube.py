@@ -1226,7 +1226,7 @@ class GeopysparkDataCube(DriverDataCube):
             if not isinstance(resolution, tuple):
                 resolution = (resolution, resolution)
 
-            estimated_size_in_pixels_tup = self.estimate_layer_size_in_pixels()
+            estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
 
             resolution_factor = (
                 cellsize_before[0] / resolution[0],
@@ -1263,7 +1263,11 @@ class GeopysparkDataCube(DriverDataCube):
             (extent.ymax - extent.ymin) / (currentTileLayout.tileRows * currentTileLayout.layoutRows)
         )
 
-    def estimate_layer_size_in_pixels(self):
+    def calculate_layer_size_in_pixels(self) -> Tuple[float, float]:
+        """
+        The (width,height) of the layer in pixels. Does not take into account bands.
+        Just a division, and is not rounded on an integer.
+        """
         layout_cellsize = self.get_cellsize()
         max_level = self.get_max_level()
         layer_extent = max_level.layer_metadata.extent

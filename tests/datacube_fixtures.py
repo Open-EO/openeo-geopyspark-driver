@@ -76,6 +76,23 @@ def openeo_metadata_spatial():
     return metadata
 
 
+def double_size_2d_array_repeat(arr, repeats=1):
+    for _ in range(repeats):
+        arr = double_size_2d_array(arr)
+    return arr
+
+
+def double_size_2d_array(input_array):
+    original_shape = input_array.shape
+    new_shape = (original_shape[0] * 2, original_shape[1] * 2)
+    new_array = np.zeros(new_shape, dtype=input_array.dtype)
+    new_array[::2, ::2] = input_array
+    new_array[1::2, ::2] = input_array
+    new_array[::2, 1::2] = input_array
+    new_array[1::2, 1::2] = input_array
+    return new_array
+
+
 def layer_with_two_bands_and_one_date():
     from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
     from geopyspark.geotrellis.constants import LayerType
@@ -307,6 +324,66 @@ def layer_with_two_bands_and_one_date_multiple_values():
 
     return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata) \
         .convert_data_type('int32', no_data_value=-1)
+
+
+def layer_with_one_band_and_three_dates():
+    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis.constants import LayerType
+    from geopyspark.geotrellis.layer import TiledRasterLayer
+    from pyspark import SparkContext
+
+    band1 = np.array([
+        [-1.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 1.0]])
+
+    band2 = np.array([
+        [2.0, 2.0, 2.0, 2.0, 2.0],
+        [2.0, 2.0, 2.0, 2.0, 2.0],
+        [2.0, 2.0, -1.0, 2.0, 2.0],
+        [2.0, 2.0, 2.0, 2.0, 2.0],
+        [2.0, 2.0, 2.0, 2.0, 2.0]])
+
+    band1 = double_size_2d_array_repeat(band1, 5)
+    band2 = double_size_2d_array_repeat(band2, 5)
+
+    tile1 = Tile.from_numpy_array(band1, no_data_value=-1.0)
+    tile2 = Tile.from_numpy_array(band2, no_data_value=-1.0)
+    time_1 = datetime.datetime.strptime("2016-08-24T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+    time_2 = datetime.datetime.strptime("2017-08-24T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+    time_3 = datetime.datetime.strptime("2017-10-17T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+
+    layer = [(SpaceTimeKey(0, 0, time_1), tile1),
+             (SpaceTimeKey(1, 0, time_1), tile2),
+             (SpaceTimeKey(0, 1, time_1), tile1),
+             (SpaceTimeKey(1, 1, time_1), tile1),
+             (SpaceTimeKey(0, 0, time_2), tile2),
+             (SpaceTimeKey(1, 0, time_2), tile2),
+             (SpaceTimeKey(0, 1, time_2), tile2),
+             (SpaceTimeKey(1, 1, time_2), tile2),
+             (SpaceTimeKey(0, 0, time_3), tile1),
+             (SpaceTimeKey(1, 0, time_3), tile2),
+             (SpaceTimeKey(0, 1, time_3), tile1),
+             (SpaceTimeKey(1, 1, time_3), tile1)
+             ]
+
+    rdd = SparkContext.getOrCreate().parallelize(layer)
+
+    extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
+    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': len(band1[0]), 'tileRows': len(band1)}
+    metadata = {'cellType': 'float32ud-1.0',
+                'extent': extent,
+                'crs': '+proj=longlat +datum=WGS84 +no_defs ',
+                'bounds': {
+                    'minKey': {'col': 0, 'row': 0, 'instant': _convert_to_unix_time(time_1)},
+                    'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(time_3)}},
+                'layoutDefinition': {
+                    'extent': extent,
+                    'tileLayout': layout.copy()}}
+
+    return TiledRasterLayer.from_numpy_rdd(LayerType.SPACETIME, rdd, metadata)
 
 
 @pytest.fixture
