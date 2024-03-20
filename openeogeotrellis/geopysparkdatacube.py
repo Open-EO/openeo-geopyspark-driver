@@ -1541,6 +1541,11 @@ class GeopysparkDataCube(DriverDataCube):
         # get the data at highest resolution
         max_level = self.get_max_level()
 
+        req_id_key = get_jvm().org.openeo.logging.JsonLayout.RequestId()
+        req_id = gps.get_spark_context().getLocalProperty(req_id_key)
+        if req_id is not None:
+            gps.get_spark_context().setJobGroup(req_id,f"save_result {req_id}",interruptOnCancel=True)
+
         def to_latlng_bbox(bbox: "Extent") -> Tuple[float, float, float, float]:
             latlng_extent = self._reproject_extent(
                 src_crs=max_level.layer_metadata.crs,
