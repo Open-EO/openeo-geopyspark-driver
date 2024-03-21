@@ -21,6 +21,7 @@ from openeo_driver.errors import FeatureUnsupportedException
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.numpy_aggregators import max_composite
+from tests.datacube_fixtures import layer_with_one_band_and_three_dates
 
 
 def reducer(operation: str):
@@ -36,7 +37,9 @@ def reducer(operation: str):
         },
     }
 
+
 class TestMultipleDates(TestCase):
+
     band1 = np.array([
         [-1.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 1.0],
@@ -74,7 +77,7 @@ class TestMultipleDates(TestCase):
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
     extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
-    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': 5, 'tileRows': 5}
+    layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': len(band1[0]), 'tileRows': len(band1)}
     metadata = {'cellType': 'float32ud-1.0',
                 'extent': extent,
                 'crs': '+proj=longlat +datum=WGS84 +no_defs ',
@@ -83,7 +86,7 @@ class TestMultipleDates(TestCase):
                     'maxKey': {'col': 1, 'row': 1, 'instant': _convert_to_unix_time(time_3)}},
                 'layoutDefinition': {
                     'extent': extent,
-                    'tileLayout': {'tileCols': 5, 'tileRows': 5, 'layoutCols': 2, 'layoutRows': 2}}}
+                    'tileLayout': layout.copy()}}
     collection_metadata = GeopysparkCubeMetadata({
         "cube:dimensions": {
             "t": {"type": "temporal"},
@@ -512,7 +515,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         assert stitched.cells[0][1][1] == 10.0
 
     def test_resample_spatial(self):
-        input = Pyramid({0: self.tiled_raster_rdd})
+        input = Pyramid({0: layer_with_one_band_and_three_dates()})
 
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 

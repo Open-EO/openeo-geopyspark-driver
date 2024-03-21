@@ -1230,15 +1230,30 @@ class GeopysparkDataCube(DriverDataCube):
             if newLayout == None:
                 return self
 
-            partitioner = max_level.srdd.rdd().partitioner()
-            b = max_level.layer_metadata.bounds
-            rows = b.maxKey.row - b.minKey.row + 1
-            spatialPartitions = (b.maxKey.col - b.minKey.col + 1) * (rows)
+            cellsize_before = self.get_cellsize()
+            if not isinstance(resolution, tuple):
+                resolution = (resolution, resolution)
 
-            logging.info(f"Reprojecting datacube with partitioner {partitioner} to new layout {newLayout} and {projection}")
-            if(max_level.getNumPartitions() <= spatialPartitions and max_level.layer_type == gps.LayerType.SPACETIME and resolution < 0.5*self.get_cellsize_x()):
-                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {spatialPartitions*10} before resample_spatial.")
-                max_level = max_level.repartition(spatialPartitions*10)
+            estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
+
+            resolution_factor = (
+                cellsize_before[0] / resolution[0],
+                cellsize_before[1] / resolution[1]
+            )
+
+            proposed_partition_count_tup = (
+                estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
+                estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
+            )
+            # Could also use "currentTileLayout.layoutCols * resolution_factor[0]", but that would be less accurate.
+            # The repartitioning only considers the resolution change. It considers that the partitioning took
+            # already into account band count and the pixel type, sparse/not, ...
+            proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
+            if (  # Only repartition when there would be significantly more
+                    max_level.getNumPartitions() * 2 <= proposed_partition_count
+                    and max_level.layer_type == gps.LayerType.SPACETIME):
+                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial.")
+                max_level = max_level.repartition(proposed_partition_count)
 
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
@@ -1250,13 +1265,32 @@ class GeopysparkDataCube(DriverDataCube):
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
 
-    def get_cellsize_x(self):
+    def get_cellsize(self):
         max_level = self.get_max_level()
         extent = max_level.layer_metadata.layout_definition.extent
         currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
+        return (
+            (extent.xmax - extent.xmin) / (currentTileLayout.tileCols * currentTileLayout.layoutCols),
+            (extent.ymax - extent.ymin) / (currentTileLayout.tileRows * currentTileLayout.layoutRows)
+        )
 
-        currentResolutionX = (extent.xmax - extent.xmin) / (currentTileLayout.tileCols * currentTileLayout.layoutCols)
-        return currentResolutionX
+    def calculate_layer_size_in_pixels(self) -> Tuple[float, float]:
+        """
+        The (width,height) of the layer in pixels. Does not take into account bands.
+        Just a division, and is not rounded on an integer.
+        """
+        layout_cellsize = self.get_cellsize()
+        max_level = self.get_max_level()
+        layer_extent = max_level.layer_metadata.extent
+        layer_metadata_size = (
+            layer_extent.xmax - layer_extent.xmin,
+            layer_extent.ymax - layer_extent.ymin
+        )
+        layer_size_in_pixels = (
+            layer_metadata_size[0] / layout_cellsize[0],
+            layer_metadata_size[1] / layout_cellsize[1]
+        )
+        return layer_size_in_pixels
 
     @staticmethod
     def _layout_for_resolution(extent, currentTileLayout, projection, target_resolution):
