@@ -124,6 +124,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if load_params.pixel_buffer is not None:
             datacubeParams.setPixelBuffer(load_params.pixel_buffer[0],load_params.pixel_buffer[1])
 
+        load_per_product = feature_flags.get("load_per_product",None)
+        if load_per_product:
+            datacubeParams.setLoadPerProduct(load_per_product)
+
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
 
         if load_params.filter_temporal_labels is not None:
