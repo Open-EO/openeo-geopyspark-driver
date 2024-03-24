@@ -1,3 +1,4 @@
+import multiprocessing
 from dataclasses import dataclass
 from itertools import chain
 
@@ -443,6 +444,53 @@ def _extract_asset_metadata(
 
     job_result_metadata["assets"] = asset_metadata
 
+def _get_metadata_callback(asset_path, asset_md,job_dir):
+
+    mime_type = asset_md.get("type")
+    logger.debug(
+        f"_export_result_metadata: {asset_path=}, "
+        + f"file's MIME type: {mime_type}, "
+        + f"job dir (based on output file): {job_dir=}"
+    )
+    # logger.debug(f"{asset_path=}, {asset_md=}")
+
+    # Skip assets that are clearly not images.
+    # This is only to avoid cluttering the error logs with errors that are
+    # not useful. So when in doubt we just try to read the file.
+    if asset_path.endswith(".json"):
+        logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
+        return None
+
+    # Won't assume the asset path is relative to the current working directory.
+    # It should be relative to the job directory.
+    abs_asset_path = get_abs_path_of_asset(asset_path, job_dir)
+    logger.debug(f"{asset_path=} maps to absolute path: {abs_asset_path=} , " + f"{abs_asset_path.exists()=}")
+
+    asset_href = asset_md.get("href", "")
+    if not abs_asset_path.exists() and asset_href.startswith("s3://"):
+        try:
+            abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
+        except Exception as exc:
+            logger.error(
+                "Could not download asset from object storage: "
+                + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
+            )
+
+    asset_gdal_metadata = read_gdal_raster_metadata(abs_asset_path)
+    # logger.debug(f"{asset_path=}, {asset_gdal_metadata=}")
+    # If gdal could not extract the projection metadata from the file
+    # (The file is corrupt perhaps?).
+    if asset_gdal_metadata.could_not_read_file:
+        logger.warning(
+            "Could not get projection extension metadata for following asset:"
+            + f" '{asset_path}', {abs_asset_path=}"
+        )
+        return None
+    else:
+        return (asset_path, asset_gdal_metadata.to_dict())
+        # TODO: Would make it simpler if we could store the AssetRasterMetadata
+        #   and convert it to dict at the end.
+        # raster_metadata[asset_path] = asset_gdal_metadata
 
 def _extract_asset_raster_metadata(
     asset_metadata: Dict[str, Any],
@@ -463,6 +511,17 @@ def _extract_asset_raster_metadata(
     # TODO would be better if we could return just Dict[str, AssetRasterMetadata]
     #   or even CollectionRasterMetadata with CollectionRasterMetadata = Dict[str, AssetRasterMetadata]
 
+
+    def error_handler(e):
+        logger.warning(f"Error while looking up result metadata, may be incomplete. {str(e)}")
+
+    pool = multiprocessing.Pool(10)
+    job = [pool.apply_async(_get_metadata_callback, (asset_path, asset_md,job_dir,), error_callback=error_handler) for asset_path, asset_md in asset_metadata.items()]
+
+    pool.close()
+    pool.join()
+
+
     # Add the projection extension metadata.
     # When the projection metadata is the same for all assets, then set it at
     # the item level only. This makes it easier to read, so we see at a glance
@@ -474,54 +533,19 @@ def _extract_asset_raster_metadata(
     # metadata at the item level.
     is_some_raster_md_missing = False
 
-    for asset_path, asset_md in asset_metadata.items():
-        mime_type = asset_md.get("type")
-        logger.debug(
-            f"_export_result_metadata: {asset_path=}, "
-            + f"file's MIME type: {mime_type}, "
-            + f"job dir (based on output file): {job_dir=}"
-        )
-        logger.debug(f"{asset_path=}, {asset_md=}")
+    for j in job:
+        try:
+            result = j.get()
+            if result is not None:
+                raster_metadata[result[0]] = result[1]
+            else:
+                is_some_raster_md_missing = True
 
-        # Skip assets that are clearly not images.
-        # This is only to avoid cluttering the error logs with errors that are
-        # not useful. So when in doubt we just try to read the file.
-        if asset_path.endswith(".json"):
-            logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
-            continue
-
-        # Won't assume the asset path is relative to the current working directory.
-        # It should be relative to the job directory.
-        abs_asset_path = get_abs_path_of_asset(asset_path, job_dir)
-        logger.debug(f"{asset_path=} maps to absolute path: {abs_asset_path=} , " + f"{abs_asset_path.exists()=}")
-
-        asset_href = asset_md.get("href", "")
-        if not abs_asset_path.exists() and asset_href.startswith("s3://"):
-            try:
-                abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
-            except Exception as exc:
-                logger.error(
-                    "Could not download asset from object storage: "
-                    + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
-                )
-
-        asset_gdal_metadata = read_gdal_raster_metadata(abs_asset_path)
-        logger.debug(f"{asset_path=}, {asset_gdal_metadata=}")
-        # If gdal could not extract the projection metadata from the file
-        # (The file is corrupt perhaps?).
-        if asset_gdal_metadata.could_not_read_file:
+        except e:
+            logger.warning("Could not retrieve raster metadata: " + str(e))
             is_some_raster_md_missing = True
-            logger.warning(
-                "Could not get projection extension metadata for following asset:"
-                + f" '{asset_path}', {abs_asset_path=}"
-            )
-        else:
-            raster_metadata[asset_path] = asset_gdal_metadata.to_dict()
-            # TODO: Would make it simpler if we could store the AssetRasterMetadata
-            #   and convert it to dict at the end.
-            # raster_metadata[asset_path] = asset_gdal_metadata
 
-    logger.debug(f"{raster_metadata=}\n{is_some_raster_md_missing=}")
+    #
     return raster_metadata, is_some_raster_md_missing
 
 
