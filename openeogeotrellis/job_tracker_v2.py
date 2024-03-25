@@ -221,10 +221,18 @@ class YarnStatusGetter(JobMetadataGetterInterface):
             # field 'diagnostics' provides more info why this failed.
             diagnostics = report.get("diagnostics", None)
             if job_status == JOB_STATUS.ERROR and diagnostics:
-                _log.error(
-                    f"YARN application status reports error diagnostics: {diagnostics}",
-                    extra={"job_id": job_id, "user_id": user_id}
-                )
+
+                if "timed out" in diagnostics and "Failing the application" in diagnostics:
+                    #Example: YARN application status reports error diagnostics: Application application_xxx failed 1 times (global limit =2; local limit is =1) due to ApplicationMaster for attempt appattempt_xxx timed out. Failing the application.
+                    _log.error(
+                        f"The batch job did not start fast enough and got killed. You may want to simply try again, or contact the openEO service provider to look into your issue.",
+                        extra={"job_id": job_id, "user_id": user_id}
+                    )
+                else:
+                    _log.error(
+                        f"YARN application status reports error diagnostics: {diagnostics}",
+                        extra={"job_id": job_id, "user_id": user_id}
+                    )
 
             start_time = cls._ms_epoch_to_date(report["startedTime"])
             finish_time = cls._ms_epoch_to_date(report["finishedTime"])
