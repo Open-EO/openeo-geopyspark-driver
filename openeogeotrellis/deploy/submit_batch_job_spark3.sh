@@ -139,6 +139,7 @@ spark-submit \
  --conf spark.executorEnv.PATH=/opt/venv/bin:$PATH \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
  --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
+ --conf spark.yarn.am.waitTime=900s \
  --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
