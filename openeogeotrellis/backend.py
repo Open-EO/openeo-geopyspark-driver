@@ -1635,6 +1635,9 @@ class GpsProcessing(ConcreteProcessing):
                     nr_bands = len(band_names)
 
                     temporal_step = metadata.get("cube:dimensions", "t", "step", default=None)
+                    if collection_id == 'COPERNICUS_30':
+                        logger.info(f"Special temporal step for {collection_id}")
+                        temporal_step = "P9999Y"
 
                     if collection_id == 'TestCollection-LonLat4x4':
                         # This layer is always 4x4 pixels, adapt resolution accordingly
