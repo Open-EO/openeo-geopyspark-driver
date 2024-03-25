@@ -82,6 +82,8 @@ def _create_job_dir(job_dir: Path):
             shutil.chown(job_dir, user=None, group='eodata')
         except LookupError as e:
             logger.warning(f"Could not change group of {job_dir} to eodata.")
+        except PermissionError as e:
+            logger.warning(f"Could not change group of {job_dir} to eodata, no permissions.")
 
     add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
