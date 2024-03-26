@@ -476,7 +476,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 if collection_id == 'SENTINEL_5P_L2':
                     if shub_band_names == ["dataMask"]:
                         raise OpenEOApiException(
-                            f"Cant load collection '{collection_id}' with only 'dataMask' band. Add 1 other band to make it work.",
+                            f"Can not load collection '{collection_id}' with only 'dataMask' band. Add 1 other band to make it work.",
                             status_code=400)
 
                 if collection_id == 'PLANETSCOPE':
