@@ -478,6 +478,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         raise OpenEOApiException(
                             f"Can not load collection '{collection_id}' with only 'dataMask' band. Add 1 other band to make it work.",
                             status_code=400)
+                    pruned_bands = shub_band_names.copy()
+                    if "dataMask" in pruned_bands:
+                        pruned_bands.remove("dataMask")
+                    if len(pruned_bands) != 1:
+                        raise OpenEOApiException(
+                            f"Collection '{collection_id}' got requested with multiple bands: {pruned_bands}. Only one band is supported, with or without the 'dataMask' band.",
+                            status_code=400)
+
 
                 if collection_id == 'PLANETSCOPE':
                     if 'byoc_collection_id' in feature_flags:
