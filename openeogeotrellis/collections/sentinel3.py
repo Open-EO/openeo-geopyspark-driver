@@ -388,12 +388,12 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
             band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask)
             reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
-        """  # TODO: reintroduce scaling
+        """  # TODO: reintroduce masking
         if '_FillValue' in band_settings and not digital_numbers:
             reprojected_data[reprojected_data == band_settings['_FillValue']] = np.nan
+        """
         if 'add_offset' in band_settings and 'scale_factor' in band_settings and not digital_numbers:
             reprojected_data = reprojected_data.astype("float32") * band_settings['scale_factor'] + band_settings['add_offset']
-        """
 
         varOut.append(reprojected_data)
 
