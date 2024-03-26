@@ -471,8 +471,23 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, from_date, to_date,metadata_properties(),collection_id,datacubeParams) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date))
             else:
-                if collection_id == 'PLANETSCOPE':
+                shub_band_names = metadata.band_names
 
+                if collection_id == 'SENTINEL_5P_L2':
+                    if shub_band_names == ["dataMask"]:
+                        raise OpenEOApiException(
+                            f"Can not load collection '{collection_id}' with only 'dataMask' band. Add 1 other band to make it work.",
+                            status_code=400)
+                    pruned_bands = shub_band_names.copy()
+                    if "dataMask" in pruned_bands:
+                        pruned_bands.remove("dataMask")
+                    if len(pruned_bands) != 1:
+                        raise OpenEOApiException(
+                            f"Collection '{collection_id}' got requested with multiple bands: {pruned_bands}. Only one band is supported, with or without the 'dataMask' band.",
+                            status_code=400)
+
+
+                if collection_id == 'PLANETSCOPE':
                     if 'byoc_collection_id' in feature_flags:
                         shub_collection_id = dataset_id = feature_flags['byoc_collection_id']
                     else:
@@ -493,7 +508,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                     layer_source_info.get('sample_type', 'UINT16'))
 
-                shub_band_names = metadata.band_names
 
                 if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                     metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
