@@ -12,7 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.29.0
+
 - aggregate_temporal(_period) Performance improvement to use number of bands in metadata rather than computing the band count.
+- Added initial implementation of FreeIpaClient (eu-cdse/openeo-cdse-infra#56)
 
 ## 0.28.2
 
