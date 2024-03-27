@@ -60,7 +60,6 @@ from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
-from pyspark.version import __version__ as pysparkversion
 from shapely.geometry import Polygon
 from urllib3 import Retry
 from xarray import DataArray
@@ -2483,12 +2482,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
         else:
             # TODO: remove old submit scripts?
-            submit_script = 'submit_batch_job.sh'
-            if( pysparkversion.startswith('2.4')):
-                submit_script = 'submit_batch_job_spark24.sh'
-            elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
-                submit_script = 'submit_batch_job_spark3.sh'
-            script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
+            submit_script = "submit_batch_job.sh"
+            if sys.version_info[0] >= 3 and sys.version_info[1] >= 8:
+                submit_script = "submit_batch_job_spark3.sh"
+            script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
             extra_py_files=""
             if len(py_files)>0:
