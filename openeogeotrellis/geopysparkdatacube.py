@@ -1252,8 +1252,11 @@ class GeopysparkDataCube(DriverDataCube):
             if (  # Only repartition when there would be significantly more
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
                     and max_level.layer_type == gps.LayerType.SPACETIME):
-                logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial.")
-                max_level = max_level.repartition(proposed_partition_count)
+                if(proposed_partition_count < 3000):
+                    logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial.")
+                    max_level = max_level.repartition(int(proposed_partition_count))
+                else:
+                    logging.warning(f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning.")
 
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
