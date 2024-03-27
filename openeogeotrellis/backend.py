@@ -2481,10 +2481,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
         else:
-            # TODO: remove old submit scripts?
-            submit_script = "submit_batch_job.sh"
-            if sys.version_info[0] >= 3 and sys.version_info[1] >= 8:
-                submit_script = "submit_batch_job_spark3.sh"
+            submit_script = "submit_batch_job_spark3.sh"
             script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
             extra_py_files=""
