@@ -127,6 +127,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         load_per_product = feature_flags.get("load_per_product",None)
         if load_per_product:
             datacubeParams.setLoadPerProduct(load_per_product)
+        elif(get_backend_config().default_reading_strategy == "load_per_product"):
+            datacubeParams.setLoadPerProduct(True)
+
 
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
 

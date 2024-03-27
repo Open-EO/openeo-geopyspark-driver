@@ -136,3 +136,15 @@ class GpsBackendConfig(OpenEoBackendConfig):
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
     fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
+
+    """
+    Reading strategy for load_collection and load_stac processes:
+    load_by_target_partition: first apply a partitioner, then simply read data for each partition
+    This avoids moving data around after reading, allowing the reading step to be followed immediately by next processes.
+    load_per_product: group by source product filename, then perform reads, then regroup data according to optimal partitioner for subsequent processes. 
+    This strategy is faster when there is a high overhead/latency of opening products, for instance observed when reading jpeg2000 on S3. It does require 
+    the data to be moved around in the cluster for subsequent processing.
+    
+    The default can be overridden by feature_flags.
+    """
+    default_reading_strategy: str = "load_by_target_partition"
