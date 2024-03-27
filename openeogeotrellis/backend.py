@@ -1427,7 +1427,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
-            summary = repr_truncate(error, width=width)
+            if isinstance(error, FileNotFoundError):
+                summary = repr_truncate(str(error), width=width)
+            else:
+                summary = repr_truncate(error, width=width)
 
         return ErrorSummary(error, is_client_error, summary)
 
