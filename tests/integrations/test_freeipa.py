@@ -1,0 +1,105 @@
+import textwrap
+from typing import Optional, List
+
+import dirty_equals
+import pytest
+
+from openeogeotrellis.integrations.freeipa import FreeIpaClient, guess_freeipa_server, guess_verify_tls
+
+
+class TestFreeIpaClient:
+    def _get_ipa_handler(
+        self,
+        expected_method: str,
+        expected_arguments: Optional[List[str]] = None,
+        expected_options: Optional[dict] = None,
+        result: Optional[dict] = None,
+        error: Optional[dict] = None,
+    ):
+        """Helper to create a requests_mock handler for FreeIPA API calls"""
+
+        def handle(request, context):
+            request_data = request.json()
+            assert request_data == {
+                "id": dirty_equals.IsStr(),
+                "method": expected_method,
+                "params": [expected_arguments or [], {**(expected_options or {}), "version": dirty_equals.IsStr()}],
+            }
+            return {
+                "id": request_data["id"],
+                "error": error,
+                "result": result,
+            }
+
+        return handle
+
+    def test_user_show(self, requests_mock):
+        requests_mock.post(
+            "https://ipa.test/ipa/json",
+            json=self._get_ipa_handler(
+                expected_method="user_show",
+                expected_arguments=["john"],
+                result={"result": {"givenname": "John", "sn": "Doe"}},
+            ),
+        )
+        client = FreeIpaClient(ipa_server="ipa.test", verify_tls=False)
+        user_data = client.user_show("john")
+        assert user_data == {"givenname": "John", "sn": "Doe"}
+
+    def test_user_find(self, requests_mock):
+        requests_mock.post(
+            "https://ipa.test/ipa/json",
+            json=self._get_ipa_handler(
+                expected_method="user_find",
+                expected_options={"uid": "john", "sizelimit": 2},
+                result={"result": [{"givenname": "John", "sn": "Doe"}]},
+            ),
+        )
+        client = FreeIpaClient(ipa_server="ipa.test", verify_tls=False)
+        user_data = client.user_find(uid="john")
+        assert user_data == {"givenname": "John", "sn": "Doe"}
+
+    # TODO test user_add
+
+
+def test_guess_freeipa_server(tmp_path, monkeypatch):
+    path = tmp_path / "ipa-default.conf"
+    path.write_text(
+        textwrap.dedent(
+            """
+        # ipa config
+
+        [global]
+        realm = EXAMPLE.COM
+        domain = cloud.example.com
+        server = ipa01.example.com
+        enable_ra = True
+        """
+        )
+    )
+
+    assert guess_freeipa_server(conf=path) == "ipa01.example.com"
+
+    monkeypatch.setenv("OPENEO_FREEIPA_SERVER", "ipa02.test")
+    assert guess_freeipa_server(conf=path) == "ipa02.test"
+
+
+def test_guess_verify_tls(monkeypatch):
+    # No/empty env var
+    assert guess_verify_tls() is True
+    monkeypatch.setenv("OPENEO_FREEIPA_VERIFY_TLS", "")
+    assert guess_verify_tls() is True
+
+    # Falsy
+    for value in ["False", "no", "0"]:
+        monkeypatch.setenv("OPENEO_FREEIPA_VERIFY_TLS", value)
+        assert guess_verify_tls() is False
+
+    # Truthy
+    for value in ["True", "oh yeah", "1"]:
+        monkeypatch.setenv("OPENEO_FREEIPA_VERIFY_TLS", value)
+        assert guess_verify_tls() is True
+
+    # Custom CA certificate file
+    monkeypatch.setenv("OPENEO_FREEIPA_VERIFY_TLS", "/etc/ipa/ca.crt")
+    assert guess_verify_tls() == "/etc/ipa/ca.crt"

@@ -94,6 +94,7 @@ sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopy
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
  -Dopeneo.logging.threshold=$logging_threshold"
 
+# TODO: reuse FreeIpaClient here for better decoupling, logging, observability, ...
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
 echo "${ipa_response}"

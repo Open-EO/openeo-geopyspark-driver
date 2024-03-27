@@ -13,6 +13,7 @@ from openeo_driver.utils import smart_bool
 
 from openeogeotrellis import get_backend_version
 from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
+import openeogeotrellis.integrations.freeipa
 
 
 def _default_capabilities_deploy_metadata() -> dict:
@@ -148,3 +149,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     The default can be overridden by feature_flags.
     """
     default_reading_strategy: str = "load_by_target_partition"
+
+    freeipa_config: Optional[dict] = attrs.Factory(
+        lambda: {
+            "server": openeogeotrellis.integrations.freeipa.guess_freeipa_server(),
+            "verify_tls": openeogeotrellis.integrations.freeipa.guess_verify_tls(),
+        }
+    )
