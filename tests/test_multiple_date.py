@@ -530,6 +530,34 @@ def rct_savitzky_golay(udf_data:UdfData):
             print(ds.profile)
             self.assertAlmostEqual(0.05, ds.res[0], 3)
 
+    def test_resample_spatial_reproject(self):
+        input = Pyramid({0: layer_with_one_band_and_three_dates()})
+
+        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+        partitionsA = imagecollection.get_max_level().getNumPartitions()
+
+        # Test layer has huge GSD, resample to n km
+        resampled = imagecollection.resample_spatial(resolution=2000, projection="EPSG:32631")
+        partitionsB = resampled.get_max_level().getNumPartitions()
+        resampled = resampled.resample_spatial(resolution=0.005, projection="EPSG:4326")
+
+        partitionsC = resampled.get_max_level().getNumPartitions()
+        print("Partitions: ", partitionsA, partitionsB, partitionsC)
+
+        # Higher resolution should result in more partitions.
+        assert partitionsC > partitionsB
+        # But not too many
+        assert partitionsC < partitionsB * 1000
+
+        path = str(self.temp_folder / "test_resample_spatial_reproject.tiff")
+        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
+        res.save_result(path, format="GTIFF")
+
+        import rasterio
+        with rasterio.open(path) as ds:
+            print(ds.profile)
+            self.assertAlmostEqual(0.005, ds.res[0], 3)
+
     def test_rename_dimension(self):
         imagecollection = GeopysparkDataCube(pyramid=Pyramid({0: self.tiled_raster_rdd}),
                                              metadata=self.collection_metadata)
