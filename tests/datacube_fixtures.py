@@ -371,7 +371,7 @@ def layer_with_one_band_and_three_dates():
 
     rdd = SparkContext.getOrCreate().parallelize(layer)
 
-    extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 33.0, 'ymax': 33.0}
+    extent = {'xmin': 1.0, 'ymin': 1.0, 'xmax': 5.0, 'ymax': 5.0}
     layout = {'layoutCols': 2, 'layoutRows': 2, 'tileCols': len(band1[0]), 'tileRows': len(band1)}
     metadata = {'cellType': 'float32ud-1.0',
                 'extent': extent,

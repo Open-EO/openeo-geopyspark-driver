@@ -48,7 +48,7 @@ from openeogeotrellis.utils import (
     log_memory,
     ensure_executor_logging,
     get_jvm,
-    temp_csv_dir,
+    temp_csv_dir, reproject_cellsize,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -1234,6 +1234,18 @@ class GeopysparkDataCube(DriverDataCube):
             if not isinstance(resolution, tuple):
                 resolution = (resolution, resolution)
 
+            if projection is not None:
+                # reproject to target CRS to make meaningful comparisons
+                e = max_level.layer_metadata.layout_definition.extent
+                e = GeopysparkDataCube._reproject_extent(
+                    cube_crs, "EPSG:4326", e.xmin, e.ymin, e.xmax, e.ymax
+                )
+                extent_dict = {"west": e.xmin, "east": e.xmax,
+                               "south": e.ymin, "north": e.ymax,
+                               "crs": "EPSG:4326"}
+
+                cellsize_before = reproject_cellsize(extent_dict, cellsize_before, cube_crs, projection)
+
             estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
 
             resolution_factor = (
@@ -1252,7 +1264,7 @@ class GeopysparkDataCube(DriverDataCube):
             if (  # Only repartition when there would be significantly more
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
                     and max_level.layer_type == gps.LayerType.SPACETIME):
-                if(proposed_partition_count < 3000):
+                if proposed_partition_count < 10000:
                     logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial.")
                     max_level = max_level.repartition(int(proposed_partition_count))
                 else:
