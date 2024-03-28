@@ -48,7 +48,7 @@ from openeogeotrellis.utils import (
     log_memory,
     ensure_executor_logging,
     get_jvm,
-    temp_csv_dir,
+    temp_csv_dir, reproject_cellsize,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -1233,6 +1233,18 @@ class GeopysparkDataCube(DriverDataCube):
             cellsize_before = self.get_cellsize()
             if not isinstance(resolution, tuple):
                 resolution = (resolution, resolution)
+
+            if projection is not None:
+                # reproject to target CRS to make meaningful comparisons
+                e = max_level.layer_metadata.layout_definition.extent
+                e = GeopysparkDataCube._reproject_extent(
+                    cube_crs, "EPSG:4326", e.xmin, e.ymin, e.xmax, e.ymax
+                )
+                extent_dict = {"west": e.xmin, "east": e.xmax,
+                               "south": e.ymin, "north": e.ymax,
+                               "crs": "EPSG:4326"}
+
+                cellsize_before = reproject_cellsize(extent_dict, cellsize_before, cube_crs, projection)
 
             estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
 
