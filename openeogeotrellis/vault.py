@@ -7,6 +7,8 @@ import hvac
 import requests
 
 from openeo_driver.util.auth import ClientCredentials
+from retry import retry
+
 from openeogeotrellis.config import get_backend_config
 
 _log = logging.getLogger(__name__)
@@ -53,6 +55,7 @@ class Vault:
         client.auth.jwt.jwt_login(role=None, jwt=access_token)
         return client.token
 
+    @retry(exceptions=VaultLoginError, tries=4, delay=2, backoff=4, logger=_log)
     def login_kerberos(
         self,
         # TODO: eliminate hardcoded defaults?
