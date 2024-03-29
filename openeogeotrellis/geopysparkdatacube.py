@@ -1206,7 +1206,9 @@ class GeopysparkDataCube(DriverDataCube):
         max_level = self.get_max_level()
         cube_crs = max_level.layer_metadata.crs
         current_crs_proj4 = cube_crs
-        logging.info(f"Reprojecting datacube with crs {current_crs_proj4} and layout {max_level.layer_metadata.layout_definition} to {projection} and {resolution}")
+        _log.info(
+            f"Reprojecting datacube with crs {current_crs_proj4} and layout {max_level.layer_metadata.layout_definition} to {projection} and {resolution}"
+        )
         if projection is not None and CRS.from_user_input(projection).equals(CRS.from_user_input(current_crs_proj4)):
             projection = None
 
@@ -1265,10 +1267,14 @@ class GeopysparkDataCube(DriverDataCube):
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
                     and max_level.layer_type == gps.LayerType.SPACETIME):
                 if proposed_partition_count < 10000:
-                    logging.info(f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial.")
+                    _log.info(
+                        f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial."
+                    )
                     max_level = max_level.repartition(int(proposed_partition_count))
                 else:
-                    logging.warning(f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning.")
+                    _log.warning(
+                        f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
+                    )
 
             if(projection is not None):
                 resampled = max_level.tile_to_layout(newLayout,target_crs=projection, resample_method=resample_method)
@@ -1318,7 +1324,7 @@ class GeopysparkDataCube(DriverDataCube):
         currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
         currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
         if projection == None and abs(currentResolutionX - target_resolution) / target_resolution < 0.00001:
-            logging.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
+            _log.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
             return None
 
         newPixelCountX = math.ceil(width /target_resolution)
