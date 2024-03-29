@@ -1041,6 +1041,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if not items_found:
             raise no_data_available_exception
 
+        if not band_names:
+            raise OpenEOApiException(
+                message=f'No band assets found in items; a band asset requires an "eo:bands" property with a "name".',
+                status_code=400)
+
         target_bbox = requested_bbox or stac_bbox
 
         if proj_epsg and proj_bbox and proj_shape:  # exact resolution
@@ -1071,10 +1076,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         band_names = metadata.band_names
 
-        if(netcdf_with_time_dimension):
+        if netcdf_with_time_dimension:
             pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
         else:
-
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 url,  # openSearchCollectionId, not important
