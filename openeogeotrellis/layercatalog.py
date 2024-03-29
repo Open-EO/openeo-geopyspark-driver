@@ -1198,7 +1198,10 @@ def is_layer_too_large(
         native_crs = resample_target_crs
     resample_target_resolution = resample_params.get("resolution", None)
     if resample_target_resolution:
-        cell_width, cell_height = resample_target_resolution
+        resample_width, resample_height = resample_target_resolution
+        if resample_width != 0 and resample_height != 0:
+            # This can happen with e.g. resample_spatial(resolution=0, projection=4326)
+            cell_width, cell_height = resample_width, resample_height
 
     # Reproject.
     if isinstance(native_crs, dict):
