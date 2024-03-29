@@ -148,3 +148,38 @@ class GpsBackendConfig(OpenEoBackendConfig):
     The default can be overridden by feature_flags.
     """
     default_reading_strategy: str = "load_by_target_partition"
+
+    """
+    Controls the default number of threads for the batch job executors Java Virtual Machine.
+    These threads are used for additional parallelism, for instance when reading data, but may cause threading issues if
+    used in combination with not thread-safe libraries. 
+    When reading with GDAL, a lower number of threads may be beneficial, as GDAL also performs its own threading.
+    """
+    default_executor_threads_jvm = 10
+
+    """
+    The default number of datasets that will be cached in batch jobs. A large cache will increase memory usage.
+    """
+    default_gdal_dataset_cache_size: int = 16
+
+    """
+    The default cache size in megabytes, which is used by GDAL. This setting applies to batch jobs.
+    """
+    default_gdal_cachemax: int = 150
+
+    """
+    The default maximum number of executors for batch jobs. A high number of executors can cause high costs, as allocated
+    executors may be idle for a relatively high amount of time. 
+    We set this to 20 in kubernetes environments.
+    """
+    default_max_executors:int = 100
+
+    default_driver_memory: str = "2G"
+
+    default_driver_memoryOverhead: str = "3G"
+
+    default_executor_memory: str = "2G"
+
+    default_executor_memoryOverhead: str = "3G"
+
+    default_executor_cores = 2
