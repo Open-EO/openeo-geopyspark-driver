@@ -155,7 +155,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     used in combination with not thread-safe libraries. 
     When reading with GDAL, a lower number of threads may be beneficial, as GDAL also performs its own threading.
     """
-    default_executor_threads_jvm = 10
+    default_executor_threads_jvm: int = 10
 
     """
     The default number of datasets that will be cached in batch jobs. A large cache will increase memory usage.
@@ -172,7 +172,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     executors may be idle for a relatively high amount of time. 
     We set this to 20 in kubernetes environments.
     """
-    default_max_executors:int = 100
+    default_max_executors: int = 100
 
     default_driver_memory: str = "2G"
 
@@ -182,4 +182,4 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     default_executor_memoryOverhead: str = "3G"
 
-    default_executor_cores = 2
+    default_executor_cores:int = 2
