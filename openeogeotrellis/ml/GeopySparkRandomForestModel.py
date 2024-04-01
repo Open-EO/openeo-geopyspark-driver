@@ -1,3 +1,5 @@
+import logging
+
 import shutil
 import typing
 import uuid
@@ -11,6 +13,7 @@ from pyspark.mllib.util import JavaSaveable
 
 from openeo_driver.utils import generate_unique_id
 
+logger = logging.getLogger(__name__)
 
 class GeopySparkRandomForestModel(DriverMlModel):
 
@@ -92,6 +95,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
+        logging.info(f"write_assets({directory=})")  # For debugging S3 paths
         directory = Path(directory)
         if not directory.is_dir():
             directory = Path(directory).parent
@@ -100,6 +104,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
         shutil.rmtree(model_path)
         model_path = Path(str(model_path) + '.tar.gz')
+        logging.info(f"{model_path=}")  # For debugging S3 paths
         return {model_path.name: {"href": str(model_path)}}
 
     def get_model(self):
