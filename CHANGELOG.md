@@ -12,6 +12,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.30.0
+
+- Remove deprecated and unused `ejr_credentials_vault_path` config option.
 
 ## 0.29.0
 
