@@ -109,6 +109,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"
+    ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
 
     # TODO: eliminate hardcoded Terrascope references
     # TODO #531 eliminate this config favor of etl_api_config strategy below

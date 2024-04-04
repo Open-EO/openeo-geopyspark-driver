@@ -91,3 +91,11 @@ class Vault:
 
     def __str__(self):
         return self._url
+
+    def get_elastic_job_registry_credentials(self, vault_token: Optional[str] = None) -> ClientCredentials:
+        client = self._client(token=vault_token or self.login_kerberos())
+        secret = client.secrets.kv.v2.read_secret_version(
+            get_backend_config().ejr_credentials_vault_path,
+            mount_point="kv",
+        )
+        return ClientCredentials.from_mapping(secret["data"]["data"])
