@@ -1656,6 +1656,7 @@ class TestCliApp:
         assert run_result.ret == 0
         assert "JobTracker" in run_result.stdout.str()
         assert "--app-cluster" in run_result.stdout.str()
+        assert "--run-id" in run_result.stdout.str()
         assert run_result.errlines == []
 
     def test_run_basic_fail(self, pytester):
@@ -1685,4 +1686,4 @@ class TestCliApp:
         assert len(logs) > 5
         for log in logs:
             log = json.loads(log)
-            assert {"levelname", "name", "message"}.issubset(log.keys())
+            assert {"levelname", "name", "message", "run_id"}.issubset(log.keys())
