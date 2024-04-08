@@ -124,6 +124,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if load_params.pixel_buffer is not None:
             datacubeParams.setPixelBuffer(load_params.pixel_buffer[0],load_params.pixel_buffer[1])
 
+        load_per_product = feature_flags.get("load_per_product",None)
+        if load_per_product:
+            datacubeParams.setLoadPerProduct(load_per_product)
+        elif(get_backend_config().default_reading_strategy == "load_per_product"):
+            datacubeParams.setLoadPerProduct(True)
+
+
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
 
         if load_params.filter_temporal_labels is not None:
@@ -240,7 +247,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=srs)
 
         geometries = load_params.aggregate_spatial_geometries
-
+        empty_geometries = isinstance(geometries, DriverVectorCube) and len(geometries.get_geometries()) == 0
+        geometries = None if empty_geometries else geometries  # TODO: ensure that driver vector cube can not have empty geometries.
         if not geometries:
             projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, srs)
         else:
@@ -254,16 +262,20 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             target_epsg_code = int(native_crs.split(":")[-1])
 
 
-        if (load_params.target_resolution is not None):
-            cell_width = float(load_params.target_resolution[0])
-            cell_height = float(load_params.target_resolution[1])
+        if (load_params.target_resolution is not None ):
+            if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
+                cell_width = float(load_params.target_resolution[0])
+                cell_height = float(load_params.target_resolution[1])
+
+
         if (load_params.target_crs is not None ):
-            if isinstance(load_params.target_crs,int):
-                target_epsg_code = load_params.target_crs
-            elif isinstance(load_params.target_crs,dict) and load_params.target_crs.get("id",{}).get("code") == 'Auto42001':
-                target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
-            else:
-                pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
+            if load_params.target_resolution is not None and load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
+                if isinstance(load_params.target_crs,int):
+                    target_epsg_code = load_params.target_crs
+                elif isinstance(load_params.target_crs,dict) and load_params.target_crs.get("id",{}).get("code") == 'Auto42001':
+                    target_epsg_code = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
+                else:
+                    target_epsg_code = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
@@ -462,8 +474,23 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 return (pyramid_factory.datacube_seq(projected_polygons_native_crs, from_date, to_date,metadata_properties(),collection_id,datacubeParams) if single_level
                         else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date))
             else:
-                if collection_id == 'PLANETSCOPE':
+                shub_band_names = metadata.band_names
 
+                if collection_id == 'SENTINEL_5P_L2':
+                    if shub_band_names == ["dataMask"]:
+                        raise OpenEOApiException(
+                            f"Can not load collection '{collection_id}' with only 'dataMask' band. Add 1 other band to make it work.",
+                            status_code=400)
+                    pruned_bands = shub_band_names.copy()
+                    if "dataMask" in pruned_bands:
+                        pruned_bands.remove("dataMask")
+                    if len(pruned_bands) != 1:
+                        raise OpenEOApiException(
+                            f"Collection '{collection_id}' got requested with multiple bands: {pruned_bands}. Only one band is supported, with or without the 'dataMask' band.",
+                            status_code=400)
+
+
+                if collection_id == 'PLANETSCOPE':
                     if 'byoc_collection_id' in feature_flags:
                         shub_collection_id = dataset_id = feature_flags['byoc_collection_id']
                     else:
@@ -484,7 +511,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 sample_type = jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
                     layer_source_info.get('sample_type', 'UINT16'))
 
-                shub_band_names = metadata.band_names
 
                 if sar_backscatter_arguments and sar_backscatter_arguments.mask:
                     metadata = metadata.append_band(Band(name='mask', common_name=None, wavelength_um=None))
@@ -1172,7 +1198,10 @@ def is_layer_too_large(
         native_crs = resample_target_crs
     resample_target_resolution = resample_params.get("resolution", None)
     if resample_target_resolution:
-        cell_width, cell_height = resample_target_resolution
+        resample_width, resample_height = resample_target_resolution
+        if resample_width != 0 and resample_height != 0:
+            # This can happen with e.g. resample_spatial(resolution=0, projection=4326)
+            cell_width, cell_height = resample_width, resample_height
 
     # Reproject.
     if isinstance(native_crs, dict):

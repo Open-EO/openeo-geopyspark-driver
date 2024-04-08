@@ -3724,7 +3724,9 @@ class TestLoadStac:
         """load_stac from a STAC API with two items that have different timestamps"""
 
         def feature_collection(request, _) -> dict:
-            datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].split("/"))
+            # upper is needed because requests_mock converts to lowercase, this may change in future release
+            # replace of Z is needed on python3.8, from 3.11 onwards should no longer be needed
+            datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].upper().replace("Z","+00:00").split("/"))
 
             def item(path) -> dict:
                 return json.loads(

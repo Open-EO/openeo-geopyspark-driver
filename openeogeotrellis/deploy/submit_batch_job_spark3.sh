@@ -94,6 +94,7 @@ sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopy
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
  -Dopeneo.logging.threshold=$logging_threshold"
 
+# TODO: reuse FreeIpaClient here for better decoupling, logging, observability, ...
 ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
 ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
 echo "${ipa_response}"
@@ -139,6 +140,7 @@ spark-submit \
  --conf spark.executorEnv.PATH=/opt/venv/bin:$PATH \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
  --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
+ --conf spark.yarn.am.waitTime=900s \
  --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \

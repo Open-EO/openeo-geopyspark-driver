@@ -60,7 +60,6 @@ from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from pyspark.mllib.tree import RandomForestModel
-from pyspark.version import __version__ as pysparkversion
 from shapely.geometry import Polygon
 from urllib3 import Retry
 from xarray import DataArray
@@ -911,7 +910,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     collections=collection_id,
                     bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                     limit=20,
-                    datetime=f"{from_date.isoformat()}/{to_date.isoformat()}",  # inclusive
+                    datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/{to_date.isoformat().replace('+00:00', 'Z')}",  # inclusive
                 )
 
                 logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
@@ -1042,6 +1041,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if not items_found:
             raise no_data_available_exception
 
+        if not band_names:
+            raise OpenEOApiException(
+                message=f'No band assets found in items; a band asset requires an "eo:bands" property with a "name".',
+                status_code=400)
+
         target_bbox = requested_bbox or stac_bbox
 
         if proj_epsg and proj_bbox and proj_shape:  # exact resolution
@@ -1072,10 +1076,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         band_names = metadata.band_names
 
-        if(netcdf_with_time_dimension):
+        if netcdf_with_time_dimension:
             pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
         else:
-
             pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
                 opensearch_client,
                 url,  # openSearchCollectionId, not important
@@ -1427,7 +1430,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
-            summary = repr_truncate(error, width=width)
+            if isinstance(error, FileNotFoundError):
+                summary = repr_truncate(str(error), width=width)
+            else:
+                summary = repr_truncate(error, width=width)
 
         return ErrorSummary(error, is_client_error, summary)
 
@@ -2479,13 +2485,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
         else:
-            # TODO: remove old submit scripts?
-            submit_script = 'submit_batch_job.sh'
-            if( pysparkversion.startswith('2.4')):
-                submit_script = 'submit_batch_job_spark24.sh'
-            elif(sys.version_info[0]>=3 and sys.version_info[1]>=8):
-                submit_script = 'submit_batch_job_spark3.sh'
-            script_location = pkg_resources.resource_filename('openeogeotrellis.deploy', submit_script)
+            submit_script = "submit_batch_job_spark3.sh"
+            script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
             extra_py_files=""
             if len(py_files)>0:

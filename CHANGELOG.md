@@ -12,7 +12,18 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.30.1
+
+- Reinstate `ejr_credentials_vault_path` config option.
+
+## 0.30.0
+
+- Remove deprecated and unused `ejr_credentials_vault_path` config option.
+
+## 0.29.0
+
 - aggregate_temporal(_period) Performance improvement to use number of bands in metadata rather than computing the band count.
+- Added initial implementation of FreeIpaClient (eu-cdse/openeo-cdse-infra#56)
 
 ## 0.28.2
 
