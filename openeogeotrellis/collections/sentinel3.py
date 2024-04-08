@@ -388,10 +388,8 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
             band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask)
             reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
-        """  # TODO: reintroduce masking
         if '_FillValue' in band_settings and not digital_numbers:
             reprojected_data[reprojected_data == band_settings['_FillValue']] = np.nan
-        """
         if 'add_offset' in band_settings and 'scale_factor' in band_settings and not digital_numbers:
             reprojected_data = reprojected_data.astype("float32") * band_settings['scale_factor'] + band_settings['add_offset']
 
@@ -467,15 +465,17 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude", bbo
 
     xmin, ymin, xmax, ymax = bbox
 
-    lat_mask = xr.apply_ufunc(lambda x:(x>=ymin) & (x<=ymax),lat_lon_ds[lat_band])
-    lon_mask = xr.apply_ufunc(lambda x: (x >= xmin) & (x <= xmax), lat_lon_ds[lon_band])
+    interpolation_margin = 1 / 112 * RIM_PIXELS  # TODO
+
+    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
+    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
     data_mask = lat_mask & lon_mask
 
 
     # Create the coordinate arrays for latitude and longitude
     ## Coordinated referring to the CENTER of the pixel
-    lat_orig = lat_lon_ds[lat_band].values  # TODO: reintroduce mask
-    lon_orig = lat_lon_ds[lon_band].values
+    lat_orig = lat_lon_ds[lat_band].where(data_mask,drop=True).values
+    lon_orig = lat_lon_ds[lon_band].where(data_mask,drop=True).values
     lat_lon_ds.close()
 
     extreme_right_lon = lon_orig[0,-1] # negative degrees (-170)
@@ -489,8 +489,8 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude", bbo
     bbox_original = [x_min, y_min, x_max, y_max]
     lon_flat = lon_orig.flatten()
     lat_flat = lat_orig.flatten()
-    # lon_flat = lon_flat[~np.isnan(lon_flat)]  TODO: reintroduce mask
-    # lat_flat = lat_flat[~np.isnan(lat_flat)]
+    lon_flat = lon_flat[~np.isnan(lon_flat)]  # TODO: reintroduce mask
+    lat_flat = lat_flat[~np.isnan(lat_flat)]
     source_coordinates = np.column_stack((lon_flat, lat_flat))
     return bbox_original, source_coordinates, data_mask
 
@@ -588,7 +588,7 @@ def read_band(in_file, in_band, get_data_array=True, data_mask=None):  # TODO: d
         settings["dtype"] = 'float32'
 
     if get_data_array:
-        data_array = dataset[in_band].data  # TODO: reintroduce masking
+        data_array = dataset[in_band].where(data_mask, drop=True).data
     else:
         data_array = None
     dataset.close()
@@ -614,7 +614,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
         2D-numpy array with the size of a tile containing reprojected values
     """
     data_flat = in_data.flatten()
-    # data_flat = data_flat[~np.isnan(data_flat)]  # TODO: reintroduce?
+    data_flat = data_flat[~np.isnan(data_flat)]  # TODO: reintroduce?
 
     # if nodata is empty, we will just use the max possible value
     if nodata is None:
