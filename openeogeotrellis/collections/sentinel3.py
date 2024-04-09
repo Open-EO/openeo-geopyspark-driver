@@ -275,11 +275,11 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
 
     geofile = os.path.join(creo_path, geofile)
 
-    bbox_original, source_coordinates, data_mask = _read_latlonfile(geofile, lat_band, lon_band, bbox_tile)
+    bbox_original, source_coordinates, data_mask = _read_latlonfile(bbox_tile, geofile, lat_band, lon_band)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
     angle_geofile = os.path.join(creo_path, 'geodetic_tx.nc')
-    _, angle_source_coordinates, angle_data_mask = _read_latlonfile(angle_geofile, lat_band='latitude_tx', lon_band='longitude_tx', bbox=bbox_tile)
+    _, angle_source_coordinates, angle_data_mask = _read_latlonfile(bbox_tile, angle_geofile, lat_band='latitude_tx', lon_band='longitude_tx')
 
     reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                                               source_coordinates, tile_coordinates, data_mask,
@@ -346,7 +346,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
     is_empty = False
     logger.info(f"Reprojecting {product_type}")
     ### create LUT for radiances
-    distance, LUT = create_index_LUT(source_coordinates,  # TODO: ditch unused distance
+    _, LUT = create_index_LUT(source_coordinates,
                                      target_coordinates,
                                      2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
 
@@ -440,7 +440,7 @@ def _linearNDinterpolate(in_array):
     return Z.T  # we should transpose this array
 
 
-def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude", bbox=None):  # TODO: bbox cannot be None
+def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude"):
     """Read latlon data from this netcdf file
 
     Parameters
@@ -465,7 +465,7 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude", bbo
 
     xmin, ymin, xmax, ymax = bbox
 
-    interpolation_margin = 1 / 112 * RIM_PIXELS  # TODO
+    interpolation_margin = 1 / 112 * RIM_PIXELS  # TODO: is this right?
 
     lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
     lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
@@ -489,7 +489,7 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude", bbo
     bbox_original = [x_min, y_min, x_max, y_max]
     lon_flat = lon_orig.flatten()
     lat_flat = lat_orig.flatten()
-    lon_flat = lon_flat[~np.isnan(lon_flat)]  # TODO: reintroduce mask
+    lon_flat = lon_flat[~np.isnan(lon_flat)]
     lat_flat = lat_flat[~np.isnan(lat_flat)]
     source_coordinates = np.column_stack((lon_flat, lat_flat))
     return bbox_original, source_coordinates, data_mask
@@ -526,7 +526,7 @@ def create_index_LUT(coordinates, target_coordinates, max_distance):
     return distances, lut_indices
 
 
-def read_band(in_file, in_band, get_data_array=True, data_mask=None):  # TODO: data_mask probably cannot be None
+def read_band(in_file, in_band, data_mask, get_data_array=True):
     """get array and settings(metadata) out of the in_file
 
     Parameters
@@ -614,7 +614,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
         2D-numpy array with the size of a tile containing reprojected values
     """
     data_flat = in_data.flatten()
-    data_flat = data_flat[~np.isnan(data_flat)]  # TODO: reintroduce?
+    data_flat = data_flat[~np.isnan(data_flat)]
 
     # if nodata is empty, we will just use the max possible value
     if nodata is None:
