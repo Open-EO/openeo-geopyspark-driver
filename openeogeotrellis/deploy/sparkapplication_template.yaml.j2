@@ -370,6 +370,10 @@ spec:
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
 {%- endif %}
+{%- if fuse_mount_batchjob_s3_bucket is sameas true %}
+      - name: "batch-job-results"
+        mountPath: /batch_jobs/{{ job_id_full }}
+{%- endif %}
 {%- endblock %}
   deps:
 {%- block deps %}

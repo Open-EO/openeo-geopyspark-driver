@@ -8,7 +8,7 @@ spec:
   capacity:
     storage: 50Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   claimRef:
     namespace: {{ job_namespace }}
     name: {{ job_name }}
