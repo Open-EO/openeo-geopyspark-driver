@@ -548,7 +548,7 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
     """
     # can be used to get only the band settings or together with the data
     logger.debug(f"Reading {in_band} from file {in_file}")
-    dataset = xr.open_dataset(in_file, mask_and_scale=False)  # disable autoconvert digital values
+    dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
     settings = dataset[in_band].attrs
     settings['dtype'] = dataset[in_band].dtype.name
     settings['name'] = in_band
