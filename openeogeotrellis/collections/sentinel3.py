@@ -20,6 +20,8 @@ OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
 SLSTR_PRODUCT_TYPE = "SL_2_LST___"
 
+RIM_PIXELS = 60
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,6 +127,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     return {zoom: merged_tile_layer}
 
+
 def _instant_ms_to_hour(instant: int) -> datetime:
     """
     Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
@@ -136,7 +139,8 @@ def _instant_ms_to_hour(instant: int) -> datetime:
     """
     return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))
 
-#@ensure_executor_logging
+
+@ensure_executor_logging
 def read_product(product, product_type, band_names, tile_size, limit_python_memory):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
     import geopyspark
@@ -202,7 +206,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
 
             orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
                                         [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                         layout_extent['ymax']],digital_numbers=digital_numbers)
+                                         layout_extent['ymax']], digital_numbers=digital_numbers)
 
             debug_mode = True
 
@@ -244,7 +248,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
     return tiles
 
 
-def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers = True):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers=True):
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
@@ -264,15 +268,25 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         raise ValueError(product_type)
 
     tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=final_grid_resolution)
-    tile_coordinates.shape = tile_shape + (2,)  # target =((4352, 5114, 2)) before=22256128,2
+    tile_coordinates.shape = tile_shape + (2,)
+
+    tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution, rim_pixels=RIM_PIXELS)
+    tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
 
     geofile = os.path.join(creo_path, geofile)
 
-    bbox_original, source_coordinates,data_mask = _read_latlonfile(geofile, lat_band, lon_band, bbox_tile)
+    bbox_original, source_coordinates, data_mask = _read_latlonfile(bbox_tile, geofile, lat_band, lon_band)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
+    angle_geofile = os.path.join(creo_path, 'geodetic_tx.nc')
+    _, angle_source_coordinates, angle_data_mask = _read_latlonfile(bbox_tile, angle_geofile, lat_band='latitude_tx',
+                                                                    lon_band='longitude_tx',
+                                                                    interpolation_margin=final_grid_resolution * RIM_PIXELS)
+
     reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
-                                              source_coordinates, tile_coordinates,data_mask,digital_numbers)
+                                              source_coordinates, tile_coordinates, data_mask,
+                                              angle_source_coordinates, tile_coordinates_with_rim, angle_data_mask,
+                                              digital_numbers)
 
     return reprojected_data
 
@@ -310,7 +324,10 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 
-def do_reproject(product_type, final_grid_resolution, creo_path, band_names, source_coordinates, target_coordinates,data_mask,digital_numbers=True):
+def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
+                 source_coordinates, target_coordinates, data_mask,
+                 angle_source_coordinates, target_coordinates_with_rim, angle_data_mask,
+                 digital_numbers=True):
     """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
 
     Parameters
@@ -331,9 +348,14 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
     is_empty = False
     logger.info(f"Reprojecting {product_type}")
     ### create LUT for radiances
-    distance, LUT = create_index_LUT(source_coordinates,
+    _, LUT = create_index_LUT(source_coordinates,
                                      target_coordinates,
                                      2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
+
+    ### create LUT for angle files
+    _, LUT_angles = create_index_LUT(angle_source_coordinates,
+                                     target_coordinates_with_rim,
+                                     2 * final_grid_resolution)
 
     varOut = []
 
@@ -359,9 +381,14 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
                 return band_name
             raise ValueError(band_name)
 
-        band_data, band_settings = read_band(in_file, in_band=variable_name(band_name),data_mask=data_mask)
-
-        reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
+        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", ]:
+            band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=angle_data_mask)
+            reprojected_data = apply_LUT_on_band(band_data, LUT_angles, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
+            interpolated = _linearNDinterpolate(reprojected_data)
+            reprojected_data = interpolated[RIM_PIXELS:-RIM_PIXELS, RIM_PIXELS:-RIM_PIXELS]
+        else:
+            band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask)
+            reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
 
         if '_FillValue' in band_settings and not digital_numbers:
             reprojected_data[reprojected_data == band_settings['_FillValue']] = np.nan
@@ -374,7 +401,48 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names, sou
     return np.array(varOut), is_empty
 
 
-def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude",bbox = None):
+def _linearNDinterpolate(in_array):
+    """Some low resolution bands only contain values in diagonal lines. They need to be interpolated to fill the
+    target grid completely. nan values will be interpolated
+
+    Parameters
+    ----------
+    in_array : float
+        the array containing nans that needs to be interpolated
+
+    Notes
+    -------
+    If nothing was interpolated, the in_array is returned
+
+    Returns
+    -------
+    out_array: float
+        a 2D numpy array containing interpolated data
+    """
+    from scipy.interpolate import LinearNDInterpolator
+    logger.info("  Start interpolation...")
+    rownrs = np.arange(in_array.shape[0])  # Column indices (longitude)
+    columnnrs = np.arange(in_array.shape[1])  # Row indices (latitude)
+
+    X, Y = np.meshgrid(rownrs, columnnrs)  # 2D grid for interpolation
+    ok = ~np.isnan(in_array)  # ok= all valid data =True
+    xp = ok.nonzero()[0]  # get the index of all valid pixels
+    if len(xp) < 10:
+        logger.warning("Angle files are empty here, skip the interpolation. The not interpolated result(array_in) will be reused")
+        return in_array
+    yp = ok.nonzero()[1]
+    fp = in_array[~np.isnan(in_array)]  # get the value of all valid pixels
+    # interp = RegularGridInterpolator((xp, fp), in_array)
+    coordinates = list(zip(xp, yp))
+    interp = LinearNDInterpolator(coordinates, fp, fill_value=np.nan)
+    # X = np.linspace(0, in_array.shape[0], num=1)
+    # Y = np.linspace(0, in_array.shape[1], num=1)
+    # X, Y = np.meshgrid(in_array)
+    Z = interp(X, Y)
+    return Z.T  # we should transpose this array
+
+
+def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude", interpolation_margin=0):
     """Read latlon data from this netcdf file
 
     Parameters
@@ -399,8 +467,8 @@ def _read_latlonfile(latlon_file, lat_band="latitude", lon_band="longitude",bbox
 
     xmin, ymin, xmax, ymax = bbox
 
-    lat_mask = xr.apply_ufunc(lambda x:(x>=ymin) & (x<=ymax),lat_lon_ds[lat_band])
-    lon_mask = xr.apply_ufunc(lambda x: (x >= xmin) & (x <= xmax), lat_lon_ds[lon_band])
+    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
+    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
     data_mask = lat_mask & lon_mask
 
 
@@ -458,7 +526,7 @@ def create_index_LUT(coordinates, target_coordinates, max_distance):
     return distances, lut_indices
 
 
-def read_band(in_file, in_band, get_data_array=True,data_mask=None):
+def read_band(in_file, in_band, data_mask, get_data_array=True):
     """get array and settings(metadata) out of the in_file
 
     Parameters
@@ -479,7 +547,8 @@ def read_band(in_file, in_band, get_data_array=True,data_mask=None):
         A dict containing the bands metadata (_FillValue, name, dtype, units,...)
     """
     # can be used to get only the band settings or together with the data
-    dataset = xr.open_dataset(in_file, mask_and_scale=False,cache=False)  # disable autoconvert digital values
+    logger.debug(f"Reading {in_band} from file {in_file}")
+    dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
     settings = dataset[in_band].attrs
     settings['dtype'] = dataset[in_band].dtype.name
     settings['name'] = in_band
@@ -519,7 +588,7 @@ def read_band(in_file, in_band, get_data_array=True,data_mask=None):
         settings["dtype"] = 'float32'
 
     if get_data_array:
-        data_array = dataset[in_band].where(data_mask,drop=True).data
+        data_array = dataset[in_band].where(data_mask, drop=True).data
     else:
         data_array = None
     dataset.close()
