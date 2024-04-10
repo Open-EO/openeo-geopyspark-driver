@@ -270,18 +270,24 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
     tile_coordinates, tile_shape = create_final_grid(bbox_tile, resolution=final_grid_resolution)
     tile_coordinates.shape = tile_shape + (2,)
 
-    tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution, rim_pixels=RIM_PIXELS)
-    tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
-
     geofile = os.path.join(creo_path, geofile)
 
     bbox_original, source_coordinates, data_mask = _read_latlonfile(bbox_tile, geofile, lat_band, lon_band)
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
-    angle_geofile = os.path.join(creo_path, 'geodetic_tx.nc')
-    _, angle_source_coordinates, angle_data_mask = _read_latlonfile(bbox_tile, angle_geofile, lat_band='latitude_tx',
-                                                                    lon_band='longitude_tx',
-                                                                    interpolation_margin=final_grid_resolution * RIM_PIXELS)
+    if product_type == SLSTR_PRODUCT_TYPE:
+        angle_geofile = os.path.join(creo_path, 'geodetic_tx.nc')
+        _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
+            bbox_tile, angle_geofile, lat_band='latitude_tx', lon_band='longitude_tx',
+            interpolation_margin=final_grid_resolution * RIM_PIXELS)
+
+        tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution,
+                                                                           rim_pixels=RIM_PIXELS)
+        tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
+    else:
+        angle_source_coordinates = None
+        angle_data_mask = None
+        tile_coordinates_with_rim = None
 
     reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                                               source_coordinates, tile_coordinates, data_mask,
@@ -353,9 +359,12 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                                      2 * final_grid_resolution)  # indices will have the same size as flattend grid_xy referring to the index from the latlon a data arrays
 
     ### create LUT for angle files
-    _, LUT_angles = create_index_LUT(angle_source_coordinates,
-                                     target_coordinates_with_rim,
-                                     2 * final_grid_resolution)
+    if angle_source_coordinates is not None:
+        _, LUT_angles = create_index_LUT(angle_source_coordinates,
+                                         target_coordinates_with_rim,
+                                         2 * final_grid_resolution)
+    else:
+        LUT_angles = None
 
     varOut = []
 
@@ -381,7 +390,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                 return band_name
             raise ValueError(band_name)
 
-        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", ]:
+        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn",]:
             band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=angle_data_mask)
             reprojected_data = apply_LUT_on_band(band_data, LUT_angles, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
             interpolated = _linearNDinterpolate(reprojected_data)
