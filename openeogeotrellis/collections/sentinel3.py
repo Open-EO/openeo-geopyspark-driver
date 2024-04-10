@@ -279,7 +279,9 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
     angle_geofile = os.path.join(creo_path, 'geodetic_tx.nc')
-    _, angle_source_coordinates, angle_data_mask = _read_latlonfile(bbox_tile, angle_geofile, lat_band='latitude_tx', lon_band='longitude_tx')
+    _, angle_source_coordinates, angle_data_mask = _read_latlonfile(bbox_tile, angle_geofile, lat_band='latitude_tx',
+                                                                    lon_band='longitude_tx',
+                                                                    interpolation_margin=final_grid_resolution * RIM_PIXELS)
 
     reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                                               source_coordinates, tile_coordinates, data_mask,
@@ -440,7 +442,7 @@ def _linearNDinterpolate(in_array):
     return Z.T  # we should transpose this array
 
 
-def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude"):
+def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude", interpolation_margin=0):
     """Read latlon data from this netcdf file
 
     Parameters
@@ -464,8 +466,6 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     lat_lon_ds = xr.open_dataset(latlon_file).astype("float32")
 
     xmin, ymin, xmax, ymax = bbox
-
-    interpolation_margin = 1 / 112 * RIM_PIXELS  # TODO: is this right?
 
     lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
     lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
