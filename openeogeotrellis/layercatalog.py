@@ -69,7 +69,8 @@ WHITELIST = [
     PYRAMID_LEVELS,
     REQUIRE_BOUNDS,
     CORRELATION_ID,
-    USER
+    USER,
+    "backend_implementation"  # TODO: remove
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -694,6 +695,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         metadata.opensearch_link_titles, datacubeParams,
                                         jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
                                         )
+        elif layer_source_type == 'stac':
+            # TODO: clean up
+            backend_implementation = env["backend_implementation"]
+            cube = backend_implementation.load_stac(layer_source_info["href"], load_params, env)
+            pyramid = cube.pyramid.levels
+            metadata = cube.metadata
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
         elif layer_source_type == 'testing':
