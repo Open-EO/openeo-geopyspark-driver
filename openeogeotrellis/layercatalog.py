@@ -695,7 +695,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         )
         elif layer_source_type == 'stac':
             batch_jobs: BatchJobs = env["backend_implementation"].batch_jobs
-            cube = load_stac(layer_source_info["url"], load_params, env, batch_jobs)
+            cube = load_stac(layer_source_info["url"], load_params, env, batch_jobs)  # TODO: avoid dependency on GpsBatchJobs by not supporting unsigned job results (or any) in layercatalog.json (#460)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':
