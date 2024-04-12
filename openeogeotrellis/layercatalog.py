@@ -4,7 +4,6 @@ import functools
 import json
 import logging
 import sys
-import traceback
 from copy import deepcopy
 from datetime import datetime
 from functools import lru_cache
@@ -15,11 +14,10 @@ import geopyspark
 import py4j.protocol
 import pyproj
 import pyspark.sql.utils
-import requests
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.backend import CollectionCatalog, LoadParameters, BatchJobs
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -29,18 +27,18 @@ from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
-from shapely.geometry import box, GeometryCollection
+from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
-from openeogeotrellis.catalogs.oscars import OscarsCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections import sentinel3
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import (
@@ -70,7 +68,7 @@ WHITELIST = [
     REQUIRE_BOUNDS,
     CORRELATION_ID,
     USER,
-    "backend_implementation"  # TODO: remove
+    "backend_implementation",  # TODO: only works because it is a singleton
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -143,7 +141,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env,WHITELIST))
+        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
 
     @lru_cache(maxsize=20)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
@@ -696,9 +694,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
                                         )
         elif layer_source_type == 'stac':
-            # TODO: clean up
-            backend_implementation = env["backend_implementation"]
-            cube = backend_implementation.load_stac(layer_source_info["href"], load_params, env)
+            batch_jobs: BatchJobs = env["backend_implementation"].batch_jobs
+            cube = load_stac(layer_source_info["url"], load_params, env, batch_jobs)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':
