@@ -1102,9 +1102,8 @@ class GeopysparkDataCube(DriverDataCube):
                 result_collection = retiled_collection.apply_tiles(udf_code = udf, context = udf_context,
                     runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
-                raise OpenEOApiException(
-                    message="apply_neighborhood: for temporal dimension,"
-                            " either process all values, or only single date is supported for now!")
+                raise ProcessParameterInvalidException(parameter= "size", process="apply_neighborhood",
+                    reason="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
             if overlap_x > 0 or overlap_y > 0:
                 # Check if the resolution of result_collection changed (UDF feature).
                 result_metadata: Metadata = result_collection.pyramid.levels[
@@ -1671,8 +1670,8 @@ class GeopysparkDataCube(DriverDataCube):
         description = format_options.get("file_metadata",{}).get("description","")
         filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
 
-        save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy else filename
-        save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy else directory
+        save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
+        save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
 
         if format in ["GTIFF", "PNG"]:
             def get_color_cmap():
