@@ -884,6 +884,7 @@ class GeopysparkDataCube(DriverDataCube):
             if len(intersection) > 0:
                 # Spec: https://github.com/Open-EO/openeo-processes/blob/0dd3ab0d81f67506547136532af39b5c9a16771e/merge_cubes.json#L83-L87
                 raise OpenEOApiException(
+                    status_code=400,
                     code="OverlapResolverMissing",
                     message=f"merge_cubes: Overlapping data cubes, but no overlap resolver has been specified."
                     + f" Either set an overlaps_resolver or rename the bands."
@@ -1052,18 +1053,22 @@ class GeopysparkDataCube(DriverDataCube):
         size_dict = {e['dimension']:e for e in size}
         overlap_dict = {e['dimension']: e for e in overlap} if overlap is not None else {}
         if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
-            raise OpenEOApiException(message="apply_neighborhood: window sizes for the spatial dimensions"
-                                             " of this datacube should be specified in pixels."
-                                             " This was provided: %s" % str(size))
+            raise ProcessParameterInvalidException(
+                parameter="size",
+                process="apply_neighborhood",
+                reason=f"only 'px' is currently supported for spatial window size (got {size!r})",
+            )
         sizeX = int(size_dict[x.name]['value'])
         sizeY = int(size_dict[y.name]['value'])
 
         overlap_x_dict = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
         overlap_y_dict = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
         if overlap_x_dict.get('unit', None) != 'px' or overlap_y_dict.get('unit', None) != 'px':
-            raise OpenEOApiException(message="apply_neighborhood: overlap sizes for the spatial dimensions"
-                                             " of this datacube should be specified, in pixels."
-                                             " This was provided: %s" % str(overlap))
+            raise ProcessParameterInvalidException(
+                parameter="overlap",
+                process="apply_neighborhood",
+                reason=f"only 'px' is currently supported for spatial overlap (got {overlap!r})",
+            )
         jvm = get_jvm()
         overlap_x = int(overlap_x_dict['value'])
         overlap_y = int(overlap_y_dict['value'])
@@ -1088,8 +1093,11 @@ class GeopysparkDataCube(DriverDataCube):
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
             if sizeX < 32 or sizeY < 32:
-                raise OpenEOApiException(
-                    message="apply_neighborhood: window sizes smaller then 32 are not yet supported for UDF's.")
+                raise ProcessParameterInvalidException(
+                    parameter="size",
+                    process="apply_neighborhood",
+                    reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
+                )
 
             if temporal_size is None or temporal_size.get('value',None) is None:
                 #full time dimension has to be provided
@@ -1102,8 +1110,13 @@ class GeopysparkDataCube(DriverDataCube):
                 result_collection = retiled_collection.apply_tiles(udf_code = udf, context = udf_context,
                     runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
-                raise ProcessParameterInvalidException(parameter= "size", process="apply_neighborhood",
-                    reason=f"apply_neighborhood: for temporal dimension, either process all values, or 'P1D' for single date is supported for now! Overlap shoud not be set for time dimension. Invalid size value: {temporal_size.get('value',None)}")
+                raise ProcessParameterInvalidException(
+                    parameter="size",
+                    process="apply_neighborhood",
+                    reason=f"for temporal dimension, either process all values, or 'P1D' for single date is currently supported."
+                    + f" Overlap should not be set for time dimension."
+                    + f" (Got {temporal_size=}, {temporal_overlap=})",
+                )
             if overlap_x > 0 or overlap_y > 0:
                 # Check if the resolution of result_collection changed (UDF feature).
                 result_metadata: Metadata = result_collection.pyramid.levels[
