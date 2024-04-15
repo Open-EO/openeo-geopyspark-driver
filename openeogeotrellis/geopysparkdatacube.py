@@ -1103,7 +1103,7 @@ class GeopysparkDataCube(DriverDataCube):
                     runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
                 raise ProcessParameterInvalidException(parameter= "size", process="apply_neighborhood",
-                    reason="apply_neighborhood: for temporal dimension, either process all values, or only single date is supported for now!")
+                    reason=f"apply_neighborhood: for temporal dimension, either process all values, or 'P1D' for single date is supported for now! Overlap shoud not be set for time dimension. Invalid size value: {temporal_size.get('value',None)}")
             if overlap_x > 0 or overlap_y > 0:
                 # Check if the resolution of result_collection changed (UDF feature).
                 result_metadata: Metadata = result_collection.pyramid.levels[
