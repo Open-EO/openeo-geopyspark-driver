@@ -1236,6 +1236,8 @@ def run_job(
                 for file in os.listdir(job_dir):
                     full_path = str(job_dir) + "/" + file
                     s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            else:
+                _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
         try:
             get_jvm().com.azavea.gdal.GDALWarp.deinit()
