@@ -789,7 +789,7 @@
     ],
     "extent": {
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2010-12-12", null]]}
+      "temporal": {"interval": [["2019-10-25", "2019-11-06"]]}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "step": 0.0002777777777777778},

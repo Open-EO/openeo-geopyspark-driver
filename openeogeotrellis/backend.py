@@ -1204,28 +1204,43 @@ class GpsProcessing(ConcreteProcessing):
 
                 # Get temporal extent out of metadata if not found in constraints:
                 # TODO: Could do this for spatial extent as well.
-                if temporal_extent is None or temporal_extent[0] is None or temporal_extent[1] is None:
-                    extents = metadata.get("extent", "temporal", "interval", default=None)
-                    begin = None
-                    end = None
-                    for extent in extents:
-                        if extent[0]:
-                            if begin is None:
-                                begin = extent[0]
-                            else:
-                                begin = min(begin, extent[0])
-                        if extent[1]:
-                            if end is None:
-                                end = extent[1]
-                            else:
-                                end = max(end, extent[1])
-                    if temporal_extent is None:
-                        temporal_extent = [begin, end]
-                    else:
-                        temporal_extent = [
-                            temporal_extent[0] or begin,
-                            temporal_extent[1] or end,
-                        ]
+                catalog_temporal_extent = metadata.get("extent", "temporal", "interval", default=None)
+                outer_bounds = [None, None]
+                for extent in catalog_temporal_extent:
+                    if extent[0]:
+                        if outer_bounds[0] is None:
+                            outer_bounds[0] = extent[0]
+                        else:
+                            outer_bounds[0] = min(outer_bounds[0], extent[0])
+                    if extent[1]:
+                        if outer_bounds[1] is None:
+                            outer_bounds[1] = extent[1]
+                        else:
+                            outer_bounds[1] = max(outer_bounds[1], extent[1])
+                if temporal_extent is None:
+                    temporal_extent = outer_bounds
+                else:
+                    # take the intersection of outer_bounds and temporal_extent
+                    beginnings = []
+                    if outer_bounds[0]:
+                        beginnings.append(outer_bounds[0])
+                    if temporal_extent[0]:
+                        beginnings.append(temporal_extent[0])
+                    if not beginnings:
+                        beginnings.append(None)
+
+                    ends = []
+                    if outer_bounds[1]:
+                        ends.append(outer_bounds[1])
+                    if temporal_extent[1]:
+                        ends.append(temporal_extent[1])
+                    if not ends:
+                        ends.append(None)
+
+                    temporal_extent = [
+                        max(beginnings),
+                        min(ends),
+                    ]
 
                 if spatial_extent and temporal_extent:
                     band_names = constraints.get("bands")
