@@ -297,6 +297,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
             builder = builder.withResolution(cell_width)
 
         latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox,4326) if itm.bbox else None
+        item_bbox = latlon_bbox
         if proj_bbox is not None and proj_epsg is not None:
             item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
             latlon_bbox = item_bbox.reproject(4326)
@@ -308,7 +309,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
         opensearch_client.addFeature(f)
 
 
-        stac_bbox = (latlon_bbox if stac_bbox is None
+        stac_bbox = (item_bbox if stac_bbox is None
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
                                                       stac_bbox.crs))
 
