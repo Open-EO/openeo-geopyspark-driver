@@ -12,7 +12,8 @@ from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, 
 from openeo.util import rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
-from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException
+from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
+    ProcessParameterInvalidException
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
@@ -273,8 +274,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
 
         builder = jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
 
-        builder = builder.withId(itm.id).withBBox(itm.bbox[0], itm.bbox[1], itm.bbox[2], itm.bbox[3]) \
-            .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
+        builder = (builder.withId(itm.id).withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
+
 
         for asset_id, asset in band_assets.items():
             asset_band_names = get_band_names(itm, asset)
@@ -295,14 +296,19 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
             cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
             builder = builder.withResolution(cell_width)
 
+        latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox,4326) if itm.bbox else None
+        if proj_bbox is not None and proj_epsg is not None:
+            item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+            latlon_bbox = item_bbox.reproject(4326)
+
+        if latlon_bbox is not None:
+            builder = builder.withBBox(latlon_bbox.as_wsen_tuple()[0], latlon_bbox.as_wsen_tuple()[1], latlon_bbox.as_wsen_tuple()[2], latlon_bbox.as_wsen_tuple()[3])
+
         f = builder.build()
         opensearch_client.addFeature(f)
 
-        item_bbox = BoundingBox.from_wsen_tuple(
-            itm.bbox, crs="EPSG:4326"
-        )
 
-        stac_bbox = (item_bbox if stac_bbox is None
+        stac_bbox = (latlon_bbox if stac_bbox is None
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
                                                       stac_bbox.crs))
 
@@ -317,6 +323,13 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
             status_code=400)
 
     target_bbox = requested_bbox or stac_bbox
+
+    if not target_bbox:
+        raise ProcessParameterInvalidException(
+            process = 'load_stac',
+            parameter = 'spatial_extent',
+            reason = f'Unable to derive a spatial extent from provided STAC metadata: {url}, please provide a spatial extent.'
+            )
 
     if proj_epsg and proj_bbox and proj_shape:  # exact resolution
         target_epsg = proj_epsg
