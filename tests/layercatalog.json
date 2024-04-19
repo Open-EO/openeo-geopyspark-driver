@@ -789,7 +789,7 @@
     ],
     "extent": {
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
-      "temporal": {"interval": [["2019-10-25", "2019-11-06"]]}
+      "temporal": {"interval": [["2010-12-12", null]], "step": "infinite"}
     },
     "cube:dimensions": {
       "x": {"type": "spatial", "axis": "x", "step": 0.0002777777777777778},
@@ -811,7 +811,8 @@
       "data_source": {
         "type": "file-oscars",
         "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG"
+        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG",
+        "consider_as_singular_time_step": true
       }
     }
   },

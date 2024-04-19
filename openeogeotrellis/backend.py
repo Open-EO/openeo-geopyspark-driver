@@ -1166,7 +1166,8 @@ class GpsProcessing(ConcreteProcessing):
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
-                metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
+                metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
+                metadata = GeopysparkCubeMetadata(metadata_json)
                 temporal_extent = constraints.get("temporal_extent")
                 spatial_extent = constraints.get("spatial_extent")
 
@@ -1241,6 +1242,11 @@ class GpsProcessing(ConcreteProcessing):
                         max(beginnings),
                         min(ends),
                     ]
+                consider_as_singular_time_step = deep_get(metadata_json,
+                                                          "_vito", "data_source", "consider_as_singular_time_step",
+                                                          default=False)
+                if consider_as_singular_time_step:
+                    temporal_extent = [temporal_extent[0], temporal_extent[0]]
 
                 if spatial_extent and temporal_extent:
                     band_names = constraints.get("bands")
