@@ -123,7 +123,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     prometheus_api: Optional[str] = os.environ.get("OPENEO_PROMETHEUS_API")
 
-    max_executor_or_driver_memory: str = "64G"  # Executors and drivers have the same amount of memory
+    max_executor_or_driver_memory: str = "16G"  # Executors and drivers have the same amount of memory
 
     default_usage_cpu_seconds: float = 1 * 3600
     default_usage_byte_seconds: float = 2 * 1024 * 1024 * 1024 * 3600
