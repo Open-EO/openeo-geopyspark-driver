@@ -17,7 +17,7 @@ import pyspark.sql.utils
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters, BatchJobs
+from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -694,8 +694,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
                                         )
         elif layer_source_type == 'stac':
-            batch_jobs: BatchJobs = env["backend_implementation"].batch_jobs
-            cube = load_stac(layer_source_info["url"], load_params, env, batch_jobs)  # TODO: avoid dependency on GpsBatchJobs by not supporting unsigned job results (or any) in layercatalog.json (#460)
+            cube = load_stac(layer_source_info["url"], load_params, env, batch_jobs=None)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':

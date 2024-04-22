@@ -27,7 +27,8 @@ from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projec
 logger = logging.getLogger(__name__)
 
 
-def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: backend.BatchJobs) -> GeopysparkDataCube:
+def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
+              batch_jobs: Optional[backend.BatchJobs]) -> GeopysparkDataCube:
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
@@ -123,9 +124,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
 
         return True
 
-    # TODO: `user` might be None
-    dependency_job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=batch_jobs)
     collection = None
+
+    # TODO: `user` might be None
+    dependency_job_info = (extract_own_job_info(url, user_id=user.user_id, batch_jobs=batch_jobs) if batch_jobs
+                           else None)
+
     if dependency_job_info:
         intersecting_items = []
 
