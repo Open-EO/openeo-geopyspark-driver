@@ -178,13 +178,22 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
             client = pystac_client.Client.open(root_catalog.get_self_href())
+
+            if root_catalog.get_self_href().startswith("https://tamn.snapplanet.io"):
+                # by default, returns all properties and "none" if fields is specified
+                fields = None
+            else:
+                # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
+                fields = ["properties"]
+
             search_request = client.search(
                 method="GET",
                 collections=collection_id,
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
-                datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/{to_date.isoformat().replace('+00:00', 'Z')}",
-                # inclusive
+                datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/"
+                         f"{to_date.isoformat().replace('+00:00', 'Z')}",  # end is inclusive
+                fields=fields,
             )
 
             logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
