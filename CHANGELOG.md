@@ -12,6 +12,12 @@ without compromising stable operations.
 
 ## Unreleased
 
+- vector_to_raster now returns a valid raster cube ([#273](https://github.com/Open-EO/openeo-python-driver/issues/273))
+- aggregate_spatial can now be used as input for vector_to_raster ([#663](https://github.com/Open-EO/openeo-geopyspark-driver/issues/663))
+- raster_to_vector now returns a valid vector cube ([openeo-python-driver#276](https://github.com/Open-EO/openeo-python-driver/issues/276)) 
+- raster_to_vector now includes the pixel values of the output polygons ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
+- raster_to_vector now adds an id to each polygon including band name, date, and index ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
+
 ## 0.31.2
 - load_stac: fix filtering by Item properties
 
