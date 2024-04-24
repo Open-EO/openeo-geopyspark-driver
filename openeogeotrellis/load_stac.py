@@ -340,9 +340,10 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
 
     if not target_bbox:
         raise ProcessParameterInvalidException(
-            process = 'load_stac',
-            parameter = 'spatial_extent',
-            reason = f'Unable to derive a spatial extent from provided STAC metadata: {url}, please provide a spatial extent.'
+            process='load_stac',
+            parameter='spatial_extent',
+            reason=f'Unable to derive a spatial extent from provided STAC metadata: {url}, '
+                   f'please provide a spatial extent.'
             )
 
     if proj_epsg and proj_bbox and proj_shape:  # exact resolution
@@ -354,9 +355,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
             utm_zone_from_epsg(proj_epsg)
             cell_width = cell_height = 10.0
         except ValueError:
+            target_bbox_center = target_bbox.as_polygon().centroid
             cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                10.0, f"EPSG:{proj_epsg}", loi=((target_bbox.east - target_bbox.west) / 2,
-                                                (target_bbox.north - target_bbox.south / 2)))
+                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y))
     else:  # 10m UTM
         target_epsg = target_bbox.best_utm()
         cell_width = cell_height = 10.0
