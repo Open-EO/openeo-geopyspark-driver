@@ -3472,7 +3472,7 @@ class TestLoadStac:
             extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
         )
 
-        root_catalog = Catalog(id="somestacapi", description="somestacapi")
+        root_catalog = Catalog(id="somestacapi", href="https://somestacapi", description="somestacapi")
         root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
         collection.set_root(root_catalog)
 

@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.31.2
+- load_stac: fix filtering by Item properties
+
+## 0.31.1
+
 ## 0.31.0
 
 - Fix common cause of 'TopologyException' errors in vector processing
