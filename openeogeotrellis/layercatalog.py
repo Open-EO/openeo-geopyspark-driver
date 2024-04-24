@@ -68,7 +68,6 @@ WHITELIST = [
     REQUIRE_BOUNDS,
     CORRELATION_ID,
     USER,
-    "backend_implementation",  # TODO: only works because it is a singleton
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
