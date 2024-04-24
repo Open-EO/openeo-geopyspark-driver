@@ -17,6 +17,7 @@ without compromising stable operations.
 - raster_to_vector now returns a valid vector cube ([openeo-python-driver#276](https://github.com/Open-EO/openeo-python-driver/issues/276))
 - raster_to_vector now includes the pixel values of the output polygons ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
 - raster_to_vector now adds an id to each polygon including band name, date, and index ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
+- resample_spatial now has better performance when resampling to a high resolution ([#265](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/265))
 
 ## 0.30.2
 
