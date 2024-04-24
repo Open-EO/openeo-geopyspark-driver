@@ -1829,19 +1829,19 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", "3G" if isKube else "8G" )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G" if isKube else "2G")
-        executor_memory = job_options.get("executor-memory", "2G")
-        executor_memory_overhead = job_options.get("executor-memoryOverhead", "2500m" if isKube else "3G")
+        driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
+        driver_memory_overhead = job_options.get("driver-memoryOverhead", get_backend_config().default_driver_memoryOverhead)
+        executor_memory = job_options.get("executor-memory", get_backend_config().default_executor_memory)
+        executor_memory_overhead = job_options.get("executor-memoryOverhead", get_backend_config().default_executor_memoryOverhead )
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
         executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
         executor_corerequest = job_options.get("executor-request-cores", "NONE")
         if executor_corerequest == "NONE":
             executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-        max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
-        executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
-        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", 26))
-        gdal_cachemax = str(job_options.get("gdal-cachemax", 150))
+        max_executors = str(job_options.get("max-executors", get_backend_config().default_max_executors))
+        executor_threads_jvm = str(job_options.get("executor-threads-jvm", get_backend_config().default_executor_threads_jvm))
+        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", get_backend_config().default_gdal_dataset_cache_size))
+        gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax ))
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
         max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
