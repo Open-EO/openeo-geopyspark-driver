@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.31.0
+
+- Fix common cause of 'TopologyException' errors in vector processing
+- sample_by_feature will now use the 'feature_id_property' setting for naming generated assets. [#722](https://github.com/Open-EO/openeo-geopyspark-driver/issues/722)
+
 ## 0.30.1
 
 - Reinstate `ejr_credentials_vault_path` config option.
