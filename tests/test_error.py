@@ -105,3 +105,91 @@ def test_summarize_sentinel1_band_not_present_exception_workaround_for_root_caus
             f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
 
     assert ("exception chain classes: org.apache.spark.SparkException" in caplog.messages)
+
+def test_summarize_big_error(caplog):
+    caplog.set_level("DEBUG")
+
+    jvm = get_jvm()
+
+    # does not have a root cause attached
+    spark_exception = jvm.org.apache.spark.SparkException("""
+          Traceback (most recent call last):
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 1375, in <module>
+    main(sys.argv)
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 1040, in main
+    run_driver()
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 1011, in run_driver
+    run_job(
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/utils.py", line 56, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 1146, in run_job
+    the_assets_metadata = result.write_assets(str(output_file))
+  File "/opt/openeo/lib/python3.8/site-packages/openeo_driver/save_result.py", line 150, in write_assets
+    return self.cube.write_assets(filename=directory, format=self.format, format_options=self.options)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 1823, in write_assets
+    outputPaths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(max_level.srdd.rdd(),band_count,str(save_filename),zlevel,get_jvm().scala.Option.apply(crop_extent),gtiff_options)
+  File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py", line 1322, in __call__
+    return_value = get_return_value(
+  File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/protocol.py", line 326, in get_return_value
+    raise Py4JJavaError(
+py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.geotiff.package.saveRDD.
+: org.apache.spark.SparkException: Job aborted due to stage failure: Task 0 in stage 14.2 failed 4 times, most recent failure: Lost task 0.3 in stage 14.2 (TID 1744) (10.42.141.21 executor 119): org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 830, in main
+    process()
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 822, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 146, in dump_stream
+    for obj in iterator:
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/util.py", line 81, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/utils.py", line 56, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 517, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/udf.py", line 20, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+    result_cube = func(cube=data.get_datacube_list()[0], context=data.user_context)
+  File "<string>", line 282, in apply_datacube
+  File "<string>", line 235, in delineate
+  File "tmp/venv_model/fielddelineation/utils/delineation.py", line 59, in _apply_delineation
+    preds = run_prediction(
+  File "tmp/venv_model/vito_lot_delineation/inference/main.py", line 33, in main
+    semantic = model.forward_process(inp)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/main.py", line 99, in forward_process
+    return self.model(x)
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/main.py", line 205, in forward
+    memory.append(layer(memory[-1]))
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/layers.py", line 105, in forward
+    x = self.down(x)
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/modules.py", line 367, in forward
+    return self.f(x)
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/modules.py", line 82, in forward
+    x = self.conv(x)  # Perform the convolution
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_static/torch/nn/modules/conv.py", line 607, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+  File "tmp/venv_static/torch/nn/modules/conv.py", line 602, in _conv_forward
+    return F.conv3d(
+RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel size: (4 x 4 x 4). Kernel size can't be greater than actual input size
+""")
+    py4j_error: Exception = Py4JJavaError(
+        msg="",
+        java_exception=spark_exception)
+
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
+
+    assert ("Kernel size can't be greater than actual input size" in error_summary.summary)
