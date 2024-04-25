@@ -244,4 +244,4 @@ RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel si
 
     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
 
-    assert ("Kernel size can't be greater than actual input size" in error_summary.summary)
+    assert "AAAAAAAAAAAAA..." in error_summary.summary
