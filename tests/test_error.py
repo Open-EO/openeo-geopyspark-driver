@@ -193,3 +193,55 @@ RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel si
     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
 
     assert ("Kernel size can't be greater than actual input size" in error_summary.summary)
+
+def test_summarize_big_error_syntetic(caplog):
+    caplog.set_level("DEBUG")
+
+    jvm = get_jvm()
+
+    # does not have a root cause attached
+    spark_exception = jvm.org.apache.spark.SparkException("""
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 517, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/udf.py", line 20, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+  """ + ("A" * 3000) + """
+  File "<string>", line 235, in delineate
+  File "tmp/venv_model/fielddelineation/utils/delineation.py", line 59, in _apply_delineation
+    preds = run_prediction(
+  File "tmp/venv_model/vito_lot_delineation/inference/main.py", line 33, in main
+    semantic = model.forward_process(inp)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/main.py", line 99, in forward_process
+    return self.model(x)
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/main.py", line 205, in forward
+    memory.append(layer(memory[-1]))
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/layers.py", line 105, in forward
+    x = self.down(x)
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/modules.py", line 367, in forward
+    return self.f(x)
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_model/vito_lot_delineation/models/MultiHeadResUnet3D/model/modules.py", line 82, in forward
+    x = self.conv(x)  # Perform the convolution
+  File "tmp/venv_static/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "tmp/venv_static/torch/nn/modules/conv.py", line 607, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+  File "tmp/venv_static/torch/nn/modules/conv.py", line 602, in _conv_forward
+    return F.conv3d(
+RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel size: (4 x 4 x 4). Kernel size can't be greater than actual input size
+""")
+    py4j_error: Exception = Py4JJavaError(
+        msg="",
+        java_exception=spark_exception)
+
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
+
+    assert ("Kernel size can't be greater than actual input size" in error_summary.summary)

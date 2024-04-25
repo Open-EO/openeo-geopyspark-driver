@@ -1,4 +1,3 @@
-import datetime
 import datetime as dt
 import io
 import json
@@ -10,8 +9,6 @@ import shutil
 import socket
 import stat
 import subprocess
-
-import dateutil
 import sys
 import tempfile
 import time
@@ -115,7 +112,7 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    reproject_cellsize, parse_approximate_isoduration,
+    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
@@ -1163,91 +1160,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsProcessing(ConcreteProcessing):
-
-    @staticmethod
-    def derive_temporal_extent(collection_id: str, constraints: dict, env: EvalEnv) -> Tuple[Optional[str], Optional[str]]:
-        catalog = env.backend_implementation.catalog
-        metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-        metadata = GeopysparkCubeMetadata(metadata_json)
-
-        temporal_extent_constraints = constraints.get("temporal_extent")
-
-        catalog_temporal_extent = metadata.get("extent", "temporal", "interval", default=None)
-        outer_bounds = [None, None]
-        for extent in catalog_temporal_extent:
-            if extent[0]:
-                if outer_bounds[0] is None:
-                    outer_bounds[0] = extent[0]
-                else:
-                    outer_bounds[0] = min(outer_bounds[0], extent[0])
-            if extent[1]:
-                if outer_bounds[1] is None:
-                    outer_bounds[1] = extent[1]
-                else:
-                    outer_bounds[1] = max(outer_bounds[1], extent[1])
-        if temporal_extent_constraints is None:
-            temporal_extent = outer_bounds
-        else:
-            # take the intersection of outer_bounds and temporal_extent
-            beginnings = []
-            if outer_bounds[0]:
-                beginnings.append(outer_bounds[0])
-            if temporal_extent_constraints[0]:
-                beginnings.append(temporal_extent_constraints[0])
-            if not beginnings:
-                beginnings.append(None)
-
-            ends = []
-            if outer_bounds[1]:
-                ends.append(outer_bounds[1])
-            if temporal_extent_constraints[1]:
-                ends.append(temporal_extent_constraints[1])
-            if not ends:
-                ends.append(None)
-
-            temporal_extent_test = (
-                max(beginnings),  # ISO date is sortable like a string
-                min(ends),
-            )
-            print(temporal_extent_test)
-        return temporal_extent
-
-    @staticmethod
-    def estimate_number_of_temporal_obervations(self,
-                                                collection_id: str,
-                                                constraints: dict,
-                                                env: EvalEnv,
-                                                ) -> float:
-        catalog = env.backend_implementation.catalog
-        temporal_extent = self.derive_temporal_extent(collection_id, constraints, env)
-
-        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
-        temporal_step = metadata.get("cube:dimensions", "t", "step", default="P10D")
-
-        # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
-        temporal_step = parse_approximate_isoduration(temporal_step)
-        estimate_days_per_sample = temporal_step.days
-
-        from_date, to_date = temporal_extent
-        if to_date is None:
-            if from_date is None:
-                days = 1
-                logger.warning(
-                    f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
-                )
-            else:
-                logger.warning(
-                    f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
-                )
-                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-                to_date_now = datetime.now().replace(tzinfo=None)
-                days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
-        else:
-            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
-                from_date)).days / estimate_days_per_sample
-        days = max(int(days), 1)
-        return days
-
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
@@ -1297,7 +1209,30 @@ class GpsProcessing(ConcreteProcessing):
                                                                   f"collection {collection_id!r}"}
                     continue
 
-                number_of_temporal_obervations = self.estimate_number_of_temporal_obervations(collection_id, constraints)
+                # Get temporal extent out of metadata if not found in constraints:
+                # TODO: Could do this for spatial extent as well.
+                if temporal_extent is None or temporal_extent[0] is None or temporal_extent[1] is None:
+                    extents = metadata.get("extent", "temporal", "interval", default=None)
+                    begin = None
+                    end = None
+                    for extent in extents:
+                        if extent[0]:
+                            if begin is None:
+                                begin = extent[0]
+                            else:
+                                begin = min(begin, extent[0])
+                        if extent[1]:
+                            if end is None:
+                                end = extent[1]
+                            else:
+                                end = max(end, extent[1])
+                    if temporal_extent is None:
+                        temporal_extent = [begin, end]
+                    else:
+                        temporal_extent = [
+                            temporal_extent[0] or begin,
+                            temporal_extent[1] or end,
+                        ]
 
                 if spatial_extent and temporal_extent:
                     band_names = constraints.get("bands")
@@ -1309,6 +1244,7 @@ class GpsProcessing(ConcreteProcessing):
                                                   default=["_at_least_assume_one_band_"])
                     nr_bands = len(band_names)
 
+                    temporal_step = metadata.get("cube:dimensions", "t", "step", default=None)
 
                     if collection_id == 'TestCollection-LonLat4x4':
                         # This layer is always 4x4 pixels, adapt resolution accordingly
@@ -1350,7 +1286,8 @@ class GpsProcessing(ConcreteProcessing):
                     message = is_layer_too_large(
                         spatial_extent=spatial_extent,
                         geometries=geometries,
-                        number_of_temporal_obervations=number_of_temporal_obervations,
+                        temporal_extent=temporal_extent,
+                        temporal_step=temporal_step,
                         nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,
