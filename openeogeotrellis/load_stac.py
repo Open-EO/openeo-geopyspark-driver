@@ -27,13 +27,15 @@ from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projec
 logger = logging.getLogger(__name__)
 
 
-def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
+def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
               batch_jobs: Optional[backend.BatchJobs]) -> GeopysparkDataCube:
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                      code="NoDataAvailable", status_code=400)
     properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
+
+    all_properties = {**layer_properties, **load_params.properties}
 
     user: Union[User, None] = env["user"]
 
@@ -99,7 +101,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
 
     def matches_metadata_properties(itm: pystac.Item) -> bool:
         literal_matches = {property_name: filter_properties.extract_literal_match(condition)
-                           for property_name, condition in load_params.properties.items()}
+                           for property_name, condition in all_properties.items()}
 
         def operator_value(criterion: Dict[str, object]) -> (str, object):
             if len(criterion) != 1:
@@ -184,7 +186,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv,
                 fields = None
             else:
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                fields = [f"properties.{property_name}" for property_name in load_params.properties.keys()]
+                fields = [f"properties.{property_name}" for property_name in all_properties.keys()]
 
             search_request = client.search(
                 method="GET",

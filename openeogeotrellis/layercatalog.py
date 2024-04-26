@@ -693,7 +693,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
                                         )
         elif layer_source_type == 'stac':
-            cube = load_stac(layer_source_info["url"], load_params, env, batch_jobs=None)
+            cube = load_stac(layer_source_info["url"], load_params, env,
+                             layer_properties=metadata.get("_vito", "properties", default={}),
+                             batch_jobs=None)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':
