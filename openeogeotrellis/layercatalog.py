@@ -814,6 +814,7 @@ def _get_layer_catalog(
     """
     Get layer catalog (from JSON files)
     """
+    opensearch_enrich = True
     if opensearch_enrich is None:
         opensearch_enrich = get_backend_config().opensearch_enrich
     if catalog_files is None:
@@ -1134,8 +1135,7 @@ def check_missing_products(
 def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
-        temporal_extent: Tuple[str, str],
-        temporal_step:str,
+        number_of_temporal_observations: float,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
@@ -1150,8 +1150,7 @@ def is_layer_too_large(
 
     :param spatial_extent: Requested spatial extent.
     :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
-    :param temporal_extent: Requested temporal extent (in isoformat).
-    :param temporal_step: Requested temporal step size (in isoformat).
+    :param number_of_temporal_observations: Requested number of temporal observations.
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
@@ -1163,32 +1162,6 @@ def is_layer_too_large(
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
-    if temporal_step is None:
-        # Raw estimate.
-        # TODO: DEM has only one time sample and no step defined.
-        temporal_step = "P10D"
-
-    # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
-    temporal_step = parse_approximate_isoduration(temporal_step)
-    estimate_days_per_sample = temporal_step.days
-
-    from_date, to_date = temporal_extent
-    if to_date is None:
-        if from_date is None:
-            days = 1
-            logger.warning(
-                f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
-            )
-        else:
-            logger.warning(
-                f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
-            )
-            from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-            to_date_now = datetime.now().replace(tzinfo=None)
-            days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
-    else:
-        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / estimate_days_per_sample
-    days = max(int(days), 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
@@ -1227,9 +1200,9 @@ def is_layer_too_large(
     if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:
         return f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000)."
 
-    estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
+    estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * number_of_temporal_observations * nr_bands
     logger.debug(
-        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
     if estimated_pixels > threshold_pixels:
         if geometries and not isinstance(geometries, dict):
@@ -1250,9 +1223,9 @@ def is_layer_too_large(
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             surface_area_pixels = geometries_area / (cell_width * cell_height)
-            estimated_pixels = surface_area_pixels * days * nr_bands
+            estimated_pixels = surface_area_pixels * number_of_temporal_observations * nr_bands
             logger.debug(
-                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
             )
             if estimated_pixels <= threshold_pixels:
                 return None
