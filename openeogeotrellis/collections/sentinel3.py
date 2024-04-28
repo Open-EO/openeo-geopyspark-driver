@@ -211,7 +211,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                                              layout_extent['ymax']], digital_numbers=digital_numbers)
             except:
                 ex_type, ex_value, ex_traceback = sys.exc_info()
-                msg = f"Failed to read Sentinel-3 {product_type} {band_names} for {creo_path}. Error: {ex_value}"
+                msg = f"Failed to read Sentinel-3 {product_type} {band_names} for {creo_path} and extent {layout_extent}. Error: {ex_value}"
                 logger.error(msg)
                 raise InternalException(msg)
 
