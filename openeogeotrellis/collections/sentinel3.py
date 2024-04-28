@@ -14,6 +14,7 @@ from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 import xarray as xr
 
+from openeo_driver.errors import OpenEOApiException, InternalException
 from openeogeotrellis.utils import get_jvm, ensure_executor_logging, set_max_memory
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
@@ -204,13 +205,19 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
 
             digital_numbers = product_type == OLCI_PRODUCT_TYPE
 
-            orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
-                                        [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                         layout_extent['ymax']], digital_numbers=digital_numbers)
+            try:
+                orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
+                                            [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
+                                             layout_extent['ymax']], digital_numbers=digital_numbers)
+            except:
+                ex_type, ex_value, ex_traceback = sys.exc_info()
+                msg = f"Failed to read Sentinel-3 {product_type} {band_names} for {creo_path}. Error: {ex_value}"
+                logger.error(msg)
+                raise InternalException(msg)
 
             debug_mode = True
 
-            # Split orfeo output in tiles
+            # Split output in tiles
             logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
             if not digital_numbers:
                 nodata = np.nan
@@ -635,6 +642,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
             # nodata = np.finfo(in_data.dtype).max
 
     data_flat = np.append(data_flat, nodata)
+
     grid_values = data_flat[LUT]
     #ncols = self.target_shape[1]
     #grid_values.shape = (grid_values.size // ncols, ncols)  # convert flattend array to 2D
