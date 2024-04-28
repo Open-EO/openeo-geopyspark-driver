@@ -390,7 +390,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                 return band_name
             raise ValueError(band_name)
 
-        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn",]:
+        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", "sat_azimuth_tn", "sat_zenith_tn",]:
             band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=angle_data_mask)
             reprojected_data = apply_LUT_on_band(band_data, LUT_angles, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
             interpolated = _linearNDinterpolate(reprojected_data)
