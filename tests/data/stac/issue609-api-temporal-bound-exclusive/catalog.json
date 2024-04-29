@@ -7,7 +7,7 @@
   "links": [
     {
       "rel": "child",
-      "href": "collection.json"
+      "href": "https://stac.test/collections/collection"
     },
     {
       "rel": "search",

@@ -53,7 +53,7 @@
   "links": [
     {
       "rel": "collection",
-      "href": "collection.json"
+      "href": "https://stac.test/collections/collection"
     }
   ],
   "assets": {
