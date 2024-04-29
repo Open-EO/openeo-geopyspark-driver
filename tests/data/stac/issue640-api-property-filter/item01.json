@@ -1,0 +1,77 @@
+{
+  "stac_version": "1.0.0",
+  "stac_extensions": [],
+  "type": "Feature",
+  "id": "item",
+  "bbox": [
+    5.0,
+    50.0,
+    6.0,
+    51.0
+  ],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          5.0,
+          50.0
+        ],
+        [
+          5.0,
+          51.0
+        ],
+        [
+          6.0,
+          51.0
+        ],
+        [
+          6.0,
+          50.0
+        ],
+        [
+          5.0,
+          50.0
+        ]
+      ]
+    ]
+  },
+  "properties": {
+    "datetime": "2021-02-03T00:00:00Z",
+    "proj:epsg": 4326,
+    "proj:bbox": [
+      5.0,
+      50.0,
+      6.0,
+      51.0
+    ],
+    "proj:shape": [
+      10,
+      10
+    ],
+    "season": "s1"
+  },
+  "links": [
+    {
+      "rel": "collection",
+      "href": "collection.json"
+    }
+  ],
+  "assets": {
+    "asset1": {
+      "href": "asset01.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        {
+          "name": "band1"
+        },
+        {
+          "name": "band2"
+        },
+        {
+          "name": "band3"
+        }
+      ]
+    }
+  }
+}

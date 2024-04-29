@@ -3930,7 +3930,70 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
+    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock):
+        def feature_collection(request, _) -> dict:
+            assert request.qs["fields"] == ["+properties.season"]
 
+            def item(path) -> dict:
+                return json.loads(
+                    get_test_data_file(path).read_text()
+                    .replace(
+                        "asset01.tiff",
+                        f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                    )
+                )
+
+            items = [item(path) for path in ["stac/issue640-api-property-filter/item01.json",
+                                             "stac/issue640-api-property-filter/item02.json",
+                                             ]]
+
+            intersecting_items = [item for item in items if item["properties"].get("season") == "s1"]
+
+            return {
+                "type": "FeatureCollection",
+                "features": intersecting_items,
+            }
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collections/collection",
+                    "properties": {
+                        "season": {
+                            "process_graph": {
+                                "eq1": {
+                                    "process_id": "eq",
+                                    "arguments": {
+                                        "x": {"from_parameter": "value"},
+                                        "y": "s1"
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            }
+        }
+
+        urllib_mock.get("https://stac.test/collections/collection",
+                        data=get_test_data_file("stac/issue640-api-property-filter/collection.json").read_text())
+        urllib_mock.get("https://stac.test",
+                        data=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text())
+        requests_mock.get("https://stac.test",
+                          text=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text())
+        requests_mock.get("https://stac.test/search", json=feature_collection)
+
+        api110.result(process_graph).assert_status_code(200)
+
+        # TODO: check if properties.<property> is included in /search request (but not if snap catalog)
+        # TODO: check if only items that match this property are included e.g. with calls to org.openeo.opensearch.OpenSearchResponses.featureBuilder().withId()
 
 
 class TestEtlApiReporting:
