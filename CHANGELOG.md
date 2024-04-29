@@ -19,6 +19,7 @@ without compromising stable operations.
 - raster_to_vector now adds an id to each polygon including band name, date, and index ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
 - resample_spatial now has better performance when resampling to a high resolution ([#265](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/265))
 - support property filters for STAC based collections ([#460](https://github.com/Open-EO/openeo-geopyspark-driver/issues/460))
+- performance improvement when reading from object storage [#740](https://github.com/Open-EO/openeo-geopyspark-driver/issues/740)
 
 ## 0.30.2
 
