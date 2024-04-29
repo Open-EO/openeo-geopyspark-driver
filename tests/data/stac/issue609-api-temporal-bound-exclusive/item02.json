@@ -2,7 +2,7 @@
   "stac_version": "1.0.0",
   "stac_extensions": [],
   "type": "Feature",
-  "id": "item",
+  "id": "item02",
   "bbox": [
     5.0,
     50.0,

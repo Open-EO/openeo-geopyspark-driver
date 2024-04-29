@@ -4003,7 +4003,8 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
-        # TODO: check if only items that match this property are included e.g. with calls to org.openeo.opensearch.OpenSearchResponses.featureBuilder().withId()
+        # TODO: check if only items that match this property are included,
+        #  e.g. with calls to org.openeo.opensearch.OpenSearchResponses.featureBuilder().withId("item01")
 
 
 class TestEtlApiReporting:
