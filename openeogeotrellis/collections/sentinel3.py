@@ -650,10 +650,13 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
             # nodata = np.finfo(in_data.dtype).max
 
     data_flat = np.append(data_flat, nodata)
-
-    grid_values = data_flat[LUT]
+    #TODO: this avoids getting IndexOutOfBounds, but may hide the actual issue because array sizes don't match
+    LUT_invalid_index = LUT >= len(data_flat)
+    LUT[LUT_invalid_index] = 0
+    grid_values = data_flat[ LUT ]
     #ncols = self.target_shape[1]
     #grid_values.shape = (grid_values.size // ncols, ncols)  # convert flattend array to 2D
+    grid_values[LUT_invalid_index] = nodata
     return grid_values
 
 
