@@ -1017,7 +1017,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
-                        summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                        if len(udf_stacktrace) > width - 150:
+                            udf_stacktrace_list = udf_stacktrace.split("\n")
+                            udf_stacktrace_new = "\n".join(
+                                udf_stacktrace_list[:5] + ["... skipped stack frames ..."] + udf_stacktrace_list[-5:]
+                            )
+                            if len(udf_stacktrace_new) < width - 150:
+                                udf_stacktrace = udf_stacktrace_new
+                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {udf_stacktrace}"
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
