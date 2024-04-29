@@ -3751,20 +3751,20 @@ class TestLoadStac:
                 "features": intersecting_items,
             }
 
-        urllib_mock.get("https://stac.test/collection.json",
+        urllib_mock.get("https://stac.test/collections/collection",
                         data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/collection.json").read_text())
-        urllib_mock.get("https://stac.test/catalog.json",  # for pystac
+        urllib_mock.get("https://stac.test",  # for pystac
                         data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test/catalog.json",  # for pystac_client
+        requests_mock.get("https://stac.test",  # for pystac_client
                           text=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test/catalog.json/search",
+        requests_mock.get("https://stac.test/search",
                           json=feature_collection)
 
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://stac.test/collection.json",
+                    "url": "https://stac.test/collections/collection",
                     "temporal_extent": [lower_temporal_bound, upper_temporal_bound]
                 },
             },

@@ -27,7 +27,7 @@
   "links": [
     {
       "rel": "root",
-      "href": "catalog.json"
+      "href": "https://stac.test"
     }
   ],
   "summaries": {
