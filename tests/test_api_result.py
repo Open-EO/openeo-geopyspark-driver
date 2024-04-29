@@ -3930,9 +3930,16 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
-    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock):
+    @pytest.mark.parametrize("catalog_url", [
+        "https://stac.test",
+        "https://tamn.snapplanet.io",
+    ])
+    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url):
         def feature_collection(request, _) -> dict:
-            assert request.qs["fields"] == ["+properties.season"]
+            if catalog_url == "https://tamn.snapplanet.io":
+                assert "fields" not in request.qs
+            else:
+                assert request.qs["fields"] == ["+properties.season"]
 
             def item(path) -> dict:
                 return json.loads(
@@ -3941,6 +3948,7 @@ class TestLoadStac:
                         "asset01.tiff",
                         f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
                     )
+                    .replace("$CATALOG_URL", catalog_url)
                 )
 
             items = [item(path) for path in ["stac/issue640-api-property-filter/item01.json",
@@ -3958,7 +3966,7 @@ class TestLoadStac:
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://stac.test/collections/collection",
+                    "url": f"{catalog_url}/collections/collection",
                     "properties": {
                         "season": {
                             "process_graph": {
@@ -3982,17 +3990,19 @@ class TestLoadStac:
             }
         }
 
-        urllib_mock.get("https://stac.test/collections/collection",
-                        data=get_test_data_file("stac/issue640-api-property-filter/collection.json").read_text())
-        urllib_mock.get("https://stac.test",
-                        data=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text())
-        requests_mock.get("https://stac.test",
-                          text=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text())
-        requests_mock.get("https://stac.test/search", json=feature_collection)
+        urllib_mock.get(f"{catalog_url}/collections/collection",
+                        data=get_test_data_file("stac/issue640-api-property-filter/collection.json").read_text()
+                        .replace("$CATALOG_URL", catalog_url))
+        urllib_mock.get(catalog_url,
+                        data=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
+                        .replace("$CATALOG_URL", catalog_url))
+        requests_mock.get(catalog_url,
+                          text=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
+                          .replace("$CATALOG_URL", catalog_url))
+        requests_mock.get(f"{catalog_url}/search", json=feature_collection)
 
         api110.result(process_graph).assert_status_code(200)
 
-        # TODO: check if properties.<property> is included in /search request (but not if snap catalog)
         # TODO: check if only items that match this property are included e.g. with calls to org.openeo.opensearch.OpenSearchResponses.featureBuilder().withId()
 
 
