@@ -209,8 +209,10 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                 orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
                                             [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
                                              layout_extent['ymax']], digital_numbers=digital_numbers)
-            except:
-                ex_type, ex_value, ex_traceback = sys.exc_info()
+                if orfeo_bands is None:
+                    continue
+            except Exception as e:
+                #ex_type, ex_value, ex_traceback = sys.exc_info()
                 msg = f"Failed to read Sentinel-3 {product_type} {band_names} for {creo_path} and extent {layout_extent}. Error: {ex_value}"
                 logger.error(msg)
                 raise InternalException(msg)
@@ -280,6 +282,8 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
     geofile = os.path.join(creo_path, geofile)
 
     bbox_original, source_coordinates, data_mask = _read_latlonfile(bbox_tile, geofile, lat_band, lon_band)
+    if source_coordinates is None:
+        return None
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
     if product_type == SLSTR_PRODUCT_TYPE:
@@ -493,6 +497,10 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     lat_orig = lat_lon_ds[lat_band].where(data_mask,drop=True).values
     lon_orig = lat_lon_ds[lon_band].where(data_mask,drop=True).values
     lat_lon_ds.close()
+
+    if lat_orig.size == 0 or lon_orig.size == 0:
+        logger.warning("No valid data found in lat/lon file")
+        return None, None, None
 
     extreme_right_lon = lon_orig[0,-1] # negative degrees (-170)
     extreme_left_lon = lon_orig[-1,0]  # possitive degrees (169)
