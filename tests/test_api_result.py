@@ -3951,11 +3951,13 @@ class TestLoadStac:
                     .replace("$CATALOG_URL", catalog_url)
                 )
 
-            items = [item(path) for path in ["stac/issue640-api-property-filter/item01.json",
-                                             "stac/issue640-api-property-filter/item02.json",
-                                             ]]
+            intersecting_items = [item(path) for path in ["stac/issue640-api-property-filter/item01.json",
+                                                          "stac/issue640-api-property-filter/item02.json",
+                                                          ]]
 
-            intersecting_items = [item for item in items if item["properties"].get("season") == "s1"]
+            # note: intersecting_items will be filtered by load_stac but only "item01" (= the one with "season": "s1")
+            # has an "href" that points to an existing file; if load_stac would consider "item02" as well, this test
+            # would rightfully fail.
 
             return {
                 "type": "FeatureCollection",
@@ -4002,9 +4004,6 @@ class TestLoadStac:
         requests_mock.get(f"{catalog_url}/search", json=feature_collection)
 
         api110.result(process_graph).assert_status_code(200)
-
-        # TODO: check if only items that match this property are included,
-        #  e.g. with calls to org.openeo.opensearch.OpenSearchResponses.featureBuilder().withId("item01")
 
 
 class TestEtlApiReporting:
