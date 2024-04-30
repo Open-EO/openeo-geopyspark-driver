@@ -1485,6 +1485,9 @@
         "root_path": "/data/MTDA/WORLDCOVER/ESA_WORLDCOVER_10M_2021_V200/MAP",
         "realign": true
       }
+    },
+    "extent": {
+      "spatial": {"bbox": [[-180, -60, 180, 83]]}
     }
   }
 ]
