@@ -3751,20 +3751,20 @@ class TestLoadStac:
                 "features": intersecting_items,
             }
 
-        urllib_mock.get("https://stac.test/collection.json",
+        urllib_mock.get("https://stac.test/collections/collection",
                         data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/collection.json").read_text())
-        urllib_mock.get("https://stac.test/catalog.json",  # for pystac
+        urllib_mock.get("https://stac.test",  # for pystac
                         data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test/catalog.json",  # for pystac_client
+        requests_mock.get("https://stac.test",  # for pystac_client
                           text=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test/catalog.json/search",
+        requests_mock.get("https://stac.test/search",
                           json=feature_collection)
 
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://stac.test/collection.json",
+                    "url": "https://stac.test/collections/collection",
                     "temporal_extent": [lower_temporal_bound, upper_temporal_bound]
                 },
             },
@@ -3930,7 +3930,80 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
+    @pytest.mark.parametrize("catalog_url", [
+        "https://stac.test",
+        "https://tamn.snapplanet.io",
+    ])
+    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url):
+        def feature_collection(request, _) -> dict:
+            if catalog_url == "https://tamn.snapplanet.io":
+                assert "fields" not in request.qs
+            else:
+                assert request.qs["fields"] == ["+properties.season"]
 
+            def item(path) -> dict:
+                return json.loads(
+                    get_test_data_file(path).read_text()
+                    .replace(
+                        "asset01.tiff",
+                        f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                    )
+                    .replace("$CATALOG_URL", catalog_url)
+                )
+
+            intersecting_items = [item(path) for path in ["stac/issue640-api-property-filter/item01.json",
+                                                          "stac/issue640-api-property-filter/item02.json",
+                                                          ]]
+
+            # note: intersecting_items will be filtered by load_stac but only "item01" (= the one with "season": "s1")
+            # has an "href" that points to an existing file; if load_stac would consider "item02" as well, this test
+            # would rightfully fail.
+
+            return {
+                "type": "FeatureCollection",
+                "features": intersecting_items,
+            }
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{catalog_url}/collections/collection",
+                    "properties": {
+                        "season": {
+                            "process_graph": {
+                                "eq1": {
+                                    "process_id": "eq",
+                                    "arguments": {
+                                        "x": {"from_parameter": "value"},
+                                        "y": "s1"
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            }
+        }
+
+        urllib_mock.get(f"{catalog_url}/collections/collection",
+                        data=get_test_data_file("stac/issue640-api-property-filter/collection.json").read_text()
+                        .replace("$CATALOG_URL", catalog_url))
+        urllib_mock.get(catalog_url,
+                        data=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
+                        .replace("$CATALOG_URL", catalog_url))
+        requests_mock.get(catalog_url,
+                          text=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
+                          .replace("$CATALOG_URL", catalog_url))
+        requests_mock.get(f"{catalog_url}/search", json=feature_collection)
+
+        api110.result(process_graph).assert_status_code(200)
 
 
 class TestEtlApiReporting:

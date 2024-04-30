@@ -1,0 +1,125 @@
+{
+  "type": "Catalog",
+  "id": "terra-stac-api",
+  "title": "openEO",
+  "description": "VITO openEO STAC API",
+  "stac_version": "1.0.0",
+  "conformsTo": [
+    "https://api.stacspec.org/v1.0.0/item-search#fields",
+    "https://api.stacspec.org/v1.0.0/ogcapi-features",
+    "https://api.stacspec.org/v1.0.0/item-search",
+    "https://api.stacspec.org/v1.0.0/collections",
+    "https://api.stacspec.org/v1.0.0-rc.3/ogcapi-features/extensions/transaction",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+    "https://api.stacspec.org/v1.0.0/item-search#sort",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    "https://api.stacspec.org/v1.0.0-rc.2/item-search#context",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+    "https://api.stacspec.org/v1.0.0/item-search#query",
+    "https://api.stacspec.org/v1.0.0/core",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "https://api.stacspec.org/v1.0.0-rc.2/item-search#filter"
+  ],
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/"
+    },
+    {
+      "rel": "data",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/collections"
+    },
+    {
+      "rel": "conformance",
+      "type": "application/json",
+      "title": "STAC/WFS3 conformance classes implemented by this server",
+      "href": "https://stac.openeo.vito.be/conformance"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "title": "STAC search",
+      "href": "https://stac.openeo.vito.be/search",
+      "method": "GET"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "title": "STAC search",
+      "href": "https://stac.openeo.vito.be/search",
+      "method": "POST"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Vegetation Phenology and Productivity parameters, yearly, LAEA projection",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_3035_x_m_hrvpp-vpp_p_2017-now_v01"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 L2A NDVI potential",
+      "href": "https://stac.openeo.vito.be/collections/SENTINEL2_L2A_NDVI_POTENTIAL"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Seasonal Trajectories, 10-daily, UTM projection",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-st_p_2017-now_v01"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Seasonal Trajectories, 10-daily, LAEA projection ",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_3035_x_m_hrvpp-st_p_2017-now_v01"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Vegetation Indices, daily, UTM projection",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vi_p_2017-now_v01"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "ESA WorldCover 2021 products 10 meter COG format",
+      "href": "https://stac.openeo.vito.be/collections/ESA_WORLDCOVER_10M_2021_V2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Vegetation Phenology and Productivity parameters, yearly, UTM projection",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "agERA5 data",
+      "href": "https://stac.openeo.vito.be/collections/agera5_daily"
+    },
+    {
+      "rel": "service-desc",
+      "type": "application/vnd.oai.openapi+json;version=3.0",
+      "title": "OpenAPI service description",
+      "href": "https://stac.openeo.vito.be/api"
+    },
+    {
+      "rel": "service-doc",
+      "type": "text/html",
+      "title": "OpenAPI service documentation",
+      "href": "https://stac.openeo.vito.be/api.html"
+    }
+  ],
+  "stac_extensions": []
+}

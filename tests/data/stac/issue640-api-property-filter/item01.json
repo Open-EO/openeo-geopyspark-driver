@@ -2,7 +2,7 @@
   "stac_version": "1.0.0",
   "stac_extensions": [],
   "type": "Feature",
-  "id": "item02",
+  "id": "item01",
   "bbox": [
     5.0,
     50.0,
@@ -37,7 +37,7 @@
     ]
   },
   "properties": {
-    "datetime": "2021-02-04T00:00:00Z",
+    "datetime": "2021-02-03T00:00:00Z",
     "proj:epsg": 4326,
     "proj:bbox": [
       5.0,
@@ -48,12 +48,13 @@
     "proj:shape": [
       10,
       10
-    ]
+    ],
+    "season": "s1"
   },
   "links": [
     {
       "rel": "collection",
-      "href": "https://stac.test/collections/collection"
+      "href": "$CATALOG_URL/collections/collection"
     }
   ],
   "assets": {

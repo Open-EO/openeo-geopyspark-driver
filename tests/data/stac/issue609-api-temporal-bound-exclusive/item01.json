@@ -2,7 +2,7 @@
   "stac_version": "1.0.0",
   "stac_extensions": [],
   "type": "Feature",
-  "id": "item",
+  "id": "item01",
   "bbox": [
     5.0,
     50.0,
@@ -53,7 +53,7 @@
   "links": [
     {
       "rel": "collection",
-      "href": "collection.json"
+      "href": "https://stac.test/collections/collection"
     }
   ],
   "assets": {
