@@ -814,7 +814,6 @@ def _get_layer_catalog(
     """
     Get layer catalog (from JSON files)
     """
-    opensearch_enrich = True
     if opensearch_enrich is None:
         opensearch_enrich = get_backend_config().opensearch_enrich
     if catalog_files is None:
